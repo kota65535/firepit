@@ -2,7 +2,7 @@ use crate::config::ProjectConfig;
 use crate::graph::TaskGraph;
 use crate::process::{Command, ProcessManager};
 use crate::ui::output::{OutputClient, OutputSink};
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use std::collections::HashMap;
@@ -19,8 +19,9 @@ use crate::run::output::StdWriter;
 pub struct ProjectRunner {
     pub root_project: Project,
     pub child_projects: HashMap<String, Project>,
-    pub task_graph: Arc<Mutex<TaskGraph>>,
+    pub target_tasks: Vec<Task>,
     pub tasks: HashMap<String, Task>,
+    pub task_graph: Arc<Mutex<TaskGraph>>,
     pub manager: ProcessManager,
     pub cwd: PathBuf,
     pub shell: String,
@@ -38,9 +39,17 @@ impl<T, U> Message<T, U> {
     }
 }
 
-impl ProjectRunner {
+fn get_task(tasks: &HashMap<String, Task>, task_name: &str) -> anyhow::Result<Task> {
+    tasks
+        .get(task_name)
+        .with_context(|| format!("Task '{}' not found", task_name))
+        .map(|task| task.clone())
+}
 
-    pub fn new(root: &ProjectConfig, children: &HashMap<String, ProjectConfig>) -> anyhow::Result<ProjectRunner> {
+
+impl ProjectRunner {
+    
+    pub fn new(root: &ProjectConfig, children: &HashMap<String, ProjectConfig>, task_names: &Vec<String>) -> anyhow::Result<ProjectRunner> {
         let root_project_name = "".to_string();
         let root_project = Project::new(&root_project_name, root);
         let child_projects = children.iter()
@@ -53,16 +62,28 @@ impl ProjectRunner {
             tasks.extend(proj.tasks.clone());
         }
 
-        let task_graph = Arc::new(Mutex::new(TaskGraph::new(&root_project, &child_projects)?));
-
+        let mut task_graph = TaskGraph::new(&tasks.values().cloned().collect::<Vec<Task>>())?;
+        if tasks.len() > 0 {
+            task_graph = task_graph.transitive_closure(&task_names)?;
+            tasks = task_graph.graph.node_weights().cloned().map(|w| (w.name.clone(), w)).collect();
+        }
+        
+        let target_tasks = task_names
+            .iter()
+            .map(|t| tasks.get(t).cloned().with_context(|| format!("Task '{}' not found", t)))
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        
+        let shell = root_project.shell.clone();
+        
         Ok(ProjectRunner {
-            root_project: root_project.clone(),
+            root_project,
             child_projects,
             tasks,
-            task_graph,
+            target_tasks,
+            task_graph: Arc::new(Mutex::new(task_graph)),
             manager: ProcessManager::infer(),
             cwd: env::current_dir()?,
-            shell: root_project.clone().shell,
+            shell,
             num_workers: 2,
         })
     }
@@ -71,9 +92,8 @@ impl ProjectRunner {
         let mut tasks: FuturesUnordered<tokio::task::JoinHandle<anyhow::Result<()>>> = FuturesUnordered::new();
 
         let (mut nodes, handle) =  self.task_graph
-            .lock()
-            .expect("lock poisoned")
-            .visit(task_names);
+            .lock().expect("lock poisoned")
+            .visit();
         loop {
             if let Some((node_id, callback)) = nodes.recv().await {
                 let visitor = visitor.clone();
@@ -103,8 +123,11 @@ impl ProjectRunner {
     }
 
 
-    pub async fn run_tasks(&mut self, task_names: &Vec<String>) -> anyhow::Result<()> {
+    pub async fn run(&mut self, task_names: &Vec<String>) -> anyhow::Result<()> {
         let (node_sender, mut node_stream) = mpsc::channel(self.root_project.concurrency);
+        
+        
+        
         let task_names = task_names.clone();
 
         let mut this = self.clone();
@@ -147,8 +170,6 @@ impl ProjectRunner {
                         return Err(anyhow!("unable to determine why child exited"))
                     }
                 };
-                
-                println!("task {:?} finished", message.info);
                 
                 message.callback.send(());
                 Ok(())

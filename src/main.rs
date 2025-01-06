@@ -1,3 +1,7 @@
+use log::error;
+use std::env;
+use std::panic::PanicInfo;
+
 mod config;
 mod project;
 mod graph;
@@ -11,23 +15,15 @@ mod process;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    std::panic::set_hook(Box::new(panic_handler));
+    env::set_var("RUST_LOG", "info");
+    env_logger::init();
 
     let exit_code = cli::run().await.unwrap_or_else(|err| {
-        let err = anyhow::anyhow!("Some error occurred");
-        eprintln!("{:?}", err);
+        let err = err.context("Some error occurred");
+        error!("{:?}", err);
         1
     });
     std::process::exit(exit_code)
 }
 
-pub fn panic_handler(panic_info: &std::panic::PanicInfo) {
-    let cause = panic_info.to_string();
-
-    let explanation = match panic_info.location() {
-        Some(location) => format!("file '{}' at line {}\n", location.file(), location.line()),
-        None => "unknown.".to_string(),
-    };
-
-    println!("{}", explanation);
-}
+// TODO: panic handler?

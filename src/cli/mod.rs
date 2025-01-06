@@ -3,6 +3,7 @@ mod run;
 use std::path;
 use std::path::Path;
 use clap::Parser;
+use log::info;
 use crate::config::ProjectConfig;
 use crate::graph::TaskGraph;
 use crate::project::ProjectRunner;
@@ -23,24 +24,14 @@ pub struct Args {
 pub async fn run() -> anyhow::Result<i32> {
     let args = Args::parse();
 
-    println!("tasks: {:?}", args.tasks);
-    println!("dir: {:?}", args.dir);
+    info!("tasks: {:?}", args.tasks);
+    info!("dir: {:?}", args.dir);
 
-    let (root, children) = ProjectConfig::load_all(Path::new(&args.dir))?;
+    let (root, children) = ProjectConfig::new_multi(Path::new(&args.dir))?;
 
-    let mut runner = ProjectRunner::new(&root, &children)?;
+    let mut runner = ProjectRunner::new(&root, &children, &args.tasks)?;
 
-    runner.run_tasks(&args.tasks).await?;
+    runner.run(&args.tasks).await?;
 
-    // run::run(args.tasks).await
-
-    // let config = ProjectConfig::load_all(Path::new(&args.dir)).unwrap();
-    // 
-    // let runner = ProjectRunner::load(config);
-    // 
-    // let tasks = vec!["#foo".to_string()];
-    // runner.unwrap().run_tasks(&tasks).await;
-
-    // println!("{:?}", runner)
     Ok(0)
 }

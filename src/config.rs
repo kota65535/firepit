@@ -32,7 +32,7 @@ pub fn default_concurrency() -> Option<usize> {
 
 
 impl ProjectConfig {
-    pub fn load_all(dir: &Path) -> anyhow::Result<(ProjectConfig, HashMap<String, ProjectConfig>)> {
+    pub fn new_multi(dir: &Path) -> anyhow::Result<(ProjectConfig, HashMap<String, ProjectConfig>)> {
         let config = ProjectConfig::find_root(dir)?;
         let mut children = HashMap::new();
         if config.is_root() {
@@ -94,10 +94,6 @@ impl ProjectConfig {
             }
             None => false
         }
-    }
-
-    pub fn get_default_interpreter() -> String {
-        "bash".to_string()
     }
 }
 

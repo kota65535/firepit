@@ -30,7 +30,6 @@ serde_yaml = "0.9.34"
 test-case = "3.3.1"
 thiserror = "2.0.1"
 tokio = { version = "1.41.1", features = ["full"] }
-tracing = "0.1.40"
 tracing-test = "0.2.5"
 typed-arena = "2.0.2"
 vt100 = { git = "https://github.com/kota65535/vt100-rust", branch = "main" }
@@ -42,6 +41,9 @@ ratatui = "=0.26.1"
 miette = "7.2.0"
 regex = "1.11.1"
 tui-term = { version = "=0.1.9", default-features = false }
+log = "0.4.22"
+env_logger = "0.11.6"
+tracing = "0.1.41"
 
 [build]
 target = "aarch64-apple-darwin"

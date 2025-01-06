@@ -1,82 +1,70 @@
 use crate::project::{Project, Task, TaskRun, TaskStatus};
+use anyhow::Context;
+use futures::future::{join_all, JoinAll};
+use futures::stream::FuturesUnordered;
+use log::{debug, info, warn};
 use petgraph::algo::toposort;
+use petgraph::data::DataMap;
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::visit::{depth_first_search, IntoNodeIdentifiers};
+use petgraph::Direction;
 use std::collections::HashMap;
 use std::future::Future;
 use std::ops::Index;
-use futures::future::{join_all, JoinAll};
-use futures::stream::FuturesUnordered;
-use petgraph::data::DataMap;
-use petgraph::Direction;
-use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::sync::mpsc::error::RecvError;
 use tokio::sync::mpsc::Sender;
+use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
-use tracing::{info, trace};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TaskGraph {
     pub graph: DiGraph<Task, ()>,
-    // pub sender: Option<Sender<WalkMessage<NodeIndex>>>
 }
 
 pub type WalkMessage<N> = (N, oneshot::Sender<()>);
 
 pub struct Visitor {
-    
+
 }
 
 impl TaskGraph {
-    pub fn new(root_project: &Project, child_projects: &HashMap<String, Project>) -> anyhow::Result<TaskGraph> {
+    pub fn new(tasks: &Vec<Task>) -> anyhow::Result<TaskGraph> {
         let mut graph = DiGraph::<Task, ()>::new();
         let mut nodes = HashMap::new();
-        let mut nodes_rev = HashMap::new();
+        let mut nodes_reversed = HashMap::new();
 
-        for (name, task) in &root_project.tasks {
-            let idx = graph.add_node(task.clone());
-            nodes.insert(name.clone(), idx);
-            nodes_rev.insert(idx, name.clone());
+        // Add nodes
+        for t in tasks {
+            let idx = graph.add_node(t.clone());
+            nodes.insert(t.name.clone(), idx);
+            nodes_reversed.insert(idx, t.name.clone());
         }
-        for (_, project) in child_projects {
-            for (name, task) in &project.tasks {
-                let idx = graph.add_node(task.clone());
-                nodes.insert(name.clone(), idx);
-                nodes_rev.insert(idx, name.clone());
+        
+        // Add edges
+        for t in tasks {
+            for d in &t.depends_on {
+                let from = nodes.get(&t.name).with_context(|| format!("node {} should be found", &t.name))?;
+                let to = nodes.get(d).with_context(|| format!("node {} should be found", d))?;
+                graph.add_edge(*from, *to, ());
             }
         }
 
-        for (name, task) in &root_project.tasks {
-            for d in &task.depends_on {
-                graph.add_edge(*nodes.get(name).unwrap(), *nodes.get(d).unwrap(), ());
-            }
-        }
-        for (_, project) in child_projects {
-            for (name, task) in &project.tasks {
-                for dep in &task.depends_on {
-                    graph.add_edge(*nodes.get(name).unwrap(), *nodes.get(dep).unwrap(), ());
-                }
-            }
-        }
-
+        // Ensure no cyclic dependency
         match toposort(&graph, None) {
             Ok(_) => {}
             Err(err) => {
-                let task_name = nodes_rev.get(&err.node_id()).unwrap();
+                let task_name = nodes_reversed.get(&err.node_id()).unwrap();
                 return Err(anyhow::anyhow!("Cyclic dependency detected at task {}", task_name))
             }
         }
 
-        println!("{:?}", Dot::with_config(&graph, &[Config::EdgeNoLabel]));
-
         Ok(TaskGraph {
             graph,
-            // sender: None,
         })
     }
 
-    pub fn visit(&mut self, tasks: &Vec<String>) -> (mpsc::Receiver<WalkMessage<NodeIndex>>, FuturesUnordered<JoinHandle<()>>) {
+    pub fn visit(&mut self) -> (mpsc::Receiver<WalkMessage<NodeIndex>>, FuturesUnordered<JoinHandle<()>>) {
         let (cancel, cancel_rx) = watch::channel(false);
         let mut txs = HashMap::new();
         let mut rxs = HashMap::new();
@@ -94,8 +82,9 @@ impl TaskGraph {
             let mut cancel_rx = cancel_rx.clone();
             let node_tx = node_tx.clone();
             let neighbors = self.graph.neighbors_directed(node, Direction::Outgoing);
-            let mut deps_rx = self.graph
-                .neighbors_directed(node, Direction::Outgoing)
+            let task_name = self.graph.node_weight(node).unwrap().name.clone();
+            let dep_names = neighbors.clone().map(|n| self.graph.node_weight(n).cloned().unwrap().name).collect::<Vec<_>>();
+            let mut deps_rx = neighbors
                 .map(|dep| {
                     rxs.get(&dep)
                         .expect("graph should have all nodes")
@@ -105,14 +94,14 @@ impl TaskGraph {
 
             join_handles.push(tokio::spawn(async move {
                 let deps = deps_rx.iter_mut().map(|rx| rx.recv()).collect::<Vec<_>>();
-                println!("Waiting for {:?} deps of task {:?} finish", deps.len(), node);
+                info!("Task {} is waiting for {} deps: {}", task_name, dep_names.len(), dep_names.join(", "));
                 let deps_fut = join_all(deps);
 
                 tokio::select! {
                     // If both the cancel and dependencies are ready, we want to
                     // execute the cancel instead of sending an additional node.
                     results = deps_fut => {
-                        println!("Task {:?} can start", node);
+                        info!("Task {} is starting", task_name);
                         for res in results {
                             match res {
                                 // No errors from reading dependency channels
@@ -129,7 +118,7 @@ impl TaskGraph {
                                 // but we log as this is unexpected behavior.
                                 Err(broadcast::error::RecvError::Lagged(x)) => {
                                     debug_assert!(false, "A node finished {x} more times than expected");
-                                    trace!("A node finished {x} more times than expected");
+                                    info!("A node finished {x} more times than expected");
                                 }
                             }
                         }
@@ -140,14 +129,15 @@ impl TaskGraph {
                             // Receiving end of node channel has been closed/dropped
                             // Since there's nothing the mark the node as being done
                             // we act as if we have been canceled.
-                            trace!("Receiver was dropped before walk finished without calling cancel");
+                            info!("Receiver was dropped before walk finished without calling cancel");
                             return;
                         }
                         if callback_rx.await.is_err() {
                             // If the caller drops the callback sender without signaling
                             // that the node processing is finished we assume that it is finished.
-                            trace!("Callback sender was dropped without sending a finish signal")
+                            info!("Callback sender was dropped without sending a finish signal")
                         }
+                        info!("Task {} finished", task_name);
                         // Send errors indicate that there are no receivers which
                         // happens when this node has no dependents
                         tx.send(()).ok();
@@ -159,18 +149,12 @@ impl TaskGraph {
         (node_rx, join_handles)
     }
 
-    pub fn print(&self) {
-        println!("{:?}", Dot::with_config(&self.graph, &[Config::EdgeNoLabel]));
+    pub fn dot_notation(&self) {
+        format!("{:?}", Dot::with_config(&self.graph, &[Config::EdgeNoLabel]));
     }
-
-    pub fn finish_task(&mut self, name: &String) {
-        if let Some((_, idx)) = self.find_node(name) {
-            self.graph.remove_node(idx);
-        }
-    }
-
-    fn transitive_closure(&self, names: &Vec<String>) -> Vec<NodeIndex> {
-        let mut visited = Vec::new();
+    
+    pub fn transitive_closure(&self, names: &Vec<String>) -> anyhow::Result<TaskGraph> {
+        let mut visited = Vec::<NodeIndex>::new();
         let visitor = |idx| {
             if let petgraph::visit::DfsEvent::Discover(n, _) = idx {
                 visited.push(n)
@@ -182,7 +166,14 @@ impl TaskGraph {
             .map(|n| n.1)
             .collect::<Vec<_>>();
         depth_first_search(&self.graph, indices, visitor);
-        visited
+
+        // TODO: nicer error handling
+        let tasks = visited
+            .iter()
+            .map(|&i| self.graph.node_weight(i).unwrap().clone())
+            .collect::<Vec<_>>();
+        
+        TaskGraph::new(&tasks)
     }
 
     fn find_node(&self, name: &String) -> Option<(&Task, NodeIndex)> {
