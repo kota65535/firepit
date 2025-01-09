@@ -39,14 +39,6 @@ impl<T, U> Message<T, U> {
     }
 }
 
-fn get_task(tasks: &HashMap<String, Task>, task_name: &str) -> anyhow::Result<Task> {
-    tasks
-        .get(task_name)
-        .with_context(|| format!("Task '{}' not found", task_name))
-        .map(|task| task.clone())
-}
-
-
 impl ProjectRunner {
     
     pub fn new(root: &ProjectConfig, children: &HashMap<String, ProjectConfig>, task_names: &Vec<String>) -> anyhow::Result<ProjectRunner> {
@@ -125,8 +117,6 @@ impl ProjectRunner {
 
     pub async fn run(&mut self, task_names: &Vec<String>) -> anyhow::Result<()> {
         let (node_sender, mut node_stream) = mpsc::channel(self.root_project.concurrency);
-        
-        
         
         let task_names = task_names.clone();
 

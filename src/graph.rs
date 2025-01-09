@@ -24,9 +24,6 @@ pub struct TaskGraph {
 
 pub type WalkMessage<N> = (N, oneshot::Sender<()>);
 
-pub struct Visitor {
-
-}
 
 impl TaskGraph {
     pub fn new(tasks: &Vec<Task>) -> anyhow::Result<TaskGraph> {
@@ -64,8 +61,7 @@ impl TaskGraph {
         })
     }
 
-    pub fn visit(&mut self) -> (mpsc::Receiver<WalkMessage<NodeIndex>>, FuturesUnordered<JoinHandle<()>>) {
-        let (cancel, cancel_rx) = watch::channel(false);
+    pub fn visit(&self) -> (mpsc::Receiver<WalkMessage<NodeIndex>>, FuturesUnordered<JoinHandle<()>>) {
         let mut txs = HashMap::new();
         let mut rxs = HashMap::new();
         for node in self.graph.node_identifiers() {
@@ -75,11 +71,9 @@ impl TaskGraph {
             rxs.insert(node, rx);
         }
         let (node_tx, node_rx) = mpsc::channel(std::cmp::max(txs.len(), 1));
-        // self.sender = Some(node_tx.clone());
         let join_handles = FuturesUnordered::new();
         for node in self.graph.node_identifiers() {
             let tx = txs.remove(&node).expect("should have sender for all nodes");
-            let mut cancel_rx = cancel_rx.clone();
             let node_tx = node_tx.clone();
             let neighbors = self.graph.neighbors_directed(node, Direction::Outgoing);
             let task_name = self.graph.node_weight(node).unwrap().name.clone();
