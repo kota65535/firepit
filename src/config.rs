@@ -5,61 +5,98 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::thread::available_parallelism;
+use std::io;
 
-const CONFIG_FILE: &str = "fire.yml";
+const CONFIG_FILE: [&str; 2] = ["fire.yml", "fire.yaml"];
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ProjectConfig {
-    pub projects: Option<HashMap<String, String>>,
-    pub tasks: Option<HashMap<String, TaskConfig>>,
-    
-    #[serde(default = "default_interpreter")]
-    pub interpreter: Option<String>,
-    #[serde(default = "default_concurrency")]
+    /// Child projects.
+    /// Valid only in root project config.
+    #[serde(default)]
+    pub projects: HashMap<String, String>,
+
+    /// Task definitions.
+    #[serde(default)]
+    pub tasks: HashMap<String, TaskConfig>,
+
+    /// Environment variables set during execution of all tasks.
+    /// Merged with the root project's one if this is a child project.
+    #[serde(default)]
+    pub envs: HashMap<String, String>,
+
+    /// Shell configuration for all tasks.
+    pub shell: Option<ShellConfig>,
+
+    /// Task concurrency. 
+    /// Valid only in root project config.
     pub concurrency: Option<usize>,
 
+    /// Project directory.
     #[serde(skip)]
     pub dir: PathBuf,
 }
 
-pub fn default_interpreter() -> Option<String> {
-    Some("bash".to_string())
+pub fn default_shell() -> ShellConfig {
+    ShellConfig {
+        command: "bash".to_string(),
+        args: vec!("-c".to_string())
+    }
 }
 
-pub fn default_concurrency() -> Option<usize> {
-    Some(available_parallelism().unwrap().get())
+pub fn default_concurrency() -> usize {
+    available_parallelism().unwrap().get()
 }
-
 
 impl ProjectConfig {
-    pub fn new_multi(dir: &Path) -> anyhow::Result<(ProjectConfig, HashMap<String, ProjectConfig>)> {
-        let config = ProjectConfig::find_root(dir)?;
+    pub fn new_multi(dir: &PathBuf) -> anyhow::Result<(ProjectConfig, HashMap<String, ProjectConfig>)> {
+        let mut root_config = ProjectConfig::find_root(&dir)?;
+        root_config.shell.get_or_insert(default_shell());
+        root_config.concurrency.get_or_insert(default_concurrency());
         let mut children = HashMap::new();
-        if config.is_root() {
+        if root_config.is_root() {
             // Multi project
-            if let Some(projects) = config.projects.as_ref() {
-                for (name, path) in projects {
-                    let child_config = ProjectConfig::new(Path::new(dir).join(path).as_path())?;
-                    children.insert(name.clone(), child_config);
-                }
+            for (name, path) in &root_config.projects {
+                let mut child_config = ProjectConfig::new(dir.join(path).as_path())?;
+                child_config.envs = root_config.envs.clone().into_iter().chain(child_config.envs).collect();
+                child_config.shell.get_or_insert(root_config.shell.clone().expect("should be default value"));
+                child_config.concurrency.get_or_insert(root_config.concurrency.expect("should be default value"));
+
+                children.insert(name.clone(), child_config);
             }
-            Ok((config, children))
+            Ok((root_config, children))
         } else {
             // Single project
-            Ok((config, children))
+            Ok((root_config, children))
+        }
+    }
+
+    fn open_file(path: &PathBuf) -> Result<(File, PathBuf), io::Error> {
+        match File::open(path) {
+            Ok(file) => {
+                Ok((file, path.to_owned()))
+            },
+            Err(e) => {
+                Err(e)
+            }
         }
     }
 
     pub fn new(path: &Path) -> anyhow::Result<ProjectConfig> {
-        let file = File::open(path.join(CONFIG_FILE))
-            .with_context(|| format!("Failed to open file {:?}", path))?;
+        let (file, path) = Self::open_file(&path.join(CONFIG_FILE[0]))
+            .or_else(|_| Self::open_file(&path.join(CONFIG_FILE[1])))
+            .with_context(|| format!("Failed to open config file ({} or {}) in directory {:?}", CONFIG_FILE[0], CONFIG_FILE[1], path))?;
         let reader = BufReader::new(file);
-        let data: ProjectConfig = serde_yaml::from_reader(reader)
-            .with_context(|| format!("Failed to parse YAML file {:?}", path))?;
+        let mut data: ProjectConfig = serde_yaml::from_reader(reader)
+            .with_context(|| format!("Failed to parse config file {:?} as YAML", path))?;
+        data.dir = path.to_path_buf().parent()
+            .map(|p| p.to_path_buf())
+            .with_context(|| format!("Failed to get the directory of {:?}", path))?;
+        
         Ok(data)
     }
 
-    fn find_root(cwd: &Path) -> anyhow::Result<ProjectConfig> {
+    fn find_root(cwd: &PathBuf) -> anyhow::Result<ProjectConfig> {
         let config = ProjectConfig::new(cwd)?;
         if config.is_root() {
             return Ok(config);
@@ -72,7 +109,7 @@ impl ProjectConfig {
                     }
                 }
                 Err(err) => {
-                    if err.downcast_ref::<std::io::Error>().map(|e| e.kind()) == Some(std::io::ErrorKind::NotFound) {
+                    if err.downcast_ref::<io::Error>().map(|e| e.kind()) == Some(io::ErrorKind::NotFound) {
                         continue; // Continue to the next ancestor directory if the config file is not found
                     } else {
                         return Err(err); // Return error if any other error
@@ -84,17 +121,52 @@ impl ProjectConfig {
     }
 
     pub fn is_root(&self) -> bool {
-        self.projects.is_some()
+        !self.projects.is_empty()
     }
 
     pub fn is_child(&self, root: &ProjectConfig) -> bool {
-        match &root.projects {
-            Some(projects) => {
-                projects.values().any(|p| Path::new(p) == self.dir)
-            }
-            None => false
-        }
+        root.projects.values().any(|p| Path::new(p) == self.dir)
     }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TaskConfig {
+    /// Command to run.
+    pub command: String,
+
+    /// Environment variables set during this task.
+    /// Merged with the project environment variables.
+    #[serde(default)]
+    pub envs: HashMap<String, String>,
+
+    /// Task names on which this task depends.
+    #[serde(default)]
+    pub depends_on: Vec<String>,
+
+    /// Input files of this task.
+    #[serde(default)]
+    pub inputs: Vec<String>,
+
+    /// Output files of this task.
+    #[serde(default)]
+    pub outputs: Vec<String>,
+
+    /// Service configuration.
+    pub service: Option<ServiceConfig>,
+
+    /// Working directory of this task.
+    pub working_dir: Option<PathBuf>,
+
+    /// Shell configuration for this task.
+    pub shell: Option<ShellConfig>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ShellConfig {
+    pub command: String,
+    
+    #[serde(default)]
+    pub args: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -110,7 +182,7 @@ pub struct ReadinessProbeConfig {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct LogLineReadinessProbeConfig {
-    pub pattern: String
+    pub pattern: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -123,12 +195,3 @@ pub struct ServiceConfig {
     pub readiness_probe: Option<ReadinessProbeConfig>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct TaskConfig {
-    pub command: String,
-    pub depends_on: Option<Vec<String>>,
-    pub service: Option<ServiceConfig>,
-    pub inputs: Option<Vec<String>>,
-    pub outputs: Option<Vec<String>>,
-    pub working_dir: Option<PathBuf>,
-}
