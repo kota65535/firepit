@@ -1,5 +1,3 @@
-mod run;
-
 use std::path;
 use clap::Parser;
 use log::info;

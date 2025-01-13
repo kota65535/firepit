@@ -5,6 +5,7 @@ use std::{
 };
 
 use futures::{stream::FuturesUnordered, StreamExt};
+use log::info;
 use tokio::sync::{mpsc, oneshot};
 
 /// SignalHandler provides a mechanism to subscribe to a future and get alerted
@@ -27,10 +28,27 @@ pub struct SignalSubscriber(oneshot::Receiver<oneshot::Sender<()>>);
 /// signal
 pub struct SubscriberGuard(oneshot::Sender<()>);
 
+pub fn get_signal() -> anyhow::Result<impl Future<Output = Option<i32>>> {
+    use tokio::signal::unix;
+    let mut sigint = unix::signal(unix::SignalKind::interrupt())?;
+    let mut sigterm = unix::signal(unix::SignalKind::terminate())?;
+
+    Ok(async move {
+        tokio::select! {
+            _ = sigint.recv() => {
+                Some(libc::SIGINT)
+            }
+            _ = sigterm.recv() => {
+                Some(libc::SIGTERM)
+            }
+        }
+    })
+}
+
 impl SignalHandler {
     /// Construct a new SignalHandler that will alert any subscribers when
     /// `signal_source` completes or `close` is called on it.
-    pub fn new(signal_source: impl Future<Output = Option<()>> + Send + 'static) -> Self {
+    pub fn new(signal_source: impl Future<Output = Option<i32>> + Send + 'static) -> Self {
         // think about channel size
         let state = Arc::new(Mutex::new(HandlerState::default()));
         let worker_state = state.clone();
@@ -39,7 +57,9 @@ impl SignalHandler {
             tokio::select! {
                 // We don't care if we get a signal or if we are unable to receive signals
                 // Either way we start the shutdown.
-                _ = signal_source => {},
+                Some(signal) = signal_source => {
+                    info!("Got signal: {:?}", signal)
+                },
                 // We don't care if a close message was sent or if all handlers are dropped.
                 // Either way start the shutdown process.
                 _ = rx.recv() => {}

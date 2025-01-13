@@ -6,16 +6,15 @@ mod config;
 mod project;
 mod graph;
 mod cli;
-mod run;
 mod signal;
 mod ui;
 mod tui;
 mod process;
-
+mod run;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    env::set_var("RUST_LOG", "info");
+    env::set_var("RUST_LOG", "debug");
     env_logger::init();
 
     let exit_code = cli::run().await.unwrap_or_else(|err| {

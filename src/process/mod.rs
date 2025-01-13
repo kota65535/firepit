@@ -21,7 +21,7 @@ use std::{
 pub use command::Command;
 use futures::Future;
 use tokio::task::JoinSet;
-use tracing::{debug, trace};
+use log::{debug, trace};
 
 pub use self::child::{Child, ChildExit};
 
@@ -65,21 +65,13 @@ impl ProcessManager {
     pub fn infer() -> Self {
         // Only use PTY if we're not on windows and we're currently hooked up to a
         // in a TTY
-        let use_pty = !cfg!(windows) && atty::is(atty::Stream::Stdout);
+        let use_pty = atty::is(atty::Stream::Stdout);
         Self::new(use_pty)
     }
 
     /// Returns whether children will be spawned attached to a pseudoterminal
     pub fn use_pty(&self) -> bool {
         self.use_pty
-    }
-
-    /// Returns whether or not closing a child's stdin will result in it
-    /// immediately exiting.
-    pub fn closing_stdin_ends_process(&self) -> bool {
-        // Processes spawned hooked up to ConPTY on Windows will immediately exit
-        // if their stdin is closed. We avoid closing stdin in this case.
-        cfg!(windows) && self.use_pty
     }
 }
 
@@ -96,7 +88,7 @@ impl ProcessManager {
         &self,
         command: Command,
         stop_timeout: Duration,
-    ) -> Option<io::Result<child::Child>> {
+    ) -> Option<io::Result<Child>> {
         let label = tracing::enabled!(tracing::Level::TRACE)
             .then(|| command.label())
             .unwrap_or_default();
@@ -104,11 +96,11 @@ impl ProcessManager {
         let mut lock = self.state.lock().unwrap();
         trace!("acquired lock for spawning {label}");
         if lock.is_closing {
-            debug!("process manager closing");
+            debug!("Process manager is closing, so refuses spawn.");
             return None;
         }
         let pty_size = self.use_pty.then(|| lock.pty_size()).flatten();
-        let child = child::Child::spawn(
+        let child = Child::spawn(
             command,
             child::ShutdownStyle::Graceful(stop_timeout),
             pty_size,
@@ -157,7 +149,7 @@ impl ProcessManager {
             }
         }
 
-        debug!("waiting for {} processes to exit", set.len());
+        debug!("Waiting for {} processes to exit", set.len());
 
         while let Some(out) = set.join_next().await {
             trace!("process exited: {:?}", out);

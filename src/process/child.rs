@@ -588,7 +588,7 @@ impl Child {
     pub async fn wait_with_piped_outputs<W: Write>(
         &mut self,
         stdout_pipe: W,
-    ) -> Result<Option<ChildExit>, std::io::Error> {
+    ) -> Result<Option<ChildExit>, io::Error> {
         match self.outputs() {
             Some(ChildOutput::Std { stdout, stderr }) => {
                 self.wait_with_piped_async_outputs(
@@ -599,8 +599,7 @@ impl Child {
                 .await
             }
             Some(ChildOutput::Pty(output)) => {
-                self.wait_with_piped_sync_output(stdout_pipe, std::io::BufReader::new(output))
-                    .await
+                self.wait_with_piped_sync_output(stdout_pipe, io::BufReader::new(output)).await
             }
             None => Ok(self.wait().await),
         }

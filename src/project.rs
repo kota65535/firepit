@@ -7,8 +7,11 @@ use anyhow::anyhow;
 use futures::future::join_all;
 use log::info;
 use std::collections::HashMap;
+use std::future::Future;
+use std::io;
 use std::path::PathBuf;
 use std::time::Duration;
+use crate::signal::{get_signal, SignalHandler};
 
 #[derive(Clone, Debug)]
 pub struct ProjectRunner {
@@ -16,6 +19,7 @@ pub struct ProjectRunner {
     pub tasks: Vec<Task>,
     pub task_graph: TaskGraph,
     pub manager: ProcessManager,
+    pub signal_handler: SignalHandler,
     pub concurrency: usize,
 }
 
@@ -69,11 +73,24 @@ impl ProjectRunner {
             .collect())?;
         tasks = task_graph.tasks();
 
+
+        let manager =  ProcessManager::infer();
+        let signal = get_signal()?;
+        let signal_handler = SignalHandler::new(signal);
+        if let Some(subscriber) = signal_handler.subscribe() {
+            let manager = manager.clone();
+            tokio::spawn(async move {
+                let _guard = subscriber.listen().await;
+                manager.stop().await;
+            });
+        }
+
         Ok(ProjectRunner {
             tasks,
             target_tasks,
             task_graph,
-            manager: ProcessManager::infer(),
+            signal_handler,
+            manager,
             concurrency: root_project.concurrency,
         })
     }
@@ -91,7 +108,7 @@ impl ProjectRunner {
                 let mut args = Vec::new();
                 args.extend(task.shell_args.clone());
                 args.push(task.command.clone());
-                info!("Running Task {:?}:\nshell: {:?} {:?}\ncommand: {:?}\nenvs: {:?}", task.name, task.shell, &task.shell_args, task.command, task.envs);
+                info!("Starting task {:?}:\nshell: {:?} {:?}\ncommand: {:?}\nenvs: {:?}", task.name, task.shell, &task.shell_args, task.command, task.envs);
                 
                 let cmd = Command::new(task.shell)
                     .args(args)
@@ -123,6 +140,7 @@ impl ProjectRunner {
                         return Err(anyhow!("unable to determine why child exited"))
                     }
                 };
+                info!("Task {:?} finished. reason: {:?}", task.name, exit_status);
 
                 callback.send(());
                 Ok(())
@@ -187,7 +205,7 @@ pub struct Task {
 }
 
 fn sink() -> OutputSink<StdWriter> {
-    let (out, err) = (std::io::stdout().into(), std::io::stdout().into());
+    let (out, err) = (io::stdout().into(), io::stdout().into());
     OutputSink::new(out, err)
 }
 

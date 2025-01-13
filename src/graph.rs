@@ -139,7 +139,7 @@ impl TaskGraph {
                             // that the node processing is finished we assume that it is finished.
                             info!("Callback sender was dropped without sending a finish signal")
                         }
-                        info!("Task {} finished", task.name);
+                        info!("Task {:?} has finished", task.name);
                         // Send errors indicate that there are no receivers which
                         // happens when this node has no dependents
                         tx.send(()).ok();
