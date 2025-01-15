@@ -3,9 +3,9 @@ use crate::event::{TaskEventSender};
 use crate::graph::TaskGraph;
 use crate::process::{Command, ProcessManager};
 use crate::signal::{get_signal, SignalHandler};
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use futures::future::{join, join_all};
-use log::info;
+use log::{debug, info};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -71,6 +71,7 @@ impl ProjectRunner {
             .collect())?;
         tasks = task_graph.tasks();
 
+        debug!("Task graph:\n{:?}", task_graph);
 
         let manager = ProcessManager::infer();
         let signal = get_signal()?;
@@ -95,11 +96,18 @@ impl ProjectRunner {
 
     pub async fn run(&mut self, event_rx: TaskEventSender) -> anyhow::Result<()> {
         // Run visitor
-        let (mut task_receiver, visitor_future) = self.task_graph.visit(self.concurrency)?;
+        let (mut task_rx, cancel_tx, visitor_future) = self.task_graph.visit(self.concurrency)?;
+        
+        if let Some(subscriber) = self.signal_handler.subscribe() {
+            tokio::spawn(async move {
+                let _guard = subscriber.listen().await;
+                cancel_tx.send(true)
+            });
+        }
 
         let mut task_futures = Vec::new();
 
-        while let Some((task, callback)) = task_receiver.recv().await {
+        while let Some((task, callback)) = task_rx.recv().await {
             let this = self.clone();
             let event_sender = event_rx.clone_with_name(&task.name);
             task_futures.push(tokio::spawn(async move {

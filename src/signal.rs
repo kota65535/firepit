@@ -3,9 +3,10 @@ use std::{
     future::Future,
     sync::{Arc, Mutex},
 };
-
+use anyhow::Context;
 use futures::{stream::FuturesUnordered, StreamExt};
-use log::info;
+use log::{debug, info, warn};
+use nix::sys::signal::Signal;
 use tokio::sync::{mpsc, oneshot};
 
 /// SignalHandler provides a mechanism to subscribe to a future and get alerted
@@ -57,8 +58,16 @@ impl SignalHandler {
             tokio::select! {
                 // We don't care if we get a signal or if we are unable to receive signals
                 // Either way we start the shutdown.
-                Some(signal) = signal_source => {
-                    info!("Got signal: {:?}", signal)
+                Some(signal_num) = signal_source => {
+                    match Signal::try_from(signal_num) {
+                        Ok(signal) => {
+                            debug!("Got signal: {:?}({})", signal, signal_num)
+                        }
+                        Err(e) => {
+                            warn!("Unexpected signal ({})", signal_num)
+                        }
+                    }
+
                 },
                 // We don't care if a close message was sent or if all handlers are dropped.
                 // Either way start the shutdown process.

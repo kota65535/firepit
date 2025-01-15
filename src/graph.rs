@@ -9,15 +9,34 @@ use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::visit::{depth_first_search, IntoNodeIdentifiers};
 use petgraph::Direction;
 use std::collections::HashMap;
-use tokio::sync::{broadcast, mpsc, oneshot};
+use std::fmt;
+use petgraph::data::DataMap;
+use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TaskGraph {
     graph: DiGraph<Task, ()>,
 }
 
 pub type VisitorMessage<N> = (N, oneshot::Sender<()>);
+
+// struct TaskVisitor {
+//     receiver: mpsc::Receiver<VisitorMessage<Task>>,
+//     f: Task
+// }
+// 
+// impl TaskVisitor {
+//     
+//     pub async fn visit(&self) {
+//         let fu = self.f;
+//     }
+//     
+//     pub async fn recv(&mut self) -> Option<VisitorMessage<Task>> {
+//         self.receiver.recv().await
+//     }
+// }
+    
 
 
 impl TaskGraph {
@@ -56,7 +75,7 @@ impl TaskGraph {
         })
     }
 
-    pub fn visit(&self, concurrency: usize) -> anyhow::Result<(mpsc::Receiver<VisitorMessage<Task>>, JoinAll<JoinHandle<()>>)> {
+    pub fn visit(&self, concurrency: usize) -> anyhow::Result<(mpsc::Receiver<VisitorMessage<Task>>, watch::Sender<bool>, JoinAll<JoinHandle<()>>)> {
         // Channel for each node to notify all dependent nodes when it finishes
         let mut txs = HashMap::new();
         let mut rxs = HashMap::new();
@@ -68,12 +87,15 @@ impl TaskGraph {
         }
         // Channel to notify when all dependency nodes have finished
         let (node_tx, node_rx) = mpsc::channel(max(concurrency, 1));
+        // Channel to stop visiting
+        let (cancel_tx, cancel_rx) = watch::channel(false);
         
         let mut node_futures = Vec::new();
         for node_id in self.graph.node_identifiers() {
 
             let tx = txs.remove(&node_id).with_context(|| "sender not found")?;
             let node_tx = node_tx.clone();
+            let mut cancel_rx = cancel_rx.clone();
             
             let task = self.graph.node_weight(node_id).with_context(|| "node not found")?.clone();
             
@@ -97,13 +119,16 @@ impl TaskGraph {
                 let deps = dep_rxs.iter_mut()
                     .map(|rx| rx.recv())
                     .collect::<Vec<_>>();
-                let deps_fut = join_all(deps);
+                let deps_future = join_all(deps);
 
                 tokio::select! {
+                     _ = cancel_rx.changed() => {
+                        info!("Task {:?} is cancelled", task.name)
+                     }
                     // If both the cancel and dependencies are ready, we want to
                     // execute the cancel instead of sending an additional node.
-                    results = deps_fut => {
-                        info!("Task \"{}\" is starting. cwd={:?}", task.name, task.working_dir);
+                    results = deps_future => {
+                        info!("Task {:?} is starting. cwd={:?}", task.name, task.working_dir);
                         for res in results {
                             match res {
                                 // No errors from reading dependency channels
@@ -150,13 +175,9 @@ impl TaskGraph {
         
         let join_all = join_all(node_futures);
 
-        Ok((node_rx, join_all))
+        Ok((node_rx, cancel_tx, join_all))
     }
 
-    pub fn dot_notation(&self) {
-        format!("{:?}", Dot::with_config(&self.graph, &[Config::EdgeNoLabel]));
-    }
-    
     pub fn transitive_closure(&self, names: &Vec<String>) -> anyhow::Result<TaskGraph> {
         let mut visited = Vec::<NodeIndex>::new();
         let visitor = |idx| {
@@ -191,5 +212,16 @@ impl TaskGraph {
             }
         }
         None
+    }
+}
+
+
+impl fmt::Debug for TaskGraph {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", Dot::with_attr_getters(&self.graph, 
+                                                 &[Config::EdgeNoLabel, Config::NodeNoLabel],
+                                                 &|e, r| String::new(), 
+                                                 &|n, r| format!("label = \"{}\" ", r.1.name.clone()))
+        )
     }
 }
