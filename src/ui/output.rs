@@ -52,7 +52,7 @@ pub enum OutputClientBehavior {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum Destination {
+pub enum Destination {
     Stdout,
     Stderr,
 }

@@ -10,7 +10,9 @@ mod signal;
 mod ui;
 mod tui;
 mod process;
-mod run;
+mod event;
+mod output;
+mod cui;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

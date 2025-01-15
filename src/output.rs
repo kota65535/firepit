@@ -1,9 +1,8 @@
-use std::io::Write;
+use std::io;
 
-use either::Either;
 use crate::ui::output::{OutputClient, OutputWriter};
-use crate::ui::prefixed::{PrefixedUI, PrefixedWriter};
 use crate::ui::sender::TaskSender;
+use either::Either;
 
 /// Small wrapper over our two output types that defines a shared interface for
 /// interacting with them.
@@ -13,8 +12,8 @@ pub enum TaskOutput<W> {
 }
 
 /// Struct for displaying information about task
-impl<W: Write> TaskOutput<W> {
-    pub fn finish(self, use_error: bool, is_cache_hit: bool) -> std::io::Result<Option<Vec<u8>>> {
+impl<W: io::Write> TaskOutput<W> {
+    pub fn finish(self, use_error: bool, is_cache_hit: bool) -> io::Result<Option<Vec<u8>>> {
         match self {
             TaskOutput::Direct(client) => client.finish(use_error),
             TaskOutput::UI(client) if use_error => Ok(Some(client.failed())),
@@ -44,40 +43,16 @@ impl<W: Write> TaskOutput<W> {
     }
 }
 
-/// Struct for displaying information about task's cache
-pub enum TaskCacheOutput<W> {
-    Direct(PrefixedUI<W>),
-    UI(TaskSender),
-}
-
-impl<W: Write> TaskCacheOutput<W> {
-    pub fn task_writer(&mut self) -> Either<PrefixedWriter<&mut W>, TaskSender> {
-        match self {
-            TaskCacheOutput::Direct(prefixed) => Either::Left(prefixed.output_prefixed_writer()),
-            TaskCacheOutput::UI(task) => Either::Right(task.clone()),
-        }
-    }
-
-    pub fn warn(&mut self, message: impl std::fmt::Display) {
-        match self {
-            TaskCacheOutput::Direct(prefixed) => prefixed.warn(message),
-            TaskCacheOutput::UI(task) => {
-                let _ = write!(task, "\r\n{message}\r\n");
-            }
-        }
-    }
-}
-
 // A tiny enum that allows us to use the same type for stdout and stderr without
 // the use of Box<dyn Write>
 pub enum StdWriter {
-    Out(std::io::Stdout),
-    Err(std::io::Stderr),
-    Null(std::io::Sink),
+    Out(io::Stdout),
+    Err(io::Stderr),
+    Null(io::Sink),
 }
 
 impl StdWriter {
-    fn writer(&mut self) -> &mut dyn std::io::Write {
+    fn writer(&mut self) -> &mut dyn io::Write {
         match self {
             StdWriter::Out(out) => out,
             StdWriter::Err(err) => err,
@@ -86,30 +61,30 @@ impl StdWriter {
     }
 }
 
-impl From<std::io::Stdout> for StdWriter {
-    fn from(value: std::io::Stdout) -> Self {
+impl From<io::Stdout> for StdWriter {
+    fn from(value: io::Stdout) -> Self {
         Self::Out(value)
     }
 }
 
-impl From<std::io::Stderr> for StdWriter {
-    fn from(value: std::io::Stderr) -> Self {
+impl From<io::Stderr> for StdWriter {
+    fn from(value: io::Stderr) -> Self {
         Self::Err(value)
     }
 }
 
-impl From<std::io::Sink> for StdWriter {
-    fn from(value: std::io::Sink) -> Self {
+impl From<io::Sink> for StdWriter {
+    fn from(value: io::Sink) -> Self {
         Self::Null(value)
     }
 }
 
-impl std::io::Write for StdWriter {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+impl io::Write for StdWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.writer().write(buf)
     }
 
-    fn flush(&mut self) -> std::io::Result<()> {
+    fn flush(&mut self) -> io::Result<()> {
         self.writer().flush()
     }
 }

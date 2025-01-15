@@ -38,7 +38,7 @@ pub struct ProcessManager {
 #[derive(Debug)]
 struct ProcessManagerInner {
     is_closing: bool,
-    children: Vec<child::Child>,
+    children: Vec<Child>,
     size: Option<PtySize>,
 }
 
@@ -96,7 +96,7 @@ impl ProcessManager {
         let mut lock = self.state.lock().unwrap();
         trace!("acquired lock for spawning {label}");
         if lock.is_closing {
-            debug!("Process manager is closing, so refuses spawn.");
+            debug!("Process manager is closing, refused to spawn");
             return None;
         }
         let pty_size = self.use_pty.then(|| lock.pty_size()).flatten();

@@ -48,13 +48,13 @@ impl ColorSelector {
         color
     }
 
-    pub fn prefix_with_color(&self, cache_key: &str, prefix: &str) -> StyledObject<String> {
-        if prefix.is_empty() {
+    pub fn string_with_color(&self, cache_key: &str, string: &str) -> StyledObject<String> {
+        if string.is_empty() {
             return Style::new().apply_to(String::new());
         }
 
         let style = self.color_for_key(cache_key);
-        style.apply_to(format!("{}: ", prefix))
+        style.apply_to(format!("{}: ", string))
     }
 }
 

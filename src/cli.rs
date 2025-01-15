@@ -1,8 +1,11 @@
-use std::path;
-use clap::Parser;
-use log::info;
 use crate::config::ProjectConfig;
+use crate::cui::CuiApp;
+use crate::event::task_event_channel;
 use crate::project::ProjectRunner;
+use clap::Parser;
+use futures::future::join;
+use log::info;
+use std::path;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -33,8 +36,11 @@ pub async fn run() -> anyhow::Result<i32> {
         .join("\n"));
     }
 
-    let mut runner = ProjectRunner::new(&root, &children, &args.tasks, dir)?;
+    let mut app = CuiApp::new();
+    let (event_tx, event_rx) = task_event_channel();
+    let app_future = app.handle_events(event_rx);
 
+    let mut runner = ProjectRunner::new(&root, &children, &args.tasks, dir)?;
     info!("Target tasks: {:?}", runner.target_tasks.iter()
         .map(|t| t.name.clone())
         .collect::<Vec<String>>());
@@ -43,8 +49,9 @@ pub async fn run() -> anyhow::Result<i32> {
         .map(|t| t.name.clone())
         .collect::<Vec<String>>());
     
-    runner.run().await?;
-    
+    let runner_future = runner.run(event_tx);
+
+    let result = join(app_future, runner_future).await;
 
     Ok(0)
 }

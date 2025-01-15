@@ -1,16 +1,17 @@
 use crate::config::ProjectConfig;
 use crate::graph::TaskGraph;
 use crate::process::{Command, ProcessManager};
-use crate::run::output::StdWriter;
+use crate::output::StdWriter;
 use crate::ui::output::OutputSink;
 use anyhow::anyhow;
-use futures::future::join_all;
+use futures::future::{join, join_all};
 use log::info;
 use std::collections::HashMap;
-use std::future::Future;
 use std::io;
 use std::path::PathBuf;
 use std::time::Duration;
+use tokio::sync::{mpsc, oneshot};
+use crate::event::{task_event_channel, TaskEvent, TaskEventSender};
 use crate::signal::{get_signal, SignalHandler};
 
 #[derive(Clone, Debug)]
@@ -31,6 +32,7 @@ fn dir_contains(a: &PathBuf, b: &PathBuf) -> bool {
     }
     false
 }
+
 
 impl ProjectRunner {
     pub fn new(root: &ProjectConfig,
@@ -74,7 +76,7 @@ impl ProjectRunner {
         tasks = task_graph.tasks();
 
 
-        let manager =  ProcessManager::infer();
+        let manager = ProcessManager::infer();
         let signal = get_signal()?;
         let signal_handler = SignalHandler::new(signal);
         if let Some(subscriber) = signal_handler.subscribe() {
@@ -95,8 +97,7 @@ impl ProjectRunner {
         })
     }
 
-
-    pub async fn run(&mut self) -> anyhow::Result<()> {
+    pub async fn run(&mut self, event_rx: TaskEventSender) -> anyhow::Result<()> {
         // Run visitor
         let (mut task_receiver, visitor_future) = self.task_graph.visit(self.concurrency)?;
 
@@ -104,6 +105,7 @@ impl ProjectRunner {
 
         while let Some((task, callback)) = task_receiver.recv().await {
             let this = self.clone();
+            let event_sender = event_rx.clone_with_name(&task.name);
             task_futures.push(tokio::spawn(async move {
                 let mut args = Vec::new();
                 args.extend(task.shell_args.clone());
@@ -124,14 +126,8 @@ impl ProjectRunner {
                         return Ok(())
                     }
                 };
-                let sink = sink();
-                let mut logger = sink.logger(crate::ui::output::OutputClientBehavior::Passthrough);
-                // let out = PrefixedWriter::new(
-                //     ColorConfig::new(false),
-                //     Style::new().bold().apply_to("output ".to_string()),
-                //     logger
-                // );
-                let exit_status = match process.wait_with_piped_outputs(logger.stdout()).await {
+                event_sender.start(&task.name)?;
+                let exit_status = match process.wait_with_piped_outputs(event_sender.clone()).await {
                     Ok(Some(exit_status)) => exit_status,
                     Err(e) => {
                         return Err(anyhow!(e.to_string()))
@@ -140,8 +136,9 @@ impl ProjectRunner {
                         return Err(anyhow!("unable to determine why child exited"))
                     }
                 };
-                info!("Task {:?} finished. reason: {:?}", task.name, exit_status);
-
+                // info!("Task {:?} finished. reason: {:?}", task.name, exit_status);
+                event_sender.finish(&task.name, exit_status)?;
+                
                 callback.send(());
                 Ok(())
             }));
@@ -149,9 +146,7 @@ impl ProjectRunner {
 
         let task_future = join_all(task_futures);
 
-        let visitor_results = visitor_future.await;
-        let task_results = task_future.await;
-
+        join(visitor_future, task_future).await;
         Ok(())
     }
 }
@@ -199,14 +194,9 @@ pub struct Task {
     pub outputs: Vec<String>,
     pub working_dir: PathBuf,
     pub is_service: bool,
-    
+
     pub shell: String,
     pub shell_args: Vec<String>,
-}
-
-fn sink() -> OutputSink<StdWriter> {
-    let (out, err) = (io::stdout().into(), io::stdout().into());
-    OutputSink::new(out, err)
 }
 
 
