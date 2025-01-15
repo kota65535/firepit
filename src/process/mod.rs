@@ -21,7 +21,7 @@ use std::{
 pub use command::Command;
 use futures::Future;
 use tokio::task::JoinSet;
-use log::{debug, trace};
+use log::{debug, log_enabled, trace};
 
 pub use self::child::{Child, ChildExit};
 
@@ -89,14 +89,14 @@ impl ProcessManager {
         command: Command,
         stop_timeout: Duration,
     ) -> Option<io::Result<Child>> {
-        let label = tracing::enabled!(tracing::Level::TRACE)
+        let label = log_enabled!(log::Level::Trace)
             .then(|| command.label())
             .unwrap_or_default();
         trace!("acquiring lock for spawning {label}");
         let mut lock = self.state.lock().unwrap();
         trace!("acquired lock for spawning {label}");
         if lock.is_closing {
-            debug!("Process manager is closing, refused to spawn");
+            debug!("Process manager is closing, refuses to spawn");
             return None;
         }
         let pty_size = self.use_pty.then(|| lock.pty_size()).flatten();

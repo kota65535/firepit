@@ -46,15 +46,15 @@ impl TaskEventSender {
         this.name = name.to_string();
         this
     }
-    
+
     pub fn start(&self, task: &str) -> anyhow::Result<()> {
         self.send(TaskEvent::Start { task: task.to_string() })
     }
-    
+
     pub fn finish(&self, task: &str, reason: ChildExit) -> anyhow::Result<()> {
         self.send(TaskEvent::Finish { task: task.to_string(), reason })
     }
-    
+
     fn send(&self, event: TaskEvent) -> anyhow::Result<()> {
         self.tx.send(event).with_context(|| "failed to send event")
     }
@@ -66,7 +66,7 @@ impl Write for TaskEventSender {
         {
             self.logs
                 .lock()
-                .expect("log lock poisoned")
+                .expect("should not poisoned")
                 .extend_from_slice(buf);
         }
 

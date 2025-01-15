@@ -49,7 +49,8 @@ pub fn default_concurrency() -> usize {
 }
 
 impl ProjectConfig {
-    pub fn new_multi(dir: &PathBuf) -> anyhow::Result<(ProjectConfig, HashMap<String, ProjectConfig>)> {
+    pub fn new_multi(dir: &Path) -> anyhow::Result<(ProjectConfig, HashMap<String, ProjectConfig>)> {
+        let dir = dir.to_path_buf();
         let mut root_config = ProjectConfig::find_root(&dir)?;
         root_config.shell.get_or_insert(default_shell());
         root_config.concurrency.get_or_insert(default_concurrency());
@@ -71,17 +72,6 @@ impl ProjectConfig {
         }
     }
 
-    fn open_file(path: &PathBuf) -> Result<(File, PathBuf), io::Error> {
-        match File::open(path) {
-            Ok(file) => {
-                Ok((file, path.to_owned()))
-            },
-            Err(e) => {
-                Err(e)
-            }
-        }
-    }
-
     pub fn new(path: &Path) -> anyhow::Result<ProjectConfig> {
         let (file, path) = Self::open_file(&path.join(CONFIG_FILE[0]))
             .or_else(|_| Self::open_file(&path.join(CONFIG_FILE[1])))
@@ -92,11 +82,22 @@ impl ProjectConfig {
         data.dir = path.to_path_buf().parent()
             .map(|p| p.to_path_buf())
             .with_context(|| format!("Failed to get the directory of {:?}", path))?;
-        
+
         Ok(data)
     }
+    
+    fn open_file(path: &Path) -> Result<(File, PathBuf), io::Error> {
+        match File::open(path) {
+            Ok(file) => {
+                Ok((file, path.to_owned()))
+            },
+            Err(e) => {
+                Err(e)
+            }
+        }
+    }
 
-    fn find_root(cwd: &PathBuf) -> anyhow::Result<ProjectConfig> {
+    fn find_root(cwd: &Path) -> anyhow::Result<ProjectConfig> {
         let config = ProjectConfig::new(cwd)?;
         if config.is_root() {
             return Ok(config);

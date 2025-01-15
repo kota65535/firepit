@@ -1,18 +1,14 @@
 use crate::config::ProjectConfig;
+use crate::event::{TaskEventSender};
 use crate::graph::TaskGraph;
 use crate::process::{Command, ProcessManager};
-use crate::output::StdWriter;
-use crate::ui::output::OutputSink;
+use crate::signal::{get_signal, SignalHandler};
 use anyhow::anyhow;
 use futures::future::{join, join_all};
 use log::info;
 use std::collections::HashMap;
-use std::io;
 use std::path::PathBuf;
 use std::time::Duration;
-use tokio::sync::{mpsc, oneshot};
-use crate::event::{task_event_channel, TaskEvent, TaskEventSender};
-use crate::signal::{get_signal, SignalHandler};
 
 #[derive(Clone, Debug)]
 pub struct ProjectRunner {
@@ -120,7 +116,7 @@ impl ProjectRunner {
                 let mut process = match this.manager.spawn(cmd, Duration::from_millis(500)) {
                     Some(Ok(child)) => child,
                     Some(Err(e)) => {
-                        return Ok(())
+                        return Err(anyhow!("unable to spawn task {:?}: {:?}", task.name, e));
                     }
                     _ => {
                         return Ok(())
@@ -174,14 +170,6 @@ impl Project {
     pub fn task(&self, name: &String) -> Option<Task> {
         self.tasks.get(&Task::qualified_name(&self.name, name)).cloned()
     }
-}
-
-#[derive(Clone, PartialEq, Debug)]
-pub enum TaskStatus {
-    UNKNOWN,
-    WAITING,
-    RUNNING,
-    FINISHED,
 }
 
 #[derive(Clone, Debug)]

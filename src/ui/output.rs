@@ -125,7 +125,7 @@ impl<W: Write> OutputClient<W> {
             primary,
             error,
         } = self;
-        let buffers = buffer.map(|cell| cell.into_inner().expect("lock poisoned"));
+        let buffers = buffer.map(|cell| cell.into_inner().expect("should not poisoned"));
         Ok(buffers.map(|buffers| {
             // TODO: it might be worth the list traversal to calculate length so we do a
             // single allocation

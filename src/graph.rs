@@ -17,7 +17,7 @@ pub struct TaskGraph {
     graph: DiGraph<Task, ()>,
 }
 
-pub type WalkMessage<N> = (N, oneshot::Sender<()>);
+pub type VisitorMessage<N> = (N, oneshot::Sender<()>);
 
 
 impl TaskGraph {
@@ -47,7 +47,7 @@ impl TaskGraph {
             Ok(_) => {}
             Err(err) => {
                 let task_name = nodes_reversed.get(&err.node_id()).unwrap();
-                return Err(anyhow::anyhow!("Cyclic dependency detected at task {}", task_name))
+                return Err(anyhow::anyhow!("cyclic dependency detected at task {}", task_name))
             }
         }
 
@@ -56,7 +56,7 @@ impl TaskGraph {
         })
     }
 
-    pub fn visit(&self, concurrency: usize) -> anyhow::Result<(mpsc::Receiver<WalkMessage<Task>>, JoinAll<JoinHandle<()>>)> {
+    pub fn visit(&self, concurrency: usize) -> anyhow::Result<(mpsc::Receiver<VisitorMessage<Task>>, JoinAll<JoinHandle<()>>)> {
         // Channel for each node to notify all dependent nodes when it finishes
         let mut txs = HashMap::new();
         let mut rxs = HashMap::new();
@@ -166,7 +166,7 @@ impl TaskGraph {
         };
 
         let indices = names.iter()
-            .filter_map(|n| self.node_by_task_name(n))
+            .filter_map(|n| self.node_by_task(n))
             .map(|n| n.1)
             .collect::<Vec<_>>();
         depth_first_search(&self.graph, indices, visitor);
@@ -184,7 +184,7 @@ impl TaskGraph {
         self.graph.node_weights().cloned().collect()
     }
     
-    fn node_by_task_name(&self, name: &String) -> Option<(&Task, NodeIndex)> {
+    fn node_by_task(&self, name: &str) -> Option<(&Task, NodeIndex)> {
         for (i, n) in  self.graph.node_weights().enumerate() {
             if n.name == *name {
                 return Some((n, NodeIndex::new(i)))

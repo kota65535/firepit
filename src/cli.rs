@@ -19,7 +19,7 @@ pub struct Args {
 }
 
 
-pub async fn run() -> anyhow::Result<i32> {
+pub async fn run() -> anyhow::Result<()> {
     let args = Args::parse();
 
     info!("Tasks: {:?}", args.tasks);
@@ -53,5 +53,5 @@ pub async fn run() -> anyhow::Result<i32> {
 
     let result = join(app_future, runner_future).await;
 
-    Ok(0)
+    Ok(())
 }

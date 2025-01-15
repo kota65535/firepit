@@ -120,24 +120,3 @@ impl TaskSender {
         self.handle.status(self.name.clone(), status, result);
     }
 }
-
-impl std::io::Write for TaskSender {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let task = self.name.clone();
-        {
-            self.logs
-                .lock()
-                .expect("log lock poisoned")
-                .extend_from_slice(buf);
-        }
-
-        self.handle
-            .output(task, buf.to_vec())
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "receiver dropped"))?;
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
