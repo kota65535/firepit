@@ -21,24 +21,6 @@ pub struct TaskGraph {
 
 pub type VisitorMessage<N> = (N, oneshot::Sender<()>);
 
-// struct TaskVisitor {
-//     receiver: mpsc::Receiver<VisitorMessage<Task>>,
-//     f: Task
-// }
-// 
-// impl TaskVisitor {
-//     
-//     pub async fn visit(&self) {
-//         let fu = self.f;
-//     }
-//     
-//     pub async fn recv(&mut self) -> Option<VisitorMessage<Task>> {
-//         self.receiver.recv().await
-//     }
-// }
-    
-
-
 impl TaskGraph {
     pub fn new(tasks: &Vec<Task>) -> anyhow::Result<TaskGraph> {
         let mut graph = DiGraph::<Task, ()>::new();

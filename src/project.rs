@@ -3,7 +3,7 @@ use crate::event::{TaskEventSender};
 use crate::graph::TaskGraph;
 use crate::process::{Command, ProcessManager};
 use crate::signal::{get_signal, SignalHandler};
-use anyhow::{anyhow, Context};
+use anyhow::{anyhow};
 use futures::future::{join, join_all};
 use log::{debug, info};
 use std::collections::HashMap;
@@ -165,7 +165,7 @@ pub struct Project {
 }
 
 impl Project {
-    pub fn new(name: &String, config: &ProjectConfig) -> Project {
+    pub fn new(name: &str, config: &ProjectConfig) -> Project {
         let config = config.clone();
         Project {
             name: name.to_owned(),
@@ -197,7 +197,7 @@ pub struct Task {
 
 
 impl Task {
-    pub fn from_project_config(project_name: &String, config: &ProjectConfig) -> HashMap<String, Task> {
+    pub fn from_project_config(project_name: &str, config: &ProjectConfig) -> HashMap<String, Task> {
         let mut ret = HashMap::new();
         for (task_name, task_config) in config.tasks.iter() {
             let task_config = task_config.clone();

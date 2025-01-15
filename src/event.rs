@@ -96,6 +96,6 @@ impl TaskEventReceiver {
     }
 
     pub async fn recv(&mut self) -> anyhow::Result<TaskEvent> {
-        self.rx.recv().await.with_context(|| "failed to send event")
+        self.rx.recv().await.with_context(|| "failed to receive event")
     }
 }

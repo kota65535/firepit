@@ -25,6 +25,11 @@ pub struct ProjectConfig {
     #[serde(default)]
     pub envs: HashMap<String, String>,
 
+    /// Files from where environment variables are loaded and set during execution of all tasks.
+    /// Merged with the root project's one if this is a child project.
+    #[serde(default)]
+    pub env_files: Vec<String>,
+
     /// Shell configuration for all tasks.
     pub shell: Option<ShellConfig>,
 
@@ -59,7 +64,8 @@ impl ProjectConfig {
             // Multi project
             for (name, path) in &root_config.projects {
                 let mut child_config = ProjectConfig::new(dir.join(path).as_path())?;
-                child_config.envs = root_config.envs.clone().into_iter().chain(child_config.envs).collect();
+                child_config.envs.extend(root_config.envs.clone());
+                child_config.env_files.extend(root_config.env_files.clone());
                 child_config.shell.get_or_insert(root_config.shell.clone().expect("should be default value"));
                 child_config.concurrency.get_or_insert(root_config.concurrency.expect("should be default value"));
 
