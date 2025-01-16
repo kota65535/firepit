@@ -2,7 +2,7 @@ mod app;
 mod clipboard;
 mod debouncer;
 pub mod event;
-mod handle;
+pub mod handle;
 mod input;
 mod pane;
 mod search;

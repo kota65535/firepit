@@ -1,17 +1,20 @@
 use crate::config::ProjectConfig;
-use crate::event::{TaskEventSender};
+use crate::event::{TaskEvent, TaskEventReceiver, TaskEventSender};
 use crate::graph::TaskGraph;
 use crate::process::{Command, ProcessManager};
 use crate::signal::{get_signal, SignalHandler};
-use anyhow::{anyhow};
+use crate::tui::TuiReceiver;
+use anyhow::anyhow;
 use futures::future::{join, join_all};
 use log::{debug, info};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
-#[derive(Clone, Debug)]
-pub struct ProjectRunner {
+#[derive(Debug, Clone)]
+pub struct TaskRunner {
     pub target_tasks: Vec<Task>,
     pub tasks: Vec<Task>,
     pub task_graph: TaskGraph,
@@ -30,12 +33,12 @@ fn dir_contains(a: &PathBuf, b: &PathBuf) -> bool {
 }
 
 
-impl ProjectRunner {
+impl TaskRunner {
     pub fn new(root: &ProjectConfig,
                children: &HashMap<String, ProjectConfig>,
                target_tasks: &Vec<String>,
                dir: PathBuf,
-    ) -> anyhow::Result<ProjectRunner> {
+    ) -> anyhow::Result<TaskRunner> {
         let root_project = Project::new(&"".to_string(), root);
         let child_projects = children.iter()
             .map(|(k, v)| (k.clone(), Project::new(k, v)))
@@ -69,7 +72,7 @@ impl ProjectRunner {
         task_graph = task_graph.transitive_closure(&target_tasks.iter()
             .map(|t| t.name.clone())
             .collect())?;
-        tasks = task_graph.tasks();
+        tasks = task_graph.sort()?;
 
         debug!("Task graph:\n{:?}", task_graph);
 
@@ -84,7 +87,7 @@ impl ProjectRunner {
             });
         }
 
-        Ok(ProjectRunner {
+        Ok(TaskRunner {
             tasks,
             target_tasks,
             task_graph,
@@ -93,8 +96,13 @@ impl ProjectRunner {
             concurrency: root_project.concurrency,
         })
     }
+    
+    pub fn event_channel(&self) -> (TaskEventSender, TaskEventReceiver) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        (TaskEventSender::new(tx), TaskEventReceiver::new(rx))
+    }
 
-    pub async fn run(&mut self, event_rx: TaskEventSender) -> anyhow::Result<()> {
+    pub async fn run(&mut self, event_tx: TaskEventSender) -> anyhow::Result<()> {
         // Run visitor
         let (mut task_rx, cancel_tx, visitor_future) = self.task_graph.visit(self.concurrency)?;
         
@@ -109,7 +117,7 @@ impl ProjectRunner {
 
         while let Some((task, callback)) = task_rx.recv().await {
             let this = self.clone();
-            let event_sender = event_rx.clone_with_name(&task.name);
+            let event_sender = event_tx.clone().with_name(&task.name);
             task_futures.push(tokio::spawn(async move {
                 let mut args = Vec::new();
                 args.extend(task.shell_args.clone());
@@ -171,7 +179,7 @@ impl Project {
             name: name.to_owned(),
             tasks: Task::from_project_config(name, &config),
             dir: config.dir,
-            concurrency: config.concurrency.expect("should be set"),
+            concurrency: config.concurrency
         }
     }
 

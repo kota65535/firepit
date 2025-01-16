@@ -10,6 +10,14 @@ use std::io;
 const CONFIG_FILE: [&str; 2] = ["fire.yml", "fire.yaml"];
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum UI {
+    #[serde(rename = "cui")]
+    CUI,
+    #[serde(rename = "tui")]
+    TUI
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ProjectConfig {
     /// Child projects.
     /// Valid only in root project config.
@@ -35,7 +43,14 @@ pub struct ProjectConfig {
 
     /// Task concurrency. 
     /// Valid only in root project config.
-    pub concurrency: Option<usize>,
+    #[serde(default = "default_concurrency")]
+    pub concurrency: usize,
+
+    #[serde(default = "default_log")]
+    pub log: LogConfig,
+
+    #[serde(default = "default_ui")]
+    pub ui: UI,
 
     /// Project directory.
     #[serde(skip)]
@@ -49,8 +64,23 @@ pub fn default_shell() -> ShellConfig {
     }
 }
 
+pub fn default_log() -> LogConfig {
+    LogConfig {
+        level: default_log_level(),
+        file: None
+    }
+}
+
+pub fn default_log_level() -> String {
+    "info".to_string()
+}
+
 pub fn default_concurrency() -> usize {
     available_parallelism().unwrap().get()
+}
+
+pub fn default_ui() -> UI {
+    if atty::is(atty::Stream::Stdout) { UI::TUI } else { UI::CUI }
 }
 
 impl ProjectConfig {
@@ -58,7 +88,6 @@ impl ProjectConfig {
         let dir = dir.to_path_buf();
         let mut root_config = ProjectConfig::find_root(&dir)?;
         root_config.shell.get_or_insert(default_shell());
-        root_config.concurrency.get_or_insert(default_concurrency());
         let mut children = HashMap::new();
         if root_config.is_root() {
             // Multi project
@@ -67,7 +96,6 @@ impl ProjectConfig {
                 child_config.envs.extend(root_config.envs.clone());
                 child_config.env_files.extend(root_config.env_files.clone());
                 child_config.shell.get_or_insert(root_config.shell.clone().expect("should be default value"));
-                child_config.concurrency.get_or_insert(root_config.concurrency.expect("should be default value"));
 
                 children.insert(name.clone(), child_config);
             }
@@ -81,13 +109,13 @@ impl ProjectConfig {
     pub fn new(path: &Path) -> anyhow::Result<ProjectConfig> {
         let (file, path) = Self::open_file(&path.join(CONFIG_FILE[0]))
             .or_else(|_| Self::open_file(&path.join(CONFIG_FILE[1])))
-            .with_context(|| format!("Failed to open config file ({} or {}) in directory {:?}", CONFIG_FILE[0], CONFIG_FILE[1], path))?;
+            .with_context(|| format!("cannot open config file ({} or {}) in directory {:?}", CONFIG_FILE[0], CONFIG_FILE[1], path))?;
         let reader = BufReader::new(file);
         let mut data: ProjectConfig = serde_yaml::from_reader(reader)
-            .with_context(|| format!("Failed to parse config file {:?} as YAML", path))?;
+            .with_context(|| format!("cannot parse config file {:?} as YAML", path))?;
         data.dir = path.to_path_buf().parent()
             .map(|p| p.to_path_buf())
-            .with_context(|| format!("Failed to get the directory of {:?}", path))?;
+            .with_context(|| format!("cannot get the directory of {:?}", path))?;
 
         Ok(data)
     }
@@ -174,6 +202,13 @@ pub struct ShellConfig {
     
     #[serde(default)]
     pub args: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct LogConfig {
+    #[serde(default = "default_log_level")]
+    pub level: String,
+    pub file: Option<String>
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

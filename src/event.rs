@@ -1,9 +1,9 @@
 use crate::process::ChildExit;
-use anyhow::Context;
+use anyhow::{Context};
 use std::io;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc};
 
 #[derive(Debug, Clone)]
 pub enum TaskEvent {
@@ -20,11 +20,6 @@ pub enum TaskEvent {
     },
 }
 
-pub fn task_event_channel() -> (TaskEventSender, TaskEventReceiver) {
-    let (tx, rx) = mpsc::unbounded_channel();
-    (TaskEventSender::new("".to_string(), tx), TaskEventReceiver::new(rx))
-}
-
 #[derive(Debug, Clone)]
 pub struct TaskEventSender {
     name: String,
@@ -33,15 +28,15 @@ pub struct TaskEventSender {
 }
 
 impl TaskEventSender {
-    pub fn new(name: String, tx: mpsc::UnboundedSender<TaskEvent>) -> Self {
+    pub fn new(tx: mpsc::UnboundedSender<TaskEvent>) -> Self {
         Self {
-            name,
+            name: "".to_string(),
             tx,
             logs: Default::default(),
         }
     }
 
-    pub fn clone_with_name(&self, name: &str) -> Self {
+    pub fn with_name(&self, name: &str) -> Self {
         let mut this = self.clone();
         this.name = name.to_string();
         this
@@ -95,7 +90,7 @@ impl TaskEventReceiver {
         }
     }
 
-    pub async fn recv(&mut self) -> anyhow::Result<TaskEvent> {
-        self.rx.recv().await.with_context(|| "failed to receive event")
+    pub async fn recv(&mut self) -> Option<TaskEvent> {
+        self.rx.recv().await
     }
 }

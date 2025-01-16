@@ -10,7 +10,6 @@ use petgraph::visit::{depth_first_search, IntoNodeIdentifiers};
 use petgraph::Direction;
 use std::collections::HashMap;
 use std::fmt;
-use petgraph::data::DataMap;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
@@ -25,16 +24,12 @@ impl TaskGraph {
     pub fn new(tasks: &Vec<Task>) -> anyhow::Result<TaskGraph> {
         let mut graph = DiGraph::<Task, ()>::new();
         let mut nodes = HashMap::new();
-        let mut nodes_reversed = HashMap::new();
 
-        // Add nodes
         for t in tasks {
             let idx = graph.add_node(t.clone());
             nodes.insert(t.name.clone(), idx);
-            nodes_reversed.insert(idx, t.name.clone());
         }
         
-        // Add edges
         for t in tasks {
             for d in &t.depends_on {
                 let from = nodes.get(&t.name).with_context(|| format!("node {} should be found", &t.name))?;
@@ -43,18 +38,23 @@ impl TaskGraph {
             }
         }
 
-        // Ensure no cyclic dependency
-        match toposort(&graph, None) {
-            Ok(_) => {}
+        let ret = TaskGraph { graph };
+        
+        ret.sort()?;
+
+        Ok(ret)
+    }
+    
+    pub fn sort(&self) -> anyhow::Result<Vec<Task>> {
+        match toposort(&self.graph, None) {
+            Ok(ids) => {
+                Ok(ids.iter().map(|&i| self.graph.node_weight(i).expect("should exist").clone()).collect::<Vec<_>>())
+            }
             Err(err) => {
-                let task_name = nodes_reversed.get(&err.node_id()).unwrap();
-                return Err(anyhow::anyhow!("cyclic dependency detected at task {}", task_name))
+                let task = self.graph.node_weight(err.node_id()).expect("should exist");
+                Err(anyhow::anyhow!("cyclic dependency detected at task {}", task.name.clone()))
             }
         }
-
-        Ok(TaskGraph {
-            graph,
-        })
     }
 
     pub fn visit(&self, concurrency: usize) -> anyhow::Result<(mpsc::Receiver<VisitorMessage<Task>>, watch::Sender<bool>, JoinAll<JoinHandle<()>>)> {

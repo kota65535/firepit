@@ -4,7 +4,7 @@ use std::{
     mem,
     time::Duration,
 };
-
+use anyhow::anyhow;
 use ratatui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Layout},
@@ -15,9 +15,10 @@ use tokio::{
     sync::{mpsc, oneshot},
     time::Instant,
 };
-use tracing::{debug, trace};
+use log::{debug, trace};
+use crate::event::{TaskEvent, TaskEventReceiver, TaskEventSender};
 
-pub const FRAMERATE: Duration = Duration::from_millis(3);
+pub const FRAME_RATE: Duration = Duration::from_millis(3);
 const RESIZE_DEBOUNCE_DELAY: Duration = Duration::from_millis(10);
 
 use super::{
@@ -30,6 +31,7 @@ use crate::tui::{
     task::{Task, TasksByStatus},
     term_output::TerminalOutput,
 };
+use crate::tui::event::OutputLogs::Full;
 
 #[derive(Debug, Clone)]
 pub enum LayoutSections {
@@ -136,7 +138,6 @@ impl<W> App<W> {
             .ok_or_else(|| Error::TaskNotFound { name: active_task })
     }
 
-    #[tracing::instrument(skip(self))]
     pub fn next(&mut self) {
         let num_rows = self.tasks_by_status.count_all();
         let next_index = (self.selected_task_index + 1).clamp(0, num_rows - 1);
@@ -145,7 +146,6 @@ impl<W> App<W> {
         self.has_user_scrolled = true;
     }
 
-    #[tracing::instrument(skip(self))]
     pub fn previous(&mut self) {
         let i = match self.selected_task_index {
             0 => 0,
@@ -156,7 +156,6 @@ impl<W> App<W> {
         self.has_user_scrolled = true;
     }
 
-    #[tracing::instrument(skip_all)]
     pub fn scroll_terminal_output(&mut self, direction: Direction) -> Result<(), Error> {
         self.get_full_task_mut()?.scroll(direction)?;
         Ok(())
@@ -264,7 +263,7 @@ impl<W> App<W> {
     /// Mark the given task as started.
     /// If planned, pulls it from planned tasks and starts it.
     /// If finished, removes from finished and starts again as new task.
-    #[tracing::instrument(skip(self, output_logs))]
+   
     pub fn start_task(&mut self, task: &str, output_logs: OutputLogs) -> Result<(), Error> {
         debug!("starting {task}");
         // Name of currently highlighted task.
@@ -305,7 +304,7 @@ impl<W> App<W> {
 
     /// Mark the given running task as finished
     /// Errors if given task wasn't a running task
-    #[tracing::instrument(skip(self, result))]
+   
     pub fn finish_task(&mut self, task: &str, result: TaskResult) -> Result<(), Error> {
         debug!("finishing task {task}");
         // Name of currently highlighted task.
@@ -353,7 +352,7 @@ impl<W> App<W> {
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+   
     pub fn update_tasks(&mut self, tasks: Vec<String>) -> Result<(), Error> {
         if tasks.is_empty() {
             debug!("got request to update task list to empty list, ignoring request");
@@ -393,7 +392,7 @@ impl<W> App<W> {
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+   
     pub fn restart_tasks(&mut self, tasks: Vec<String>) -> Result<(), Error> {
         debug!("tasks to reset: {tasks:?}");
         let highlighted_task = self.active_task()?.to_owned();
@@ -429,7 +428,7 @@ impl<W> App<W> {
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+   
     pub fn set_status(
         &mut self,
         task: String,
@@ -525,7 +524,7 @@ impl<W: Write> App<W> {
         Ok(())
     }
 
-    #[tracing::instrument(skip_all)]
+   
     pub fn forward_input(&mut self, bytes: &[u8]) -> Result<(), Error> {
         if matches!(self.focus, LayoutSections::Pane) {
             let task_output = self.get_full_task_mut()?;
@@ -544,7 +543,7 @@ impl<W: Write> App<W> {
         }
     }
 
-    #[tracing::instrument(skip(self, output))]
+   
     pub fn process_output(&mut self, task: &str, output: &[u8]) -> Result<(), Error> {
         let task_output = self
             .tasks
@@ -559,20 +558,20 @@ impl<W: Write> App<W> {
 
 /// Handle the rendering of the `App` widget based on events received by
 /// `receiver`
-pub async fn run_app(tasks: Vec<String>, receiver: TuiReceiver) -> Result<(), Error> {
+pub async fn run_app(tasks: Vec<String>, task_receiver: TaskEventReceiver, receiver: TuiReceiver) -> anyhow::Result<()> {
     let mut terminal = startup()?;
     let size = terminal.size()?;
 
-    let mut app: App<Box<dyn io::Write + Send>> = App::new(size.height, size.width, tasks);
+    let mut app: App<Box<dyn Write + Send>> = App::new(size.height, size.width, tasks);
+        
     let (crossterm_tx, crossterm_rx) = mpsc::channel(1024);
     input::start_crossterm_stream(crossterm_tx);
 
     let (result, callback) =
-        match run_app_inner(&mut terminal, &mut app, receiver, crossterm_rx).await {
+        match run_app_inner(&mut terminal, &mut app, task_receiver, receiver, crossterm_rx).await {
             Ok(callback) => (Ok(()), callback),
             Err(err) => {
-                debug!("tui shutting down: {err}");
-                (Err(err), None)
+                (Err(anyhow!("Tui shutting down: {}" , err)), None)
             }
         };
 
@@ -583,9 +582,10 @@ pub async fn run_app(tasks: Vec<String>, receiver: TuiReceiver) -> Result<(), Er
 
 // Break out inner loop so we can use `?` without worrying about cleaning up the
 // terminal.
-async fn run_app_inner<B: Backend + std::io::Write>(
+async fn run_app_inner<B: Backend + Write>(
     terminal: &mut Terminal<B>,
-    app: &mut App<Box<dyn io::Write + Send>>,
+    app: &mut App<Box<dyn Write + Send>>,
+    mut task_receiver: TaskEventReceiver,
     mut receiver: TuiReceiver,
     mut crossterm_rx: mpsc::Receiver<crossterm::event::Event>,
 ) -> Result<Option<oneshot::Sender<()>>, Error> {
@@ -595,7 +595,7 @@ async fn run_app_inner<B: Backend + std::io::Write>(
     let mut resize_debouncer = Debouncer::new(RESIZE_DEBOUNCE_DELAY);
     let mut callback = None;
     let mut needs_rerender = true;
-    while let Some(event) = poll(app.input_options()?, &mut receiver, &mut crossterm_rx).await {
+    while let Some(event) = poll(app.input_options()?, &mut task_receiver, &mut receiver, &mut crossterm_rx).await {
         // If we only receive ticks, then there's been no state change so no update
         // needed
         if !matches!(event, Event::Tick) {
@@ -620,7 +620,7 @@ async fn run_app_inner<B: Backend + std::io::Write>(
             if app.done {
                 break;
             }
-            if FRAMERATE <= last_render.elapsed() && needs_rerender {
+            if FRAME_RATE <= last_render.elapsed() && needs_rerender {
                 terminal.draw(|f| view(app, f))?;
                 last_render = Instant::now();
                 needs_rerender = false;
@@ -635,6 +635,7 @@ async fn run_app_inner<B: Backend + std::io::Write>(
 /// dropped
 async fn poll<'a>(
     input_options: InputOptions<'a>,
+    task_receiver: &mut TaskEventReceiver,
     receiver: &mut TuiReceiver,
     crossterm_rx: &mut mpsc::Receiver<crossterm::event::Event>,
 ) -> Option<Event> {
@@ -654,6 +655,22 @@ async fn poll<'a>(
                 e = receiver.recv() => {
                     event = e;
                 }
+                e = task_receiver.recv() => {
+                    event = e.and_then(|e| {
+                        match e {
+                            TaskEvent::Start { task} => {
+                                Some(Event::StartTask { task, output_logs: Full })
+                            }
+                            TaskEvent::Output { task, output } => {
+                                Some(Event::TaskOutput { task, output })
+                            }
+                            TaskEvent::Finish { task, reason } => {
+                                Some(Event::EndTask { task, result: TaskResult::Success })
+                            }
+                            _ => None
+                        }
+                    })
+                }
             }
             if event.is_some() {
                 break;
@@ -672,7 +689,6 @@ pub fn terminal_big_enough() -> Result<bool, Error> {
 }
 
 /// Configures terminal for rendering App
-#[tracing::instrument]
 fn startup() -> io::Result<Terminal<CrosstermBackend<Stdout>>> {
     crossterm::terminal::enable_raw_mode()?;
     let mut stdout = io::stdout();

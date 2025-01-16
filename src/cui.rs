@@ -29,7 +29,7 @@ impl CuiApp {
     }
 
     pub async fn handle_events(&mut self, mut rx: TaskEventReceiver) -> anyhow::Result<()> {
-        while let Ok(event) = rx.recv().await {
+        while let Some(event) = rx.recv().await {
             match event {
                 TaskEvent::Start { task } => {
                     self.register_output_client(&task)

@@ -1,7 +1,8 @@
+use anyhow::Context;
 use tokio::sync::{mpsc, oneshot};
 use crate::ui::sender::{TaskSender, UISender};
 use super::{
-    app::FRAMERATE,
+    app::FRAME_RATE,
     event::{CacheResult, OutputLogs, PaneSize},
     Error, Event, TaskResult,
 };
@@ -9,21 +10,25 @@ use super::{
 /// Struct for sending app events to TUI rendering
 #[derive(Debug, Clone)]
 pub struct TuiSender {
-    primary: mpsc::UnboundedSender<Event>,
+    tx: mpsc::UnboundedSender<Event>,
 }
 
 /// Struct for receiving app events
 pub struct TuiReceiver {
-    primary: mpsc::UnboundedReceiver<Event>,
+    rx: mpsc::UnboundedReceiver<Event>,
+}
+
+pub fn app_event_channel() -> (TuiSender, TuiReceiver) {
+    let (tx, rx) = mpsc::unbounded_channel();
+    (TuiSender::new(tx), TuiReceiver::new(rx))
 }
 
 
 impl TuiSender {
-    pub fn new() -> (Self, TuiReceiver) {
-        let (primary_tx, primary_rx) = mpsc::unbounded_channel();
-        let tick_sender = primary_tx.clone();
+    pub fn new(tx: mpsc::UnboundedSender<Event>) -> Self {
+        let tick_sender = tx.clone();
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(FRAMERATE);
+            let mut interval = tokio::time::interval(FRAME_RATE);
             loop {
                 interval.tick().await;
                 if tick_sender.send(Event::Tick).is_err() {
@@ -31,31 +36,23 @@ impl TuiSender {
                 }
             }
         });
-        (
-            Self {
-                primary: primary_tx,
-            },
-            TuiReceiver {
-                primary: primary_rx,
-            },
-        )
+        Self {
+            tx,
+        }
     }
 }
 
 impl TuiSender {
     pub fn start_task(&self, task: String, output_logs: OutputLogs) {
-        self.primary
-            .send(Event::StartTask { task, output_logs })
-            .ok();
+        self.tx.send(Event::StartTask { task, output_logs }).ok();
     }
 
     pub fn end_task(&self, task: String, result: TaskResult) {
-        self.primary.send(Event::EndTask { task, result }).ok();
+        self.tx.send(Event::EndTask { task, result }).ok();
     }
 
     pub fn status(&self, task: String, status: String, result: CacheResult) {
-        self.primary
-            .send(Event::Status {
+        self.tx.send(Event::Status {
                 task,
                 status,
                 result,
@@ -64,7 +61,7 @@ impl TuiSender {
     }
 
     pub fn set_stdin(&self, task: String, stdin: Box<dyn std::io::Write + Send>) {
-        self.primary.send(Event::SetStdin { task, stdin }).ok();
+        self.tx.send(Event::SetStdin { task, stdin }).ok();
     }
 
     /// Construct a sender configured for a specific task
@@ -81,30 +78,27 @@ impl TuiSender {
         let (callback_tx, callback_rx) = oneshot::channel();
         // Send stop event, if receiver has dropped ignore error as
         // it'll be a no-op.
-        self.primary.send(Event::Stop(callback_tx)).ok();
+        self.tx.send(Event::Stop(callback_tx)).ok();
         // Wait for callback to be sent or the channel closed.
         callback_rx.await.ok();
     }
 
     /// Update the list of tasks displayed in the TUI
     pub fn update_tasks(&self, tasks: Vec<String>) -> anyhow::Result<()> {
-        Ok(self
-            .primary
+        Ok(self.tx
             .send(Event::UpdateTasks { tasks })
             .map_err(|err| Error::Mpsc(err.to_string()))?)
     }
 
     pub fn output(&self, task: String, output: Vec<u8>) -> anyhow::Result<()> {
-        Ok(self
-            .primary
+        Ok(self.tx
             .send(Event::TaskOutput { task, output })
             .map_err(|err| Error::Mpsc(err.to_string()))?)
     }
 
     /// Restart the list of tasks displayed in the TUI
     pub fn restart_tasks(&self, tasks: Vec<String>) -> anyhow::Result<()> {
-        Ok(self
-            .primary
+        Ok(self.tx
             .send(Event::RestartTasks { tasks })
             .map_err(|err| Error::Mpsc(err.to_string()))?)
     }
@@ -113,16 +107,20 @@ impl TuiSender {
     pub async fn pane_size(&self) -> Option<PaneSize> {
         let (callback_tx, callback_rx) = oneshot::channel();
         // Send query, if no receiver to handle the request return None
-        self.primary.send(Event::PaneSizeQuery(callback_tx)).ok()?;
+        self.tx.send(Event::PaneSizeQuery(callback_tx)).ok()?;
         // Wait for callback to be sent
         callback_rx.await.ok()
     }
 }
 
 impl TuiReceiver {
-    /// Receive an event, producing a tick event if no events are rec eived by
-    /// the deadline.
+    pub fn new(rx: mpsc::UnboundedReceiver<Event>) -> Self {
+        Self {
+            rx
+        }
+    }
+
     pub async fn recv(&mut self) -> Option<Event> {
-        self.primary.recv().await
+        self.rx.recv().await
     }
 }
