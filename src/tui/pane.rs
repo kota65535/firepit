@@ -58,9 +58,9 @@ impl<'a, W> TerminalPane<'a, W> {
             LayoutSections::TaskList => {
                 Line::from(format!("{FOOTER_TEXT_INACTIVE} {task_list_message}")).centered()
             }
-            LayoutSections::Search { results, .. } => {
-                Line::from(format!("/ {}", results.query())).left_aligned()
-            }
+            // LayoutSections::Search { results, .. } => {
+            //     Line::from(format!("/ {}", results.query())).left_aligned()
+            // }
         }
     }
 }

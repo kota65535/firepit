@@ -2,7 +2,7 @@ use std::cmp::max;
 use crate::project::{Task};
 use anyhow::Context;
 use futures::future::{join_all, JoinAll};
-use log::{info};
+use log::{error, info, warn};
 use petgraph::algo::toposort;
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{DiGraph, NodeIndex};
@@ -12,13 +12,14 @@ use std::collections::HashMap;
 use std::fmt;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
+use crate::event::TaskResult;
 
 #[derive(Clone)]
 pub struct TaskGraph {
     graph: DiGraph<Task, ()>,
 }
 
-pub type VisitorMessage<N> = (N, oneshot::Sender<()>);
+pub type TaskVisitorMessage = (Task, bool, oneshot::Sender<TaskResult>);
 
 impl TaskGraph {
     pub fn new(tasks: &Vec<Task>) -> anyhow::Result<TaskGraph> {
@@ -57,13 +58,13 @@ impl TaskGraph {
         }
     }
 
-    pub fn visit(&self, concurrency: usize) -> anyhow::Result<(mpsc::Receiver<VisitorMessage<Task>>, watch::Sender<bool>, JoinAll<JoinHandle<()>>)> {
+    pub fn visit(&self, concurrency: usize) -> anyhow::Result<(mpsc::Receiver<TaskVisitorMessage>, watch::Sender<bool>, JoinAll<JoinHandle<()>>)> {
         // Channel for each node to notify all dependent nodes when it finishes
         let mut txs = HashMap::new();
         let mut rxs = HashMap::new();
         for node in self.graph.node_identifiers() {
             // Each node can finish at most once so we set the capacity to 1
-            let (tx, rx) = broadcast::channel::<()>(1);
+            let (tx, rx) = broadcast::channel::<TaskResult>(1);
             txs.insert(node, tx);
             rxs.insert(node, rx);
         }
@@ -101,57 +102,64 @@ impl TaskGraph {
                 let deps = dep_rxs.iter_mut()
                     .map(|rx| rx.recv())
                     .collect::<Vec<_>>();
-                let deps_future = join_all(deps);
+                let deps_fut = join_all(deps);
 
+                let mut deps_ok = true;
                 tokio::select! {
                      _ = cancel_rx.changed() => {
-                        info!("Task {:?} is cancelled", task.name)
+                        info!("Visitor is cancelled");
+                        deps_ok = false
                      }
                     // If both the cancel and dependencies are ready, we want to
                     // execute the cancel instead of sending an additional node.
-                    results = deps_future => {
-                        info!("Task {:?} is starting. cwd={:?}", task.name, task.working_dir);
+                    results = deps_fut => {
+                        info!("Deps of task {:?} are resolved", task.name);
+                        // info!("Task {:?} is starting. cwd={:?}", task.name, task.working_dir);
                         for res in results {
                             match res {
                                 // No errors from reading dependency channels
-                                Ok(()) => (),
-                                // A dependency finished without sending a finish
-                                // Could happen if a cancel is sent and is racing with deps
-                                // so we interpret this as a cancel.
-                                Err(broadcast::error::RecvError::Closed) => {
-                                    return;
+                                Ok(result) => {
+                                    match result {
+                                        TaskResult::Success => {}
+                                        _ => { deps_ok = false }
+                                    }
                                 }
-                                // A dependency sent a finish signal more than once
-                                // which shouldn't be possible.
-                                // Since the message is always the unit type we can proceed
-                                // but we log as this is unexpected behavior.
-                                Err(broadcast::error::RecvError::Lagged(x)) => {
-                                    debug_assert!(false, "A node finished {x} more times than expected");
-                                    info!("A node finished {x} more times than expected");
+                                Err(e) => {
+                                    error!("Cannot receive task result: {:?}", e);
+                                    deps_ok = false
                                 }
                             }
                         }
-
-                        let (callback_tx, callback_rx) = oneshot::channel::<()>();
-                        // do some err handling with the send failure?
-                        if node_tx.send((task.clone(), callback_tx)).await.is_err() {
-                            // Receiving end of node channel has been closed/dropped
-                            // Since there's nothing the mark the node as being done
-                            // we act as if we have been canceled.
-                            info!("Receiver was dropped before walk finished without calling cancel");
-                            return;
-                        }
-                        if callback_rx.await.is_err() {
-                            // If the caller drops the callback sender without signaling
-                            // that the node processing is finished we assume that it is finished.
-                            info!("Callback sender was dropped without sending a finish signal")
-                        }
-                        info!("Task {:?} has finished", task.name);
-                        // Send errors indicate that there are no receivers which
-                        // happens when this node has no dependents
-                        tx.send(()).ok();
                     }
                 }
+
+                let (callback_tx, callback_rx) = oneshot::channel::<TaskResult>();
+                let result = match node_tx.send((task.clone(), deps_ok, callback_tx)).await {
+                    Ok(_) => {
+                        match callback_rx.await {
+                            Ok(result) => {
+                                result
+                            }
+                            _ => {
+                                // If the caller drops the callback sender without signaling
+                                // that the node processing is finished we assume that it is finished.
+                                info!("Callback sender was dropped without sending a finish signal");
+                                TaskResult::Skipped
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        // Receiving end of node channel has been closed/dropped
+                        // Since there's nothing the mark the node as being done
+                        // we act as if we have been canceled.
+                        warn!("Cannot send task to the runner: {:?}", e);
+                        TaskResult::Unknown
+                    }
+                };
+                info!("Task {:?} finished. result: {:?}", task.name, result);
+                // Send errors indicate that there are no receivers which
+                // happens when this node has no dependents
+                tx.send(result).ok();
             }));
         }
         

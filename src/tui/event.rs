@@ -1,10 +1,9 @@
-use serde::Serialize;
+use crate::event::TaskResult;
 use tokio::sync::oneshot;
 
 pub enum Event {
     StartTask {
         task: String,
-        output_logs: OutputLogs,
     },
     TaskOutput {
         task: String,
@@ -17,7 +16,6 @@ pub enum Event {
     Status {
         task: String,
         status: String,
-        result: CacheResult,
     },
     PaneSizeQuery(oneshot::Sender<PaneSize>),
     Stop(oneshot::Sender<()>),
@@ -66,46 +64,8 @@ pub enum Direction {
     Down,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
-pub enum TaskResult {
-    Success,
-    Failure,
-    CacheHit,
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize)]
-pub enum CacheResult {
-    Hit,
-    Miss,
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize)]
-pub enum OutputLogs {
-    // Entire task output is persisted after run
-    Full,
-    // None of a task output is persisted after run
-    None,
-    // Only the status line of a task is persisted
-    HashOnly,
-    // Output is only persisted if it is a cache miss
-    NewOnly,
-    // Output is only persisted if the task failed
-    ErrorsOnly,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PaneSize {
     pub rows: u16,
     pub cols: u16,
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn assert_event_send() {
-        fn send_sync<T: Send>() {}
-        send_sync::<Event>();
-    }
 }

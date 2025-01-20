@@ -1,7 +1,7 @@
 use crate::config::ProjectConfig;
-use crate::event::{TaskEvent, TaskEventReceiver, TaskEventSender};
+use crate::event::{TaskEvent, TaskEventReceiver, TaskEventSender, TaskResult};
 use crate::graph::TaskGraph;
-use crate::process::{Command, ProcessManager};
+use crate::process::{ChildExit, Command, ProcessManager};
 use crate::signal::{get_signal, SignalHandler};
 use crate::tui::TuiReceiver;
 use anyhow::anyhow;
@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{UnboundedSender};
 
 #[derive(Debug, Clone)]
 pub struct TaskRunner {
@@ -103,6 +103,9 @@ impl TaskRunner {
     }
 
     pub async fn run(&mut self, event_tx: TaskEventSender) -> anyhow::Result<()> {
+        let target_names = self.target_tasks.iter().map(|t| t.name.clone()).collect::<Vec<_>>();
+        let dep_names = self.tasks.iter().map(|t| t.name.clone()).filter(|t|target_names.contains(&t)).collect::<Vec<_>>();
+        event_tx.plan(target_names, dep_names)?;
         // Run visitor
         let (mut task_rx, cancel_tx, visitor_future) = self.task_graph.visit(self.concurrency)?;
         
@@ -115,10 +118,16 @@ impl TaskRunner {
 
         let mut task_futures = Vec::new();
 
-        while let Some((task, callback)) = task_rx.recv().await {
+        while let Some((task, deps_ok, callback)) = task_rx.recv().await {
             let this = self.clone();
             let event_sender = event_tx.clone().with_name(&task.name);
             task_futures.push(tokio::spawn(async move {
+                if !deps_ok {
+                    info!("Skipping task {:?}", task.name);
+                    event_sender.finish(&task.name, TaskResult::Skipped)?;
+                    callback.send(TaskResult::Skipped).ok();
+                    return Ok(())
+                }
                 let mut args = Vec::new();
                 args.extend(task.shell_args.clone());
                 args.push(task.command.clone());
@@ -139,8 +148,28 @@ impl TaskRunner {
                     }
                 };
                 event_sender.start(&task.name)?;
-                let exit_status = match process.wait_with_piped_outputs(event_sender.clone()).await {
-                    Ok(Some(exit_status)) => exit_status,
+                
+                if let Some(stdin) = process.stdin() {
+                    event_sender.set_stdin(&task.name, stdin)?;
+                }
+                
+                let result = match process.wait_with_piped_outputs(event_sender.clone()).await {
+                    Ok(Some(exit_status)) => {
+                        match exit_status {
+                            ChildExit::Finished(Some(code)) if code == 0 => {
+                                TaskResult::Success
+                            }
+                            ChildExit::Finished(_) => {
+                                TaskResult::Failure
+                            }
+                            ChildExit::Killed | ChildExit::KilledExternal => {
+                                TaskResult::Stopped
+                            }
+                            ChildExit::Failed => {
+                                TaskResult::Failure
+                            }
+                        }
+                    },
                     Err(e) => {
                         return Err(anyhow!(e.to_string()))
                     }
@@ -149,9 +178,9 @@ impl TaskRunner {
                     }
                 };
                 // info!("Task {:?} finished. reason: {:?}", task.name, exit_status);
-                event_sender.finish(&task.name, exit_status)?;
+                event_sender.finish(&task.name, result.clone())?;
                 
-                callback.send(());
+                callback.send(result);
                 Ok(())
             }));
         }

@@ -4,4 +4,3 @@ pub mod line;
 pub mod logs;
 pub mod output;
 pub mod prefixed;
-pub mod sender;

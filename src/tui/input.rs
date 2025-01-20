@@ -80,33 +80,33 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<Eve
         KeyCode::Char('/') if matches!(options.focus, LayoutSections::TaskList) => {
             Some(Event::SearchEnter)
         }
-        KeyCode::Esc if matches!(options.focus, LayoutSections::Search { .. }) => {
-            Some(Event::SearchExit {
-                restore_scroll: true,
-            })
-        }
+        // KeyCode::Esc if matches!(options.focus, LayoutSections::Search { .. }) => {
+        //     Some(Event::SearchExit {
+        //         restore_scroll: true,
+        //     })
+        // }
         KeyCode::Char('h') => Some(Event::ToggleSidebar),
-        KeyCode::Enter if matches!(options.focus, LayoutSections::Search { .. }) => {
-            Some(Event::SearchExit {
-                restore_scroll: false,
-            })
-        }
-        KeyCode::Up if matches!(options.focus, LayoutSections::Search { .. }) => {
-            Some(Event::SearchScroll {
-                direction: Direction::Up,
-            })
-        }
-        KeyCode::Down if matches!(options.focus, LayoutSections::Search { .. }) => {
-            Some(Event::SearchScroll {
-                direction: Direction::Down,
-            })
-        }
-        KeyCode::Backspace if matches!(options.focus, LayoutSections::Search { .. }) => {
-            Some(Event::SearchBackspace)
-        }
-        KeyCode::Char(c) if matches!(options.focus, LayoutSections::Search { .. }) => {
-            Some(Event::SearchEnterChar(c))
-        }
+        // KeyCode::Enter if matches!(options.focus, LayoutSections::Search { .. }) => {
+        //     Some(Event::SearchExit {
+        //         restore_scroll: false,
+        //     })
+        // }
+        // KeyCode::Up if matches!(options.focus, LayoutSections::Search { .. }) => {
+        //     Some(Event::SearchScroll {
+        //         direction: Direction::Up,
+        //     })
+        // }
+        // KeyCode::Down if matches!(options.focus, LayoutSections::Search { .. }) => {
+        //     Some(Event::SearchScroll {
+        //         direction: Direction::Down,
+        //     })
+        // }
+        // KeyCode::Backspace if matches!(options.focus, LayoutSections::Search { .. }) => {
+        //     Some(Event::SearchBackspace)
+        // }
+        // KeyCode::Char(c) if matches!(options.focus, LayoutSections::Search { .. }) => {
+        //     Some(Event::SearchEnterChar(c))
+        // }
         // Fall through if we aren't in interactive mode
         KeyCode::Char('p') if key_event.modifiers == KeyModifiers::CONTROL => Some(Event::ScrollUp),
         KeyCode::Char('n') if key_event.modifiers == KeyModifiers::CONTROL => {
@@ -129,31 +129,6 @@ fn ctrl_c() -> Option<Event> {
             debug!("unable to send sigint, shutting down");
             Some(Event::InternalStop)
         }
-    }
-}
-
-#[cfg(windows)]
-fn ctrl_c() -> Option<Event> {
-    use winapi::{
-        shared::minwindef::{BOOL, DWORD, TRUE},
-        um::wincon,
-    };
-    // First parameter corresponds to what event to generate, 0 is a Ctrl-C
-    let ctrl_c_event: DWORD = 0x0;
-    // Second parameter corresponds to which process group to send the event to.
-    // If 0 is passed the event gets sent to every process connected to the current
-    // Console.
-    let process_group_id: DWORD = 0x0;
-    let success: BOOL = unsafe {
-        // See docs https://learn.microsoft.com/en-us/windows/console/generateconsolectrlevent
-        wincon::GenerateConsoleCtrlEvent(ctrl_c_event, process_group_id)
-    };
-    if success == TRUE {
-        None
-    } else {
-        // We're unable to send the Ctrl-C event, stop rendering to force shutdown
-        debug!("unable to send sigint, shutting down");
-        Some(Event::InternalStop)
     }
 }
 

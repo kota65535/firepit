@@ -9,7 +9,7 @@ use std::io;
 
 const CONFIG_FILE: [&str; 2] = ["fire.yml", "fire.yaml"];
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum UI {
     #[serde(rename = "cui")]
     CUI,

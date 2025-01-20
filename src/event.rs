@@ -1,23 +1,40 @@
-use crate::process::ChildExit;
-use anyhow::{Context};
 use std::io;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
-use tokio::sync::{mpsc};
+use tokio::sync::mpsc;
 
-#[derive(Debug, Clone)]
 pub enum TaskEvent {
+    Plan {
+        targets: Vec<String>,
+        deps: Vec<String>,
+    },
     Start {
+        task: String
+    },
+    Skip {
         task: String
     },
     Output {
         task: String,
         output: Vec<u8>,
     },
+    SetStdin {
+        task: String,
+        stdin: Box<dyn Write + Send>,
+    },
     Finish {
         task: String,
-        reason: ChildExit
+        result: TaskResult
     },
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+pub enum TaskResult {
+    Success,
+    Skipped,
+    Stopped,
+    Failure,
+    Unknown,
 }
 
 #[derive(Debug, Clone)]
@@ -42,16 +59,24 @@ impl TaskEventSender {
         this
     }
 
+    pub fn plan(&self, targets: Vec<String>, deps: Vec<String>) -> anyhow::Result<()> {
+        self.send(TaskEvent::Plan { targets, deps })
+    }
+
     pub fn start(&self, task: &str) -> anyhow::Result<()> {
         self.send(TaskEvent::Start { task: task.to_string() })
     }
 
-    pub fn finish(&self, task: &str, reason: ChildExit) -> anyhow::Result<()> {
-        self.send(TaskEvent::Finish { task: task.to_string(), reason })
+    pub fn finish(&self, task: &str, result: TaskResult) -> anyhow::Result<()> {
+        self.send(TaskEvent::Finish { task: task.to_string(), result })
+    }
+
+    pub fn set_stdin(&self, task: &str,  stdin: Box<dyn Write + Send>) -> anyhow::Result<()> {
+        self.send(TaskEvent::SetStdin { task: task.to_string(), stdin })
     }
 
     fn send(&self, event: TaskEvent) -> anyhow::Result<()> {
-        self.tx.send(event).with_context(|| "failed to send event")
+        self.tx.send(event).map_err(|e| anyhow::anyhow!("Failed to send event: {:?}", e))
     }
 }
 

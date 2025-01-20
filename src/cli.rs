@@ -64,10 +64,11 @@ pub async fn run() -> anyhow::Result<()> {
         .collect::<Vec<_>>();
     info!("Target tasks: {:?}", target_tasks);
 
-    let planned_tasks = runner.tasks.iter()
+    let dep_tasks = runner.tasks.iter()
         .map(|t| t.name.clone())
+        .filter(|t| !target_tasks.contains(t))
         .collect::<Vec<_>>();
-    info!("Planned tasks: {:?}", planned_tasks);
+    info!("Dep tasks: {:?}", dep_tasks);
 
     let (task_tx, task_rx) = runner.event_channel();
     let (app_tx, app_rx) = app_event_channel();
@@ -76,14 +77,14 @@ pub async fn run() -> anyhow::Result<()> {
     set.spawn(async move {
         runner.run(task_tx.clone()).await
     });
-
+    
     match root.ui {
         UI::CUI => {
             let mut app = CuiApp::new();
             set.spawn(async move { app.handle_events(task_rx).await });
         }
         UI::TUI => {
-            set.spawn(async move { run_app(planned_tasks, task_rx, app_rx).await });
+            set.spawn(async move { run_app(target_tasks, dep_tasks, task_rx, app_rx).await });
         }
     };
 

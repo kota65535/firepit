@@ -1,20 +1,18 @@
 use std::{io::Write, mem};
 
 use super::{
-    event::{CacheResult, Direction, OutputLogs, TaskResult},
-    Error,
+    event::Direction,
 };
+use crate::event::TaskResult;
 
 const SCROLLBACK_LEN: usize = 1024;
 
 pub struct TerminalOutput<W> {
+    pub name: String,
     output: Vec<u8>,
     pub parser: vt100::Parser,
     pub stdin: Option<W>,
-    pub status: Option<String>,
-    pub output_logs: Option<OutputLogs>,
     pub task_result: Option<TaskResult>,
-    pub cache_result: Option<CacheResult>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -25,23 +23,18 @@ enum LogBehavior {
 }
 
 impl<W> TerminalOutput<W> {
-    pub fn new(rows: u16, cols: u16, stdin: Option<W>) -> Self {
+    pub fn new(name: &str, rows: u16, cols: u16, stdin: Option<W>) -> Self {
         Self {
+            name: name.to_string(),
             output: Vec::new(),
             parser: vt100::Parser::new(rows, cols, SCROLLBACK_LEN),
             stdin,
-            status: None,
-            output_logs: None,
             task_result: None,
-            cache_result: None,
         }
     }
 
     pub fn title(&self, task_name: &str) -> String {
-        match self.status.as_deref() {
-            Some(status) => format!(" {task_name} > {status} "),
-            None => format!(" {task_name} > "),
-        }
+        format!(" {task_name} >")
     }
 
     pub fn size(&self) -> (u16, u16) {
@@ -64,7 +57,7 @@ impl<W> TerminalOutput<W> {
         }
     }
 
-    pub fn scroll(&mut self, direction: Direction) -> Result<(), Error> {
+    pub fn scroll(&mut self, direction: Direction) -> anyhow::Result<()> {
         let scrollback = self.parser.screen().scrollback();
         let new_scrollback = match direction {
             Direction::Up => scrollback + 1,
@@ -74,52 +67,20 @@ impl<W> TerminalOutput<W> {
         Ok(())
     }
 
-    fn persist_behavior(&self) -> LogBehavior {
-        match self.output_logs.unwrap_or(OutputLogs::Full) {
-            OutputLogs::Full => LogBehavior::Full,
-            OutputLogs::None => LogBehavior::Nothing,
-            OutputLogs::HashOnly => LogBehavior::Status,
-            OutputLogs::NewOnly => {
-                if matches!(self.cache_result, Some(super::event::CacheResult::Miss),) {
-                    LogBehavior::Full
-                } else {
-                    LogBehavior::Status
-                }
-            }
-            OutputLogs::ErrorsOnly => {
-                if matches!(self.task_result, Some(TaskResult::Failure)) {
-                    LogBehavior::Full
-                } else {
-                    LogBehavior::Nothing
-                }
-            }
-        }
-    }
-
-    #[tracing::instrument(skip(self))]
-    pub fn persist_screen(&self, task_name: &str) -> std::io::Result<()> {
+    pub fn persist_screen(&self) -> anyhow::Result<()> {
         let mut stdout = std::io::stdout().lock();
-        let title = self.title(task_name);
-        match self.persist_behavior() {
-            LogBehavior::Full => {
-                let screen = self.parser.entire_screen();
-                let (_, cols) = screen.size();
-                stdout.write_all("┌".as_bytes())?;
-                stdout.write_all(title.as_bytes())?;
-                stdout.write_all(b"\r\n")?;
-                for row in screen.rows_formatted(0, cols) {
-                    stdout.write_all("│ ".as_bytes())?;
-                    stdout.write_all(&row)?;
-                    stdout.write_all(b"\r\n")?;
-                }
-                stdout.write_all("└────>\r\n".as_bytes())?;
-            }
-            LogBehavior::Status => {
-                stdout.write_all(title.as_bytes())?;
-                stdout.write_all(b"\r\n")?;
-            }
-            LogBehavior::Nothing => (),
+        let title = self.title(&self.name);
+        let screen = self.parser.entire_screen();
+        let (_, cols) = screen.size();
+        stdout.write_all("┌".as_bytes())?;
+        stdout.write_all(title.as_bytes())?;
+        stdout.write_all(b"\r\n")?;
+        for row in screen.rows_formatted(0, cols) {
+            stdout.write_all("│ ".as_bytes())?;
+            stdout.write_all(&row)?;
+            stdout.write_all(b"\r\n")?;
         }
+        stdout.write_all("└────>\r\n".as_bytes())?;
         Ok(())
     }
 
@@ -130,7 +91,7 @@ impl<W> TerminalOutput<W> {
             .map_or(false, |s| !s.is_empty())
     }
 
-    pub fn handle_mouse(&mut self, event: crossterm::event::MouseEvent) -> Result<(), Error> {
+    pub fn handle_mouse(&mut self, event: crossterm::event::MouseEvent) -> anyhow::Result<()> {
         match event.kind {
             crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
                 // We need to update the vterm so we don't continue to render the selection

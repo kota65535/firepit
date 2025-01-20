@@ -1,11 +1,10 @@
-use anyhow::Context;
-use tokio::sync::{mpsc, oneshot};
-use crate::ui::sender::{TaskSender, UISender};
 use super::{
     app::FRAME_RATE,
-    event::{CacheResult, OutputLogs, PaneSize},
-    Error, Event, TaskResult,
+    event::PaneSize,
+    Event,
 };
+use crate::event::TaskResult;
+use tokio::sync::{mpsc, oneshot};
 
 /// Struct for sending app events to TUI rendering
 #[derive(Debug, Clone)]
@@ -43,34 +42,24 @@ impl TuiSender {
 }
 
 impl TuiSender {
-    pub fn start_task(&self, task: String, output_logs: OutputLogs) {
-        self.tx.send(Event::StartTask { task, output_logs }).ok();
+    pub fn start_task(&self, task: String) {
+        self.tx.send(Event::StartTask { task }).ok();
     }
 
     pub fn end_task(&self, task: String, result: TaskResult) {
         self.tx.send(Event::EndTask { task, result }).ok();
     }
 
-    pub fn status(&self, task: String, status: String, result: CacheResult) {
+    pub fn status(&self, task: String, status: String) {
         self.tx.send(Event::Status {
-                task,
-                status,
-                result,
-            })
+            task,
+            status,
+        })
             .ok();
     }
 
     pub fn set_stdin(&self, task: String, stdin: Box<dyn std::io::Write + Send>) {
         self.tx.send(Event::SetStdin { task, stdin }).ok();
-    }
-
-    /// Construct a sender configured for a specific task
-    pub fn task(&self, task: String) -> TaskSender {
-        TaskSender {
-            name: task,
-            handle: UISender::Tui(self.clone()),
-            logs: Default::default(),
-        }
     }
 
     /// Stop rendering TUI and restore terminal to default configuration
@@ -83,24 +72,15 @@ impl TuiSender {
         callback_rx.await.ok();
     }
 
-    /// Update the list of tasks displayed in the TUI
-    pub fn update_tasks(&self, tasks: Vec<String>) -> anyhow::Result<()> {
-        Ok(self.tx
-            .send(Event::UpdateTasks { tasks })
-            .map_err(|err| Error::Mpsc(err.to_string()))?)
-    }
-
     pub fn output(&self, task: String, output: Vec<u8>) -> anyhow::Result<()> {
-        Ok(self.tx
-            .send(Event::TaskOutput { task, output })
-            .map_err(|err| Error::Mpsc(err.to_string()))?)
+        self.tx.send(Event::TaskOutput { task, output })
+            .map_err(|err| anyhow::anyhow!(err.to_string()))
     }
 
     /// Restart the list of tasks displayed in the TUI
     pub fn restart_tasks(&self, tasks: Vec<String>) -> anyhow::Result<()> {
-        Ok(self.tx
-            .send(Event::RestartTasks { tasks })
-            .map_err(|err| Error::Mpsc(err.to_string()))?)
+        self.tx.send(Event::RestartTasks { tasks })
+            .map_err(|err| anyhow::anyhow!(err.to_string()))
     }
 
     /// Fetches the size of the terminal pane
