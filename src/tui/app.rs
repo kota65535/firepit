@@ -240,7 +240,6 @@ impl TuiAppState {
     }
 
     fn input_options(&self) -> anyhow::Result<InputOptions> {
-        let has_selection = self.active_task()?.has_selection();
         Ok(InputOptions { focus: &self.focus })
     }
 

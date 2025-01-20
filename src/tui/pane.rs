@@ -9,7 +9,6 @@ use super::{app::LayoutSections, TerminalOutput};
 
 const FOOTER_TEXT_ACTIVE: &str = "Press`Ctrl-Z` to stop interacting.";
 const FOOTER_TEXT_INACTIVE: &str = "Press `Enter` to interact.";
-const HAS_SELECTION: &str = "Press `c` to copy selection";
 const TASK_LIST_HIDDEN: &str = "Press `h` to show task list.";
 
 pub struct TerminalPane<'a> {
@@ -46,25 +45,16 @@ impl<'a> TerminalPane<'a> {
         };
 
         match self.section {
-            LayoutSections::Pane if self.terminal_output.has_selection() => Line::from(format!(
-                "{FOOTER_TEXT_ACTIVE} {task_list_message} {HAS_SELECTION}"
-            ))
-            .centered(),
             LayoutSections::Pane => Line::from(FOOTER_TEXT_ACTIVE.to_owned()).centered(),
-            LayoutSections::TaskList if self.terminal_output.has_selection() => Line::from(
-                format!("{FOOTER_TEXT_INACTIVE} {task_list_message} {HAS_SELECTION}"),
-            )
-            .centered(),
             LayoutSections::TaskList => {
                 Line::from(format!("{FOOTER_TEXT_INACTIVE} {task_list_message}")).centered()
-            } // LayoutSections::Search { results, .. } => {
-              //     Line::from(format!("/ {}", results.query())).left_aligned()
-              // }
+            }
         }
     }
 }
 
 impl<'a> Widget for &TerminalPane<'a> {
+    
     fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
     where
         Self: Sized,

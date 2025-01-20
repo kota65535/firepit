@@ -22,8 +22,6 @@ pub struct OutputClient<W> {
     // Any locals held across an await must implement Sync and RwLock lets us achieve this
     buffer: Option<RwLock<Vec<SinkBytes<'static>>>>,
     writers: Arc<Mutex<SinkWriters<W>>>,
-    primary: Marginals,
-    error: Marginals,
 }
 
 #[derive(Default)]
@@ -87,9 +85,7 @@ impl<W: Write> OutputSink<W> {
         OutputClient {
             behavior,
             buffer,
-            writers,
-            primary: Default::default(),
-            error: Default::default(),
+            writers
         }
     }
 }
@@ -117,13 +113,11 @@ impl<W: Write> OutputClient<W> {
 
     /// Consume the client and flush any bytes to the underlying sink if
     /// necessary
-    pub fn finish(self, use_error: bool) -> io::Result<Option<Vec<u8>>> {
+    pub fn finish(self) -> io::Result<Option<Vec<u8>>> {
         let Self {
             behavior,
             buffer,
             writers,
-            primary,
-            error,
         } = self;
         let buffers = buffer.map(|cell| cell.into_inner().expect("should not poisoned"));
         Ok(buffers.map(|buffers| {
