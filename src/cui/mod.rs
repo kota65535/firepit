@@ -1,5 +1,5 @@
 pub mod app;
-pub mod color_selector;
+pub mod color;
 pub mod lib;
 pub mod line;
 pub mod logs;

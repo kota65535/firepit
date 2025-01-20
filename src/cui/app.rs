@@ -1,4 +1,4 @@
-use crate::cui::color_selector::ColorSelector;
+use crate::cui::color::ColorSelector;
 use crate::cui::lib::ColorConfig;
 use crate::cui::output::{OutputClient, OutputClientBehavior, OutputSink};
 use crate::cui::prefixed::PrefixedWriter;
