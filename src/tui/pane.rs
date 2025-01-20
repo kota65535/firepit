@@ -12,16 +12,16 @@ const FOOTER_TEXT_INACTIVE: &str = "Press `Enter` to interact.";
 const HAS_SELECTION: &str = "Press `c` to copy selection";
 const TASK_LIST_HIDDEN: &str = "Press `h` to show task list.";
 
-pub struct TerminalPane<'a, W> {
-    terminal_output: &'a TerminalOutput<W>,
+pub struct TerminalPane<'a> {
+    terminal_output: &'a TerminalOutput,
     task_name: &'a str,
     section: &'a LayoutSections,
     has_sidebar: bool,
 }
 
-impl<'a, W> TerminalPane<'a, W> {
+impl<'a> TerminalPane<'a> {
     pub fn new(
-        terminal_output: &'a TerminalOutput<W>,
+        terminal_output: &'a TerminalOutput,
         task_name: &'a str,
         section: &'a LayoutSections,
         has_sidebar: bool,
@@ -65,7 +65,7 @@ impl<'a, W> TerminalPane<'a, W> {
     }
 }
 
-impl<'a, W> Widget for &TerminalPane<'a, W> {
+impl<'a> Widget for &TerminalPane<'a> {
     fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
     where
         Self: Sized,

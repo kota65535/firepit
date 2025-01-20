@@ -7,11 +7,11 @@ use crate::event::TaskResult;
 
 const SCROLLBACK_LEN: usize = 1024;
 
-pub struct TerminalOutput<W> {
+pub struct TerminalOutput {
     pub name: String,
     output: Vec<u8>,
     pub parser: vt100::Parser,
-    pub stdin: Option<W>,
+    pub stdin: Option<Box<dyn Write + Send>>,
     pub task_result: Option<TaskResult>,
 }
 
@@ -22,8 +22,8 @@ enum LogBehavior {
     Nothing,
 }
 
-impl<W> TerminalOutput<W> {
-    pub fn new(name: &str, rows: u16, cols: u16, stdin: Option<W>) -> Self {
+impl TerminalOutput {
+    pub fn new(name: &str, rows: u16, cols: u16, stdin: Option<Box<dyn Write + Send>>) -> Self {
         Self {
             name: name.to_string(),
             output: Vec::new(),

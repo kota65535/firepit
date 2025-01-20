@@ -1,6 +1,7 @@
 use crate::event::{TaskEvent, TaskEventReceiver, TaskEventSender, TaskResult};
 use crate::process::ChildExit;
 use anyhow::{anyhow, Context};
+use indexmap::IndexMap;
 use log::{debug, info, trace};
 use ratatui::{
     backend::{Backend, CrosstermBackend},
@@ -16,7 +17,6 @@ use std::{
     mem,
     time::Duration,
 };
-use indexmap::IndexMap;
 use tokio::{
     sync::{mpsc, oneshot},
     time::Instant,
@@ -30,10 +30,8 @@ use super::{
     input,
     Debouncer, Event, InputOptions, SizeInfo, TaskTable, TerminalPane, TuiReceiver,
 };
-use crate::tui::{
-    term_output::TerminalOutput,
-};
 use crate::tui::task::{TaskPlan, TaskStatus};
+use crate::tui::term_output::TerminalOutput;
 
 #[derive(Debug, Clone)]
 pub enum LayoutSections {
@@ -45,9 +43,9 @@ pub enum LayoutSections {
     // },
 }
 
-pub struct TuiApp<W> {
+pub struct TuiApp {
     size: SizeInfo,
-    task_outputs: IndexMap<String, TerminalOutput<W>>,
+    task_outputs: IndexMap<String, TerminalOutput>,
     task_statuses: IndexMap<String, TaskStatus>,
     focus: LayoutSections,
     scroll: TableState,
@@ -57,7 +55,7 @@ pub struct TuiApp<W> {
     done: bool,
 }
 
-impl<W> TuiApp<W> {
+impl TuiApp {
     pub fn new(rows: u16, cols: u16, mut target_tasks: Vec<String>, mut dep_tasks: Vec<String>) -> Self {
         let size = SizeInfo::new(rows, cols, target_tasks.iter().chain(dep_tasks.iter()).map(|s| s.as_str()));
 
@@ -93,19 +91,19 @@ impl<W> TuiApp<W> {
         }
     }
 
-    pub fn active_task(&self) -> anyhow::Result<&TerminalOutput<W>> {
+    pub fn active_task(&self) -> anyhow::Result<&TerminalOutput> {
         self.nth_task(self.selected_task_index)
     }
 
-    pub fn active_task_mut(&mut self) -> anyhow::Result<&mut TerminalOutput<W>> {
+    pub fn active_task_mut(&mut self) -> anyhow::Result<&mut TerminalOutput> {
         self.nth_task_mut(self.selected_task_index)
     }
 
-    pub fn task(&self, name: &str) -> anyhow::Result<&TerminalOutput<W>> {
+    pub fn task(&self, name: &str) -> anyhow::Result<&TerminalOutput> {
         self.task_outputs.get(name).with_context(|| format!("task {} not found", name))
     }
 
-    pub fn task_mut(&mut self, name: &str) -> anyhow::Result<&mut TerminalOutput<W>> {
+    pub fn task_mut(&mut self, name: &str) -> anyhow::Result<&mut TerminalOutput> {
         self.task_outputs.get_mut(name).with_context(|| format!("task {} not found", name))
     }
 
@@ -117,13 +115,13 @@ impl<W> TuiApp<W> {
         })
     }
 
-    pub fn nth_task(&self, num: usize) -> anyhow::Result<&TerminalOutput<W>> {
+    pub fn nth_task(&self, num: usize) -> anyhow::Result<&TerminalOutput> {
         self.task_outputs.iter().nth(num)
             .map(|e| e.1)
             .with_context(|| anyhow::anyhow!("{}th task not found", num))
     }
 
-    pub fn nth_task_mut(&mut self, num: usize) -> anyhow::Result<&mut TerminalOutput<W>> {
+    pub fn nth_task_mut(&mut self, num: usize) -> anyhow::Result<&mut TerminalOutput> {
         self.task_outputs.iter_mut().nth(num)
             .map(|e| e.1)
             .with_context(|| anyhow::anyhow!("{}th task not found", num))
@@ -401,11 +399,29 @@ impl<W> TuiApp<W> {
             task.resize(pane_rows, pane_cols);
         })
     }
+
+    
+    pub fn view(&mut self, f: &mut Frame) {
+        let cols = self.size.pane_cols();
+        let horizontal = if self.has_sidebar {
+            Layout::horizontal([Constraint::Fill(1), Constraint::Length(cols)])
+        } else {
+            Layout::horizontal([Constraint::Max(0), Constraint::Length(cols)])
+        };
+        let [table, pane] = horizontal.areas(f.size());
+
+        let active_task = self.active_task().unwrap();
+        let pane_to_render: TerminalPane<> = TerminalPane::new(&active_task, &active_task.name, &self.focus, self.has_sidebar);
+        let table_to_render = TaskTable::new(&self.task_statuses);
+
+        f.render_widget(&pane_to_render, pane);
+        f.render_stateful_widget(&table_to_render, table, &mut self.scroll);
+    }
 }
 
-impl<W: Write> TuiApp<W> {
+impl TuiApp {
     /// Insert a stdin to be associated with a task
-    pub fn insert_stdin(&mut self, task: &str, stdin: Option<W>) -> anyhow::Result<()> {
+    pub fn insert_stdin(&mut self, task: &str, stdin: Option<Box<dyn Write + Send>>) -> anyhow::Result<()> {
         let task = self.task_outputs.get_mut(task).with_context(|| format!("{} not found", task))?;
         task.stdin = stdin;
         Ok(())
@@ -436,13 +452,13 @@ pub async fn run_app(target_tasks: Vec<String>, dep_tasks: Vec<String>, task_rec
     let mut terminal = startup()?;
     let size = terminal.size()?;
 
-    let mut app: TuiApp<Box<dyn Write + Send>> = TuiApp::new(size.height, size.width, target_tasks, dep_tasks);
+    let mut app = TuiApp::new(size.height, size.width, target_tasks, dep_tasks);
 
     let (crossterm_tx, crossterm_rx) = mpsc::channel(1024);
     input::start_crossterm_stream(crossterm_tx);
 
     let (result, callback) =
-        match run_app_inner(&mut terminal, &mut app, task_receiver, receiver, crossterm_rx).await {
+        match app.run_app_inner(&mut terminal, task_receiver, receiver, crossterm_rx).await {
             Ok(callback) => (Ok(()), callback),
             Err(err) => {
                 (Err(anyhow!("Tui shutting down: {}" , err)), None)
@@ -454,56 +470,6 @@ pub async fn run_app(target_tasks: Vec<String>, dep_tasks: Vec<String>, task_rec
     result
 }
 
-// Break out inner loop so we can use `?` without worrying about cleaning up the
-// terminal.
-async fn run_app_inner<B: Backend + Write>(
-    terminal: &mut Terminal<B>,
-    app: &mut TuiApp<Box<dyn Write + Send>>,
-    mut task_receiver: TaskEventReceiver,
-    mut receiver: TuiReceiver,
-    mut crossterm_rx: mpsc::Receiver<crossterm::event::Event>,
-) -> anyhow::Result<Option<oneshot::Sender<()>>> {
-    // Render initial state to paint the screen
-    terminal.draw(|f| view(app, f))?;
-    let mut last_render = Instant::now();
-    let mut resize_debouncer = Debouncer::new(RESIZE_DEBOUNCE_DELAY);
-    let mut callback = None;
-    let mut needs_rerender = true;
-    while let Some(event) = poll(app.input_options()?, &mut task_receiver, &mut receiver, &mut crossterm_rx).await {
-        // If we only receive ticks, then there's been no state change so no update
-        // needed
-        if !matches!(event, Event::Tick) {
-            needs_rerender = true;
-        }
-        let mut event = Some(event);
-        let mut resize_event = None;
-        if matches!(event, Some(Event::Resize { .. })) {
-            resize_event = resize_debouncer.update(
-                event
-                    .take()
-                    .expect("we just matched against a present value"),
-            );
-        }
-        if let Some(resize) = resize_event.take().or_else(|| resize_debouncer.query()) {
-            // If we got a resize event, make sure to update ratatui backend.
-            terminal.autoresize()?;
-            update(app, resize)?;
-        }
-        if let Some(event) = event {
-            callback = update(app, event)?;
-            if app.done {
-                break;
-            }
-            if FRAME_RATE <= last_render.elapsed() && needs_rerender {
-                terminal.draw(|f| view(app, f))?;
-                last_render = Instant::now();
-                needs_rerender = false;
-            }
-        }
-    }
-
-    Ok(callback)
-}
 
 /// Blocking poll for events, will only return None if app handle has been
 /// dropped
@@ -584,7 +550,7 @@ fn startup() -> io::Result<Terminal<CrosstermBackend<Stdout>>> {
 #[tracing::instrument(skip_all)]
 fn cleanup<B: Backend + Write>(
     mut terminal: Terminal<B>,
-    mut app: TuiApp<Box<dyn Write + Send>>,
+    mut app: TuiApp,
     callback: Option<oneshot::Sender<()>>,
 ) -> anyhow::Result<()> {
     terminal.clear()?;
@@ -601,129 +567,161 @@ fn cleanup<B: Backend + Write>(
     Ok(())
 }
 
-fn update(
-    app: &mut TuiApp<Box<dyn Write + Send>>,
-    event: Event,
-) -> anyhow::Result<Option<oneshot::Sender<()>>> {
-    match event {
-        Event::StartTask { task } => {
-            app.start_task(&task)?;
+impl TuiApp {
+    
+    async fn run_app_inner<B: Backend + Write>(
+        &mut self,
+        terminal: &mut Terminal<B>,
+        mut task_receiver: TaskEventReceiver,
+        mut receiver: TuiReceiver,
+        mut crossterm_rx: mpsc::Receiver<crossterm::event::Event>,
+    ) -> anyhow::Result<Option<oneshot::Sender<()>>> {
+        // Render initial state to paint the screen
+        terminal.draw(|f| self.view(f))?;
+        let mut last_render = Instant::now();
+        let mut resize_debouncer = Debouncer::new(RESIZE_DEBOUNCE_DELAY);
+        let mut callback = None;
+        let mut needs_rerender = true;
+        while let Some(event) = poll(self.input_options()?, &mut task_receiver, &mut receiver, &mut crossterm_rx).await {
+            // If we only receive ticks, then there's been no state change so no update
+            // needed
+            if !matches!(event, Event::Tick) {
+                needs_rerender = true;
+            }
+            let mut event = Some(event);
+            let mut resize_event = None;
+            if matches!(event, Some(Event::Resize { .. })) {
+                resize_event = resize_debouncer.update(
+                    event
+                        .take()
+                        .expect("we just matched against a present value"),
+                );
+            }
+            if let Some(resize) = resize_event.take().or_else(|| resize_debouncer.query()) {
+                // If we got a resize event, make sure to update ratatui backend.
+                terminal.autoresize()?;
+                self.update(resize)?;
+            }
+            if let Some(event) = event {
+                callback = self.update(event)?;
+                if self.done {
+                    break;
+                }
+                if FRAME_RATE <= last_render.elapsed() && needs_rerender {
+                    terminal.draw(|f| self.view(f))?;
+                    last_render = Instant::now();
+                    needs_rerender = false;
+                }
+            }
         }
-        Event::TaskOutput { task, output } => {
-            app.process_output(&task, &output)?;
-        }
-        // Event::Status {
-        //     task,
-        //     status,
-        // } => {
-        //     app.set_status(task, status)?;
-        // }
-        Event::InternalStop => {
-            debug!("shutting down due to internal failure");
-            app.done = true;
-        }
-        Event::Stop(callback) => {
-            debug!("shutting down due to message");
-            app.done = true;
-            return Ok(Some(callback));
-        }
-        Event::Tick => {
-            // app.table.tick();
-        }
-        Event::EndTask { task, result } => {
-            app.finish_task(&task, result)?;
-            app.insert_stdin(&task, None)?;
-        }
-        Event::Up => {
-            app.previous();
-        }
-        Event::Down => {
-            app.next();
-        }
-        Event::ScrollUp => {
-            app.has_user_scrolled = true;
-            app.scroll_terminal_output(Direction::Up)?;
-        }
-        Event::ScrollDown => {
-            app.has_user_scrolled = true;
-            app.scroll_terminal_output(Direction::Down)?;
-        }
-        Event::EnterInteractive => {
-            app.has_user_scrolled = true;
-            app.interact()?;
-        }
-        Event::ExitInteractive => {
-            app.has_user_scrolled = true;
-            app.interact()?;
-        }
-        Event::ToggleSidebar => {
-            app.has_sidebar = !app.has_sidebar;
-        }
-        Event::Input { bytes } => {
-            app.forward_input(&bytes)?;
-        }
-        Event::SetStdin { task, stdin } => {
-            app.insert_stdin(&task, Some(stdin))?;
-        }
-        Event::UpdateTasks { tasks } => {
-            app.update_tasks(tasks)?;
-        }
-        Event::Mouse(m) => {
-            app.handle_mouse(m)?;
-        }
-        Event::CopySelection => {
-            app.copy_selection()?;
-        }
-        Event::RestartTasks { tasks } => {
-            app.restart_tasks(tasks)?;
-        }
-        Event::Resize { rows, cols } => {
-            app.resize(rows, cols);
-        }
-        // Event::SearchEnter => {
-        //     app.enter_search()?;
-        // }
-        // Event::SearchExit { restore_scroll } => {
-        //     app.exit_search(restore_scroll);
-        // }
-        // Event::SearchScroll { direction } => {
-        //     app.search_scroll(direction)?;
-        // }
-        // Event::SearchEnterChar(c) => {
-        //     app.search_enter_char(c)?;
-        // }
-        // Event::SearchBackspace => {
-        //     app.search_remove_char()?;
-        // }
-        Event::PaneSizeQuery(callback) => {
-            // If caller has already hung up do nothing
-            callback
-                .send(PaneSize {
-                    rows: app.size.pane_rows(),
-                    cols: app.size.pane_cols(),
-                })
-                .ok();
-        }
-        _ => {
-            return Err(anyhow::anyhow!("error"))
-        }
+
+        Ok(callback)
     }
-    Ok(None)
-}
-
-fn view<W>(app: &mut TuiApp<W>, f: &mut Frame) {
-    let cols = app.size.pane_cols();
-    let horizontal = if app.has_sidebar {
-        Layout::horizontal([Constraint::Fill(1), Constraint::Length(cols)])
-    } else {
-        Layout::horizontal([Constraint::Max(0), Constraint::Length(cols)])
-    };
-    let [table, pane] = horizontal.areas(f.size());
-
-    let active_task = app.active_task().unwrap();
-    let pane_to_render: TerminalPane<W> = TerminalPane::new(&active_task, &active_task.name, &app.focus, app.has_sidebar);
-    let table_to_render = TaskTable::new(&app.task_statuses);
-
-    f.render_widget(&pane_to_render, pane);
-    f.render_stateful_widget(&table_to_render, table, &mut app.scroll);
+    fn update(&mut self, event: Event) -> anyhow::Result<Option<oneshot::Sender<()>>> {
+        match event {
+            Event::StartTask { task } => {
+                self.start_task(&task)?;
+            }
+            Event::TaskOutput { task, output } => {
+                self.process_output(&task, &output)?;
+            }
+            // Event::Status {
+            //     task,
+            //     status,
+            // } => {
+            //     self.set_status(task, status)?;
+            // }
+            Event::InternalStop => {
+                debug!("shutting down due to internal failure");
+                self.done = true;
+            }
+            Event::Stop(callback) => {
+                debug!("shutting down due to message");
+                self.done = true;
+                return Ok(Some(callback));
+            }
+            Event::Tick => {
+                // self.table.tick();
+            }
+            Event::EndTask { task, result } => {
+                self.finish_task(&task, result)?;
+                self.insert_stdin(&task, None)?;
+            }
+            Event::Up => {
+                self.previous();
+            }
+            Event::Down => {
+                self.next();
+            }
+            Event::ScrollUp => {
+                self.has_user_scrolled = true;
+                self.scroll_terminal_output(Direction::Up)?;
+            }
+            Event::ScrollDown => {
+                self.has_user_scrolled = true;
+                self.scroll_terminal_output(Direction::Down)?;
+            }
+            Event::EnterInteractive => {
+                self.has_user_scrolled = true;
+                self.interact()?;
+            }
+            Event::ExitInteractive => {
+                self.has_user_scrolled = true;
+                self.interact()?;
+            }
+            Event::ToggleSidebar => {
+                self.has_sidebar = !self.has_sidebar;
+            }
+            Event::Input { bytes } => {
+                self.forward_input(&bytes)?;
+            }
+            Event::SetStdin { task, stdin } => {
+                self.insert_stdin(&task, Some(stdin))?;
+            }
+            Event::UpdateTasks { tasks } => {
+                self.update_tasks(tasks)?;
+            }
+            Event::Mouse(m) => {
+                self.handle_mouse(m)?;
+            }
+            Event::CopySelection => {
+                self.copy_selection()?;
+            }
+            Event::RestartTasks { tasks } => {
+                self.restart_tasks(tasks)?;
+            }
+            Event::Resize { rows, cols } => {
+                self.resize(rows, cols);
+            }
+            // Event::SearchEnter => {
+            //     self.enter_search()?;
+            // }
+            // Event::SearchExit { restore_scroll } => {
+            //     self.exit_search(restore_scroll);
+            // }
+            // Event::SearchScroll { direction } => {
+            //     self.search_scroll(direction)?;
+            // }
+            // Event::SearchEnterChar(c) => {
+            //     self.search_enter_char(c)?;
+            // }
+            // Event::SearchBackspace => {
+            //     self.search_remove_char()?;
+            // }
+            Event::PaneSizeQuery(callback) => {
+                // If caller has already hung up do nothing
+                callback
+                    .send(PaneSize {
+                        rows: self.size.pane_rows(),
+                        cols: self.size.pane_cols(),
+                    })
+                    .ok();
+            }
+            _ => {
+                return Err(anyhow::anyhow!("error"))
+            }
+        }
+        Ok(None)
+    }
+    
 }
