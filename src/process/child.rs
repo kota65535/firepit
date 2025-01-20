@@ -599,7 +599,8 @@ impl Child {
                 .await
             }
             Some(ChildOutput::Pty(output)) => {
-                self.wait_with_piped_sync_output(stdout_pipe, io::BufReader::new(output)).await
+                self.wait_with_piped_sync_output(stdout_pipe, io::BufReader::new(output))
+                    .await
             }
             None => Ok(self.wait().await),
         }

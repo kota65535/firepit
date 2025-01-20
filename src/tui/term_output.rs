@@ -1,8 +1,6 @@
 use std::{io::Write, mem};
 
-use super::{
-    event::Direction,
-};
+use super::event::Direction;
 use crate::event::TaskResult;
 
 const SCROLLBACK_LEN: usize = 1024;
@@ -111,7 +109,7 @@ impl TerminalOutput {
             // Don't care about other mouse buttons
             crossterm::event::MouseEventKind::Down(_) => {
                 self.parser.screen_mut().clear_selection();
-            },
+            }
             crossterm::event::MouseEventKind::Drag(_) => (),
             // We don't support horizontal scroll
             crossterm::event::MouseEventKind::ScrollLeft

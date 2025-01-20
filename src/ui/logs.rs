@@ -1,10 +1,10 @@
+use anyhow::Context;
+use std::path::Path;
 use std::{
     fs::File,
-    io::{BufRead, BufReader, BufWriter, Write},
+    io::{BufWriter, Write},
 };
-use std::path::Path;
-use anyhow::Context;
-use tracing::{debug, warn};
+use tracing::debug;
 
 /// Receives logs and multiplexes them to a log file and/or a prefixed
 /// writer
@@ -28,7 +28,7 @@ impl<W: Write> LogWriter<W> {
     pub fn with_log_file(&mut self, log_file_path: &Path) -> anyhow::Result<()> {
         let log_file = File::create(log_file_path).context("error creating log file")?;
         self.log_file = Some(BufWriter::new(log_file));
-        
+
         Ok(())
     }
 

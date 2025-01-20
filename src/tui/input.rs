@@ -3,10 +3,7 @@ use futures::StreamExt;
 use tokio::{sync::mpsc, task::JoinHandle};
 use tracing::debug;
 
-use super::{
-    app::LayoutSections,
-    event::{Direction, Event},
-};
+use super::{app::LayoutSections, event::Event};
 
 #[derive(Debug, Clone, Copy)]
 pub struct InputOptions<'a> {

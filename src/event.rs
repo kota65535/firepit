@@ -21,20 +21,21 @@ pub struct TaskEventSender {
 
 impl TaskEventSender {
     pub fn new(tx: mpsc::UnboundedSender<TaskEvent>) -> Self {
-        Self {
-            tx,
-        }
+        Self { tx }
     }
 
     pub async fn pane_size(&self) -> anyhow::Result<Option<PaneSize>> {
         let (callback_tx, callback_rx) = oneshot::channel();
-        self.tx.send(TaskEvent::PaneSizeQuery(callback_tx))
+        self.tx
+            .send(TaskEvent::PaneSizeQuery(callback_tx))
             .map_err(|err| anyhow::anyhow!(err.to_string()))?;
         Ok(callback_rx.await.ok())
     }
 
     fn send(&self, event: TaskEvent) -> anyhow::Result<()> {
-        self.tx.send(event).map_err(|e| anyhow::anyhow!("Failed to send event: {:?}", e))
+        self.tx
+            .send(event)
+            .map_err(|e| anyhow::anyhow!("Failed to send event: {:?}", e))
     }
 }
 
@@ -45,9 +46,7 @@ pub struct TaskEventReceiver {
 
 impl TaskEventReceiver {
     pub fn new(rx: mpsc::UnboundedReceiver<TaskEvent>) -> Self {
-        Self {
-            rx
-        }
+        Self { rx }
     }
 
     pub async fn recv(&mut self) -> Option<TaskEvent> {

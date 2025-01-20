@@ -1,5 +1,5 @@
-use std::cmp::max;
-use crate::project::{Task};
+use crate::event::TaskResult;
+use crate::project::Task;
 use anyhow::Context;
 use futures::future::{join_all, JoinAll};
 use log::{error, info, warn};
@@ -8,11 +8,11 @@ use petgraph::dot::{Config, Dot};
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::visit::{depth_first_search, IntoNodeIdentifiers};
 use petgraph::Direction;
+use std::cmp::max;
 use std::collections::HashMap;
 use std::fmt;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
-use crate::event::TaskResult;
 
 #[derive(Clone)]
 pub struct TaskGraph {
@@ -30,35 +30,50 @@ impl TaskGraph {
             let idx = graph.add_node(t.clone());
             nodes.insert(t.name.clone(), idx);
         }
-        
+
         for t in tasks {
             for d in &t.depends_on {
-                let from = nodes.get(&t.name).with_context(|| format!("node {} should be found", &t.name))?;
-                let to = nodes.get(d).with_context(|| format!("node {} should be found", d))?;
+                let from = nodes
+                    .get(&t.name)
+                    .with_context(|| format!("node {} should be found", &t.name))?;
+                let to = nodes
+                    .get(d)
+                    .with_context(|| format!("node {} should be found", d))?;
                 graph.add_edge(*from, *to, ());
             }
         }
 
         let ret = TaskGraph { graph };
-        
+
         ret.sort()?;
 
         Ok(ret)
     }
-    
+
     pub fn sort(&self) -> anyhow::Result<Vec<Task>> {
         match toposort(&self.graph, None) {
-            Ok(ids) => {
-                Ok(ids.iter().map(|&i| self.graph.node_weight(i).expect("should exist").clone()).collect::<Vec<_>>())
-            }
+            Ok(ids) => Ok(ids
+                .iter()
+                .map(|&i| self.graph.node_weight(i).expect("should exist").clone())
+                .collect::<Vec<_>>()),
             Err(err) => {
                 let task = self.graph.node_weight(err.node_id()).expect("should exist");
-                Err(anyhow::anyhow!("cyclic dependency detected at task {}", task.name.clone()))
+                Err(anyhow::anyhow!(
+                    "cyclic dependency detected at task {}",
+                    task.name.clone()
+                ))
             }
         }
     }
 
-    pub fn visit(&self, concurrency: usize) -> anyhow::Result<(mpsc::Receiver<TaskVisitorMessage>, watch::Sender<bool>, JoinAll<JoinHandle<()>>)> {
+    pub fn visit(
+        &self,
+        concurrency: usize,
+    ) -> anyhow::Result<(
+        mpsc::Receiver<TaskVisitorMessage>,
+        watch::Sender<bool>,
+        JoinAll<JoinHandle<()>>,
+    )> {
         // Channel for each node to notify all dependent nodes when it finishes
         let mut txs = HashMap::new();
         let mut rxs = HashMap::new();
@@ -72,36 +87,53 @@ impl TaskGraph {
         let (node_tx, node_rx) = mpsc::channel(max(concurrency, 1));
         // Channel to stop visiting
         let (cancel_tx, cancel_rx) = watch::channel(false);
-        
+
         let mut node_futures = Vec::new();
         for node_id in self.graph.node_identifiers() {
-
             let tx = txs.remove(&node_id).with_context(|| "sender not found")?;
             let node_tx = node_tx.clone();
             let mut cancel_rx = cancel_rx.clone();
-            
-            let task = self.graph.node_weight(node_id).with_context(|| "node not found")?.clone();
-            
+
+            let task = self
+                .graph
+                .node_weight(node_id)
+                .with_context(|| "node not found")?
+                .clone();
+
             let neighbors = self.graph.neighbors_directed(node_id, Direction::Outgoing);
 
-            let dep_tasks = neighbors.clone()
-                .map(|n| self.graph.node_weight(n).with_context(|| "node not found").cloned())
+            let dep_tasks = neighbors
+                .clone()
+                .map(|n| {
+                    self.graph
+                        .node_weight(n)
+                        .with_context(|| "node not found")
+                        .cloned()
+                })
                 .collect::<anyhow::Result<Vec<_>>>()?;
-            let mut dep_rxs = neighbors.clone()
-                .map(|n| txs.get(&n).map(|tx| tx.subscribe()).with_context(|| "sender not found"))
+            let mut dep_rxs = neighbors
+                .clone()
+                .map(|n| {
+                    txs.get(&n)
+                        .map(|tx| tx.subscribe())
+                        .with_context(|| "sender not found")
+                })
                 .collect::<anyhow::Result<Vec<_>>>()?;
 
             node_futures.push(tokio::spawn(async move {
                 if !dep_tasks.is_empty() {
-                    info!("Task \"{}\" is waiting for {} deps: {:?}", 
-                    task.name, 
-                    dep_tasks.len(), 
-                    dep_tasks.iter().map(|t| t.name.clone()).collect::<Vec<String>>());
+                    info!(
+                        "Task \"{}\" is waiting for {} deps: {:?}",
+                        task.name,
+                        dep_tasks.len(),
+                        dep_tasks
+                            .iter()
+                            .map(|t| t.name.clone())
+                            .collect::<Vec<String>>()
+                    );
                 }
-               
-                let deps = dep_rxs.iter_mut()
-                    .map(|rx| rx.recv())
-                    .collect::<Vec<_>>();
+
+                let deps = dep_rxs.iter_mut().map(|rx| rx.recv()).collect::<Vec<_>>();
                 let deps_fut = join_all(deps);
 
                 let mut deps_ok = true;
@@ -137,13 +169,13 @@ impl TaskGraph {
                 let result = match node_tx.send((task.clone(), deps_ok, callback_tx)).await {
                     Ok(_) => {
                         match callback_rx.await {
-                            Ok(result) => {
-                                result
-                            }
+                            Ok(result) => result,
                             _ => {
                                 // If the caller drops the callback sender without signaling
                                 // that the node processing is finished we assume that it is finished.
-                                info!("Callback sender was dropped without sending a finish signal");
+                                info!(
+                                    "Callback sender was dropped without sending a finish signal"
+                                );
                                 TaskResult::Skipped
                             }
                         }
@@ -162,7 +194,7 @@ impl TaskGraph {
                 tx.send(result).ok();
             }));
         }
-        
+
         let join_all = join_all(node_futures);
 
         Ok((node_rx, cancel_tx, join_all))
@@ -176,7 +208,8 @@ impl TaskGraph {
             }
         };
 
-        let indices = names.iter()
+        let indices = names
+            .iter()
             .filter_map(|n| self.node_by_task(n))
             .map(|n| n.1)
             .collect::<Vec<_>>();
@@ -187,31 +220,35 @@ impl TaskGraph {
             .iter()
             .map(|&i| self.graph.node_weight(i).unwrap().clone())
             .collect::<Vec<_>>();
-        
+
         TaskGraph::new(&tasks)
     }
-    
+
     pub fn tasks(&self) -> Vec<Task> {
         self.graph.node_weights().cloned().collect()
     }
-    
+
     fn node_by_task(&self, name: &str) -> Option<(&Task, NodeIndex)> {
-        for (i, n) in  self.graph.node_weights().enumerate() {
+        for (i, n) in self.graph.node_weights().enumerate() {
             if n.name == *name {
-                return Some((n, NodeIndex::new(i)))
+                return Some((n, NodeIndex::new(i)));
             }
         }
         None
     }
 }
 
-
 impl fmt::Debug for TaskGraph {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", Dot::with_attr_getters(&self.graph, 
-                                                 &[Config::EdgeNoLabel, Config::NodeNoLabel],
-                                                 &|e, r| String::new(), 
-                                                 &|n, r| format!("label = \"{}\" ", r.1.name.clone()))
+        write!(
+            f,
+            "{:?}",
+            Dot::with_attr_getters(
+                &self.graph,
+                &[Config::EdgeNoLabel, Config::NodeNoLabel],
+                &|e, r| String::new(),
+                &|n, r| format!("label = \"{}\" ", r.1.name.clone())
+            )
         )
     }
 }

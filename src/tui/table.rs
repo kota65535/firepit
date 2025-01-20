@@ -21,15 +21,13 @@ const HIDE_INSTRUCTIONS: &str = "h to hide";
 
 impl<'b> TaskTable<'b> {
     pub fn new(tasks: &'b IndexMap<String, TaskStatus>) -> Self {
-        Self {
-            tasks,
-        }
+        Self { tasks }
     }
 }
 
 impl TaskTable<'_> {
     /// Provides a suggested width for the task table
-    pub fn width_hint<'a>(tasks: impl Iterator<Item=&'a str>) -> u16 {
+    pub fn width_hint<'a>(tasks: impl Iterator<Item = &'a str>) -> u16 {
         let task_name_width = tasks
             .map(|task| task.len())
             .max()
@@ -42,41 +40,52 @@ impl TaskTable<'_> {
     }
 
     fn rows(&self) -> Vec<Row> {
-        self.tasks.iter()
+        self.tasks
+            .iter()
             .map(|(n, r)| {
                 match r {
-                    TaskStatus::Planned(detail)=> {
-                        let n = if detail.is_target { n.clone() } else { format!(" {}", n.clone()) };
+                    TaskStatus::Planned(detail) => {
+                        let n = if detail.is_target {
+                            n.clone()
+                        } else {
+                            format!(" {}", n.clone())
+                        };
                         Row::new(vec![Cell::new(n), Cell::new(Text::raw("\u{1FAB5}"))])
                     }
-                    TaskStatus::Running => {
-                        Row::new(vec![Cell::new(n.clone()), Cell::new(Text::raw("\u{1F525}"))])
-                    }
+                    TaskStatus::Running => Row::new(vec![
+                        Cell::new(n.clone()),
+                        Cell::new(Text::raw("\u{1F525}")),
+                    ]),
                     TaskStatus::Finished(r) => {
                         Row::new(vec![
                             Cell::new(n.clone()),
                             match r {
                                 // ✅
-                                TaskResult::Success => {
-                                    Cell::new(Text::styled("\u{2705}\u{200D}", Style::default().green().bold()))
-                                }
+                                TaskResult::Success => Cell::new(Text::styled(
+                                    "\u{2705}\u{200D}",
+                                    Style::default().green().bold(),
+                                )),
                                 // 🚫
-                                TaskResult::Skipped => {
-                                    Cell::new(Text::styled("\u{1F6AB}\u{200D}", Style::default().green().bold()))
-                                }
+                                TaskResult::Skipped => Cell::new(Text::styled(
+                                    "\u{1F6AB}\u{200D}",
+                                    Style::default().green().bold(),
+                                )),
                                 // ⛔
-                                TaskResult::Stopped => {
-                                    Cell::new(Text::styled("\u{26D4}\u{200D}", Style::default().green().bold()))
-                                }
+                                TaskResult::Stopped => Cell::new(Text::styled(
+                                    "\u{26D4}\u{200D}",
+                                    Style::default().green().bold(),
+                                )),
                                 // ❌
-                                TaskResult::Failure => {
-                                    Cell::new(Text::styled("\u{274C}\u{200D}", Style::default().red().bold()))
-                                }
+                                TaskResult::Failure => Cell::new(Text::styled(
+                                    "\u{274C}\u{200D}",
+                                    Style::default().red().bold(),
+                                )),
                                 // ❓
-                                TaskResult::Unknown => {
-                                    Cell::new(Text::styled("\u{2753}\u{200D}", Style::default().red().bold()))
-                                }
-                            }
+                                TaskResult::Unknown => Cell::new(Text::styled(
+                                    "\u{2753}\u{200D}",
+                                    Style::default().red().bold(),
+                                )),
+                            },
                         ])
                     }
                 }
@@ -91,11 +100,7 @@ impl<'a> StatefulWidget for &'a TaskTable<'a> {
     fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer, state: &mut Self::State) {
         let width = area.width;
         let bar = "─".repeat(usize::from(width));
-        let table = Table::new(self.rows(), [
-                Constraint::Min(12),
-                Constraint::Length(3),
-            ],
-        )
+        let table = Table::new(self.rows(), [Constraint::Min(12), Constraint::Length(3)])
             .highlight_style(Style::default().fg(Color::Yellow))
             .column_spacing(0)
             .block(Block::new().borders(Borders::RIGHT))
@@ -111,10 +116,10 @@ impl<'a> StatefulWidget for &'a TaskTable<'a> {
                     format!("{bar}\n{TASK_NAVIGATE_INSTRUCTIONS}\n{HIDE_INSTRUCTIONS}"),
                     format!("───\n "),
                 ]
-                    .into_iter()
-                    .map(Cell::from)
-                    .collect::<Row>()
-                    .height(3),
+                .into_iter()
+                .map(Cell::from)
+                .collect::<Row>()
+                .height(3),
             );
         StatefulWidget::render(table, area, buf, state);
     }

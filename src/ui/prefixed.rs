@@ -1,10 +1,7 @@
 use crate::ui::lib::ColorConfig;
 use crate::ui::line::LineWriter;
 use console::StyledObject;
-use std::{
-    fmt::Display,
-    io::Write,
-};
+use std::{fmt::Display, io::Write};
 
 pub struct PrefixedWriter<W> {
     prefix: String,
@@ -20,7 +17,6 @@ impl<W: Write> PrefixedWriter<W> {
         }
     }
 }
-
 
 impl<W: Write> Write for PrefixedWriter<W> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {

@@ -5,12 +5,12 @@ mod input;
 mod pane;
 mod search;
 mod size;
+mod state;
 mod table;
 mod task;
 mod term_output;
-mod state;
 
-use event::{Event};
+use event::Event;
 pub use handle::{AppEventReceiver, AppEventSender};
 use input::InputOptions;
 pub use pane::TerminalPane;

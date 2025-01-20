@@ -2,10 +2,10 @@ use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
+use std::io;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::thread::available_parallelism;
-use std::io;
 
 const CONFIG_FILE: [&str; 2] = ["fire.yml", "fire.yaml"];
 
@@ -14,7 +14,7 @@ pub enum UI {
     #[serde(rename = "cui")]
     CUI,
     #[serde(rename = "tui")]
-    TUI
+    TUI,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -41,7 +41,7 @@ pub struct ProjectConfig {
     /// Shell configuration for all tasks.
     pub shell: Option<ShellConfig>,
 
-    /// Task concurrency. 
+    /// Task concurrency.
     /// Valid only in root project config.
     #[serde(default = "default_concurrency")]
     pub concurrency: usize,
@@ -60,14 +60,14 @@ pub struct ProjectConfig {
 pub fn default_shell() -> ShellConfig {
     ShellConfig {
         command: "bash".to_string(),
-        args: vec!("-c".to_string())
+        args: vec!["-c".to_string()],
     }
 }
 
 pub fn default_log() -> LogConfig {
     LogConfig {
         level: default_log_level(),
-        file: None
+        file: None,
     }
 }
 
@@ -80,11 +80,17 @@ pub fn default_concurrency() -> usize {
 }
 
 pub fn default_ui() -> UI {
-    if atty::is(atty::Stream::Stdout) { UI::TUI } else { UI::CUI }
+    if atty::is(atty::Stream::Stdout) {
+        UI::TUI
+    } else {
+        UI::CUI
+    }
 }
 
 impl ProjectConfig {
-    pub fn new_multi(dir: &Path) -> anyhow::Result<(ProjectConfig, HashMap<String, ProjectConfig>)> {
+    pub fn new_multi(
+        dir: &Path,
+    ) -> anyhow::Result<(ProjectConfig, HashMap<String, ProjectConfig>)> {
         let dir = dir.to_path_buf();
         let mut root_config = ProjectConfig::find_root(&dir)?;
         root_config.shell.get_or_insert(default_shell());
@@ -95,7 +101,9 @@ impl ProjectConfig {
                 let mut child_config = ProjectConfig::new(dir.join(path).as_path())?;
                 child_config.envs.extend(root_config.envs.clone());
                 child_config.env_files.extend(root_config.env_files.clone());
-                child_config.shell.get_or_insert(root_config.shell.clone().expect("should be default value"));
+                child_config
+                    .shell
+                    .get_or_insert(root_config.shell.clone().expect("should be default value"));
 
                 children.insert(name.clone(), child_config);
             }
@@ -109,25 +117,28 @@ impl ProjectConfig {
     pub fn new(path: &Path) -> anyhow::Result<ProjectConfig> {
         let (file, path) = Self::open_file(&path.join(CONFIG_FILE[0]))
             .or_else(|_| Self::open_file(&path.join(CONFIG_FILE[1])))
-            .with_context(|| format!("cannot open config file ({} or {}) in directory {:?}", CONFIG_FILE[0], CONFIG_FILE[1], path))?;
+            .with_context(|| {
+                format!(
+                    "cannot open config file ({} or {}) in directory {:?}",
+                    CONFIG_FILE[0], CONFIG_FILE[1], path
+                )
+            })?;
         let reader = BufReader::new(file);
         let mut data: ProjectConfig = serde_yaml::from_reader(reader)
             .with_context(|| format!("cannot parse config file {:?} as YAML", path))?;
-        data.dir = path.to_path_buf().parent()
+        data.dir = path
+            .to_path_buf()
+            .parent()
             .map(|p| p.to_path_buf())
             .with_context(|| format!("cannot get the directory of {:?}", path))?;
 
         Ok(data)
     }
-    
+
     fn open_file(path: &Path) -> Result<(File, PathBuf), io::Error> {
         match File::open(path) {
-            Ok(file) => {
-                Ok((file, path.to_owned()))
-            },
-            Err(e) => {
-                Err(e)
-            }
+            Ok(file) => Ok((file, path.to_owned())),
+            Err(e) => Err(e),
         }
     }
 
@@ -144,7 +155,9 @@ impl ProjectConfig {
                     }
                 }
                 Err(err) => {
-                    if err.downcast_ref::<io::Error>().map(|e| e.kind()) == Some(io::ErrorKind::NotFound) {
+                    if err.downcast_ref::<io::Error>().map(|e| e.kind())
+                        == Some(io::ErrorKind::NotFound)
+                    {
                         continue; // Continue to the next ancestor directory if the config file is not found
                     } else {
                         return Err(err); // Return error if any other error
@@ -199,7 +212,7 @@ pub struct TaskConfig {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ShellConfig {
     pub command: String,
-    
+
     #[serde(default)]
     pub args: Vec<String>,
 }
@@ -208,7 +221,7 @@ pub struct ShellConfig {
 pub struct LogConfig {
     #[serde(default = "default_log_level")]
     pub level: String,
-    pub file: Option<String>
+    pub file: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -236,4 +249,3 @@ pub struct ExecReadinessProbeConfig {
 pub struct ServiceConfig {
     pub readiness_probe: Option<ReadinessProbeConfig>,
 }
-

@@ -1,6 +1,5 @@
 use crate::event::TaskResult;
 
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum TaskStatus {
     Planned(TaskPlan),
@@ -10,14 +9,11 @@ pub enum TaskStatus {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TaskPlan {
-    pub is_target: bool
+    pub is_target: bool,
 }
 
 impl TaskPlan {
     pub fn new(is_target: bool) -> Self {
-        Self {
-            is_target
-        }
+        Self { is_target }
     }
 }
-

@@ -1,14 +1,14 @@
-mod config;
-mod project;
-mod graph;
 mod cli;
-mod signal;
-mod ui;
-mod tui;
-mod process;
-mod event;
+mod config;
 mod cui;
 mod error;
+mod event;
+mod graph;
+mod process;
+mod project;
+mod signal;
+mod tui;
+mod ui;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

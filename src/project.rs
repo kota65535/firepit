@@ -1,9 +1,9 @@
 use crate::config::ProjectConfig;
-use crate::event::{TaskEvent, TaskEventReceiver, TaskEventSender, TaskResult};
+use crate::event::{TaskEventReceiver, TaskEventSender, TaskResult};
 use crate::graph::TaskGraph;
 use crate::process::{ChildExit, Command, ProcessManager};
 use crate::signal::{get_signal, SignalHandler};
-use crate::tui::{AppEventReceiver, AppEventSender};
+use crate::tui::AppEventSender;
 use anyhow::anyhow;
 use futures::future::{join, join_all};
 use log::{debug, info};
@@ -21,7 +21,7 @@ pub struct TaskRunner {
     pub signal_handler: SignalHandler,
     pub concurrency: usize,
     sender: TaskEventSender,
-    receiver: TaskEventReceiver
+    receiver: TaskEventReceiver,
 }
 
 fn dir_contains(a: &PathBuf, b: &PathBuf) -> bool {
@@ -33,15 +33,16 @@ fn dir_contains(a: &PathBuf, b: &PathBuf) -> bool {
     false
 }
 
-
 impl TaskRunner {
-    pub fn new(root: &ProjectConfig,
-               children: &HashMap<String, ProjectConfig>,
-               target_tasks: &Vec<String>,
-               dir: PathBuf,
+    pub fn new(
+        root: &ProjectConfig,
+        children: &HashMap<String, ProjectConfig>,
+        target_tasks: &Vec<String>,
+        dir: PathBuf,
     ) -> anyhow::Result<TaskRunner> {
         let root_project = Project::new(&"".to_string(), root);
-        let child_projects = children.iter()
+        let child_projects = children
+            .iter()
             .map(|(k, v)| (k.clone(), Project::new(k, v)))
             .collect::<HashMap<_, _>>();
 
@@ -51,28 +52,35 @@ impl TaskRunner {
         }
 
         let target_tasks = if root.dir == dir {
-            target_tasks.iter()
-                .flat_map(|t| child_projects.values()
-                    .map(|p| p.task(t))
-                    .flatten()
-                    .collect::<Vec<_>>())
+            target_tasks
+                .iter()
+                .flat_map(|t| {
+                    child_projects
+                        .values()
+                        .map(|p| p.task(t))
+                        .flatten()
+                        .collect::<Vec<_>>()
+                })
                 .collect::<Vec<Task>>()
         } else if dir_contains(&root.dir, &dir) {
-            target_tasks.iter()
-                .flat_map(|t| child_projects.values()
-                    .filter(|p| dir_contains(&dir, &p.dir))
-                    .map(|p| p.task(t))
-                    .flatten()
-                    .collect::<Vec<_>>())
+            target_tasks
+                .iter()
+                .flat_map(|t| {
+                    child_projects
+                        .values()
+                        .filter(|p| dir_contains(&dir, &p.dir))
+                        .map(|p| p.task(t))
+                        .flatten()
+                        .collect::<Vec<_>>()
+                })
                 .collect::<Vec<Task>>()
         } else {
             Vec::new()
         };
 
         let mut task_graph = TaskGraph::new(&tasks)?;
-        task_graph = task_graph.transitive_closure(&target_tasks.iter()
-            .map(|t| t.name.clone())
-            .collect())?;
+        task_graph = task_graph
+            .transitive_closure(&target_tasks.iter().map(|t| t.name.clone()).collect())?;
         tasks = task_graph.sort()?;
 
         debug!("Task graph:\n{:?}", task_graph);
@@ -98,10 +106,10 @@ impl TaskRunner {
             manager,
             concurrency: root_project.concurrency,
             sender: TaskEventSender::new(tx),
-            receiver: TaskEventReceiver::new(rx)
+            receiver: TaskEventReceiver::new(rx),
         })
     }
-    
+
     pub fn sender(&self) -> TaskEventSender {
         self.sender.clone()
     }
@@ -110,13 +118,22 @@ impl TaskRunner {
         if let Some(pane_size) = app_tx.pane_size().await {
             self.manager.set_pty_size(pane_size.rows, pane_size.cols);
         }
-        
-        let target_names = self.target_tasks.iter().map(|t| t.name.clone()).collect::<Vec<_>>();
-        let dep_names = self.tasks.iter().map(|t| t.name.clone()).filter(|t|target_names.contains(&t)).collect::<Vec<_>>();
-        
+
+        let target_names = self
+            .target_tasks
+            .iter()
+            .map(|t| t.name.clone())
+            .collect::<Vec<_>>();
+        let dep_names = self
+            .tasks
+            .iter()
+            .map(|t| t.name.clone())
+            .filter(|t| target_names.contains(&t))
+            .collect::<Vec<_>>();
+
         // Run visitor
         let (mut task_rx, cancel_tx, visitor_future) = self.task_graph.visit(self.concurrency)?;
-        
+
         if let Some(subscriber) = self.signal_handler.subscribe() {
             tokio::spawn(async move {
                 let _guard = subscriber.listen().await;
@@ -134,13 +151,16 @@ impl TaskRunner {
                     info!("Skipping task {:?}", task.name);
                     app_tx.end_task(task.name, TaskResult::Skipped);
                     callback.send(TaskResult::Skipped).ok();
-                    return Ok(())
+                    return Ok(());
                 }
                 let mut args = Vec::new();
                 args.extend(task.shell_args.clone());
                 args.push(task.command.clone());
-                info!("Starting task {:?}:\nshell: {:?} {:?}\ncommand: {:?}\nenvs: {:?}", task.name, task.shell, &task.shell_args, task.command, task.envs);
-                
+                info!(
+                    "Starting task {:?}:\nshell: {:?} {:?}\ncommand: {:?}\nenvs: {:?}",
+                    task.name, task.shell, &task.shell_args, task.command, task.envs
+                );
+
                 let cmd = Command::new(task.shell)
                     .args(args)
                     .envs(task.envs)
@@ -151,43 +171,27 @@ impl TaskRunner {
                     Some(Err(e)) => {
                         return Err(anyhow!("unable to spawn task {:?}: {:?}", task.name, e));
                     }
-                    _ => {
-                        return Ok(())
-                    }
+                    _ => return Ok(()),
                 };
                 app_tx.start_task(task.name.clone());
-                
+
                 if let Some(stdin) = process.stdin() {
                     app_tx.set_stdin(task.name.clone(), stdin);
                 }
-                
+
                 let result = match process.wait_with_piped_outputs(app_tx.clone()).await {
-                    Ok(Some(exit_status)) => {
-                        match exit_status {
-                            ChildExit::Finished(Some(code)) if code == 0 => {
-                                TaskResult::Success
-                            }
-                            ChildExit::Finished(_) => {
-                                TaskResult::Failure
-                            }
-                            ChildExit::Killed | ChildExit::KilledExternal => {
-                                TaskResult::Stopped
-                            }
-                            ChildExit::Failed => {
-                                TaskResult::Failure
-                            }
-                        }
+                    Ok(Some(exit_status)) => match exit_status {
+                        ChildExit::Finished(Some(code)) if code == 0 => TaskResult::Success,
+                        ChildExit::Finished(_) => TaskResult::Failure,
+                        ChildExit::Killed | ChildExit::KilledExternal => TaskResult::Stopped,
+                        ChildExit::Failed => TaskResult::Failure,
                     },
-                    Err(e) => {
-                        return Err(anyhow!(e.to_string()))
-                    }
-                    Ok(None) => {
-                        return Err(anyhow!("unable to determine why child exited"))
-                    }
+                    Err(e) => return Err(anyhow!(e.to_string())),
+                    Ok(None) => return Err(anyhow!("unable to determine why child exited")),
                 };
                 // info!("Task {:?} finished. reason: {:?}", task.name, exit_status);
                 app_tx.end_task(task.name.clone(), result.clone());
-                
+
                 callback.send(result);
                 Ok(())
             }));
@@ -200,7 +204,6 @@ impl TaskRunner {
         Ok(())
     }
 }
-
 
 #[derive(Clone, Debug)]
 pub struct Project {
@@ -217,12 +220,14 @@ impl Project {
             name: name.to_owned(),
             tasks: Task::from_project_config(name, &config),
             dir: config.dir,
-            concurrency: config.concurrency
+            concurrency: config.concurrency,
         }
     }
 
     pub fn task(&self, name: &String) -> Option<Task> {
-        self.tasks.get(&Task::qualified_name(&self.name, name)).cloned()
+        self.tasks
+            .get(&Task::qualified_name(&self.name, name))
+            .cloned()
     }
 }
 
@@ -241,33 +246,56 @@ pub struct Task {
     pub shell_args: Vec<String>,
 }
 
-
 impl Task {
-    pub fn from_project_config(project_name: &str, config: &ProjectConfig) -> HashMap<String, Task> {
+    pub fn from_project_config(
+        project_name: &str,
+        config: &ProjectConfig,
+    ) -> HashMap<String, Task> {
         let mut ret = HashMap::new();
         for (task_name, task_config) in config.tasks.iter() {
             let task_config = task_config.clone();
             let task_name = Task::qualified_name(project_name, task_name);
-            ret.insert(task_name.clone(), Task {
-                name: task_name.clone(),
-                command: task_config.command,
-                envs: config.envs.clone().into_iter().chain(task_config.envs).collect(),
-                depends_on: task_config.depends_on.iter()
-                    .map(|s| Task::qualified_name(&project_name, s))
-                    .collect(),
-                inputs: task_config.inputs,
-                outputs: task_config.outputs,
-                is_service: task_config.service.is_some(),
-                working_dir: task_config.working_dir.map(|t| {
-                    if t.is_absolute() {
-                        t
-                    } else {
-                        config.dir.join(t)
-                    }
-                }).unwrap_or(config.dir.clone()),
-                shell: task_config.shell.clone().unwrap_or(config.shell.clone().expect("should be set")).command,
-                shell_args: task_config.shell.clone().unwrap_or(config.shell.clone().expect("should be set")).args,
-            });
+            ret.insert(
+                task_name.clone(),
+                Task {
+                    name: task_name.clone(),
+                    command: task_config.command,
+                    envs: config
+                        .envs
+                        .clone()
+                        .into_iter()
+                        .chain(task_config.envs)
+                        .collect(),
+                    depends_on: task_config
+                        .depends_on
+                        .iter()
+                        .map(|s| Task::qualified_name(&project_name, s))
+                        .collect(),
+                    inputs: task_config.inputs,
+                    outputs: task_config.outputs,
+                    is_service: task_config.service.is_some(),
+                    working_dir: task_config
+                        .working_dir
+                        .map(|t| {
+                            if t.is_absolute() {
+                                t
+                            } else {
+                                config.dir.join(t)
+                            }
+                        })
+                        .unwrap_or(config.dir.clone()),
+                    shell: task_config
+                        .shell
+                        .clone()
+                        .unwrap_or(config.shell.clone().expect("should be set"))
+                        .command,
+                    shell_args: task_config
+                        .shell
+                        .clone()
+                        .unwrap_or(config.shell.clone().expect("should be set"))
+                        .args,
+                },
+            );
         }
         ret
     }

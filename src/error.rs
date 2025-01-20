@@ -3,7 +3,7 @@ use std::fmt;
 
 #[derive(Debug)]
 pub struct MultiError {
-    errors: Vec<anyhow::Error>
+    errors: Vec<anyhow::Error>,
 }
 
 impl MultiError {

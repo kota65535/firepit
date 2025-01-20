@@ -1,5 +1,5 @@
 // use std::collections::HashSet;
-// 
+//
 // #[derive(Debug, Clone)]
 // pub struct SearchResults {
 //     query: String,
@@ -10,7 +10,7 @@
 //     tasks: Vec<String>,
 //     matches: HashSet<String>,
 // }
-// 
+//
 // impl SearchResults {
 //     pub fn new(tasks: Vec<String>) -> Self {
 //         Self {
@@ -19,14 +19,14 @@
 //             matches: HashSet::new(),
 //         }
 //     }
-// 
-// 
+//
+//
 //     /// Updates the query and the matches
 //     pub fn modify_query(&mut self, modification: impl FnOnce(&mut String)) {
 //         modification(&mut self.query);
 //         self.update_matches();
 //     }
-// 
+//
 //     fn update_matches(&mut self) {
 //         self.matches.clear();
 //         if self.query.is_empty() {
@@ -36,18 +36,18 @@
 //             self.matches.insert(task.clone());
 //         }
 //     }
-// 
+//
 //     /// Given an iterator it returns the first task that is in the search
 //     /// results
 //     pub fn first_match<'a>(&self, mut tasks: impl Iterator<Item = &'a str>) -> Option<&'a str> {
 //         tasks.find(|task| self.matches.contains(*task))
 //     }
-// 
+//
 //     /// Returns if there are any matches for the query
 //     pub fn has_matches(&self) -> bool {
 //         !self.matches.is_empty()
 //     }
-// 
+//
 //     /// Returns query
 //     pub fn query(&self) -> &str {
 //         &self.query

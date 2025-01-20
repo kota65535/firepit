@@ -1,8 +1,4 @@
-use super::{
-    app::FRAME_RATE,
-    event::PaneSize,
-    Event,
-};
+use super::{app::FRAME_RATE, event::PaneSize, Event};
 use crate::event::TaskResult;
 use std::io;
 use std::io::Write;
@@ -27,7 +23,6 @@ pub fn app_event_channel() -> (AppEventSender, AppEventReceiver) {
     (AppEventSender::new(tx), AppEventReceiver::new(rx))
 }
 
-
 impl AppEventSender {
     pub fn new(tx: mpsc::UnboundedSender<Event>) -> Self {
         let tick_sender = tx.clone();
@@ -46,12 +41,12 @@ impl AppEventSender {
             logs: Default::default(),
         }
     }
-    
+
     pub fn with_name(&mut self, name: &str) -> Self {
         self.name = name.to_string();
         self.to_owned()
     }
-    
+
     pub fn start_task(&self, task: String) {
         self.tx.send(Event::StartTask { task }).ok();
     }
@@ -61,11 +56,7 @@ impl AppEventSender {
     }
 
     pub fn status(&self, task: String, status: String) {
-        self.tx.send(Event::Status {
-            task,
-            status,
-        })
-            .ok();
+        self.tx.send(Event::Status { task, status }).ok();
     }
 
     pub fn set_stdin(&self, task: String, stdin: Box<dyn std::io::Write + Send>) {
@@ -83,7 +74,8 @@ impl AppEventSender {
     }
 
     pub fn output(&self, task: String, output: Vec<u8>) -> anyhow::Result<()> {
-        self.tx.send(Event::TaskOutput { task, output })
+        self.tx
+            .send(Event::TaskOutput { task, output })
             .map_err(|err| anyhow::anyhow!(err.to_string()))
     }
 
@@ -118,9 +110,7 @@ impl Write for AppEventSender {
 
 impl AppEventReceiver {
     pub fn new(rx: mpsc::UnboundedReceiver<Event>) -> Self {
-        Self {
-            rx
-        }
+        Self { rx }
     }
 
     pub async fn recv(&mut self) -> Option<Event> {

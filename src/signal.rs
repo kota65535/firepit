@@ -1,12 +1,11 @@
+use futures::{stream::FuturesUnordered, StreamExt};
+use log::{debug, warn};
+use nix::sys::signal::Signal;
 use std::{
     fmt::Debug,
     future::Future,
     sync::{Arc, Mutex},
 };
-use anyhow::Context;
-use futures::{stream::FuturesUnordered, StreamExt};
-use log::{debug, info, warn};
-use nix::sys::signal::Signal;
 use tokio::sync::{mpsc, oneshot};
 
 /// SignalHandler provides a mechanism to subscribe to a future and get alerted

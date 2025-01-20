@@ -1,10 +1,10 @@
+use itertools::Itertools;
+use std::path::PathBuf;
 use std::{
     collections::BTreeMap,
     ffi::{OsStr, OsString},
     process::Stdio,
 };
-use std::path::PathBuf;
-use itertools::Itertools;
 
 /// A command builder that can be used to build both regular
 /// child processes and ones spawned hooked up to a PTY

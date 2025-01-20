@@ -9,7 +9,6 @@ use std::{borrow::Cow, env, f64::consts::PI};
 use console::{Style, StyledObject};
 use lazy_static::lazy_static;
 
-
 #[macro_export]
 macro_rules! color {
     ($ui:expr, $color:expr, $format_string:expr $(, $arg:expr)*) => {{
@@ -158,7 +157,6 @@ impl ColorConfig {
         Cow::Owned(out.join(""))
     }
 }
-
 
 lazy_static! {
     pub static ref GREY: Style = Style::new().dim();
