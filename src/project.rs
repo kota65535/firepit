@@ -1,5 +1,5 @@
 use crate::config::ProjectConfig;
-use crate::event::{TaskEventReceiver, TaskEventSender, TaskResult};
+use crate::event::{TaskResult};
 use crate::graph::TaskGraph;
 use crate::process::{ChildExit, Command, ProcessManager};
 use crate::signal::{get_signal, SignalHandler};
@@ -10,7 +10,6 @@ use log::{debug, info};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
-use tokio::sync::mpsc;
 
 #[derive(Debug)]
 pub struct TaskRunner {
@@ -20,8 +19,6 @@ pub struct TaskRunner {
     pub manager: ProcessManager,
     pub signal_handler: SignalHandler,
     pub concurrency: usize,
-    sender: TaskEventSender,
-    receiver: TaskEventReceiver,
 }
 
 fn dir_contains(a: &PathBuf, b: &PathBuf) -> bool {
@@ -96,8 +93,6 @@ impl TaskRunner {
             });
         }
 
-        let (tx, rx) = mpsc::unbounded_channel();
-
         Ok(TaskRunner {
             tasks,
             target_tasks,
@@ -105,31 +100,13 @@ impl TaskRunner {
             signal_handler,
             manager,
             concurrency: root_project.concurrency,
-            sender: TaskEventSender::new(tx),
-            receiver: TaskEventReceiver::new(rx),
         })
-    }
-
-    pub fn sender(&self) -> TaskEventSender {
-        self.sender.clone()
     }
 
     pub async fn run(&mut self, app_tx: AppEventSender) -> anyhow::Result<()> {
         if let Some(pane_size) = app_tx.pane_size().await {
             self.manager.set_pty_size(pane_size.rows, pane_size.cols);
         }
-
-        let target_names = self
-            .target_tasks
-            .iter()
-            .map(|t| t.name.clone())
-            .collect::<Vec<_>>();
-        let dep_names = self
-            .tasks
-            .iter()
-            .map(|t| t.name.clone())
-            .filter(|t| target_names.contains(&t))
-            .collect::<Vec<_>>();
 
         // Run visitor
         let (mut task_rx, cancel_tx, visitor_future) = self.task_graph.visit(self.concurrency)?;
@@ -192,7 +169,7 @@ impl TaskRunner {
                 // info!("Task {:?} finished. reason: {:?}", task.name, exit_status);
                 app_tx.end_task(task.name.clone(), result.clone());
 
-                callback.send(result);
+                callback.send(result).ok();
                 Ok(())
             }));
         }

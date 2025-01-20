@@ -55,10 +55,6 @@ impl AppEventSender {
         self.tx.send(Event::EndTask { task, result }).ok();
     }
 
-    pub fn status(&self, task: String, status: String) {
-        self.tx.send(Event::Status { task, status }).ok();
-    }
-
     pub fn set_stdin(&self, task: String, stdin: Box<dyn std::io::Write + Send>) {
         self.tx.send(Event::SetStdin { task, stdin }).ok();
     }

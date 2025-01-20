@@ -13,10 +13,6 @@ pub enum Event {
         task: String,
         result: TaskResult,
     },
-    Status {
-        task: String,
-        status: String,
-    },
     PaneSizeQuery(oneshot::Sender<PaneSize>),
     Stop(oneshot::Sender<()>),
     // Stop initiated by the TUI itself
@@ -35,24 +31,12 @@ pub enum Event {
     Input {
         bytes: Vec<u8>,
     },
-    UpdateTasks {
-        tasks: Vec<String>,
-    },
     Mouse(crossterm::event::MouseEvent),
     Resize {
         rows: u16,
         cols: u16,
     },
     ToggleSidebar,
-    SearchEnter,
-    SearchExit {
-        restore_scroll: bool,
-    },
-    SearchScroll {
-        direction: Direction,
-    },
-    SearchEnterChar(char),
-    SearchBackspace,
 }
 
 pub enum Direction {

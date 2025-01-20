@@ -1,4 +1,3 @@
-use crate::event::TaskEventSender;
 use crate::tui::event::Event;
 use crate::tui::{AppEventReceiver, AppEventSender};
 use crate::ui::color_selector::ColorSelector;
@@ -47,7 +46,7 @@ impl CuiApp {
             .insert(prefix.to_string(), output_client);
     }
 
-    pub async fn handle_events(&mut self, task_tx: TaskEventSender) -> anyhow::Result<()> {
+    pub async fn handle_events(&mut self) -> anyhow::Result<()> {
         while let Some(event) = self.receiver.recv().await {
             match event {
                 Event::StartTask { task } => self.register_output_client(&task),

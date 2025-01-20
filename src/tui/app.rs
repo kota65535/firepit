@@ -1,14 +1,13 @@
-use crate::event::{TaskEventSender, TaskResult};
+use crate::event::{TaskResult};
 use anyhow::{anyhow, Context};
 use indexmap::IndexMap;
 use log::debug;
 use ratatui::{
-    backend::{Backend, CrosstermBackend},
+    backend::{CrosstermBackend},
     layout::{Constraint, Layout},
     widgets::TableState,
     Frame, Terminal,
 };
-use std::io::Read;
 use std::{
     io::{self, Stdout, Write},
     time::Duration,
@@ -133,7 +132,6 @@ impl TuiApp {
         stdout.flush()?;
         crossterm::execute!(
             stdout,
-            crossterm::event::EnableMouseCapture,
             crossterm::terminal::EnterAlternateScreen
         )?;
         let backend = CrosstermBackend::new(stdout);
@@ -149,10 +147,10 @@ impl TuiApp {
         Ok(terminal)
     }
 
-    pub async fn run(&mut self, task_tx: TaskEventSender) -> anyhow::Result<()> {
+    pub async fn run(&mut self) -> anyhow::Result<()> {
         let (result, callback) = match self.run_inner().await {
             Ok(callback) => (Ok(()), callback),
-            Err(err) => (Err(anyhow!("Tui shutting down: {}", err)), None),
+            Err(err) => (Err(anyhow::Error::from(err)), None)
         };
         self.cleanup(callback)
     }
@@ -251,7 +249,6 @@ impl TuiAppState {
         let has_selection = self.active_task()?.has_selection();
         Ok(InputOptions {
             focus: &self.focus,
-            has_selection,
         })
     }
 
