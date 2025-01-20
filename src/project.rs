@@ -3,7 +3,7 @@ use crate::event::{TaskResult};
 use crate::graph::TaskGraph;
 use crate::process::{ChildExit, Command, ProcessManager};
 use crate::signal::{get_signal, SignalHandler};
-use crate::tui::AppEventSender;
+use crate::tui::EventSender;
 use anyhow::anyhow;
 use futures::future::{join, join_all};
 use log::{debug, info};
@@ -103,7 +103,7 @@ impl TaskRunner {
         })
     }
 
-    pub async fn run(&mut self, app_tx: AppEventSender) -> anyhow::Result<()> {
+    pub async fn run(&mut self, app_tx: EventSender) -> anyhow::Result<()> {
         if let Some(pane_size) = app_tx.pane_size().await {
             self.manager.set_pty_size(pane_size.rows, pane_size.cols);
         }

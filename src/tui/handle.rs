@@ -5,25 +5,18 @@ use std::io::Write;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
 
-/// Struct for sending app events to TUI rendering
 #[derive(Debug, Clone)]
-pub struct AppEventSender {
+pub struct EventSender {
     tx: mpsc::UnboundedSender<Event>,
     name: String,
     logs: Arc<Mutex<Vec<u8>>>,
 }
 
-/// Struct for receiving app events
-pub struct AppEventReceiver {
+pub struct EventReceiver {
     rx: mpsc::UnboundedReceiver<Event>,
 }
 
-pub fn app_event_channel() -> (AppEventSender, AppEventReceiver) {
-    let (tx, rx) = mpsc::unbounded_channel();
-    (AppEventSender::new(tx), AppEventReceiver::new(rx))
-}
-
-impl AppEventSender {
+impl EventSender {
     pub fn new(tx: mpsc::UnboundedSender<Event>) -> Self {
         let tick_sender = tx.clone();
         tokio::spawn(async move {
@@ -85,7 +78,7 @@ impl AppEventSender {
     }
 }
 
-impl Write for AppEventSender {
+impl Write for EventSender {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let task = self.name.clone();
         {
@@ -95,7 +88,8 @@ impl Write for AppEventSender {
                 .extend_from_slice(buf);
         }
 
-        self.output(task, buf.to_vec());
+        self.output(task, buf.to_vec())
+            .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
         Ok(buf.len())
     }
 
@@ -104,7 +98,7 @@ impl Write for AppEventSender {
     }
 }
 
-impl AppEventReceiver {
+impl EventReceiver {
     pub fn new(rx: mpsc::UnboundedReceiver<Event>) -> Self {
         Self { rx }
     }

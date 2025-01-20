@@ -1,5 +1,5 @@
 use crate::tui::event::Event;
-use crate::tui::{AppEventReceiver, AppEventSender};
+use crate::tui::{EventReceiver, EventSender};
 use crate::ui::color_selector::ColorSelector;
 use crate::ui::lib::ColorConfig;
 use crate::ui::output::{OutputClient, OutputClientBehavior, OutputSink};
@@ -13,8 +13,8 @@ use tokio::sync::mpsc;
 pub struct CuiApp {
     color_selector: ColorSelector,
     output_clients: Arc<RwLock<HashMap<String, OutputClient<PrefixedWriter<Stdout>>>>>,
-    sender: AppEventSender,
-    receiver: AppEventReceiver,
+    sender: EventSender,
+    receiver: EventReceiver,
 }
 
 impl CuiApp {
@@ -23,8 +23,8 @@ impl CuiApp {
         Self {
             color_selector: ColorSelector::default(),
             output_clients: Arc::new(RwLock::new(HashMap::new())),
-            sender: AppEventSender::new(tx),
-            receiver: AppEventReceiver::new(rx),
+            sender: EventSender::new(tx),
+            receiver: EventReceiver::new(rx),
         }
     }
 
@@ -66,7 +66,7 @@ impl CuiApp {
         Ok(())
     }
 
-    pub fn sender(&self) -> AppEventSender {
+    pub fn sender(&self) -> EventSender {
         self.sender.clone()
     }
 }

@@ -19,7 +19,7 @@ use tokio::{
 
 use super::{
     event::{Direction, PaneSize},
-    input, AppEventReceiver, AppEventSender, Event, InputOptions, SizeInfo, TaskTable,
+    input, EventReceiver, EventSender, Event, InputOptions, SizeInfo, TaskTable,
     TerminalPane,
 };
 use crate::tui::task::{TaskPlan, TaskStatus};
@@ -36,9 +36,9 @@ pub enum LayoutSections {
 pub struct TuiApp {
     terminal: Terminal<CrosstermBackend<Stdout>>,
     crossterm_rx: mpsc::Receiver<crossterm::event::Event>,
-    sender: AppEventSender,
+    sender: EventSender,
     state: TuiAppState,
-    receiver: AppEventReceiver,
+    receiver: EventReceiver,
 }
 
 pub struct TuiAppState {
@@ -54,7 +54,7 @@ pub struct TuiAppState {
 }
 
 impl TuiApp {
-    pub fn sender(&self) -> AppEventSender {
+    pub fn sender(&self) -> EventSender {
         self.sender.clone()
     }
 
@@ -109,8 +109,8 @@ impl TuiApp {
         Ok(Self {
             terminal,
             crossterm_rx,
-            sender: AppEventSender::new(tx),
-            receiver: AppEventReceiver::new(rx),
+            sender: EventSender::new(tx),
+            receiver: EventReceiver::new(rx),
             state: TuiAppState {
                 size,
                 task_outputs,

@@ -11,7 +11,7 @@ mod task;
 mod term_output;
 
 use event::Event;
-pub use handle::{AppEventReceiver, AppEventSender};
+pub use handle::{EventReceiver, EventSender};
 use input::InputOptions;
 pub use pane::TerminalPane;
 use size::SizeInfo;
