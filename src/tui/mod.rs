@@ -1,4 +1,4 @@
-mod app;
+pub mod app;
 mod clipboard;
 mod debouncer;
 pub mod event;
@@ -12,7 +12,6 @@ mod task;
 mod term_output;
 mod state;
 
-pub use app::{run_app};
 use clipboard::copy_to_clipboard;
 use debouncer::Debouncer;
 use event::{Event};

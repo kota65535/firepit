@@ -44,6 +44,12 @@ pub enum LayoutSections {
 }
 
 pub struct TuiApp {
+    terminal: Terminal<CrosstermBackend<Stdout>>,
+    crossterm_rx: mpsc::Receiver<crossterm::event::Event>,
+    state: TuiAppState
+}
+
+pub struct TuiAppState {
     size: SizeInfo,
     task_outputs: IndexMap<String, TerminalOutput>,
     task_statuses: IndexMap<String, TaskStatus>,
@@ -56,8 +62,15 @@ pub struct TuiApp {
 }
 
 impl TuiApp {
-    pub fn new(rows: u16, cols: u16, mut target_tasks: Vec<String>, mut dep_tasks: Vec<String>) -> Self {
-        let size = SizeInfo::new(rows, cols, target_tasks.iter().chain(dep_tasks.iter()).map(|s| s.as_str()));
+    pub fn new(mut target_tasks: Vec<String>, mut dep_tasks: Vec<String>) -> anyhow::Result<Self> {
+        
+        let terminal = Self::setup_terminal()?;
+        let rect = terminal.size()?;
+
+        let (crossterm_tx, crossterm_rx) = mpsc::channel(1024);
+        input::start_crossterm_stream(crossterm_tx);
+
+        let size = SizeInfo::new(rect.height, rect.width, target_tasks.iter().chain(dep_tasks.iter()).map(|s| s.as_str()));
 
         target_tasks.sort_unstable();
         dep_tasks.sort_unstable();
@@ -75,22 +88,170 @@ impl TuiApp {
         let task_statuses = target_tasks.iter()
             .map(|t| (t.clone(), TaskStatus::Planned(TaskPlan::new(true))))
             .chain(dep_tasks.iter()
-                    .map(|t| (t.clone(), TaskStatus::Planned(TaskPlan::new(false)))))
+                .map(|t| (t.clone(), TaskStatus::Planned(TaskPlan::new(false)))))
             .collect::<IndexMap<_, _>>();
-        
-        Self {
-            size,
-            task_outputs,
-            task_statuses,
-            done: false,
-            focus: LayoutSections::TaskList,
-            scroll: TableState::default().with_selected(selected_task_index),
-            selected_task_index,
-            has_sidebar: true,
-            has_user_scrolled: has_user_interacted,
-        }
+
+        Ok(Self {
+            terminal,
+            crossterm_rx,
+            state: TuiAppState {
+                size,
+                task_outputs,
+                task_statuses,
+                done: false,
+                focus: LayoutSections::TaskList,
+                scroll: TableState::default().with_selected(selected_task_index),
+                selected_task_index,
+                has_sidebar: true,
+                has_user_scrolled: has_user_interacted,
+            }
+        })
     }
 
+    fn setup_terminal() -> anyhow::Result<Terminal<CrosstermBackend<Stdout>>> {
+        crossterm::terminal::enable_raw_mode()?;
+        let mut stdout = io::stdout();
+        // Ensure all pending writes are flushed before we switch to alternative screen
+        stdout.flush()?;
+        crossterm::execute!(
+        stdout,
+        crossterm::event::EnableMouseCapture,
+        crossterm::terminal::EnterAlternateScreen
+    )?;
+        let backend = CrosstermBackend::new(stdout);
+
+        let mut terminal = Terminal::with_options(
+            backend,
+            ratatui::TerminalOptions {
+                viewport: ratatui::Viewport::Fullscreen,
+            },
+        )?;
+        terminal.hide_cursor()?;
+
+        Ok(terminal)
+    }
+
+    pub async fn run(&mut self, task_receiver: TaskEventReceiver, receiver: TuiReceiver) -> anyhow::Result<()> {
+        let (result, callback) = match self.run_inner(task_receiver, receiver).await {
+                Ok(callback) => (Ok(()), callback),
+                Err(err) => {
+                    (Err(anyhow!("Tui shutting down: {}" , err)), None)
+                }
+            };
+        self.cleanup(callback)
+    }
+    
+    pub async fn run_inner(&mut self, 
+        mut task_receiver: TaskEventReceiver,
+        mut receiver: TuiReceiver) -> anyhow::Result<Option<oneshot::Sender<()>>> {
+
+        self.terminal.draw(|f| { self.state.view(f) })?;
+
+        let mut last_render = Instant::now();
+        let mut resize_debouncer = Debouncer::new(RESIZE_DEBOUNCE_DELAY);
+        let mut callback = None;
+        let mut needs_rerender = true;
+        while let Some(event) = self.poll(&mut receiver, &mut task_receiver).await {
+            // If we only receive ticks, then there's been no state change so no update
+            // needed
+            if !matches!(event, Event::Tick) {
+                needs_rerender = true;
+            }
+            let mut event = Some(event);
+            let mut resize_event = None;
+            if matches!(event, Some(Event::Resize { .. })) {
+                resize_event = resize_debouncer.update(
+                    event
+                        .take()
+                        .expect("we just matched against a present value"),
+                );
+            }
+            if let Some(resize) = resize_event.take().or_else(|| resize_debouncer.query()) {
+                // If we got a resize event, make sure to update ratatui backend.
+                self.terminal.autoresize()?;
+                self.state.update(resize)?;
+            }
+            if let Some(event) = event {
+                callback = self.state.update(event)?;
+                if self.state.done {
+                    break;
+                }
+                if FRAME_RATE <= last_render.elapsed() && needs_rerender {
+                    self.terminal.draw(|f| self.state.view(f))?;
+                    last_render = Instant::now();
+                    needs_rerender = false;
+                }
+            }
+        }
+
+        Ok(callback)
+    }
+
+
+    /// Blocking poll for events, will only return None if app handle has been
+    /// dropped
+    async fn poll<'a>(&mut self, receiver: &mut TuiReceiver, task_receiver: &mut TaskEventReceiver) -> Option<Event> {
+        let input_closed = self.crossterm_rx.is_closed();
+
+        if input_closed {
+            receiver.recv().await
+        } else {
+            let mut event = None;
+            loop {
+                tokio::select! {
+                e = self.crossterm_rx.recv() => {
+                    event = e.and_then(|e| self.state.input_options().unwrap().handle_crossterm_event(e));
+                }
+                e = receiver.recv() => {
+                    event = e;
+                }
+                e = task_receiver.recv() => {
+                    event = e.and_then(|e| {
+                        match e {
+                            TaskEvent::Start { task} => {
+                                Some(Event::StartTask { task })
+                            }
+                            TaskEvent::Output { task, output } => {
+                                Some(Event::TaskOutput { task, output })
+                            }
+                            TaskEvent::SetStdin { task, stdin} => {
+                                Some(Event::SetStdin { task, stdin })
+                            }
+                            TaskEvent::Finish { task, result } => {
+                                Some(Event::EndTask { task, result })
+                            }
+                            _ => None
+                        }
+                    })
+                }
+            }
+                if event.is_some() {
+                    break;
+                }
+            }
+            event
+        }
+    }
+    
+    fn cleanup(&mut self, callback: Option<oneshot::Sender<()>>) -> anyhow::Result<()> {
+        self.terminal.clear()?;
+        crossterm::execute!(
+        self.terminal.backend_mut(),
+        crossterm::event::DisableMouseCapture,
+        crossterm::terminal::LeaveAlternateScreen,
+    )?;
+        self.state.persist_tasks()?;
+        crossterm::terminal::disable_raw_mode()?;
+        self.terminal.show_cursor()?;
+        // We can close the channel now that terminal is back restored to a normal state
+        drop(callback);
+        Ok(())
+    }
+}
+
+
+impl TuiAppState {
+    
     pub fn active_task(&self) -> anyhow::Result<&TerminalOutput> {
         self.nth_task(self.selected_task_index)
     }
@@ -419,7 +580,7 @@ impl TuiApp {
     }
 }
 
-impl TuiApp {
+impl TuiAppState {
     /// Insert a stdin to be associated with a task
     pub fn insert_stdin(&mut self, task: &str, stdin: Option<Box<dyn Write + Send>>) -> anyhow::Result<()> {
         let task = self.task_outputs.get_mut(task).with_context(|| format!("{} not found", task))?;
@@ -444,179 +605,7 @@ impl TuiApp {
         task.process(output);
         Ok(())
     }
-}
-
-/// Handle the rendering of the `App` widget based on events received by
-/// `receiver`
-pub async fn run_app(target_tasks: Vec<String>, dep_tasks: Vec<String>, task_receiver: TaskEventReceiver, receiver: TuiReceiver) -> anyhow::Result<()> {
-    let mut terminal = startup()?;
-    let size = terminal.size()?;
-
-    let mut app = TuiApp::new(size.height, size.width, target_tasks, dep_tasks);
-
-    let (crossterm_tx, crossterm_rx) = mpsc::channel(1024);
-    input::start_crossterm_stream(crossterm_tx);
-
-    let (result, callback) =
-        match app.run_app_inner(&mut terminal, task_receiver, receiver, crossterm_rx).await {
-            Ok(callback) => (Ok(()), callback),
-            Err(err) => {
-                (Err(anyhow!("Tui shutting down: {}" , err)), None)
-            }
-        };
-
-    cleanup(terminal, app, callback)?;
-
-    result
-}
-
-
-/// Blocking poll for events, will only return None if app handle has been
-/// dropped
-async fn poll<'a>(
-    input_options: InputOptions<'a>,
-    task_receiver: &mut TaskEventReceiver,
-    receiver: &mut TuiReceiver,
-    crossterm_rx: &mut mpsc::Receiver<crossterm::event::Event>,
-) -> Option<Event> {
-    let input_closed = crossterm_rx.is_closed();
-
-    if input_closed {
-        receiver.recv().await
-    } else {
-        // tokio::select is messing with variable read detection
-        #[allow(unused_assignments)]
-        let mut event = None;
-        loop {
-            tokio::select! {
-                e = crossterm_rx.recv() => {
-                    event = e.and_then(|e| input_options.handle_crossterm_event(e));
-                }
-                e = receiver.recv() => {
-                    event = e;
-                }
-                e = task_receiver.recv() => {
-                    event = e.and_then(|e| {
-                        match e {
-                            TaskEvent::Start { task} => {
-                                Some(Event::StartTask { task })
-                            }
-                            TaskEvent::Output { task, output } => {
-                                Some(Event::TaskOutput { task, output })
-                            }
-                            TaskEvent::SetStdin { task, stdin} => {
-                                Some(Event::SetStdin { task, stdin })
-                            }
-                            TaskEvent::Finish { task, result } => {
-                                Some(Event::EndTask { task, result })
-                            }
-                            _ => None
-                        }
-                    })
-                }
-            }
-            if event.is_some() {
-                break;
-            }
-        }
-        event
-    }
-}
-
-fn startup() -> io::Result<Terminal<CrosstermBackend<Stdout>>> {
-    crossterm::terminal::enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    // Ensure all pending writes are flushed before we switch to alternative screen
-    stdout.flush()?;
-    crossterm::execute!(
-        stdout,
-        crossterm::event::EnableMouseCapture,
-        crossterm::terminal::EnterAlternateScreen
-    )?;
-    let backend = CrosstermBackend::new(stdout);
-
-    let mut terminal = Terminal::with_options(
-        backend,
-        ratatui::TerminalOptions {
-            viewport: ratatui::Viewport::Fullscreen,
-        },
-    )?;
-    terminal.hide_cursor()?;
-
-    Ok(terminal)
-}
-
-/// Restores terminal to expected state
-#[tracing::instrument(skip_all)]
-fn cleanup<B: Backend + Write>(
-    mut terminal: Terminal<B>,
-    mut app: TuiApp,
-    callback: Option<oneshot::Sender<()>>,
-) -> anyhow::Result<()> {
-    terminal.clear()?;
-    crossterm::execute!(
-        terminal.backend_mut(),
-        crossterm::event::DisableMouseCapture,
-        crossterm::terminal::LeaveAlternateScreen,
-    )?;
-    app.persist_tasks()?;
-    crossterm::terminal::disable_raw_mode()?;
-    terminal.show_cursor()?;
-    // We can close the channel now that terminal is back restored to a normal state
-    drop(callback);
-    Ok(())
-}
-
-impl TuiApp {
     
-    async fn run_app_inner<B: Backend + Write>(
-        &mut self,
-        terminal: &mut Terminal<B>,
-        mut task_receiver: TaskEventReceiver,
-        mut receiver: TuiReceiver,
-        mut crossterm_rx: mpsc::Receiver<crossterm::event::Event>,
-    ) -> anyhow::Result<Option<oneshot::Sender<()>>> {
-        // Render initial state to paint the screen
-        terminal.draw(|f| self.view(f))?;
-        let mut last_render = Instant::now();
-        let mut resize_debouncer = Debouncer::new(RESIZE_DEBOUNCE_DELAY);
-        let mut callback = None;
-        let mut needs_rerender = true;
-        while let Some(event) = poll(self.input_options()?, &mut task_receiver, &mut receiver, &mut crossterm_rx).await {
-            // If we only receive ticks, then there's been no state change so no update
-            // needed
-            if !matches!(event, Event::Tick) {
-                needs_rerender = true;
-            }
-            let mut event = Some(event);
-            let mut resize_event = None;
-            if matches!(event, Some(Event::Resize { .. })) {
-                resize_event = resize_debouncer.update(
-                    event
-                        .take()
-                        .expect("we just matched against a present value"),
-                );
-            }
-            if let Some(resize) = resize_event.take().or_else(|| resize_debouncer.query()) {
-                // If we got a resize event, make sure to update ratatui backend.
-                terminal.autoresize()?;
-                self.update(resize)?;
-            }
-            if let Some(event) = event {
-                callback = self.update(event)?;
-                if self.done {
-                    break;
-                }
-                if FRAME_RATE <= last_render.elapsed() && needs_rerender {
-                    terminal.draw(|f| self.view(f))?;
-                    last_render = Instant::now();
-                    needs_rerender = false;
-                }
-            }
-        }
-
-        Ok(callback)
-    }
     fn update(&mut self, event: Event) -> anyhow::Result<Option<oneshot::Sender<()>>> {
         match event {
             Event::StartTask { task } => {
@@ -723,5 +712,5 @@ impl TuiApp {
         }
         Ok(None)
     }
-    
 }
+

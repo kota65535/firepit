@@ -3,7 +3,6 @@ use crate::cui::CuiApp;
 use crate::error::MultiError;
 use crate::project::TaskRunner;
 use crate::tui::handle::app_event_channel;
-use crate::tui::{run_app};
 use anyhow::{anyhow, Context};
 use clap::Parser;
 use log::{info, LevelFilter};
@@ -11,6 +10,7 @@ use std::fs::File;
 use std::path;
 use std::str::FromStr;
 use tokio::task::JoinSet;
+use crate::tui::app::TuiApp;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -84,7 +84,8 @@ pub async fn run() -> anyhow::Result<()> {
             set.spawn(async move { app.handle_events(task_rx).await });
         }
         UI::TUI => {
-            set.spawn(async move { run_app(target_tasks, dep_tasks, task_rx, app_rx).await });
+            let mut app = TuiApp::new(target_tasks, dep_tasks)?;
+            set.spawn(async move { app.run(task_rx, app_rx).await });
         }
     };
 
