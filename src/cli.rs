@@ -13,7 +13,7 @@ use tokio::task::JoinSet;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Args {
-    #[arg(value_parser)]
+    #[arg(required = true)]
     pub tasks: Vec<String>,
 
     // Working directory
