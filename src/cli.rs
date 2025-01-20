@@ -1,5 +1,5 @@
 use crate::config::{ProjectConfig, UI};
-use crate::cui::CuiApp;
+use crate::cui::app::CuiApp;
 use crate::error::MultiError;
 use crate::log::init_logger;
 use crate::project::TaskRunner;

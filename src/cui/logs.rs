@@ -1,10 +1,10 @@
 use anyhow::Context;
+use log::debug;
 use std::path::Path;
 use std::{
     fs::File,
     io::{BufWriter, Write},
 };
-use log::debug;
 
 /// Receives logs and multiplexes them to a log file and/or a prefixed
 /// writer

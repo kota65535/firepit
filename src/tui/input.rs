@@ -1,9 +1,9 @@
+use super::app::LayoutSections;
+use crate::event::Event;
 use crossterm::event::{EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use futures::StreamExt;
-use tokio::{sync::mpsc, task::JoinHandle};
 use log::debug;
-use crate::event::Event;
-use super::app::LayoutSections;
+use tokio::{sync::mpsc, task::JoinHandle};
 
 #[derive(Debug, Clone, Copy)]
 pub struct InputOptions<'a> {

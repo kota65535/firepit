@@ -1,8 +1,8 @@
-use tokio::sync::{mpsc, oneshot};
-use std::io::Write;
-use std::io;
-use std::sync::{Arc, Mutex};
 use crate::tui::app::FRAME_RATE;
+use std::io;
+use std::io::Write;
+use std::sync::{Arc, Mutex};
+use tokio::sync::{mpsc, oneshot};
 
 pub enum Event {
     StartTask {

@@ -1,9 +1,9 @@
-use crate::event::{Event, EventReceiver};
+use crate::cui::color_selector::ColorSelector;
+use crate::cui::lib::ColorConfig;
+use crate::cui::output::{OutputClient, OutputClientBehavior, OutputSink};
+use crate::cui::prefixed::PrefixedWriter;
 use crate::event::EventSender;
-use crate::ui::color_selector::ColorSelector;
-use crate::ui::lib::ColorConfig;
-use crate::ui::output::{OutputClient, OutputClientBehavior, OutputSink};
-use crate::ui::prefixed::PrefixedWriter;
+use crate::event::{Event, EventReceiver};
 use anyhow::Context;
 use std::collections::HashMap;
 use std::io::{stdout, Stdout, Write};

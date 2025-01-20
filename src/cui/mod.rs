@@ -1,3 +1,4 @@
+pub mod app;
 pub mod color_selector;
 pub mod lib;
 pub mod line;

@@ -1,8 +1,8 @@
-use std::fs::File;
-use std::str::FromStr;
+use crate::config::LogConfig;
 use anyhow::Context;
 use log::LevelFilter;
-use crate::config::LogConfig;
+use std::fs::File;
+use std::str::FromStr;
 
 pub fn init_logger(config: &LogConfig) -> anyhow::Result<()> {
     let mut builder = env_logger::Builder::new();
@@ -20,4 +20,3 @@ pub fn init_logger(config: &LogConfig) -> anyhow::Result<()> {
         None => Ok(builder.init()),
     }
 }
-

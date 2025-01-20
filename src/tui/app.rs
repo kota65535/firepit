@@ -1,4 +1,9 @@
+use super::{input, Event, InputOptions, SizeInfo, TaskTable, TerminalPane};
 use crate::event::TaskResult;
+use crate::event::{Direction, PaneSize};
+use crate::event::{EventReceiver, EventSender};
+use crate::tui::task::{TaskPlan, TaskStatus};
+use crate::tui::term_output::TerminalOutput;
 use anyhow::{anyhow, Context};
 use indexmap::IndexMap;
 use log::debug;
@@ -16,14 +21,6 @@ use tokio::{
     sync::{mpsc, oneshot},
     time::Instant,
 };
-use crate::event::{Direction, PaneSize};
-use crate::event::{EventReceiver, EventSender};
-use super::{
-    input, Event, InputOptions, SizeInfo, TaskTable,
-    TerminalPane,
-};
-use crate::tui::task::{TaskPlan, TaskStatus};
-use crate::tui::term_output::TerminalOutput;
 
 pub const FRAME_RATE: Duration = Duration::from_millis(3);
 
@@ -130,10 +127,7 @@ impl TuiApp {
         let mut stdout = io::stdout();
         // Ensure all pending writes are flushed before we switch to alternative screen
         stdout.flush()?;
-        crossterm::execute!(
-            stdout,
-            crossterm::terminal::EnterAlternateScreen
-        )?;
+        crossterm::execute!(stdout, crossterm::terminal::EnterAlternateScreen)?;
         let backend = CrosstermBackend::new(stdout);
 
         let mut terminal = Terminal::with_options(
@@ -150,7 +144,7 @@ impl TuiApp {
     pub async fn run(&mut self) -> anyhow::Result<()> {
         let (result, callback) = match self.run_inner().await {
             Ok(callback) => (Ok(()), callback),
-            Err(err) => (Err(anyhow::Error::from(err)), None)
+            Err(err) => (Err(anyhow::Error::from(err)), None),
         };
         self.cleanup(callback)
     }
@@ -247,9 +241,7 @@ impl TuiAppState {
 
     fn input_options(&self) -> anyhow::Result<InputOptions> {
         let has_selection = self.active_task()?.has_selection();
-        Ok(InputOptions {
-            focus: &self.focus,
-        })
+        Ok(InputOptions { focus: &self.focus })
     }
 
     pub fn nth_task(&self, num: usize) -> anyhow::Result<&TerminalOutput> {

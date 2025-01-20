@@ -24,6 +24,7 @@ use std::{
     time::Duration,
 };
 
+use log::{debug, trace};
 use portable_pty::{native_pty_system, Child as PtyChild, MasterPty as PtyController};
 use tokio::{
     io::{AsyncBufRead, AsyncBufReadExt, BufReader},
@@ -31,7 +32,6 @@ use tokio::{
     process::Command as TokioCommand,
     sync::{mpsc, watch, RwLock},
 };
-use log::{debug, trace};
 
 use super::{Command, PtySize};
 

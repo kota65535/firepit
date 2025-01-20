@@ -1,8 +1,8 @@
 use crate::config::ProjectConfig;
+use crate::event::{EventSender, TaskResult};
 use crate::graph::TaskGraph;
 use crate::process::{ChildExit, Command, ProcessManager};
 use crate::signal::{get_signal, SignalHandler};
-use crate::event::{EventSender, TaskResult};
 use anyhow::anyhow;
 use futures::future::{join, join_all};
 use log::{debug, info};
