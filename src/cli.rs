@@ -1,14 +1,13 @@
-use crate::config::{LogConfig, ProjectConfig, UI};
+use crate::config::{ProjectConfig, UI};
 use crate::cui::CuiApp;
 use crate::error::MultiError;
+use crate::log::init_logger;
 use crate::project::TaskRunner;
 use crate::tui::app::TuiApp;
-use anyhow::{anyhow, Context};
+use anyhow::anyhow;
 use clap::Parser;
-use log::{info, LevelFilter};
-use std::fs::File;
+use log::info;
 use std::path;
-use std::str::FromStr;
 use tokio::task::JoinSet;
 
 #[derive(Parser, Debug)]
@@ -20,23 +19,6 @@ pub struct Args {
     // Working directory
     #[arg(short, long, default_value = ".")]
     pub dir: String,
-}
-
-pub fn init_logger(config: &LogConfig) -> anyhow::Result<()> {
-    let mut builder = env_logger::Builder::new();
-    builder.filter_level(
-        LevelFilter::from_str(&config.level)
-            .with_context(|| format!("invalid log level: {}", &config.level))?,
-    );
-    match &config.file {
-        Some(file) => {
-            let target = Box::new(
-                File::create(file).with_context(|| format!("cannot create log file {}", file))?,
-            );
-            Ok(builder.target(env_logger::Target::Pipe(target)).init())
-        }
-        None => Ok(builder.init()),
-    }
 }
 
 pub async fn run() -> anyhow::Result<()> {
@@ -80,19 +62,18 @@ pub async fn run() -> anyhow::Result<()> {
     info!("Dep tasks: {:?}", dep_tasks);
 
     let mut set = JoinSet::new();
-    let task_tx = runner.sender();
 
     let app_tx = match root.ui {
         UI::CUI => {
             let mut app = CuiApp::new();
             let sender = app.sender();
-            set.spawn(async move { app.handle_events(task_tx).await });
+            set.spawn(async move { app.run().await });
             sender
         }
         UI::TUI => {
             let mut app = TuiApp::new(target_tasks, dep_tasks)?;
             let sender = app.sender();
-            set.spawn(async move { app.run(task_tx).await });
+            set.spawn(async move { app.run().await });
             sender
         }
     };

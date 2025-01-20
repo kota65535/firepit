@@ -46,7 +46,7 @@ impl CuiApp {
             .insert(prefix.to_string(), output_client);
     }
 
-    pub async fn handle_events(&mut self) -> anyhow::Result<()> {
+    pub async fn run(&mut self) -> anyhow::Result<()> {
         while let Some(event) = self.receiver.recv().await {
             match event {
                 Event::StartTask { task } => self.register_output_client(&task),

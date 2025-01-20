@@ -4,7 +4,7 @@ use std::{
     fs::File,
     io::{BufWriter, Write},
 };
-use tracing::debug;
+use log::debug;
 
 /// Receives logs and multiplexes them to a log file and/or a prefixed
 /// writer

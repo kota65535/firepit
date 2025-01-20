@@ -9,6 +9,7 @@ mod project;
 mod signal;
 mod tui;
 mod ui;
+mod log;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

@@ -1,7 +1,7 @@
 use crossterm::event::{EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use futures::StreamExt;
 use tokio::{sync::mpsc, task::JoinHandle};
-use tracing::debug;
+use log::debug;
 
 use super::{app::LayoutSections, event::Event};
 
