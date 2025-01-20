@@ -1,9 +1,9 @@
-use crate::event::{TaskResult};
+use crate::event::TaskResult;
 use anyhow::{anyhow, Context};
 use indexmap::IndexMap;
 use log::debug;
 use ratatui::{
-    backend::{CrosstermBackend},
+    backend::CrosstermBackend,
     layout::{Constraint, Layout},
     widgets::TableState,
     Frame, Terminal,
@@ -16,10 +16,10 @@ use tokio::{
     sync::{mpsc, oneshot},
     time::Instant,
 };
-
+use crate::event::{Direction, PaneSize};
+use crate::event::{EventReceiver, EventSender};
 use super::{
-    event::{Direction, PaneSize},
-    input, EventReceiver, EventSender, Event, InputOptions, SizeInfo, TaskTable,
+    input, Event, InputOptions, SizeInfo, TaskTable,
     TerminalPane,
 };
 use crate::tui::task::{TaskPlan, TaskStatus};

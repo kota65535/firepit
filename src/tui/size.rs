@@ -32,10 +32,6 @@ impl SizeInfo {
             .max(1)
     }
 
-    pub fn task_list_width(&self) -> u16 {
-        self.cols - self.pane_cols()
-    }
-
     pub fn pane_cols(&self) -> u16 {
         // Want to maximize pane width
         let ratio_pane_width = (f32::from(self.cols) * PANE_SIZE_RATIO) as u16;

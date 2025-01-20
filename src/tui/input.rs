@@ -2,8 +2,8 @@ use crossterm::event::{EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 use futures::StreamExt;
 use tokio::{sync::mpsc, task::JoinHandle};
 use log::debug;
-
-use super::{app::LayoutSections, event::Event};
+use crate::event::Event;
+use super::app::LayoutSections;
 
 #[derive(Debug, Clone, Copy)]
 pub struct InputOptions<'a> {
@@ -31,15 +31,6 @@ impl<'a> InputOptions<'a> {
     pub fn handle_crossterm_event(self, event: crossterm::event::Event) -> Option<Event> {
         match event {
             crossterm::event::Event::Key(k) => translate_key_event(self, k),
-            crossterm::event::Event::Mouse(m) => match m.kind {
-                crossterm::event::MouseEventKind::ScrollDown => Some(Event::ScrollDown),
-                crossterm::event::MouseEventKind::ScrollUp => Some(Event::ScrollUp),
-                crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left)
-                | crossterm::event::MouseEventKind::Drag(crossterm::event::MouseButton::Left) => {
-                    Some(Event::Mouse(m))
-                }
-                _ => None,
-            },
             crossterm::event::Event::Resize(cols, rows) => Some(Event::Resize { rows, cols }),
             _ => None,
         }

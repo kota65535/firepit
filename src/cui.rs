@@ -1,5 +1,5 @@
-use crate::tui::event::Event;
-use crate::tui::{EventReceiver, EventSender};
+use crate::event::{Event, EventReceiver};
+use crate::event::EventSender;
 use crate::ui::color_selector::ColorSelector;
 use crate::ui::lib::ColorConfig;
 use crate::ui::output::{OutputClient, OutputClientBehavior, OutputSink};

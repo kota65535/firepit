@@ -1,9 +1,8 @@
 use crate::config::ProjectConfig;
-use crate::event::{TaskResult};
 use crate::graph::TaskGraph;
 use crate::process::{ChildExit, Command, ProcessManager};
 use crate::signal::{get_signal, SignalHandler};
-use crate::tui::EventSender;
+use crate::event::{EventSender, TaskResult};
 use anyhow::anyhow;
 use futures::future::{join, join_all};
 use log::{debug, info};
@@ -214,8 +213,6 @@ pub struct Task {
     pub command: String,
     pub envs: HashMap<String, String>,
     pub depends_on: Vec<String>,
-    pub inputs: Vec<String>,
-    pub outputs: Vec<String>,
     pub working_dir: PathBuf,
     pub is_service: bool,
 
@@ -248,8 +245,6 @@ impl Task {
                         .iter()
                         .map(|s| Task::qualified_name(&project_name, s))
                         .collect(),
-                    inputs: task_config.inputs,
-                    outputs: task_config.outputs,
                     is_service: task_config.service.is_some(),
                     working_dir: task_config
                         .working_dir

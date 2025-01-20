@@ -1,6 +1,6 @@
 use std::{io::Write, mem};
 
-use super::event::Direction;
+use crate::event::Direction;
 use crate::event::TaskResult;
 
 const SCROLLBACK_LEN: usize = 1024;
@@ -11,13 +11,6 @@ pub struct TerminalOutput {
     pub parser: vt100::Parser,
     pub stdin: Option<Box<dyn Write + Send>>,
     pub task_result: Option<TaskResult>,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum LogBehavior {
-    Full,
-    Status,
-    Nothing,
 }
 
 impl TerminalOutput {
