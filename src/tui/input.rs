@@ -64,7 +64,6 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<Eve
             ctrl_c();
             Some(Event::InternalStop)
         }
-        KeyCode::Char('c') if options.has_selection => Some(Event::CopySelection),
         // Interactive branches
         KeyCode::Char('z')
             if matches!(options.focus, LayoutSections::Pane)
@@ -119,7 +118,6 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<Eve
     }
 }
 
-#[cfg(unix)]
 fn ctrl_c() -> Option<Event> {
     use nix::sys::signal;
     match signal::raise(signal::SIGINT) {

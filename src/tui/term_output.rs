@@ -109,7 +109,9 @@ impl TerminalOutput {
             // I think we can ignore this?
             crossterm::event::MouseEventKind::Moved => (),
             // Don't care about other mouse buttons
-            crossterm::event::MouseEventKind::Down(_) => (),
+            crossterm::event::MouseEventKind::Down(_) => {
+                self.parser.screen_mut().clear_selection();
+            },
             crossterm::event::MouseEventKind::Drag(_) => (),
             // We don't support horizontal scroll
             crossterm::event::MouseEventKind::ScrollLeft

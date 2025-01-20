@@ -39,10 +39,6 @@ pub enum Event {
         tasks: Vec<String>,
     },
     Mouse(crossterm::event::MouseEvent),
-    CopySelection,
-    RestartTasks {
-        tasks: Vec<String>,
-    },
     Resize {
         rows: u16,
         cols: u16,

@@ -2,7 +2,6 @@ use crate::config::{LogConfig, ProjectConfig, UI};
 use crate::cui::CuiApp;
 use crate::error::MultiError;
 use crate::project::TaskRunner;
-use crate::tui::handle::app_event_channel;
 use anyhow::{anyhow, Context};
 use clap::Parser;
 use log::{info, LevelFilter};
@@ -70,24 +69,27 @@ pub async fn run() -> anyhow::Result<()> {
         .collect::<Vec<_>>();
     info!("Dep tasks: {:?}", dep_tasks);
 
-    let (task_tx, task_rx) = runner.event_channel();
-    let (app_tx, app_rx) = app_event_channel();
-
     let mut set = JoinSet::new();
-    set.spawn(async move {
-        runner.run(task_tx.clone()).await
-    });
-    
-    match root.ui {
+    let task_tx = runner.sender();
+
+    let app_tx = match root.ui {
         UI::CUI => {
             let mut app = CuiApp::new();
-            set.spawn(async move { app.handle_events(task_rx).await });
+            let sender = app.sender();
+            set.spawn(async move { app.handle_events(task_tx).await });
+            sender
         }
         UI::TUI => {
             let mut app = TuiApp::new(target_tasks, dep_tasks)?;
-            set.spawn(async move { app.run(task_rx, app_rx).await });
+            let sender = app.sender();
+            set.spawn(async move { app.run(task_tx).await });
+            sender
         }
     };
+    
+    set.spawn(async move {
+        runner.run(app_tx.clone()).await
+    });
 
     let results = set.join_all().await;
 

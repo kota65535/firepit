@@ -1,6 +1,4 @@
 pub mod app;
-mod clipboard;
-mod debouncer;
 pub mod event;
 pub mod handle;
 mod input;
@@ -12,10 +10,8 @@ mod task;
 mod term_output;
 mod state;
 
-use clipboard::copy_to_clipboard;
-use debouncer::Debouncer;
 use event::{Event};
-pub use handle::{TuiReceiver, TuiSender};
+pub use handle::{AppEventReceiver, AppEventSender};
 use input::InputOptions;
 pub use pane::TerminalPane;
 use size::SizeInfo;

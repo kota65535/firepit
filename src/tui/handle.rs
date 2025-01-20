@@ -4,26 +4,31 @@ use super::{
     Event,
 };
 use crate::event::TaskResult;
+use std::io;
+use std::io::Write;
+use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
 
 /// Struct for sending app events to TUI rendering
 #[derive(Debug, Clone)]
-pub struct TuiSender {
+pub struct AppEventSender {
     tx: mpsc::UnboundedSender<Event>,
+    name: String,
+    logs: Arc<Mutex<Vec<u8>>>,
 }
 
 /// Struct for receiving app events
-pub struct TuiReceiver {
+pub struct AppEventReceiver {
     rx: mpsc::UnboundedReceiver<Event>,
 }
 
-pub fn app_event_channel() -> (TuiSender, TuiReceiver) {
+pub fn app_event_channel() -> (AppEventSender, AppEventReceiver) {
     let (tx, rx) = mpsc::unbounded_channel();
-    (TuiSender::new(tx), TuiReceiver::new(rx))
+    (AppEventSender::new(tx), AppEventReceiver::new(rx))
 }
 
 
-impl TuiSender {
+impl AppEventSender {
     pub fn new(tx: mpsc::UnboundedSender<Event>) -> Self {
         let tick_sender = tx.clone();
         tokio::spawn(async move {
@@ -37,11 +42,16 @@ impl TuiSender {
         });
         Self {
             tx,
+            name: "".to_string(),
+            logs: Default::default(),
         }
     }
-}
-
-impl TuiSender {
+    
+    pub fn with_name(&mut self, name: &str) -> Self {
+        self.name = name.to_string();
+        self.to_owned()
+    }
+    
     pub fn start_task(&self, task: String) {
         self.tx.send(Event::StartTask { task }).ok();
     }
@@ -77,12 +87,6 @@ impl TuiSender {
             .map_err(|err| anyhow::anyhow!(err.to_string()))
     }
 
-    /// Restart the list of tasks displayed in the TUI
-    pub fn restart_tasks(&self, tasks: Vec<String>) -> anyhow::Result<()> {
-        self.tx.send(Event::RestartTasks { tasks })
-            .map_err(|err| anyhow::anyhow!(err.to_string()))
-    }
-
     /// Fetches the size of the terminal pane
     pub async fn pane_size(&self) -> Option<PaneSize> {
         let (callback_tx, callback_rx) = oneshot::channel();
@@ -93,7 +97,26 @@ impl TuiSender {
     }
 }
 
-impl TuiReceiver {
+impl Write for AppEventSender {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let task = self.name.clone();
+        {
+            self.logs
+                .lock()
+                .expect("should not poisoned")
+                .extend_from_slice(buf);
+        }
+
+        self.output(task, buf.to_vec());
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+impl AppEventReceiver {
     pub fn new(rx: mpsc::UnboundedReceiver<Event>) -> Self {
         Self {
             rx

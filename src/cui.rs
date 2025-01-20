@@ -1,23 +1,31 @@
-use std::collections::HashMap;
-use std::io::{stdout, Stdout, Write};
-use std::sync::{Arc, RwLock};
-use anyhow::Context;
-use crate::event::{TaskEvent, TaskEventReceiver};
+use crate::event::TaskEventSender;
+use crate::tui::event::Event;
+use crate::tui::{AppEventReceiver, AppEventSender};
 use crate::ui::color_selector::ColorSelector;
 use crate::ui::lib::ColorConfig;
 use crate::ui::output::{OutputClient, OutputClientBehavior, OutputSink};
 use crate::ui::prefixed::PrefixedWriter;
+use anyhow::Context;
+use std::collections::HashMap;
+use std::io::{stdout, Stdout, Write};
+use std::sync::{Arc, RwLock};
+use tokio::sync::mpsc;
 
 pub struct CuiApp {
     color_selector: ColorSelector,
     output_clients: Arc<RwLock<HashMap<String, OutputClient<PrefixedWriter<Stdout>>>>>,
+    sender: AppEventSender,
+    receiver: AppEventReceiver,
 }
 
 impl CuiApp {
     pub fn new() -> Self {
+        let (tx, rx) = mpsc::unbounded_channel();
         Self {
             color_selector: ColorSelector::default(),
             output_clients: Arc::new(RwLock::new(HashMap::new())),
+            sender: AppEventSender::new(tx),
+            receiver: AppEventReceiver::new(rx),
         }
     }
 
@@ -28,13 +36,13 @@ impl CuiApp {
         self.output_clients.write().expect("lock poisoned").insert(prefix.to_string(), output_client);
     }
 
-    pub async fn handle_events(&mut self, mut rx: TaskEventReceiver) -> anyhow::Result<()> {
-        while let Some(event) = rx.recv().await {
+    pub async fn handle_events(&mut self, task_tx: TaskEventSender) -> anyhow::Result<()> {
+        while let Some(event) = self.receiver.recv().await {
             match event {
-                TaskEvent::Start { task } => {
+                Event::StartTask { task } => {
                     self.register_output_client(&task)
                 }
-                TaskEvent::Output { task, output } => {
+                Event::TaskOutput { task, output } => {
                     let output_clients = self.output_clients.read().expect("lock poisoned");
                     let output_client = output_clients.get(&task).with_context(|| "Output client not found")?;
                     output_client.stdout().write_all(output.as_slice()).context("failed to write to stdout")?;
@@ -43,5 +51,9 @@ impl CuiApp {
             }
         }
         Ok(())
+    }
+    
+    pub fn sender(&self) -> AppEventSender {
+        self.sender.clone()
     }
 }
