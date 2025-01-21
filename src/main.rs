@@ -8,10 +8,11 @@ pub mod event;
 mod graph;
 mod log;
 mod process;
-mod project;
+mod runner;
 mod signal;
 mod tui;
 mod panic;
+mod probe;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

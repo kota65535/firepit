@@ -1,5 +1,5 @@
 use crate::event::TaskResult;
-use crate::project::Task;
+use crate::runner::Task;
 use anyhow::Context;
 use futures::future::{join_all, JoinAll};
 use log::{error, info, warn};

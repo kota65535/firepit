@@ -2,7 +2,7 @@ use crate::config::{ProjectConfig, UI};
 use crate::cui::app::CuiApp;
 use crate::error::MultiError;
 use crate::log::init_logger;
-use crate::project::TaskRunner;
+use crate::runner::TaskRunner;
 use crate::tui::app::TuiApp;
 use anyhow::anyhow;
 use clap::Parser;
@@ -64,13 +64,13 @@ pub async fn run() -> anyhow::Result<()> {
     let mut set = JoinSet::new();
 
     let app_tx = match root.ui {
-        UI::CUI => {
+        UI::Cui => {
             let mut app = CuiApp::new();
             let sender = app.sender();
             set.spawn(async move { app.run().await });
             sender
         }
-        UI::TUI => {
+        UI::Tui => {
             let mut app = TuiApp::new(target_tasks, dep_tasks)?;
             let sender = app.sender();
             set.spawn(async move { app.run().await });

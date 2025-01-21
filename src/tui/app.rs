@@ -55,7 +55,7 @@ pub struct TuiAppState {
 }
 
 impl TuiApp {
-    pub fn new(mut target_tasks: Vec<String>, mut dep_tasks: Vec<String>) -> anyhow::Result<Self> {
+    pub fn new(target_tasks: Vec<String>, dep_tasks: Vec<String>) -> anyhow::Result<Self> {
         let (tx, rx) = mpsc::unbounded_channel();
 
         let terminal = Self::setup_terminal()?;
@@ -184,7 +184,7 @@ impl TuiApp {
         if input_closed {
             self.receiver.recv().await
         } else {
-            let mut event = None;
+            let mut event;
             loop {
                 tokio::select! {
                     e = self.crossterm_rx.recv() => {
@@ -283,16 +283,16 @@ impl TuiAppState {
         self.task_outputs.iter().map(|t| t.0.clone()).collect()
     }
 
-    pub fn start_task(&mut self, task: &str) -> anyhow::Result<()> {
-        self.task_statuses
-            .insert(task.to_string(), TaskStatus::Running);
-        Ok(())
+    pub fn start_task(&mut self, task: &str) {
+        self.task_statuses.insert(task.to_string(), TaskStatus::Running);
+    }
+    
+    pub fn ready_task(&mut self, task: &str) {
+        self.task_statuses.insert(task.to_string(), TaskStatus::Ready);
     }
 
-    pub fn finish_task(&mut self, task: &str, result: TaskResult) -> anyhow::Result<()> {
-        self.task_statuses
-            .insert(task.to_string(), TaskStatus::Finished(result));
-        Ok(())
+    pub fn finish_task(&mut self, task: &str, result: TaskResult) {
+        self.task_statuses.insert(task.to_string(), TaskStatus::Finished(result));
     }
 
     pub fn has_stdin(&self) -> anyhow::Result<bool> {
@@ -314,7 +314,7 @@ impl TuiAppState {
             .task_statuses
             .values()
             .zip(self.task_outputs.values())
-            .filter(|(s, o)| matches!(s, TaskStatus::Running | TaskStatus::Finished(_)))
+            .filter(|(s, _)| matches!(s, TaskStatus::Running | TaskStatus::Finished(_)))
         {
             o.persist_screen()?
         }
@@ -412,10 +412,13 @@ impl TuiAppState {
     fn update(&mut self, event: Event) -> anyhow::Result<Option<oneshot::Sender<()>>> {
         match event {
             Event::StartTask { task } => {
-                self.start_task(&task)?;
+                self.start_task(&task);
             }
             Event::TaskOutput { task, output } => {
                 self.process_output(&task, &output)?;
+            }
+            Event::ReadyTask { task } => {
+                self.ready_task(&task);
             }
             Event::InternalStop => {
                 debug!("shutting down due to internal failure");
@@ -430,7 +433,7 @@ impl TuiAppState {
                 // self.table.tick();
             }
             Event::EndTask { task, result } => {
-                self.finish_task(&task, result)?;
+                self.finish_task(&task, result);
                 self.insert_stdin(&task, None)?;
             }
             Event::Up => {

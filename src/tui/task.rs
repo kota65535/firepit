@@ -4,6 +4,7 @@ use crate::event::TaskResult;
 pub enum TaskStatus {
     Planned(TaskPlan),
     Running,
+    Ready,
     Finished(TaskResult),
 }
 

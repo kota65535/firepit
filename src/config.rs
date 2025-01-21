@@ -7,14 +7,14 @@ use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::thread::available_parallelism;
 
-const CONFIG_FILE: [&str; 2] = ["fire.yml", "fire.yaml"];
+const CONFIG_FILE: [&str; 2] = ["firepit.yml", "firepit.yaml"];
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum UI {
     #[serde(rename = "cui")]
-    CUI,
+    Cui,
     #[serde(rename = "tui")]
-    TUI,
+    Tui,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -81,9 +81,9 @@ pub fn default_concurrency() -> usize {
 
 pub fn default_ui() -> UI {
     if atty::is(atty::Stream::Stdout) {
-        UI::TUI
+        UI::Tui
     } else {
-        UI::CUI
+        UI::Cui
     }
 }
 
@@ -191,14 +191,6 @@ pub struct TaskConfig {
     #[serde(default)]
     pub depends_on: Vec<String>,
 
-    /// Input files of this task.
-    #[serde(default)]
-    pub inputs: Vec<String>,
-
-    /// Output files of this task.
-    #[serde(default)]
-    pub outputs: Vec<String>,
-
     /// Service configuration.
     pub service: Option<ServiceConfig>,
 
@@ -246,6 +238,13 @@ pub struct ExecReadinessProbeConfig {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct ServiceConfig {
+#[serde(untagged)]
+pub enum ServiceConfig {
+    Bool(bool),
+    Struct(ServiceConfigStruct)
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ServiceConfigStruct {
     pub readiness_probe: Option<ReadinessProbeConfig>,
 }

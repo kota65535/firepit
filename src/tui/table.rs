@@ -50,39 +50,40 @@ impl TaskTable<'_> {
                         } else {
                             format!(" {}", n.clone())
                         };
-                        Row::new(vec![Cell::new(n), Cell::new(Text::raw("\u{1FAB5}"))])
+                        Row::new(vec![
+                            Cell::new(n),
+                            Cell::new(Text::raw("\u{1FAB5}\u{200D}"))]) // 🪵
                     }
                     TaskStatus::Running => Row::new(vec![
                         Cell::new(n.clone()),
-                        Cell::new(Text::raw("\u{1F525}")),
+                        Cell::new(Text::raw("\u{1F525}\u{200D}")),  // 🔥
+                    ]),
+                    TaskStatus::Ready => Row::new(vec![
+                        Cell::new(n.clone()),
+                        Cell::new(Text::raw("\u{1F356}\u{200D}")),  // 🍖
                     ]),
                     TaskStatus::Finished(r) => {
                         Row::new(vec![
                             Cell::new(n.clone()),
                             match r {
-                                // ✅
                                 TaskResult::Success => Cell::new(Text::styled(
-                                    "\u{2705}\u{200D}",
+                                    "\u{2705}\u{200D}",     // ✅
                                     Style::default().green().bold(),
                                 )),
-                                // 🚫
                                 TaskResult::Skipped => Cell::new(Text::styled(
-                                    "\u{1F6AB}\u{200D}",
+                                    "\u{1F6AB}\u{200D}",    // 🚫
                                     Style::default().green().bold(),
                                 )),
-                                // ⛔
                                 TaskResult::Stopped => Cell::new(Text::styled(
-                                    "\u{26D4}\u{200D}",
+                                    "\u{26D4}\u{200D}",     // ⛔
                                     Style::default().green().bold(),
                                 )),
-                                // ❌
                                 TaskResult::Failure => Cell::new(Text::styled(
-                                    "\u{274C}\u{200D}",
+                                    "\u{274C}\u{200D}",     // ❌
                                     Style::default().red().bold(),
                                 )),
-                                // ❓
                                 TaskResult::Unknown => Cell::new(Text::styled(
-                                    "\u{2753}\u{200D}",
+                                    "\u{2753}\u{200D}",     // ❓
                                     Style::default().red().bold(),
                                 )),
                             },

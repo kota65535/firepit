@@ -12,6 +12,9 @@ pub enum Event {
         task: String,
         output: Vec<u8>,
     },
+    ReadyTask {
+        task: String,
+    },
     EndTask {
         task: String,
         result: TaskResult,
@@ -99,6 +102,10 @@ impl EventSender {
 
     pub fn start_task(&self, task: String) {
         self.tx.send(Event::StartTask { task }).ok();
+    }
+    
+    pub fn ready_task(&self, task: String) {
+        self.tx.send(Event::ReadyTask { task }).ok();
     }
 
     pub fn end_task(&self, task: String, result: TaskResult) {
