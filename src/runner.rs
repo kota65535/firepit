@@ -1,5 +1,5 @@
 use crate::config::{ProjectConfig, ServiceConfig};
-use crate::event::{Event, EventReceiver, EventSender, TaskResult};
+use crate::event::{EventReceiver, EventSender, TaskResult};
 use crate::graph::TaskGraph;
 use crate::process::{ChildExit, Command, ProcessManager};
 use crate::signal::{get_signal, SignalHandler};
@@ -39,7 +39,7 @@ impl TaskRunner {
         target_tasks: &Vec<String>,
         dir: PathBuf,
     ) -> anyhow::Result<TaskRunner> {
-        let root_project = Project::new(&"".to_string(), root)?;
+        let root_project = Project::new("", root)?;
         let mut child_projects = HashMap::new();
         for (k, v) in children.iter() {
             child_projects.insert(k.clone(), Project::new(k, v)?);
@@ -56,8 +56,7 @@ impl TaskRunner {
                 .flat_map(|t| {
                     child_projects
                         .values()
-                        .map(|p| p.task(t))
-                        .flatten()
+                        .filter_map(|p| p.task(t))
                         .collect::<Vec<_>>()
                 })
                 .collect::<Vec<Task>>()
@@ -68,8 +67,7 @@ impl TaskRunner {
                     child_projects
                         .values()
                         .filter(|p| dir_contains(&dir, &p.dir))
-                        .map(|p| p.task(t))
-                        .flatten()
+                        .filter_map(|p| p.task(t))
                         .collect::<Vec<_>>()
                 })
                 .collect::<Vec<Task>>()
@@ -192,7 +190,7 @@ impl TaskRunner {
                 info!("Task {:?} finished. reason: {:?}", task.name, result);
                 
                 // Notify the app the task ended
-                app_tx.end_task(task.name.clone(), result.clone());
+                app_tx.end_task(task.name.clone(), result);
                 // Notify the visitor the task ended
                 callback.send(result).ok();
                 Ok(())
@@ -294,7 +292,7 @@ impl Task {
                     depends_on: task_config
                         .depends_on
                         .iter()
-                        .map(|s| Task::qualified_name(&project_name, s))
+                        .map(|s| Task::qualified_name(project_name, s))
                         .collect(),
                     is_service,
                     log_matcher,
@@ -324,7 +322,7 @@ impl Task {
         Ok(ret)
     }
     pub fn qualified_name(project_name: &str, task_name: &str) -> String {
-        if task_name.contains("#") {
+        if task_name.contains('#') {
             task_name.to_string()
         } else {
             format!("{}#{}", project_name, task_name)

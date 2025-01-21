@@ -15,8 +15,12 @@ pub fn init_logger(config: &LogConfig) -> anyhow::Result<()> {
             let target = Box::new(
                 File::create(file).with_context(|| format!("cannot create log file {}", file))?,
             );
-            Ok(builder.target(env_logger::Target::Pipe(target)).init())
+            builder.target(env_logger::Target::Pipe(target)).init();
+            Ok(())
         }
-        None => Ok(builder.init()),
+        None => {
+            builder.init();
+            Ok(())
+        },
     }
 }

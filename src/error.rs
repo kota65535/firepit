@@ -25,7 +25,7 @@ impl fmt::Display for MultiError {
         if self.errors.len() == 1 {
             self.errors[0].fmt(f)?;
         } else {
-            writeln!(f, "")?;
+            writeln!(f)?;
             for (i, err) in self.errors.iter().enumerate() {
                 writeln!(f, "  {}. {}", i + 1, err)?;
             }

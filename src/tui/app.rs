@@ -3,7 +3,7 @@ use crate::event::{Direction, PaneSize};
 use crate::event::{EventReceiver, EventSender};
 use crate::tui::task::{TaskPlan, TaskStatus};
 use crate::tui::term_output::TerminalOutput;
-use anyhow::{anyhow, Context};
+use anyhow::{Context};
 use indexmap::IndexMap;
 use log::debug;
 use ratatui::{
@@ -144,7 +144,7 @@ impl TuiApp {
     pub async fn run(&mut self) -> anyhow::Result<()> {
         let (result, callback) = match self.run_inner().await {
             Ok(callback) => (Ok(()), callback),
-            Err(err) => (Err(anyhow::Error::from(err)), None),
+            Err(err) => (Err(err).with_context(|| "failed to run tui app"), None),
         };
         self.cleanup()
     }
@@ -364,7 +364,7 @@ impl TuiAppState {
 
         let active_task = self.active_task().unwrap();
         let pane_to_render = TerminalPane::new(
-            &active_task,
+            active_task,
             &active_task.name,
             &self.focus,
             self.has_sidebar,
