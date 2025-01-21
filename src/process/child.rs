@@ -391,7 +391,7 @@ struct ChildStateManager {
 ///
 /// This is a wrapper around the `tokio::process::Child` struct, which provides
 /// a cross platform interface for spawning and managing child processes.
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct Child {
     pid: Option<u32>,
     state: Arc<RwLock<ChildState>>,
@@ -401,7 +401,7 @@ pub struct Child {
     label: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct ChildCommandChannel(mpsc::Sender<ChildCommand>);
 
 impl ChildCommandChannel {

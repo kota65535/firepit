@@ -54,7 +54,6 @@ impl<'a> TerminalPane<'a> {
 }
 
 impl<'a> Widget for &TerminalPane<'a> {
-    
     fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
     where
         Self: Sized,

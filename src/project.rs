@@ -181,7 +181,7 @@ impl TaskRunner {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct Project {
     pub name: String,
     pub tasks: HashMap<String, Task>,
@@ -207,7 +207,7 @@ impl Project {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct Task {
     pub name: String,
     pub command: String,

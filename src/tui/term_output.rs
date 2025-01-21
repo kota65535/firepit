@@ -1,7 +1,6 @@
 use std::{io::Write, mem};
 
 use crate::event::Direction;
-use crate::event::TaskResult;
 
 const SCROLLBACK_LEN: usize = 1024;
 
@@ -10,7 +9,6 @@ pub struct TerminalOutput {
     output: Vec<u8>,
     pub parser: vt100::Parser,
     pub stdin: Option<Box<dyn Write + Send>>,
-    pub task_result: Option<TaskResult>,
 }
 
 impl TerminalOutput {
@@ -20,7 +18,6 @@ impl TerminalOutput {
             output: Vec::new(),
             parser: vt100::Parser::new(rows, cols, SCROLLBACK_LEN),
             stdin,
-            task_result: None,
         }
     }
 

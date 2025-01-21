@@ -1,13 +1,13 @@
 use crate::event::TaskResult;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TaskStatus {
     Planned(TaskPlan),
     Running,
     Finished(TaskResult),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TaskPlan {
     pub is_target: bool,
 }

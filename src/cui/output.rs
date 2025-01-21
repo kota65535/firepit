@@ -85,7 +85,7 @@ impl<W: Write> OutputSink<W> {
         OutputClient {
             behavior,
             buffer,
-            writers
+            writers,
         }
     }
 }
