@@ -22,7 +22,7 @@ impl TerminalOutput {
     }
 
     pub fn title(&self, task_name: &str) -> String {
-        format!(" {task_name} >")
+        format!("> {task_name}")
     }
 
     pub fn size(&self) -> (u16, u16) {
@@ -60,15 +60,13 @@ impl TerminalOutput {
         let title = self.title(&self.name);
         let screen = self.parser.entire_screen();
         let (_, cols) = screen.size();
-        stdout.write_all("┌".as_bytes())?;
         stdout.write_all(title.as_bytes())?;
         stdout.write_all(b"\r\n")?;
         for row in screen.rows_formatted(0, cols) {
-            stdout.write_all("│ ".as_bytes())?;
             stdout.write_all(&row)?;
             stdout.write_all(b"\r\n")?;
         }
-        stdout.write_all("└────>\r\n".as_bytes())?;
+        stdout.write_all("\r\n".as_bytes())?;
         Ok(())
     }
 }

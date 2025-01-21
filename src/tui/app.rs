@@ -55,10 +55,6 @@ pub struct TuiAppState {
 }
 
 impl TuiApp {
-    pub fn sender(&self) -> EventSender {
-        self.sender.clone()
-    }
-
     pub fn new(mut target_tasks: Vec<String>, mut dep_tasks: Vec<String>) -> anyhow::Result<Self> {
         let (tx, rx) = mpsc::unbounded_channel();
 
@@ -76,12 +72,6 @@ impl TuiApp {
                 .chain(dep_tasks.iter())
                 .map(|s| s.as_str()),
         );
-
-        target_tasks.sort_unstable();
-        dep_tasks.sort_unstable();
-
-        let has_user_interacted = false;
-        let selected_task_index: usize = 0;
 
         let pane_rows = size.pane_rows();
         let pane_cols = size.pane_cols();
@@ -106,6 +96,8 @@ impl TuiApp {
                     .map(|t| (t.clone(), TaskStatus::Planned(TaskPlan::new(false)))),
             )
             .collect::<IndexMap<_, _>>();
+        
+        let selected_task_index = 0;
 
         Ok(Self {
             terminal,
@@ -116,12 +108,12 @@ impl TuiApp {
                 size,
                 task_outputs,
                 task_statuses,
-                done: false,
                 focus: LayoutSections::TaskList,
                 scroll: TableState::default().with_selected(selected_task_index),
                 selected_task_index,
                 has_sidebar: true,
-                has_user_scrolled: has_user_interacted,
+                has_user_scrolled: false,
+                done: false,
             },
         })
     }
@@ -144,13 +136,17 @@ impl TuiApp {
 
         Ok(terminal)
     }
+    
+    pub fn sender(&self) -> EventSender {
+        self.sender.clone()
+    }
 
     pub async fn run(&mut self) -> anyhow::Result<()> {
         let (result, callback) = match self.run_inner().await {
             Ok(callback) => (Ok(()), callback),
             Err(err) => (Err(anyhow::Error::from(err)), None),
         };
-        self.cleanup(callback)
+        self.cleanup()
     }
 
     pub async fn run_inner(&mut self) -> anyhow::Result<Option<oneshot::Sender<()>>> {
@@ -206,18 +202,15 @@ impl TuiApp {
         }
     }
 
-    fn cleanup(&mut self, callback: Option<oneshot::Sender<()>>) -> anyhow::Result<()> {
+    fn cleanup(&mut self) -> anyhow::Result<()> {
         self.terminal.clear()?;
         crossterm::execute!(
             self.terminal.backend_mut(),
-            crossterm::event::DisableMouseCapture,
             crossterm::terminal::LeaveAlternateScreen,
         )?;
         self.state.persist_tasks()?;
         crossterm::terminal::disable_raw_mode()?;
         self.terminal.show_cursor()?;
-        // We can close the channel now that terminal is back restored to a normal state
-        drop(callback);
         Ok(())
     }
 }
