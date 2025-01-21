@@ -21,6 +21,6 @@ pub fn init_logger(config: &LogConfig) -> anyhow::Result<()> {
         None => {
             builder.init();
             Ok(())
-        },
+        }
     }
 }

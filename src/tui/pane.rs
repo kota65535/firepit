@@ -1,11 +1,12 @@
+use crate::tui::app::LayoutSections;
+use crate::tui::term_output::TerminalOutput;
+use ratatui::style::Stylize;
 use ratatui::{
     style::Style,
     text::Line,
     widgets::{Block, Widget},
 };
 use tui_term::widget::PseudoTerminal;
-use crate::tui::app::LayoutSections;
-use crate::tui::term_output::TerminalOutput;
 
 const FOOTER_TEXT_ACTIVE: &str = "Press`Ctrl-Z` to stop interacting.";
 const FOOTER_TEXT_INACTIVE: &str = "Press `Enter` to interact.";
@@ -63,9 +64,9 @@ impl<'a> Widget for &TerminalPane<'a> {
             .title(self.terminal_output.title(self.task_name))
             .title_bottom(self.footer())
             .style(if self.highlight() {
-                Style::new().fg(ratatui::style::Color::Yellow)
+                Style::new().fg(ratatui::style::Color::Yellow).bold()
             } else {
-                Style::new()
+                Style::new().bold()
             });
 
         let term = PseudoTerminal::new(screen).block(block);

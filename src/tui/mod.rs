@@ -5,4 +5,3 @@ mod size;
 mod table;
 mod task;
 mod term_output;
-

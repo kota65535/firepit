@@ -1,6 +1,7 @@
 use crate::config::{ProjectConfig, ServiceConfig};
 use crate::event::{EventReceiver, EventSender, TaskResult};
 use crate::graph::TaskGraph;
+use crate::probe::{ExecProber, LogLineProber, Prober};
 use crate::process::{ChildExit, Command, ProcessManager};
 use crate::signal::{get_signal, SignalHandler};
 use anyhow::{anyhow, Context};
@@ -11,7 +12,6 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::sync::mpsc;
-use crate::probe::LogLineProber;
 
 #[derive(Debug)]
 pub struct TaskRunner {
@@ -124,19 +124,31 @@ impl TaskRunner {
 
         // Receive next task when deps end (finished or killed)
         while let Some((task, deps_ok, callback)) = task_rx.recv().await {
-            let app_tx = app_tx.with_name(&task.name);
+            let mut app_tx = app_tx.with_name(&task.name);
 
             let manager = self.manager.clone();
-            let (tx, rx) = mpsc::unbounded_channel();
-            let log_tx = EventSender::new(tx).with_name(&task.name);
-            let log_rx = EventReceiver::new(rx);
-            let mut prober = LogLineProber::new(task.log_matcher, log_rx, app_tx.clone());
-            
-            // Run log line prober 
-            task_futs.push(tokio::spawn(async move {
-                prober.probe().await;
-                Ok(())
-            }));
+
+            // Run log line prober
+            match task.prober {
+                Prober::LogLine(mut prober) => {
+                    let (tx, rx) = mpsc::unbounded_channel();
+                    let probe_tx = EventSender::new(tx).with_name(&task.name);
+                    let probe_rx = EventReceiver::new(rx);
+                    app_tx = probe_tx.clone();
+                    task_futs.push(tokio::spawn(async move {
+                        prober.probe(probe_tx, probe_rx).await;
+                        Ok(())
+                    }));
+                }
+                Prober::Exec(mut prover) => {
+                    let probe_tx = app_tx.clone();
+                    task_futs.push(tokio::spawn(async move {
+                        prover.probe(probe_tx).await;
+                        Ok(())
+                    }));
+                }
+                _ => {}
+            }
 
             let app_tx = app_tx.clone();
             task_futs.push(tokio::spawn(async move {
@@ -147,7 +159,7 @@ impl TaskRunner {
                     callback.send(TaskResult::Skipped).ok();
                     return Ok(());
                 }
-                
+
                 // Build command
                 let mut args = Vec::new();
                 args.extend(task.shell_args.clone());
@@ -177,7 +189,7 @@ impl TaskRunner {
                 app_tx.start_task(task.name.clone());
 
                 // Wait until end
-                let result = match process.wait_with_piped_outputs(log_tx).await {
+                let result = match process.wait_with_piped_outputs(app_tx.clone()).await {
                     Ok(Some(exit_status)) => match exit_status {
                         ChildExit::Finished(Some(code)) if code == 0 => TaskResult::Success,
                         ChildExit::Finished(_) => TaskResult::Failure,
@@ -188,7 +200,7 @@ impl TaskRunner {
                     Ok(None) => return Err(anyhow!("unable to determine why child exited")),
                 };
                 info!("Task {:?} finished. reason: {:?}", task.name, result);
-                
+
                 // Notify the app the task ended
                 app_tx.end_task(task.name.clone(), result);
                 // Notify the visitor the task ended
@@ -239,8 +251,7 @@ pub struct Task {
     pub depends_on: Vec<String>,
     pub working_dir: PathBuf,
     pub is_service: bool,
-    pub log_matcher: Option<Regex>,
-
+    pub prober: Prober,
     pub shell: String,
     pub shell_args: Vec<String>,
 }
@@ -255,29 +266,59 @@ impl Task {
             let task_config = task_config.clone();
             let task_name = Task::qualified_name(project_name, task_name);
             let (is_service, service_config) = match task_config.service {
-                Some(service) => {
-                    match service {
-                        ServiceConfig::Bool(bool) => {
-                            (bool, None)
-                        }
-                        ServiceConfig::Struct(st) => {
-                            (true, Some(st))
-                        }
-                    }
-                }
-                _ => (false, None)
+                Some(service) => match service {
+                    ServiceConfig::Bool(bool) => (bool, None),
+                    ServiceConfig::Struct(st) => (true, Some(st)),
+                },
+                _ => (false, None),
             };
-            let log_matcher = match service_config.map(|s|s.readiness_probe) {
-                Some(Some(readiness_probe)) => {
-                    if let Some(log_line) = readiness_probe.log_line {
-                        Some(Regex::new(&log_line.pattern).with_context(|| format!("invalid regex pattern"))?)
-                    } else {
-                        None
-                    }
+            let prober = if let Some(Some(readiness_probe)) =
+                service_config.map(|s| s.readiness_probe)
+            {
+                if let Some(log_line) = readiness_probe.log_line {
+                    Prober::LogLine(LogLineProber::new(
+                        &task_name,
+                        Regex::new(&log_line).with_context(|| format!("invalid regex pattern"))?,
+                    ))
+                } else if let Some(exec) = readiness_probe.exec {
+                    Prober::Exec(ExecProber::new(
+                        &task_name,
+                        &exec.command,
+                        exec.working_dir
+                            .map(|t| {
+                                if t.is_absolute() {
+                                    t
+                                } else {
+                                    config.dir.join(t)
+                                }
+                            })
+                            .unwrap_or(config.dir.clone()),
+                        exec.shell
+                            .clone()
+                            .unwrap_or(config.shell.clone().expect("should be set"))
+                            .command,
+                        exec.shell
+                            .clone()
+                            .unwrap_or(config.shell.clone().expect("should be set"))
+                            .args,
+                        exec.envs
+                            .clone()
+                            .into_iter()
+                            .chain(config.envs.clone())
+                            .collect(),
+                        readiness_probe.initial_delay_seconds,
+                        readiness_probe.period_seconds,
+                        readiness_probe.timeout_seconds,
+                        readiness_probe.success_threshold,
+                        readiness_probe.failure_threshold,
+                    ))
+                } else {
+                    Prober::None
                 }
-                _ => None,
+            } else {
+                Prober::None
             };
-            
+
             ret.insert(
                 task_name.clone(),
                 Task {
@@ -295,7 +336,7 @@ impl Task {
                         .map(|s| Task::qualified_name(project_name, s))
                         .collect(),
                     is_service,
-                    log_matcher,
+                    prober,
                     working_dir: task_config
                         .working_dir
                         .map(|t| {

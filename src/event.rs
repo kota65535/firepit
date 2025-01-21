@@ -103,7 +103,7 @@ impl EventSender {
     pub fn start_task(&self, task: String) {
         self.tx.send(Event::StartTask { task }).ok();
     }
-    
+
     pub fn ready_task(&self, task: String) {
         self.tx.send(Event::ReadyTask { task }).ok();
     }
@@ -164,9 +164,14 @@ impl Write for EventSender {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum TaskResult {
+    /// Run successfully.
     Success,
+    /// Skipped due to the failure of the deps.
     Skipped,
+    /// Killed by someone else.
     Stopped,
+    /// Killed because the task does not become ready.
     Failure,
+    /// The other reason.
     Unknown,
 }

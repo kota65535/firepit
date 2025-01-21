@@ -1,6 +1,6 @@
-use std::{io::Write, mem};
-
 use crate::event::Direction;
+use crate::tui::task::TaskStatus;
+use std::{io::Write, mem};
 
 const SCROLLBACK_LEN: usize = 1024;
 
@@ -9,6 +9,7 @@ pub struct TerminalOutput {
     output: Vec<u8>,
     pub parser: vt100::Parser,
     pub stdin: Option<Box<dyn Write + Send>>,
+    pub status: TaskStatus,
 }
 
 impl TerminalOutput {
@@ -18,11 +19,12 @@ impl TerminalOutput {
             output: Vec::new(),
             parser: vt100::Parser::new(rows, cols, SCROLLBACK_LEN),
             stdin,
+            status: TaskStatus::Planned,
         }
     }
 
     pub fn title(&self, task_name: &str) -> String {
-        format!("> {task_name}")
+        format!("\u{26F0}  {task_name} ({}) ", self.status)
     }
 
     pub fn size(&self) -> (u16, u16) {

@@ -7,12 +7,12 @@ mod error;
 pub mod event;
 mod graph;
 mod log;
+mod panic;
+mod probe;
 mod process;
 mod runner;
 mod signal;
 mod tui;
-mod panic;
-mod probe;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

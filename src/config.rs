@@ -46,9 +46,11 @@ pub struct ProjectConfig {
     #[serde(default = "default_concurrency")]
     pub concurrency: usize,
 
+    /// Log configuration.
     #[serde(default = "default_log")]
     pub log: LogConfig,
 
+    /// UI configuration.
     #[serde(default = "default_ui")]
     pub ui: UI,
 
@@ -218,33 +220,62 @@ pub struct LogConfig {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ReadinessProbeConfig {
-    pub log_line: Option<LogLineReadinessProbeConfig>,
+    pub log_line: Option<String>,
     pub exec: Option<ExecReadinessProbeConfig>,
-    pub initial_delay_seconds: Option<u64>,
-    pub period_seconds: Option<u64>,
-    pub timeout_seconds: Option<u64>,
-    pub success_threshold: Option<u64>,
-    pub failure_threshold: Option<u64>,
+
+    #[serde(default = "default_initial_delay_seconds")]
+    pub initial_delay_seconds: u64,
+    #[serde(default = "default_period_seconds")]
+    pub period_seconds: u64,
+    #[serde(default = "default_timeout_seconds")]
+    pub timeout_seconds: u64,
+    #[serde(default = "default_success_threshold")]
+    pub success_threshold: u64,
+    #[serde(default = "default_failure_threshold")]
+    pub failure_threshold: u64,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct LogLineReadinessProbeConfig {
-    pub pattern: String,
+fn default_initial_delay_seconds() -> u64 {
+    0
+}
+fn default_period_seconds() -> u64 {
+    10
+}
+fn default_timeout_seconds() -> u64 {
+    1
+}
+fn default_success_threshold() -> u64 {
+    1
+}
+fn default_failure_threshold() -> u64 {
+    3
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ExecReadinessProbeConfig {
     pub command: String,
+    pub working_dir: Option<PathBuf>,
+    #[serde(default)]
+    pub envs: HashMap<String, String>,
+    pub shell: Option<ShellConfig>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(untagged)]
 pub enum ServiceConfig {
     Bool(bool),
-    Struct(ServiceConfigStruct)
+    Struct(ServiceConfigStruct),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ServiceConfigStruct {
     pub readiness_probe: Option<ReadinessProbeConfig>,
+    pub availability: Option<AvailabilityConfig>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AvailabilityConfig {
+    pub restart: bool,
+    pub backoff_seconds: u64,
+    pub max_restarts: u64,
 }

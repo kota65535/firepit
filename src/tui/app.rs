@@ -1,9 +1,14 @@
-use crate::event::{Event, TaskResult};
 use crate::event::{Direction, PaneSize};
+use crate::event::{Event, TaskResult};
 use crate::event::{EventReceiver, EventSender};
-use crate::tui::task::{TaskPlan, TaskStatus};
+use crate::tui::input;
+use crate::tui::input::InputOptions;
+use crate::tui::pane::TerminalPane;
+use crate::tui::size::SizeInfo;
+use crate::tui::table::TaskTable;
+use crate::tui::task::{TaskDetail, TaskPlan, TaskStatus};
 use crate::tui::term_output::TerminalOutput;
-use anyhow::{Context};
+use anyhow::Context;
 use indexmap::IndexMap;
 use log::debug;
 use ratatui::{
@@ -20,11 +25,6 @@ use tokio::{
     sync::{mpsc, oneshot},
     time::Instant,
 };
-use crate::tui::input;
-use crate::tui::input::InputOptions;
-use crate::tui::pane::TerminalPane;
-use crate::tui::size::SizeInfo;
-use crate::tui::table::TaskTable;
 
 pub const FRAME_RATE: Duration = Duration::from_millis(3);
 
@@ -45,7 +45,7 @@ pub struct TuiApp {
 pub struct TuiAppState {
     size: SizeInfo,
     task_outputs: IndexMap<String, TerminalOutput>,
-    task_statuses: IndexMap<String, TaskStatus>,
+    task_details: IndexMap<String, TaskDetail>,
     focus: LayoutSections,
     scroll: TableState,
     selected_task_index: usize,
@@ -87,16 +87,16 @@ impl TuiApp {
             })
             .collect::<IndexMap<_, _>>();
 
-        let task_statuses = target_tasks
+        let task_details = target_tasks
             .iter()
-            .map(|t| (t.clone(), TaskStatus::Planned(TaskPlan::new(true))))
+            .map(|t| (t.clone(), TaskDetail::new(t, true)))
             .chain(
                 dep_tasks
                     .iter()
-                    .map(|t| (t.clone(), TaskStatus::Planned(TaskPlan::new(false)))),
+                    .map(|t| (t.clone(), TaskDetail::new(t, false))),
             )
             .collect::<IndexMap<_, _>>();
-        
+
         let selected_task_index = 0;
 
         Ok(Self {
@@ -107,7 +107,7 @@ impl TuiApp {
             state: TuiAppState {
                 size,
                 task_outputs,
-                task_statuses,
+                task_details,
                 focus: LayoutSections::TaskList,
                 scroll: TableState::default().with_selected(selected_task_index),
                 selected_task_index,
@@ -136,7 +136,7 @@ impl TuiApp {
 
         Ok(terminal)
     }
-    
+
     pub fn sender(&self) -> EventSender {
         self.sender.clone()
     }
@@ -283,16 +283,25 @@ impl TuiAppState {
         self.task_outputs.iter().map(|t| t.0.clone()).collect()
     }
 
-    pub fn start_task(&mut self, task: &str) {
-        self.task_statuses.insert(task.to_string(), TaskStatus::Running);
+    fn set_status(&mut self, task: &str, status: TaskStatus) {
+        if let Some(task) = self.task_details.get_mut(task) {
+            task.status = status;
+        }
+        if let Some(output) = self.task_outputs.get_mut(task) {
+            output.status = status
+        }
     }
-    
+
+    pub fn start_task(&mut self, task: &str) {
+        self.set_status(task, TaskStatus::Running);
+    }
+
     pub fn ready_task(&mut self, task: &str) {
-        self.task_statuses.insert(task.to_string(), TaskStatus::Ready);
+        self.set_status(task, TaskStatus::Ready);
     }
 
     pub fn finish_task(&mut self, task: &str, result: TaskResult) {
-        self.task_statuses.insert(task.to_string(), TaskStatus::Finished(result));
+        self.set_status(task, TaskStatus::Finished(result));
     }
 
     pub fn has_stdin(&self) -> anyhow::Result<bool> {
@@ -311,10 +320,10 @@ impl TuiAppState {
 
     pub fn persist_tasks(&mut self) -> anyhow::Result<()> {
         for (_, o) in self
-            .task_statuses
+            .task_details
             .values()
             .zip(self.task_outputs.values())
-            .filter(|(s, _)| matches!(s, TaskStatus::Running | TaskStatus::Finished(_)))
+            .filter(|(s, _)| matches!(s.status, TaskStatus::Running | TaskStatus::Finished(_)))
         {
             o.persist_screen()?
         }
@@ -369,7 +378,7 @@ impl TuiAppState {
             &self.focus,
             self.has_sidebar,
         );
-        let table_to_render = TaskTable::new(&self.task_statuses);
+        let table_to_render = TaskTable::new(&self.task_details);
 
         f.render_widget(&pane_to_render, pane);
         f.render_stateful_widget(&table_to_render, table, &mut self.scroll);

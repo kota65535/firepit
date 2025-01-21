@@ -1,5 +1,5 @@
 use crate::event::TaskResult;
-use crate::tui::task::TaskStatus;
+use crate::tui::task::{TaskDetail, TaskStatus};
 use indexmap::IndexMap;
 use ratatui::{
     layout::{Constraint, Rect},
@@ -13,14 +13,14 @@ use ratatui::{
 /// The table contains finished tasks, running tasks, and planned tasks rendered
 /// in that order.
 pub struct TaskTable<'b> {
-    tasks: &'b IndexMap<String, TaskStatus>,
+    tasks: &'b IndexMap<String, TaskDetail>,
 }
 
 const TASK_NAVIGATE_INSTRUCTIONS: &str = "↑ ↓ to navigate";
 const HIDE_INSTRUCTIONS: &str = "h to hide";
 
 impl<'b> TaskTable<'b> {
-    pub fn new(tasks: &'b IndexMap<String, TaskStatus>) -> Self {
+    pub fn new(tasks: &'b IndexMap<String, TaskDetail>) -> Self {
         Self { tasks }
     }
 }
@@ -43,52 +43,47 @@ impl TaskTable<'_> {
         self.tasks
             .iter()
             .map(|(n, r)| {
-                match r {
-                    TaskStatus::Planned(detail) => {
-                        let n = if detail.is_target {
-                            n.clone()
-                        } else {
-                            format!(" {}", n.clone())
-                        };
-                        Row::new(vec![
-                            Cell::new(n),
-                            Cell::new(Text::raw("\u{1FAB5}\u{200D}"))]) // 🪵
+                let name_cell = if r.is_target {
+                    Cell::new(Text::styled(n.clone(), Style::default().bold()))
+                } else {
+                    Cell::new(Text::styled(n.clone(), Style::default()))
+                };
+                match r.status {
+                    TaskStatus::Planned => {
+                        Row::new(vec![name_cell, Cell::new(Text::raw("\u{1FAB5}"))])
+                        // 🪵
                     }
                     TaskStatus::Running => Row::new(vec![
-                        Cell::new(n.clone()),
-                        Cell::new(Text::raw("\u{1F525}\u{200D}")),  // 🔥
+                        name_cell,
+                        Cell::new(Text::raw("\u{1F525}")), // 🔥
                     ]),
                     TaskStatus::Ready => Row::new(vec![
-                        Cell::new(n.clone()),
-                        Cell::new(Text::raw("\u{1F356}\u{200D}")),  // 🍖
+                        name_cell,
+                        Cell::new(Text::raw("\u{1F356}")), // 🍖
                     ]),
                     TaskStatus::Finished(r) => {
                         Row::new(vec![
-                            Cell::new(n.clone()),
+                            name_cell,
                             match r {
-                                TaskResult::Success => Cell::new(Text::styled(
-                                    "\u{2705}\u{200D}",     // ✅
-                                    Style::default().green().bold(),
+                                TaskResult::Success => Cell::new(Text::raw(
+                                    "\u{2705}\u{200D}", // ✅
                                 )),
-                                TaskResult::Skipped => Cell::new(Text::styled(
-                                    "\u{1F6AB}\u{200D}",    // 🚫
-                                    Style::default().green().bold(),
+                                TaskResult::Skipped => Cell::new(Text::raw(
+                                    "\u{1F6AB}\u{200D}", // 🚫
                                 )),
-                                TaskResult::Stopped => Cell::new(Text::styled(
-                                    "\u{26D4}\u{200D}",     // ⛔
-                                    Style::default().green().bold(),
+                                TaskResult::Stopped => Cell::new(Text::raw(
+                                    "\u{26D4}\u{200D}", // ⛔
                                 )),
-                                TaskResult::Failure => Cell::new(Text::styled(
-                                    "\u{274C}\u{200D}",     // ❌
-                                    Style::default().red().bold(),
+                                TaskResult::Failure => Cell::new(Text::raw(
+                                    "\u{274C}\u{200D}", // ❌
                                 )),
-                                TaskResult::Unknown => Cell::new(Text::styled(
-                                    "\u{2753}\u{200D}",     // ❓
-                                    Style::default().red().bold(),
+                                TaskResult::Unknown => Cell::new(Text::raw(
+                                    "\u{2753}\u{200D}", // ❓
                                 )),
                             },
                         ])
                     }
+                    TaskStatus::Unknown => Row::new(vec![name_cell, Cell::new(Text::raw(" "))]),
                 }
             })
             .collect()
