@@ -4,8 +4,8 @@ use ratatui::{
     widgets::{Block, Widget},
 };
 use tui_term::widget::PseudoTerminal;
-
-use super::{app::LayoutSections, TerminalOutput};
+use crate::tui::app::LayoutSections;
+use crate::tui::term_output::TerminalOutput;
 
 const FOOTER_TEXT_ACTIVE: &str = "Press`Ctrl-Z` to stop interacting.";
 const FOOTER_TEXT_INACTIVE: &str = "Press `Enter` to interact.";

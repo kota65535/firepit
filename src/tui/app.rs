@@ -1,5 +1,4 @@
-use super::{input, Event, InputOptions, SizeInfo, TaskTable, TerminalPane};
-use crate::event::TaskResult;
+use crate::event::{Event, TaskResult};
 use crate::event::{Direction, PaneSize};
 use crate::event::{EventReceiver, EventSender};
 use crate::tui::task::{TaskPlan, TaskStatus};
@@ -21,6 +20,11 @@ use tokio::{
     sync::{mpsc, oneshot},
     time::Instant,
 };
+use crate::tui::input;
+use crate::tui::input::InputOptions;
+use crate::tui::pane::TerminalPane;
+use crate::tui::size::SizeInfo;
+use crate::tui::table::TaskTable;
 
 pub const FRAME_RATE: Duration = Duration::from_millis(3);
 
@@ -366,7 +370,7 @@ impl TuiAppState {
         let [table, pane] = horizontal.areas(f.size());
 
         let active_task = self.active_task().unwrap();
-        let pane_to_render: TerminalPane = TerminalPane::new(
+        let pane_to_render = TerminalPane::new(
             &active_task,
             &active_task.name,
             &self.focus,

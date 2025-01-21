@@ -1,4 +1,4 @@
-use crate::tui::TaskTable;
+use crate::tui::table::TaskTable;
 
 const PANE_SIZE_RATIO: f32 = 3.0 / 4.0;
 

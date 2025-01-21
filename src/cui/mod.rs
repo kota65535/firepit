@@ -1,7 +1,7 @@
 pub mod app;
-pub mod color;
-pub mod lib;
-pub mod line;
-pub mod logs;
-pub mod output;
-pub mod prefixed;
+mod color;
+mod lib;
+mod line;
+mod logs;
+mod output;
+mod prefixed;
