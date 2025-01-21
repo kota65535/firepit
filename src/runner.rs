@@ -124,20 +124,19 @@ impl TaskRunner {
 
         // Receive next task when deps end (finished or killed)
         while let Some((task, deps_ok, callback)) = task_rx.recv().await {
-            let app_tx = app_tx.with_name(&task.name);
-            let mut log_tx = app_tx.clone();
+            let mut app_tx = app_tx.with_name(&task.name);
 
             let manager = self.manager.clone();
 
             // Run log line prober
             match task.prober {
                 Prober::LogLine(mut prober) => {
-                    let app_tx = app_tx.clone();
                     let (tx, rx) = mpsc::unbounded_channel();
-                    log_tx = EventSender::new(tx).with_name(&task.name);
+                    let mut log_tx = EventSender::new(tx).with_name(&task.name);
                     let log_rx = EventReceiver::new(rx);
+                    std::mem::swap(&mut app_tx, &mut log_tx);
                     task_futs.push(tokio::spawn(async move {
-                        prober.probe(app_tx, log_rx).await;
+                        prober.probe(log_tx, log_rx).await;
                         Ok(())
                     }));
                 }
@@ -189,7 +188,7 @@ impl TaskRunner {
                 app_tx.start_task(task.name.clone());
 
                 // Wait until end
-                let result = match process.wait_with_piped_outputs(log_tx).await {
+                let result = match process.wait_with_piped_outputs(app_tx.clone()).await {
                     Ok(Some(exit_status)) => match exit_status {
                         ChildExit::Finished(Some(code)) if code == 0 => TaskResult::Success,
                         ChildExit::Finished(_) => TaskResult::Failure,

@@ -30,14 +30,28 @@ impl LogLineProber {
     pub async fn probe(&mut self, tx: EventSender, mut rx: EventReceiver) {
         let this = self.clone();
         let tx = tx.clone();
+        let mut matched = false;
         while let Some(event) = rx.recv().await {
-            if let Event::TaskOutput { task, output } = event {
-                tx.output(task.clone(), output.clone()).ok();
-                let line = String::from_utf8(output).unwrap_or_default();
-                if this.regex.is_match(&line) {
-                    tx.ready_task(task.clone());
-                    break;
+            match event {
+                Event::StartTask { task} => {
+                    tx.start_task(task)
                 }
+                Event::TaskOutput { task, output } => {
+                    tx.output(task.clone(), output.clone()).ok();
+                    let line = String::from_utf8(output).unwrap_or_default();
+                    if !matched && this.regex.is_match(&line) {
+                        tx.ready_task(task.clone());
+                        matched = true
+                    }
+                }
+                Event::ReadyTask { task} => {
+                    tx.ready_task(task)
+                }
+                Event::EndTask { task, result} => {
+                    tx.end_task(task, result);
+                    break
+                }
+                _ => {}
             }
         }
     }
