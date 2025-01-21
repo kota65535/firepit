@@ -191,9 +191,10 @@ impl TaskRunner {
                 let result = match process.wait_with_piped_outputs(app_tx.clone()).await {
                     Ok(Some(exit_status)) => match exit_status {
                         ChildExit::Finished(Some(code)) if code == 0 => TaskResult::Success,
-                        ChildExit::Finished(_) => TaskResult::Failure,
+                        ChildExit::Finished(Some(code)) => TaskResult::Failure(code),
                         ChildExit::Killed | ChildExit::KilledExternal => TaskResult::Stopped,
-                        ChildExit::Failed => TaskResult::Failure,
+                        ChildExit::Failed => TaskResult::Unknown,
+                        _ => TaskResult::Unknown,
                     },
                     Err(e) => return Err(anyhow!(e.to_string())),
                     Ok(None) => return Err(anyhow!("unable to determine why child exited")),

@@ -161,7 +161,7 @@ impl ExecProber {
                 break;
             }
             if failure >= self.failure_threshold {
-                tx.end_task(self.name.clone(), TaskResult::Failure);
+                tx.end_task(self.name.clone(), TaskResult::Failure(1));
                 break;
             }
         }

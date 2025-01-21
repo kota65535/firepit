@@ -74,7 +74,7 @@ impl TaskTable<'_> {
                                 TaskResult::Stopped => Cell::new(Text::raw(
                                     "\u{26D4}\u{200D}", // ⛔
                                 )),
-                                TaskResult::Failure => Cell::new(Text::raw(
+                                TaskResult::Failure(_) => Cell::new(Text::raw(
                                     "\u{274C}\u{200D}", // ❌
                                 )),
                                 TaskResult::Unknown => Cell::new(Text::raw(

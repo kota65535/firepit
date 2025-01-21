@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use crate::tui::app::FRAME_RATE;
 use std::io;
 use std::io::Write;
@@ -166,12 +167,24 @@ impl Write for EventSender {
 pub enum TaskResult {
     /// Run successfully.
     Success,
+    /// Exited with non-zero code.
+    Failure(i32),
     /// Skipped due to the failure of the deps.
     Skipped,
     /// Killed by someone else.
     Stopped,
-    /// Killed because the task does not become ready.
-    Failure,
     /// The other reason.
     Unknown,
+}
+
+impl Display for TaskResult {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TaskResult::Success => write!(f, "Success"),
+            TaskResult::Skipped => write!(f, "Skipped"),
+            TaskResult::Stopped => write!(f, "Stopped"),
+            TaskResult::Failure(code) => write!(f, "Failure with code {code}"),
+            TaskResult::Unknown => write!(f, "Unknown"),
+        }
+    }
 }
