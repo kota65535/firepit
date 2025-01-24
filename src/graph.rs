@@ -1,4 +1,4 @@
-use crate::event::TaskResult;
+use crate::event::{TaskResult, TaskStatus};
 use crate::runner::Task;
 use anyhow::Context;
 use futures::future::{join_all, JoinAll};
@@ -19,7 +19,7 @@ pub struct TaskGraph {
     graph: DiGraph<Task, ()>,
 }
 
-pub type TaskVisitorMessage = (Task, bool, oneshot::Sender<TaskResult>);
+pub type TaskVisitorMessage = (Task, bool, mpsc::Sender<TaskStatus>);
 
 impl TaskGraph {
     pub fn new(tasks: &Vec<Task>) -> anyhow::Result<TaskGraph> {
@@ -79,7 +79,7 @@ impl TaskGraph {
         let mut rxs = HashMap::new();
         for node in self.graph.node_identifiers() {
             // Each node can finish at most once so we set the capacity to 1
-            let (tx, rx) = broadcast::channel::<TaskResult>(1);
+            let (tx, rx) = broadcast::channel::<TaskStatus>(1);
             txs.insert(node, tx);
             rxs.insert(node, rx);
         }
@@ -150,9 +150,13 @@ impl TaskGraph {
                         for res in results {
                             match res {
                                 // No errors from reading dependency channels
-                                Ok(result) => {
-                                    match result {
-                                        TaskResult::Success => {}
+                                Ok(status) => {
+                                    match status {
+                                        TaskStatus::Ready => {}
+                                        TaskStatus::Finished(result) => match result {
+                                            TaskResult::Success => {}
+                                            _ => { deps_ok = false }
+                                        }
                                         _ => { deps_ok = false }
                                     }
                                 }
@@ -165,18 +169,18 @@ impl TaskGraph {
                     }
                 }
 
-                let (callback_tx, callback_rx) = oneshot::channel::<TaskResult>();
+                let (callback_tx, mut callback_rx) = mpsc::channel(1);
                 let result = match node_tx.send((task.clone(), deps_ok, callback_tx)).await {
                     Ok(_) => {
-                        match callback_rx.await {
-                            Ok(result) => result,
+                        match callback_rx.recv().await {
+                            Some(result) => result,
                             _ => {
                                 // If the caller drops the callback sender without signaling
                                 // that the node processing is finished we assume that it is finished.
                                 info!(
                                     "Callback sender was dropped without sending a finish signal"
                                 );
-                                TaskResult::Skipped
+                                TaskStatus::Unknown
                             }
                         }
                     }
@@ -185,7 +189,7 @@ impl TaskGraph {
                         // Since there's nothing the mark the node as being done
                         // we act as if we have been canceled.
                         warn!("Cannot send task to the runner: {:?}", e);
-                        TaskResult::Unknown
+                        TaskStatus::Unknown
                     }
                 };
                 info!("Task {:?} finished. result: {:?}", task.name, result);

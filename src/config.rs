@@ -1,12 +1,12 @@
 use anyhow::Context;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
-use std::{io, path};
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::thread::available_parallelism;
-use schemars::JsonSchema;
+use std::{io, path};
 
 const CONFIG_FILE: [&str; 2] = ["firepit.yml", "firepit.yaml"];
 
@@ -105,9 +105,13 @@ impl ProjectConfig {
             for (name, path) in &root_config.projects {
                 let mut child_config = ProjectConfig::new(dir.join(path).as_path())?;
                 child_config.env.extend(root_config.env.clone());
-                child_config.env_files.extend(root_config.env_files.iter()
-                    .map(|f| dir.join(f).to_str().unwrap().to_string())
-                    .collect::<Vec<_>>());
+                child_config.env_files.extend(
+                    root_config
+                        .env_files
+                        .iter()
+                        .map(|f| dir.join(f).to_str().unwrap().to_string())
+                        .collect::<Vec<_>>(),
+                );
 
                 children.insert(name.clone(), child_config);
             }
@@ -208,12 +212,10 @@ pub struct TaskConfig {
 
     /// Service configuration.
     pub service: Option<ServiceConfig>,
-
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ShellConfig {
-
     /// Shell command.
     pub command: String,
 
@@ -233,7 +235,7 @@ pub struct LogConfig {
 #[serde(untagged)]
 pub enum HealthCheckConfig {
     Log(LogHealthCheckerConfig),
-    Exec(ExecHealthCheckerConfig)
+    Exec(ExecHealthCheckerConfig),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -259,7 +261,7 @@ pub struct ExecHealthCheckerConfig {
     pub env: HashMap<String, String>,
 
     pub shell: Option<ShellConfig>,
-    
+
     #[serde(default = "default_healthcheck_interval")]
     pub interval: u64,
 
@@ -298,7 +300,7 @@ pub struct ServiceConfigStruct {
     pub healthcheck: Option<HealthCheckConfig>,
 
     #[serde(default = "default_service_restart")]
-    pub restart: Restart
+    pub restart: Restart,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -306,7 +308,7 @@ pub struct ServiceConfigStruct {
 pub enum Restart {
     Always,
     OnFailure,
-    Never
+    Never,
 }
 
 pub fn default_service_restart() -> Restart {

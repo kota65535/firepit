@@ -1,10 +1,12 @@
-use crate::event::{Event, EventReceiver, EventSender, TaskResult};
+use crate::event::{Event, EventReceiver, EventSender, TaskResult, TaskStatus};
 use crate::process::{ChildExit, Command, ProcessManager};
 use anyhow::Context;
+use log::info;
 use regex::Regex;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
+use tokio::sync::mpsc;
 
 #[derive(Debug, Clone)]
 pub enum Prober {
@@ -31,26 +33,33 @@ impl LogLineProber {
         }
     }
 
-    pub async fn probe(&mut self, tx: EventSender, mut rx: EventReceiver) {
+    pub async fn probe(
+        &mut self,
+        tx: EventSender,
+        mut rx: EventReceiver,
+        callback: mpsc::Sender<TaskStatus>,
+    ) {
         tokio::time::sleep(Duration::from_secs(self.start_period)).await;
         let this = self.clone();
         let tx = tx.clone();
         let mut matched = false;
         while let Some(event) = rx.recv().await {
             match event {
-                Event::StartTask { task } => {
-                    tx.start_task(task)
-                }
+                Event::StartTask { task } => tx.start_task(task),
                 Event::TaskOutput { task, output } => {
                     tx.output(task.clone(), output.clone()).ok();
                     let line = String::from_utf8(output).unwrap_or_default();
                     if !matched && this.regex.is_match(&line) {
                         tx.ready_task(task.clone());
+                        callback.send(TaskStatus::Ready).await.ok();
                         matched = true
                     }
                 }
+                Event::SetStdin { task, stdin } => {
+                    tx.set_stdin(task, stdin);
+                }
                 Event::ReadyTask { task } => {
-                    tx.ready_task(task)
+                    tx.ready_task(task);
                 }
                 Event::EndTask { task, result } => {
                     tx.end_task(task, result);
@@ -137,17 +146,20 @@ impl ExecProber {
         }
     }
 
-    pub async fn probe(&mut self, tx: EventSender) {
+    pub async fn probe(&mut self, tx: EventSender, callback: mpsc::Sender<TaskStatus>) {
         tokio::time::sleep(Duration::from_secs(self.start_period)).await;
 
+        info!("Task {:?} prober started", self.name);
         let mut retries = 0;
         loop {
+            info!("Run prober");
             let success = match self.exec().await {
                 Ok(result) => result,
-                _ => false
+                _ => false,
             };
             if success {
                 tx.ready_task(self.name.clone());
+                callback.send(TaskStatus::Ready).await.ok();
                 break;
             }
             if retries >= self.retries {
@@ -158,5 +170,6 @@ impl ExecProber {
             tokio::time::sleep(Duration::from_secs(self.interval)).await;
             retries += 1;
         }
+        info!("Task {:?} prober finished", self.name);
     }
 }

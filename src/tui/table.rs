@@ -1,5 +1,5 @@
-use crate::event::TaskResult;
-use crate::tui::task::{TaskDetail, TaskStatus};
+use crate::event::{TaskResult, TaskStatus};
+use crate::tui::task::TaskDetail;
 use indexmap::IndexMap;
 use ratatui::{
     layout::{Constraint, Rect},
@@ -68,14 +68,13 @@ impl TaskTable<'_> {
                                 TaskResult::Success => Cell::new(Text::raw(
                                     "\u{2705}\u{200D}", // ✅
                                 )),
-                                TaskResult::Skipped => Cell::new(Text::raw(
-                                    "\u{1F6AB}\u{200D}", // 🚫
-                                )),
-                                TaskResult::Stopped => Cell::new(Text::raw(
-                                    "\u{26D4}\u{200D}", // ⛔
-                                )),
                                 TaskResult::Failure(_) => Cell::new(Text::raw(
                                     "\u{274C}\u{200D}", // ❌
+                                )),
+                                TaskResult::BadDeps
+                                | TaskResult::NotReady
+                                | TaskResult::Stopped => Cell::new(Text::raw(
+                                    "\u{1F6AB}\u{200D}", // 🚫
                                 )),
                                 TaskResult::Unknown => Cell::new(Text::raw(
                                     "\u{2753}\u{200D}", // ❓

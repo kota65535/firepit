@@ -1,5 +1,4 @@
-use crate::event::Direction;
-use crate::tui::task::TaskStatus;
+use crate::event::{Direction, TaskStatus};
 use std::{io::Write, mem};
 
 const SCROLLBACK_LEN: usize = 1024;

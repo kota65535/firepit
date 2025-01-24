@@ -1,5 +1,5 @@
-use std::fmt::{Display, Formatter};
 use crate::tui::app::FRAME_RATE;
+use std::fmt::{Display, Formatter};
 use std::io;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
@@ -163,16 +163,50 @@ impl Write for EventSender {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TaskStatus {
+    Planned,
+    Running,
+    Ready,
+    Finished(TaskResult),
+    Unknown,
+}
+
+impl Display for TaskStatus {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TaskStatus::Planned => write!(f, "Planned"),
+            TaskStatus::Running => write!(f, "Running"),
+            TaskStatus::Ready => write!(f, "Ready"),
+            TaskStatus::Finished(result) => match result {
+                TaskResult::Success => write!(f, "Finished"),
+                TaskResult::Failure(code) => write!(f, "Exited with code {code}"),
+                TaskResult::BadDeps => write!(f, "Dependency task failed"),
+                TaskResult::NotReady => write!(f, "Service not ready"),
+                TaskResult::Stopped => write!(f, "Killed"),
+                TaskResult::Unknown => write!(f, "Unknown"),
+            },
+            TaskStatus::Unknown => write!(f, "Unknown"),
+        }
+    }
+}
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum TaskResult {
     /// Run successfully.
     Success,
+
     /// Exited with non-zero code.
     Failure(i32),
-    /// Skipped due to the failure of the deps.
-    Skipped,
-    /// Killed by someone else.
+
+    /// Killed by signal.
     Stopped,
+
+    /// Dependencies not satisfied
+    BadDeps,
+
+    /// Service not ready
+    NotReady,
+
     /// The other reason.
     Unknown,
 }
@@ -181,8 +215,9 @@ impl Display for TaskResult {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             TaskResult::Success => write!(f, "Success"),
-            TaskResult::Skipped => write!(f, "Skipped"),
+            TaskResult::BadDeps => write!(f, "Dependency task failed"),
             TaskResult::Stopped => write!(f, "Stopped"),
+            TaskResult::NotReady => write!(f, "Service not ready in timeout"),
             TaskResult::Failure(code) => write!(f, "Failure with code {code}"),
             TaskResult::Unknown => write!(f, "Unknown"),
         }

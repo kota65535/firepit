@@ -1,5 +1,5 @@
-use crate::config::{ExecHealthCheckerConfig, HealthCheckConfig, LogHealthCheckerConfig, ProjectConfig, ServiceConfig};
-use crate::event::{EventReceiver, EventSender, TaskResult};
+use crate::config::{HealthCheckConfig, LogHealthCheckerConfig, ProjectConfig, ServiceConfig};
+use crate::event::{EventReceiver, EventSender, TaskResult, TaskStatus};
 use crate::graph::TaskGraph;
 use crate::probe::{ExecProber, LogLineProber, Prober};
 use crate::process::{ChildExit, Command, ProcessManager};
@@ -127,15 +127,17 @@ impl TaskRunner {
                     let mut log_tx = EventSender::new(tx).with_name(&task.name);
                     let log_rx = EventReceiver::new(rx);
                     std::mem::swap(&mut app_tx, &mut log_tx);
+                    let callback = callback.clone();
                     task_futs.push(tokio::spawn(async move {
-                        prober.probe(log_tx, log_rx).await;
+                        prober.probe(log_tx, log_rx, callback).await;
                         Ok(())
                     }));
                 }
                 Prober::Exec(mut prover) => {
                     let probe_tx = app_tx.clone();
+                    let callback = callback.clone();
                     task_futs.push(tokio::spawn(async move {
-                        prover.probe(probe_tx).await;
+                        prover.probe(probe_tx, callback).await;
                         Ok(())
                     }));
                 }
@@ -146,8 +148,8 @@ impl TaskRunner {
                 // Skip the task if any deps didn't end successfully
                 if !deps_ok {
                     info!("Skipping task {:?}", task.name);
-                    app_tx.end_task(task.name, TaskResult::Skipped);
-                    callback.send(TaskResult::Skipped).ok();
+                    app_tx.end_task(task.name, TaskResult::BadDeps);
+                    callback.send(TaskStatus::Finished(TaskResult::BadDeps)).await?;
                     return Ok(());
                 }
 
@@ -196,7 +198,7 @@ impl TaskRunner {
                 // Notify the app the task ended
                 app_tx.end_task(task.name.clone(), result);
                 // Notify the visitor the task ended
-                callback.send(result).ok();
+                callback.send(TaskStatus::Finished(result)).await?;
                 Ok(())
             }));
         }
@@ -278,35 +280,48 @@ impl Task {
             let task_config = task_config.clone();
             let task_name = Task::qualified_name(project_name, task_name);
             let shell = task_config.shell.clone().unwrap_or(config.shell.clone());
-            let working_dir = PathBuf::from(task_config.working_dir.unwrap_or(config.working_dir.clone()));
+            let working_dir = PathBuf::from(
+                task_config
+                    .working_dir
+                    .unwrap_or(config.working_dir.clone()),
+            );
             let working_dir = if working_dir.is_absolute() {
                 working_dir
             } else {
                 config.dir.join(working_dir)
             };
-            let project_env = load_env_files(&config.env_files)?.into_iter().chain(config.env.clone()).collect::<HashMap<_, _>>();
-            let task_env = load_env_files(&task_config.env_files)?.into_iter().chain(task_config.env.clone()).collect::<HashMap<_, _>>();
-            let env = project_env.into_iter().chain(task_env).collect::<HashMap<_, _>>();
+            let project_env = load_env_files(&config.env_files)?
+                .into_iter()
+                .chain(config.env.clone())
+                .collect::<HashMap<_, _>>();
+            let task_env = load_env_files(&task_config.env_files)?
+                .into_iter()
+                .chain(task_config.env.clone())
+                .collect::<HashMap<_, _>>();
+            let env = project_env
+                .into_iter()
+                .chain(task_env)
+                .collect::<HashMap<_, _>>();
 
             let (is_service, prober) = match task_config.service {
                 Some(service) => match service {
-                    ServiceConfig::Bool(bool) => {
-                        (bool, Prober::None)
-                    }
+                    ServiceConfig::Bool(bool) => (bool, Prober::None),
                     ServiceConfig::Struct(st) => {
                         let prober = match st.healthcheck {
                             Some(healthcheck) => match healthcheck {
-                                HealthCheckConfig::Log(c) => {
-                                    Prober::LogLine(LogLineProber::new(
-                                        &task_name,
-                                        Regex::new(&c.log).with_context(|| format!("invalid regex pattern"))?,
-                                        c.timeout,
-                                        c.start_period
-                                    ))
-                                }
+                                HealthCheckConfig::Log(c) => Prober::LogLine(LogLineProber::new(
+                                    &task_name,
+                                    Regex::new(&c.log)
+                                        .with_context(|| format!("invalid regex pattern"))?,
+                                    c.timeout,
+                                    c.start_period,
+                                )),
                                 HealthCheckConfig::Exec(c) => {
                                     let healthcheck_shell = c.shell.unwrap_or(shell.clone());
-                                    let healthcheck_working_dir = c.working_dir.map(|d| path::absolute(d)).unwrap_or(Ok(working_dir.clone()))?;
+                                    let healthcheck_working_dir = c
+                                        .working_dir
+                                        .map(|d| path::absolute(d))
+                                        .unwrap_or(Ok(working_dir.clone()))?;
                                     Prober::Exec(ExecProber::new(
                                         &task_name,
                                         &c.command,
@@ -320,8 +335,8 @@ impl Task {
                                         c.start_period,
                                     ))
                                 }
-                            }
-                            None => Prober::None
+                            },
+                            None => Prober::None,
                         };
                         (true, prober)
                     }

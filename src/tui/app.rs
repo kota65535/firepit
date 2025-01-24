@@ -1,4 +1,4 @@
-use crate::event::{Direction, PaneSize};
+use crate::event::{Direction, PaneSize, TaskStatus};
 use crate::event::{Event, TaskResult};
 use crate::event::{EventReceiver, EventSender};
 use crate::tui::input;
@@ -6,11 +6,11 @@ use crate::tui::input::InputOptions;
 use crate::tui::pane::TerminalPane;
 use crate::tui::size::SizeInfo;
 use crate::tui::table::TaskTable;
-use crate::tui::task::{TaskDetail, TaskPlan, TaskStatus};
+use crate::tui::task::TaskDetail;
 use crate::tui::term_output::TerminalOutput;
 use anyhow::Context;
 use indexmap::IndexMap;
-use log::debug;
+use log::{debug, info};
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Layout},
@@ -72,6 +72,8 @@ impl TuiApp {
                 .chain(dep_tasks.iter())
                 .map(|s| s.as_str()),
         );
+
+        debug!("Terminal size: height={} width={}", rect.height, rect.width);
 
         let pane_rows = size.pane_rows();
         let pane_cols = size.pane_cols();
@@ -157,10 +159,12 @@ impl TuiApp {
         let mut needs_rerender = true;
 
         while let Some(event) = self.poll().await {
-            // If we only receive ticks, then there's been no state change so no update
-            // needed
+            // If we only receive ticks, then there's been no state change so no update needed
             if !matches!(event, Event::Tick) {
                 needs_rerender = true;
+            }
+            if matches!(event, Event::Resize { .. }) {
+                self.terminal.autoresize()?;
             }
             callback = self.state.update(event)?;
             if self.state.done {
@@ -354,6 +358,7 @@ impl TuiAppState {
     }
 
     pub fn resize(&mut self, rows: u16, cols: u16) {
+        debug!("Terminal size: height={} width={}", rows, cols);
         self.size.resize(rows, cols);
         let pane_rows = self.size.pane_rows();
         let pane_cols = self.size.pane_cols();
