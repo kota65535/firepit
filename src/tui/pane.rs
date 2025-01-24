@@ -1,6 +1,7 @@
 use crate::tui::app::LayoutSections;
 use crate::tui::term_output::TerminalOutput;
-use ratatui::style::Stylize;
+use ratatui::style::{Color, Stylize};
+use ratatui::widgets::Borders;
 use ratatui::{
     style::Style,
     text::Line,
@@ -17,6 +18,7 @@ pub struct TerminalPane<'a> {
     task_name: &'a str,
     section: &'a LayoutSections,
     has_sidebar: bool,
+    remaining_time: Option<u64>,
 }
 
 impl<'a> TerminalPane<'a> {
@@ -25,12 +27,14 @@ impl<'a> TerminalPane<'a> {
         task_name: &'a str,
         section: &'a LayoutSections,
         has_sidebar: bool,
+        remaining_time: Option<u64>,
     ) -> Self {
         Self {
             terminal_output,
             section,
             task_name,
             has_sidebar,
+            remaining_time,
         }
     }
 
@@ -45,10 +49,16 @@ impl<'a> TerminalPane<'a> {
             ""
         };
 
-        match self.section {
-            LayoutSections::Pane => Line::from(FOOTER_TEXT_ACTIVE.to_owned()).centered(),
-            LayoutSections::TaskList => {
-                Line::from(format!("{FOOTER_TEXT_INACTIVE} {task_list_message}")).centered()
+        if let Some(time) = self.remaining_time {
+            Line::from(format!("Shutting down... ({} sec)", time))
+                .centered()
+                .style(Style::default().bg(Color::LightRed).fg(Color::White))
+        } else {
+            match self.section {
+                LayoutSections::Pane => Line::from(FOOTER_TEXT_ACTIVE.to_owned()).centered(),
+                LayoutSections::TaskList => {
+                    Line::from(format!("{FOOTER_TEXT_INACTIVE} {task_list_message}")).centered()
+                }
             }
         }
     }
@@ -61,10 +71,20 @@ impl<'a> Widget for &TerminalPane<'a> {
     {
         let screen = self.terminal_output.parser.screen();
         let block = Block::default()
+            .borders(if self.has_sidebar {
+                Borders::LEFT
+            } else {
+                Borders::NONE
+            })
+            .border_style(if self.highlight() {
+                Style::new().fg(Color::Yellow)
+            } else {
+                Style::new()
+            })
             .title(self.terminal_output.title(self.task_name))
             .title_bottom(self.footer())
-            .style(if self.highlight() {
-                Style::new().fg(ratatui::style::Color::Yellow).bold()
+            .title_style(if self.highlight() {
+                Style::new().fg(Color::Yellow).bold()
             } else {
                 Style::new().bold()
             });

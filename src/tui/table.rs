@@ -98,7 +98,7 @@ impl<'a> StatefulWidget for &'a TaskTable<'a> {
         let table = Table::new(self.rows(), [Constraint::Min(12), Constraint::Length(3)])
             .highlight_style(Style::default().fg(Color::Yellow))
             .column_spacing(0)
-            .block(Block::new().borders(Borders::RIGHT))
+            .block(Block::new())
             .header(
                 vec![format!("\u{1f3d5}  Tasks\n{bar}"), " \n───".to_owned()]
                     .into_iter()

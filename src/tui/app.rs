@@ -27,6 +27,7 @@ use tokio::{
 };
 
 pub const FRAME_RATE: Duration = Duration::from_millis(3);
+pub const EXIT_DELAY: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone)]
 pub enum LayoutSections {
@@ -52,6 +53,8 @@ pub struct TuiAppState {
     has_user_scrolled: bool,
     has_sidebar: bool,
     done: bool,
+    exit_delay: Duration,
+    exit_delay_left: Duration,
 }
 
 impl TuiApp {
@@ -116,6 +119,8 @@ impl TuiApp {
                 has_sidebar: true,
                 has_user_scrolled: false,
                 done: false,
+                exit_delay: EXIT_DELAY,
+                exit_delay_left: EXIT_DELAY,
             },
         })
     }
@@ -157,7 +162,7 @@ impl TuiApp {
         let mut last_render = Instant::now();
         let mut callback = None;
         let mut needs_rerender = true;
-
+        let mut time_from_done = None;
         while let Some(event) = self.poll().await {
             // If we only receive ticks, then there's been no state change so no update needed
             if !matches!(event, Event::Tick) {
@@ -168,7 +173,13 @@ impl TuiApp {
             }
             callback = self.state.update(event)?;
             if self.state.done {
-                break;
+                time_from_done.get_or_insert(Instant::now());
+                let elapsed = time_from_done.unwrap().elapsed();
+                self.state.exit_delay_left = self.state.exit_delay.saturating_sub(elapsed);
+                if self.state.exit_delay_left == Duration::ZERO {
+                    break;
+                }
+                needs_rerender = true;
             }
             if FRAME_RATE <= last_render.elapsed() && needs_rerender {
                 self.terminal.draw(|f| self.state.view(f))?;
@@ -386,6 +397,7 @@ impl TuiAppState {
             &active_task.name,
             &self.focus,
             self.has_sidebar,
+            self.done.then(|| self.exit_delay_left.as_secs())
         );
         let table_to_render = TaskTable::new(&self.task_details);
 
@@ -451,6 +463,7 @@ impl TuiAppState {
             Event::InternalStop => {
                 debug!("shutting down due to internal failure");
                 self.done = true;
+                self.exit_delay = Duration::ZERO;
             }
             Event::Stop(callback) => {
                 debug!("shutting down due to message");
