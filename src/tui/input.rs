@@ -1,4 +1,4 @@
-use crate::event::Event;
+use crate::event::{Event, ScrollSize};
 use crate::tui::app::LayoutSections;
 use crossterm::event::{EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use futures::StreamExt;
@@ -59,11 +59,16 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<Eve
             bytes: encode_key(key_event),
         }),
         KeyCode::Char('h') => Some(Event::ToggleSidebar),
-        // Fall through if we aren't in interactive mode
-        KeyCode::Char('p') if key_event.modifiers == KeyModifiers::CONTROL => Some(Event::ScrollUp),
-        KeyCode::Char('n') if key_event.modifiers == KeyModifiers::CONTROL => {
-            Some(Event::ScrollDown)
-        }
+        KeyCode::Char('e') => Some(Event::ScrollDown(ScrollSize::One)),
+        KeyCode::Char('y') => Some(Event::ScrollUp(ScrollSize::One)),
+        KeyCode::Char('d') => Some(Event::ScrollDown(ScrollSize::Half)),
+        KeyCode::Char('u') => Some(Event::ScrollUp(ScrollSize::Half)),
+        KeyCode::Char('f') => Some(Event::ScrollDown(ScrollSize::Full)),
+        KeyCode::Char('b') => Some(Event::ScrollUp(ScrollSize::Full)),
+        KeyCode::Char('g') => Some(Event::ScrollDown(ScrollSize::Edge)),
+        KeyCode::Char('G') => Some(Event::ScrollUp(ScrollSize::Edge)),
+        KeyCode::Char('j') => Some(Event::Down),
+        KeyCode::Char('k') => Some(Event::Up),
         KeyCode::Up => Some(Event::Up),
         KeyCode::Down => Some(Event::Down),
         KeyCode::Enter => Some(Event::EnterInteractive),

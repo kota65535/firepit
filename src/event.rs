@@ -27,8 +27,8 @@ pub enum Event {
     Tick,
     Up,
     Down,
-    ScrollUp,
-    ScrollDown,
+    ScrollUp(ScrollSize),
+    ScrollDown(ScrollSize),
     SetStdin {
         task: String,
         stdin: Box<dyn std::io::Write + Send>,
@@ -48,6 +48,13 @@ pub enum Event {
 pub enum Direction {
     Up,
     Down,
+}
+
+pub enum ScrollSize {
+    One,
+    Half,
+    Full,
+    Edge,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

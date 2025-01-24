@@ -46,11 +46,23 @@ impl TerminalOutput {
         }
     }
 
-    pub fn scroll(&mut self, direction: Direction) -> anyhow::Result<()> {
+    pub fn scroll(&mut self, direction: Direction, stride: usize) -> anyhow::Result<()> {
         let scrollback = self.parser.screen().scrollback();
         let new_scrollback = match direction {
-            Direction::Up => scrollback + 1,
-            Direction::Down => scrollback.saturating_sub(1),
+            Direction::Up => {
+                if stride == 0 {
+                    0
+                } else {
+                    scrollback + stride
+                }
+            }
+            Direction::Down => {
+                if stride == 0 {
+                    SCROLLBACK_LEN
+                } else {
+                    scrollback.saturating_sub(stride)
+                }
+            }
         };
         self.parser.screen_mut().set_scrollback(new_scrollback);
         Ok(())

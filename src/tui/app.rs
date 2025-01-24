@@ -1,4 +1,4 @@
-use crate::event::{Direction, PaneSize, TaskStatus};
+use crate::event::{Direction, PaneSize, ScrollSize, TaskStatus};
 use crate::event::{Event, TaskResult};
 use crate::event::{EventReceiver, EventSender};
 use crate::tui::input;
@@ -278,8 +278,12 @@ impl TuiAppState {
         self.has_user_scrolled = true;
     }
 
-    pub fn scroll_terminal_output(&mut self, direction: Direction) -> anyhow::Result<()> {
-        self.active_task_mut()?.scroll(direction)?;
+    pub fn scroll_terminal_output(
+        &mut self,
+        direction: Direction,
+        stride: usize,
+    ) -> anyhow::Result<()> {
+        self.active_task_mut()?.scroll(direction, stride)?;
         Ok(())
     }
 
@@ -423,6 +427,16 @@ impl TuiAppState {
         Ok(())
     }
 
+    fn scroll_size(&self, size: ScrollSize) -> usize {
+        let s = match size {
+            ScrollSize::One => 1,
+            ScrollSize::Half => self.size.pane_rows() / 2,
+            ScrollSize::Full => self.size.pane_rows(),
+            ScrollSize::Edge => 0,
+        };
+        usize::from(s)
+    }
+
     fn update(&mut self, event: Event) -> anyhow::Result<Option<oneshot::Sender<()>>> {
         match event {
             Event::StartTask { task } => {
@@ -456,13 +470,13 @@ impl TuiAppState {
             Event::Down => {
                 self.next();
             }
-            Event::ScrollUp => {
+            Event::ScrollUp(size) => {
                 self.has_user_scrolled = true;
-                self.scroll_terminal_output(Direction::Up)?;
+                self.scroll_terminal_output(Direction::Up, self.scroll_size(size))?;
             }
-            Event::ScrollDown => {
+            Event::ScrollDown(size) => {
                 self.has_user_scrolled = true;
-                self.scroll_terminal_output(Direction::Down)?;
+                self.scroll_terminal_output(Direction::Down, self.scroll_size(size))?;
             }
             Event::EnterInteractive => {
                 self.has_user_scrolled = true;
