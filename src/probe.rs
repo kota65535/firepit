@@ -17,23 +17,28 @@ pub enum Prober {
 pub struct LogLineProber {
     name: String,
     regex: Regex,
+    timeout: u64,
+    start_period: u64,
 }
 
 impl LogLineProber {
-    pub fn new(name: &str, regex: Regex) -> Self {
+    pub fn new(name: &str, regex: Regex, timeout: u64, start_period: u64) -> Self {
         Self {
             name: name.to_string(),
             regex,
+            timeout,
+            start_period,
         }
     }
 
     pub async fn probe(&mut self, tx: EventSender, mut rx: EventReceiver) {
+        tokio::time::sleep(Duration::from_secs(self.start_period)).await;
         let this = self.clone();
         let tx = tx.clone();
         let mut matched = false;
         while let Some(event) = rx.recv().await {
             match event {
-                Event::StartTask { task} => {
+                Event::StartTask { task } => {
                     tx.start_task(task)
                 }
                 Event::TaskOutput { task, output } => {
@@ -44,12 +49,12 @@ impl LogLineProber {
                         matched = true
                     }
                 }
-                Event::ReadyTask { task} => {
+                Event::ReadyTask { task } => {
                     tx.ready_task(task)
                 }
-                Event::EndTask { task, result} => {
+                Event::EndTask { task, result } => {
                     tx.end_task(task, result);
-                    break
+                    break;
                 }
                 _ => {}
             }
@@ -65,11 +70,10 @@ pub struct ExecProber {
     shell: String,
     shell_args: Vec<String>,
     envs: HashMap<String, String>,
-    initial_delay_seconds: u64,
-    period_seconds: u64,
-    timeout_seconds: u64,
-    success_threshold: u64,
-    failure_threshold: u64,
+    interval: u64,
+    timeout: u64,
+    retries: u64,
+    start_period: u64,
     manager: ProcessManager,
 }
 
@@ -77,15 +81,14 @@ impl ExecProber {
     pub fn new(
         name: &str,
         command: &str,
-        working_dir: PathBuf,
         shell: String,
         shell_args: Vec<String>,
+        working_dir: PathBuf,
         envs: HashMap<String, String>,
-        initial_delay_seconds: u64,
-        period_seconds: u64,
-        timeout_seconds: u64,
-        success_threshold: u64,
-        failure_threshold: u64,
+        interval: u64,
+        timeout: u64,
+        retries: u64,
+        start_period: u64,
     ) -> Self {
         Self {
             name: name.to_string(),
@@ -94,11 +97,10 @@ impl ExecProber {
             shell,
             shell_args,
             envs,
-            initial_delay_seconds,
-            period_seconds,
-            timeout_seconds,
-            success_threshold,
-            failure_threshold,
+            interval,
+            timeout,
+            retries,
+            start_period,
             manager: ProcessManager::new(false),
         }
     }
@@ -119,14 +121,11 @@ impl ExecProber {
             _ => Err(anyhow::anyhow!("unable to spawn task")),
         }?;
 
-        let timeout_fut = tokio::time::timeout(Duration::from_secs(self.timeout_seconds), async {});
-        let process_fut = process.wait();
-
         tokio::select! {
-            _ = timeout_fut => {
+            _ = tokio::time::sleep(Duration::from_secs(self.timeout)) => {
                 Ok(false)
             }
-            result = process_fut => {
+            result = process.wait() => {
                 match result {
                     Some(exit_status) => match exit_status {
                         ChildExit::Finished(Some(code)) if code == 0 => Ok(true),
@@ -139,31 +138,25 @@ impl ExecProber {
     }
 
     pub async fn probe(&mut self, tx: EventSender) {
-        let mut success = 0;
-        let mut failure = 0;
+        tokio::time::sleep(Duration::from_secs(self.start_period)).await;
+
+        let mut retries = 0;
         loop {
-            match self.exec().await {
-                Ok(result) => {
-                    if result {
-                        success += 1;
-                        failure = 0;
-                    } else {
-                        success = 0;
-                        failure += 1
-                    }
-                }
-                _ => {
-                    failure += 1;
-                }
-            }
-            if success >= self.success_threshold {
+            let success = match self.exec().await {
+                Ok(result) => result,
+                _ => false
+            };
+            if success {
                 tx.ready_task(self.name.clone());
                 break;
             }
-            if failure >= self.failure_threshold {
+            if retries >= self.retries {
                 tx.end_task(self.name.clone(), TaskResult::Failure(1));
                 break;
             }
+
+            tokio::time::sleep(Duration::from_secs(self.interval)).await;
+            retries += 1;
         }
     }
 }

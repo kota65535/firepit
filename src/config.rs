@@ -2,44 +2,42 @@ use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
-use std::io;
+use std::{io, path};
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::thread::available_parallelism;
+use schemars::JsonSchema;
 
 const CONFIG_FILE: [&str; 2] = ["firepit.yml", "firepit.yaml"];
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub enum UI {
-    #[serde(rename = "cui")]
-    Cui,
-    #[serde(rename = "tui")]
-    Tui,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ProjectConfig {
     /// Child projects.
     /// Valid only in root project config.
     #[serde(default)]
     pub projects: HashMap<String, String>,
 
-    /// Task definitions.
-    #[serde(default)]
-    pub tasks: HashMap<String, TaskConfig>,
+    /// Shell configuration for all tasks.
+    #[serde(default = "default_shell")]
+    pub shell: ShellConfig,
 
-    /// Environment variables set during execution of all tasks.
-    /// Merged with the root project's one if this is a child project.
-    #[serde(default)]
-    pub envs: HashMap<String, String>,
+    /// Working directory for all tasks.
+    #[serde(default = "default_working_dir")]
+    pub working_dir: String,
 
-    /// Files from where environment variables are loaded and set during execution of all tasks.
-    /// Merged with the root project's one if this is a child project.
+    /// Environment variables of all tasks.
+    /// If this is a child project, merged with the root project's one.
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+
+    /// Dotenv files for all tasks.
+    /// If this is a child project, merged with the root project's one.
     #[serde(default)]
     pub env_files: Vec<String>,
 
-    /// Shell configuration for all tasks.
-    pub shell: Option<ShellConfig>,
+    /// Task definitions.
+    #[serde(default)]
+    pub tasks: HashMap<String, TaskConfig>,
 
     /// Task concurrency.
     /// Valid only in root project config.
@@ -47,10 +45,12 @@ pub struct ProjectConfig {
     pub concurrency: usize,
 
     /// Log configuration.
+    /// Valid only in root project config.
     #[serde(default = "default_log")]
     pub log: LogConfig,
 
     /// UI configuration.
+    /// Valid only in root project config.
     #[serde(default = "default_ui")]
     pub ui: UI,
 
@@ -66,6 +66,14 @@ pub fn default_shell() -> ShellConfig {
     }
 }
 
+pub fn default_working_dir() -> String {
+    ".".to_string()
+}
+
+pub fn default_concurrency() -> usize {
+    available_parallelism().unwrap().get()
+}
+
 pub fn default_log() -> LogConfig {
     LogConfig {
         level: default_log_level(),
@@ -75,10 +83,6 @@ pub fn default_log() -> LogConfig {
 
 pub fn default_log_level() -> String {
     "info".to_string()
-}
-
-pub fn default_concurrency() -> usize {
-    available_parallelism().unwrap().get()
 }
 
 pub fn default_ui() -> UI {
@@ -93,19 +97,17 @@ impl ProjectConfig {
     pub fn new_multi(
         dir: &Path,
     ) -> anyhow::Result<(ProjectConfig, HashMap<String, ProjectConfig>)> {
-        let dir = dir.to_path_buf();
+        let dir = path::absolute(dir)?;
         let mut root_config = ProjectConfig::find_root(&dir)?;
-        root_config.shell.get_or_insert(default_shell());
         let mut children = HashMap::new();
         if root_config.is_root() {
             // Multi project
             for (name, path) in &root_config.projects {
                 let mut child_config = ProjectConfig::new(dir.join(path).as_path())?;
-                child_config.envs.extend(root_config.envs.clone());
-                child_config.env_files.extend(root_config.env_files.clone());
-                child_config
-                    .shell
-                    .get_or_insert(root_config.shell.clone().expect("should be default value"));
+                child_config.env.extend(root_config.env.clone());
+                child_config.env_files.extend(root_config.env_files.iter()
+                    .map(|f| dir.join(f).to_str().unwrap().to_string())
+                    .collect::<Vec<_>>());
 
                 children.insert(name.clone(), child_config);
             }
@@ -179,103 +181,142 @@ impl ProjectConfig {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TaskConfig {
     /// Command to run.
     pub command: String,
 
-    /// Environment variables set during this task.
-    /// Merged with the project environment variables.
-    #[serde(default)]
-    pub envs: HashMap<String, String>,
+    /// Shell configuration.
+    pub shell: Option<ShellConfig>,
 
-    /// Task names on which this task depends.
+    /// Working directory.
+    pub working_dir: Option<String>,
+
+    /// Environment variables.
+    /// Merged with the project's env.
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+
+    /// Dotenv files.
+    /// Merged with the project's env.
+    #[serde(default)]
+    pub env_files: Vec<String>,
+
+    /// Names of Tasks on which this task depends.
     #[serde(default)]
     pub depends_on: Vec<String>,
 
     /// Service configuration.
     pub service: Option<ServiceConfig>,
 
-    /// Working directory of this task.
-    pub working_dir: Option<PathBuf>,
-
-    /// Shell configuration for this task.
-    pub shell: Option<ShellConfig>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ShellConfig {
+
+    /// Shell command.
     pub command: String,
 
+    /// Arguments of the shell command.
     #[serde(default)]
     pub args: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct LogConfig {
     #[serde(default = "default_log_level")]
     pub level: String,
     pub file: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct ReadinessProbeConfig {
-    pub log_line: Option<String>,
-    pub exec: Option<ExecReadinessProbeConfig>,
-
-    #[serde(default = "default_initial_delay_seconds")]
-    pub initial_delay_seconds: u64,
-    #[serde(default = "default_period_seconds")]
-    pub period_seconds: u64,
-    #[serde(default = "default_timeout_seconds")]
-    pub timeout_seconds: u64,
-    #[serde(default = "default_success_threshold")]
-    pub success_threshold: u64,
-    #[serde(default = "default_failure_threshold")]
-    pub failure_threshold: u64,
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum HealthCheckConfig {
+    Log(LogHealthCheckerConfig),
+    Exec(ExecHealthCheckerConfig)
 }
 
-fn default_initial_delay_seconds() -> u64 {
-    0
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct LogHealthCheckerConfig {
+    pub log: String,
+    #[serde(default = "default_log_healthcheck_timeout")]
+    pub timeout: u64,
+    #[serde(default = "default_healthcheck_start_period")]
+    pub start_period: u64,
 }
-fn default_period_seconds() -> u64 {
-    10
+
+pub fn default_log_healthcheck_timeout() -> u64 {
+    120
 }
-fn default_timeout_seconds() -> u64 {
-    1
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ExecHealthCheckerConfig {
+    pub command: String,
+
+    pub working_dir: Option<String>,
+
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+
+    pub shell: Option<ShellConfig>,
+    
+    #[serde(default = "default_healthcheck_interval")]
+    pub interval: u64,
+
+    #[serde(default = "default_healthcheck_timeout")]
+    pub timeout: u64,
+
+    #[serde(default = "default_healthcheck_retries")]
+    pub retries: u64,
+
+    #[serde(default = "default_healthcheck_start_period")]
+    pub start_period: u64,
 }
-fn default_success_threshold() -> u64 {
-    1
+
+pub fn default_healthcheck_interval() -> u64 {
+    30
 }
-fn default_failure_threshold() -> u64 {
+pub fn default_healthcheck_timeout() -> u64 {
+    30
+}
+pub fn default_healthcheck_retries() -> u64 {
     3
 }
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct ExecReadinessProbeConfig {
-    pub command: String,
-    pub working_dir: Option<PathBuf>,
-    #[serde(default)]
-    pub envs: HashMap<String, String>,
-    pub shell: Option<ShellConfig>,
+pub fn default_healthcheck_start_period() -> u64 {
+    0
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum ServiceConfig {
     Bool(bool),
     Struct(ServiceConfigStruct),
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ServiceConfigStruct {
-    pub readiness_probe: Option<ReadinessProbeConfig>,
-    pub availability: Option<AvailabilityConfig>,
+    pub healthcheck: Option<HealthCheckConfig>,
+
+    #[serde(default = "default_service_restart")]
+    pub restart: Restart
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct AvailabilityConfig {
-    pub restart: bool,
-    pub backoff_seconds: u64,
-    pub max_restarts: u64,
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum Restart {
+    Always,
+    OnFailure,
+    Never
+}
+
+pub fn default_service_restart() -> Restart {
+    Restart::Always
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub enum UI {
+    #[serde(rename = "cui")]
+    Cui,
+    #[serde(rename = "tui")]
+    Tui,
 }

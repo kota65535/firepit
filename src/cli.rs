@@ -6,8 +6,9 @@ use crate::runner::TaskRunner;
 use crate::tui::app::TuiApp;
 use anyhow::anyhow;
 use clap::Parser;
-use log::info;
+use log::{debug, info};
 use std::path;
+use schemars::schema_for;
 use tokio::task::JoinSet;
 
 #[derive(Parser, Debug)]
@@ -28,6 +29,11 @@ pub async fn run() -> anyhow::Result<()> {
     let (root, children) = ProjectConfig::new_multi(&dir)?;
 
     init_logger(&root.log.clone())?;
+
+    
+    let schema = schema_for!(ProjectConfig);
+    debug!("Json schema: \n{}", serde_json::to_string(&schema).unwrap());
+    
 
     info!("Root project dir: {:?}", root.dir);
     if !children.is_empty() {

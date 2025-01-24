@@ -29,6 +29,9 @@ indexmap = "2.7.1"
 human-panic = "2.0.2"
 regex = "1.11.1"
 strum = "0.26.3"
+schemars = "0.8.21"
+serde_json = "1.0.137"
+dotenvy = "0.15.7"
 
 [build]
 target = "aarch64-apple-darwin"

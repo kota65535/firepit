@@ -1,4 +1,4 @@
-use crate::config::{ProjectConfig, ServiceConfig};
+use crate::config::{ExecHealthCheckerConfig, HealthCheckConfig, LogHealthCheckerConfig, ProjectConfig, ServiceConfig};
 use crate::event::{EventReceiver, EventSender, TaskResult};
 use crate::graph::TaskGraph;
 use crate::probe::{ExecProber, LogLineProber, Prober};
@@ -9,7 +9,8 @@ use futures::future::{join, join_all};
 use log::{debug, info};
 use regex::Regex;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -21,15 +22,6 @@ pub struct TaskRunner {
     pub manager: ProcessManager,
     pub signal_handler: SignalHandler,
     pub concurrency: usize,
-}
-
-fn dir_contains(a: &PathBuf, b: &PathBuf) -> bool {
-    while let Some(p) = b.parent() {
-        if a == p {
-            return true;
-        }
-    }
-    false
 }
 
 impl TaskRunner {
@@ -164,12 +156,12 @@ impl TaskRunner {
                 args.extend(task.shell_args.clone());
                 args.push(task.command.clone());
                 info!(
-                    "Starting task {:?}:\nshell: {:?} {:?}\ncommand: {:?}\nenvs: {:?}",
-                    task.name, task.shell, &task.shell_args, task.command, task.envs
+                    "Starting task {:?}:\nshell: {:?} {:?}\ncommand: {:?}\nenv: {:?}\nworking_dir: {:?}",
+                    task.name, task.shell, &task.shell_args, task.command, task.env, task.working_dir
                 );
                 let cmd = Command::new(task.shell)
                     .args(args)
-                    .envs(task.envs)
+                    .envs(task.env)
                     .current_dir(task.working_dir)
                     .to_owned();
                 // Spawn process from the command
@@ -217,6 +209,15 @@ impl TaskRunner {
     }
 }
 
+fn dir_contains(a: &PathBuf, b: &PathBuf) -> bool {
+    while let Some(p) = b.parent() {
+        if a == p {
+            return true;
+        }
+    }
+    false
+}
+
 #[derive(Debug, Clone)]
 pub struct Project {
     pub name: String,
@@ -231,7 +232,7 @@ impl Project {
         Ok(Project {
             name: name.to_owned(),
             tasks: Task::from_project_config(name, &config)?,
-            dir: config.dir,
+            dir: config.dir.clone(),
             concurrency: config.concurrency,
         })
     }
@@ -247,13 +248,24 @@ impl Project {
 pub struct Task {
     pub name: String,
     pub command: String,
-    pub envs: HashMap<String, String>,
+    pub shell: String,
+    pub shell_args: Vec<String>,
+    pub env: HashMap<String, String>,
     pub depends_on: Vec<String>,
     pub working_dir: PathBuf,
     pub is_service: bool,
     pub prober: Prober,
-    pub shell: String,
-    pub shell_args: Vec<String>,
+}
+
+pub fn load_env_files(files: &Vec<String>) -> anyhow::Result<HashMap<String, String>> {
+    let mut ret = HashMap::new();
+    for e in files.iter() {
+        for item in dotenvy::from_path_iter(Path::new(e))? {
+            let (key, value) = item?;
+            ret.insert(key, value);
+        }
+    }
+    Ok(ret)
 }
 
 impl Task {
@@ -265,58 +277,56 @@ impl Task {
         for (task_name, task_config) in config.tasks.iter() {
             let task_config = task_config.clone();
             let task_name = Task::qualified_name(project_name, task_name);
-            let (is_service, service_config) = match task_config.service {
-                Some(service) => match service {
-                    ServiceConfig::Bool(bool) => (bool, None),
-                    ServiceConfig::Struct(st) => (true, Some(st)),
-                },
-                _ => (false, None),
-            };
-            let prober = if let Some(Some(readiness_probe)) =
-                service_config.map(|s| s.readiness_probe)
-            {
-                if let Some(log_line) = readiness_probe.log_line {
-                    Prober::LogLine(LogLineProber::new(
-                        &task_name,
-                        Regex::new(&log_line).with_context(|| format!("invalid regex pattern"))?,
-                    ))
-                } else if let Some(exec) = readiness_probe.exec {
-                    Prober::Exec(ExecProber::new(
-                        &task_name,
-                        &exec.command,
-                        exec.working_dir
-                            .map(|t| {
-                                if t.is_absolute() {
-                                    t
-                                } else {
-                                    config.dir.join(t)
-                                }
-                            })
-                            .unwrap_or(config.dir.clone()),
-                        exec.shell
-                            .clone()
-                            .unwrap_or(config.shell.clone().expect("should be set"))
-                            .command,
-                        exec.shell
-                            .clone()
-                            .unwrap_or(config.shell.clone().expect("should be set"))
-                            .args,
-                        exec.envs
-                            .clone()
-                            .into_iter()
-                            .chain(config.envs.clone())
-                            .collect(),
-                        readiness_probe.initial_delay_seconds,
-                        readiness_probe.period_seconds,
-                        readiness_probe.timeout_seconds,
-                        readiness_probe.success_threshold,
-                        readiness_probe.failure_threshold,
-                    ))
-                } else {
-                    Prober::None
-                }
+            let shell = task_config.shell.clone().unwrap_or(config.shell.clone());
+            let working_dir = PathBuf::from(task_config.working_dir.unwrap_or(config.working_dir.clone()));
+            let working_dir = if working_dir.is_absolute() {
+                working_dir
             } else {
-                Prober::None
+                config.dir.join(working_dir)
+            };
+            let project_env = load_env_files(&config.env_files)?.into_iter().chain(config.env.clone()).collect::<HashMap<_, _>>();
+            let task_env = load_env_files(&task_config.env_files)?.into_iter().chain(task_config.env.clone()).collect::<HashMap<_, _>>();
+            let env = project_env.into_iter().chain(task_env).collect::<HashMap<_, _>>();
+
+            let (is_service, prober) = match task_config.service {
+                Some(service) => match service {
+                    ServiceConfig::Bool(bool) => {
+                        (bool, Prober::None)
+                    }
+                    ServiceConfig::Struct(st) => {
+                        let prober = match st.healthcheck {
+                            Some(healthcheck) => match healthcheck {
+                                HealthCheckConfig::Log(c) => {
+                                    Prober::LogLine(LogLineProber::new(
+                                        &task_name,
+                                        Regex::new(&c.log).with_context(|| format!("invalid regex pattern"))?,
+                                        c.timeout,
+                                        c.start_period
+                                    ))
+                                }
+                                HealthCheckConfig::Exec(c) => {
+                                    let healthcheck_shell = c.shell.unwrap_or(shell.clone());
+                                    let healthcheck_working_dir = c.working_dir.map(|d| path::absolute(d)).unwrap_or(Ok(working_dir.clone()))?;
+                                    Prober::Exec(ExecProber::new(
+                                        &task_name,
+                                        &c.command,
+                                        healthcheck_shell.command,
+                                        healthcheck_shell.args,
+                                        healthcheck_working_dir,
+                                        env.clone(),
+                                        c.interval,
+                                        c.timeout,
+                                        c.retries,
+                                        c.start_period,
+                                    ))
+                                }
+                            }
+                            None => Prober::None
+                        };
+                        (true, prober)
+                    }
+                },
+                _ => (false, Prober::None),
             };
 
             ret.insert(
@@ -324,12 +334,10 @@ impl Task {
                 Task {
                     name: task_name.clone(),
                     command: task_config.command,
-                    envs: config
-                        .envs
-                        .clone()
-                        .into_iter()
-                        .chain(task_config.envs)
-                        .collect(),
+                    shell: shell.command,
+                    shell_args: shell.args,
+                    working_dir,
+                    env,
                     depends_on: task_config
                         .depends_on
                         .iter()
@@ -337,26 +345,6 @@ impl Task {
                         .collect(),
                     is_service,
                     prober,
-                    working_dir: task_config
-                        .working_dir
-                        .map(|t| {
-                            if t.is_absolute() {
-                                t
-                            } else {
-                                config.dir.join(t)
-                            }
-                        })
-                        .unwrap_or(config.dir.clone()),
-                    shell: task_config
-                        .shell
-                        .clone()
-                        .unwrap_or(config.shell.clone().expect("should be set"))
-                        .command,
-                    shell_args: task_config
-                        .shell
-                        .clone()
-                        .unwrap_or(config.shell.clone().expect("should be set"))
-                        .args,
                 },
             );
         }
