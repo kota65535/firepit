@@ -11,6 +11,7 @@ use tui_term::widget::PseudoTerminal;
 
 const FOOTER_TEXT_ACTIVE: &str = "Press`Ctrl-Z` to stop interacting.";
 const FOOTER_TEXT_INACTIVE: &str = "Press `Enter` to interact.";
+const HAS_SELECTION: &str = "Press `c` to copy selection";
 const TASK_LIST_HIDDEN: &str = "Press `h` to show task list.";
 
 pub struct TerminalPane<'a> {
@@ -43,11 +44,7 @@ impl<'a> TerminalPane<'a> {
     }
 
     fn footer(&self) -> Line {
-        let task_list_message = if !self.has_sidebar {
-            TASK_LIST_HIDDEN
-        } else {
-            ""
-        };
+        let task_list_message = if !self.has_sidebar { TASK_LIST_HIDDEN } else { "" };
 
         if let Some(time) = self.remaining_time {
             Line::from(format!("Shutting down... ({} sec)", time))
@@ -55,7 +52,13 @@ impl<'a> TerminalPane<'a> {
                 .style(Style::default().bg(Color::LightRed).fg(Color::White))
         } else {
             match self.section {
+                LayoutSections::Pane if self.terminal_output.has_selection() => {
+                    Line::from(format!("{FOOTER_TEXT_ACTIVE} {task_list_message} {HAS_SELECTION}")).centered()
+                }
                 LayoutSections::Pane => Line::from(FOOTER_TEXT_ACTIVE.to_owned()).centered(),
+                LayoutSections::TaskList if self.terminal_output.has_selection() => {
+                    Line::from(format!("{FOOTER_TEXT_INACTIVE} {task_list_message} {HAS_SELECTION}")).centered()
+                }
                 LayoutSections::TaskList => {
                     Line::from(format!("{FOOTER_TEXT_INACTIVE} {task_list_message}")).centered()
                 }
@@ -71,11 +74,7 @@ impl<'a> Widget for &TerminalPane<'a> {
     {
         let screen = self.terminal_output.parser.screen();
         let block = Block::default()
-            .borders(if self.has_sidebar {
-                Borders::LEFT
-            } else {
-                Borders::NONE
-            })
+            .borders(if self.has_sidebar { Borders::LEFT } else { Borders::NONE })
             .border_style(if self.highlight() {
                 Style::new().fg(Color::Yellow)
             } else {

@@ -41,4 +41,8 @@ impl SizeInfo {
             // We need to account for the left border of the pane
             .saturating_sub(1)
     }
+
+    pub fn task_list_width(&self) -> u16 {
+        self.cols - self.pane_cols() + 1
+    }
 }

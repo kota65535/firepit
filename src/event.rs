@@ -40,6 +40,9 @@ pub enum Event {
     Input {
         bytes: Vec<u8>,
     },
+    Mouse(crossterm::event::MouseEvent),
+    MouseMultiClick(crossterm::event::MouseEvent, usize),
+    CopySelection,
     Resize {
         rows: u16,
         cols: u16,
@@ -47,11 +50,13 @@ pub enum Event {
     ToggleSidebar,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum Direction {
     Up,
     Down,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum ScrollSize {
     One,
     Half,

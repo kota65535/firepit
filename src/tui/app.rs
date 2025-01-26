@@ -1,8 +1,9 @@
 use crate::event::{Direction, PaneSize, ScrollSize, TaskRunning, TaskStatus};
 use crate::event::{Event, TaskResult};
 use crate::event::{EventReceiver, EventSender};
+use crate::tui::clipboard::copy_to_clipboard;
 use crate::tui::input;
-use crate::tui::input::InputOptions;
+use crate::tui::input::{InputHandler, InputOptions};
 use crate::tui::pane::TerminalPane;
 use crate::tui::size::SizeInfo;
 use crate::tui::table::TaskTable;
@@ -10,7 +11,7 @@ use crate::tui::task::TaskDetail;
 use crate::tui::term_output::TerminalOutput;
 use anyhow::Context;
 use indexmap::IndexMap;
-use log::{debug};
+use log::debug;
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Layout},
@@ -41,6 +42,7 @@ pub struct TuiApp {
     sender: EventSender,
     state: TuiAppState,
     receiver: EventReceiver,
+    input_handler: InputHandler,
 }
 
 pub struct TuiAppState {
@@ -63,9 +65,6 @@ impl TuiApp {
 
         let terminal = Self::setup_terminal()?;
         let rect = terminal.size()?;
-
-        let (crossterm_tx, crossterm_rx) = mpsc::channel(1024);
-        input::start_crossterm_stream(crossterm_tx.clone());
 
         let size = SizeInfo::new(
             rect.height,
@@ -92,11 +91,15 @@ impl TuiApp {
 
         let selected_task_index = 0;
 
+        let input_handler = InputHandler::new();
+        let crossterm_rx = input_handler.start();
+
         Ok(Self {
             terminal,
             crossterm_rx,
             sender: EventSender::new(tx),
             receiver: EventReceiver::new(rx),
+            input_handler,
             state: TuiAppState {
                 size,
                 task_outputs,
@@ -118,7 +121,11 @@ impl TuiApp {
         let mut stdout = io::stdout();
         // Ensure all pending writes are flushed before we switch to alternative screen
         stdout.flush()?;
-        crossterm::execute!(stdout, crossterm::terminal::EnterAlternateScreen)?;
+        crossterm::execute!(
+            stdout,
+            crossterm::event::EnableMouseCapture,
+            crossterm::terminal::EnterAlternateScreen
+        )?;
         let backend = CrosstermBackend::new(stdout);
 
         let mut terminal = Terminal::with_options(
@@ -151,7 +158,7 @@ impl TuiApp {
         let mut callback = None;
         let mut needs_rerender = true;
         let mut time_from_done = None;
-        while let Some(event) = self.poll().await {
+        while let Some(event) = self.poll().await? {
             // If we only receive ticks, then there's been no state change so no update needed
             if !matches!(event, Event::Tick) {
                 needs_rerender = true;
@@ -181,17 +188,20 @@ impl TuiApp {
 
     /// Blocking poll for events, will only return None if app handle has been
     /// dropped
-    async fn poll<'a>(&mut self) -> Option<Event> {
+    async fn poll<'a>(&mut self) -> anyhow::Result<Option<Event>> {
         let input_closed = self.crossterm_rx.is_closed();
 
         if input_closed {
-            self.receiver.recv().await
+            Ok(self.receiver.recv().await)
         } else {
-            let mut event;
+            let mut event = None;
             loop {
                 tokio::select! {
                     e = self.crossterm_rx.recv() => {
-                        event = e.and_then(|e| self.state.input_options().unwrap().handle_crossterm_event(e));
+                        if let Some(e) = e {
+                            let options = self.state.input_options()?;
+                            event = self.input_handler.handle(e, options);
+                        }
                     }
                     e = self.receiver.recv() => {
                         event = e;
@@ -201,13 +211,17 @@ impl TuiApp {
                     break;
                 }
             }
-            event
+            Ok(event)
         }
     }
 
     fn cleanup(&mut self) -> anyhow::Result<()> {
         self.terminal.clear()?;
-        crossterm::execute!(self.terminal.backend_mut(), crossterm::terminal::LeaveAlternateScreen,)?;
+        crossterm::execute!(
+            self.terminal.backend_mut(),
+            crossterm::event::DisableMouseCapture,
+            crossterm::terminal::LeaveAlternateScreen
+        )?;
         self.state.persist_tasks()?;
         crossterm::terminal::disable_raw_mode()?;
         self.terminal.show_cursor()?;
@@ -237,7 +251,11 @@ impl TuiAppState {
     }
 
     fn input_options(&self) -> anyhow::Result<InputOptions> {
-        Ok(InputOptions { focus: &self.focus })
+        let has_selection = self.active_task()?.has_selection();
+        Ok(InputOptions {
+            focus: &self.focus,
+            has_selection,
+        })
     }
 
     pub fn nth_task(&self, num: usize) -> anyhow::Result<&TerminalOutput> {
@@ -426,6 +444,39 @@ impl TuiAppState {
         usize::from(s)
     }
 
+    pub fn handle_mouse(&mut self, mut event: crossterm::event::MouseEvent, clicks: usize) -> anyhow::Result<()> {
+        let table_width = self.size.task_list_width();
+        debug!("Original mouse event: {event:?}, table_width: {table_width}");
+
+        // Subtract 1 from the y-axis due to the title of the pane
+        event.row -= 1;
+        // Subtract the width of the table if we have sidebar
+        if self.has_sidebar && event.row > 0 && event.column >= table_width {
+            event.column -= table_width;
+        }
+        debug!("Translated mouse event: {event:?}");
+
+        let task = self.active_task_mut()?;
+        task.handle_mouse(event, clicks)?;
+
+        Ok(())
+    }
+
+    pub fn copy_selection(&self) -> anyhow::Result<()> {
+        let task = self.active_task()?;
+        let Some(text) = task.copy_selection() else {
+            return Ok(());
+        };
+        copy_to_clipboard(&text);
+        Ok(())
+    }
+
+    pub fn clear_selection(&mut self) -> anyhow::Result<()> {
+        let mut task = self.active_task_mut()?;
+        task.clear_selection();
+        Ok(())
+    }
+
     fn update(&mut self, event: Event) -> anyhow::Result<Option<oneshot::Sender<()>>> {
         match event {
             Event::StartTask {
@@ -491,6 +542,16 @@ impl TuiAppState {
             }
             Event::Resize { rows, cols } => {
                 self.resize(rows, cols);
+            }
+            Event::Mouse(m) => {
+                self.handle_mouse(m, 1)?;
+            }
+            Event::MouseMultiClick(m, n) => {
+                self.handle_mouse(m, n)?;
+            }
+            Event::CopySelection => {
+                self.copy_selection()?;
+                self.clear_selection()?;
             }
             Event::PaneSizeQuery(callback) => {
                 // If caller has already hung up do nothing

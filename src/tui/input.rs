@@ -1,36 +1,82 @@
-use crate::event::{Event, ScrollSize};
+use crate::event::{Direction, Event, ScrollSize};
 use crate::tui::app::LayoutSections;
+use crate::tui::lib::RingBuffer;
 use crossterm::event::{EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use futures::StreamExt;
-use log::debug;
+use itertools::Itertools;
+use log::{debug, info};
+use std::collections::VecDeque;
+use std::ops::Sub;
+use std::time::{Duration, Instant};
 use tokio::{sync::mpsc, task::JoinHandle};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
+pub struct InputHandler {
+    click_times: RingBuffer<Instant>,
+}
+
 pub struct InputOptions<'a> {
     pub focus: &'a LayoutSections,
+    pub has_selection: bool,
 }
 
-pub fn start_crossterm_stream(tx: mpsc::Sender<crossterm::event::Event>) -> Option<JoinHandle<()>> {
-    // quick check if stdin is tty
-    if !atty::is(atty::Stream::Stdin) {
-        return None;
+impl InputHandler {
+    pub fn new() -> Self {
+        Self {
+            click_times: RingBuffer::new(3),
+        }
     }
 
-    let mut events = EventStream::new();
-    Some(tokio::spawn(async move {
-        while let Some(Ok(event)) = events.next().await {
-            if tx.send(event).await.is_err() {
+    pub fn start(&self) -> mpsc::Receiver<crossterm::event::Event> {
+        let (tx, rx) = mpsc::channel(1024);
+
+        // quick check if stdin is tty
+        if !atty::is(atty::Stream::Stdin) {
+            return rx;
+        }
+
+        let mut events = EventStream::new();
+        tokio::spawn(async move {
+            while let Some(Ok(event)) = events.next().await {
+                if tx.send(event).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        rx
+    }
+
+    pub fn num_of_multiple_clicks(&self) -> usize {
+        let mut count = 1;
+        for (a, b) in self.click_times.iter().rev().tuple_windows() {
+            if a.duration_since(*b) > Duration::from_millis(300) {
                 break;
             }
+            count += 1;
         }
-    }))
-}
+        count
+    }
 
-impl<'a> InputOptions<'a> {
-    /// Maps a crossterm::event::Event to a tui::Event
-    pub fn handle_crossterm_event(self, event: crossterm::event::Event) -> Option<Event> {
+    pub fn handle(&mut self, event: crossterm::event::Event, options: InputOptions) -> Option<Event> {
         match event {
-            crossterm::event::Event::Key(k) => translate_key_event(self, k),
+            crossterm::event::Event::Key(k) => translate_key_event(options, k),
+            crossterm::event::Event::Mouse(m) => match m.kind {
+                crossterm::event::MouseEventKind::ScrollDown => Some(Event::ScrollDown(ScrollSize::One)),
+                crossterm::event::MouseEventKind::ScrollUp => Some(Event::ScrollUp(ScrollSize::One)),
+                crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
+                    self.click_times.push(Instant::now());
+                    let num_clicks = self.num_of_multiple_clicks();
+                    if num_clicks == 1 {
+                        Some(Event::Mouse(m))
+                    } else {
+                        debug!("Clicked {} times", num_clicks);
+                        Some(Event::MouseMultiClick(m, num_clicks))
+                    }
+                }
+                crossterm::event::MouseEventKind::Drag(crossterm::event::MouseButton::Left) => Some(Event::Mouse(m)),
+                _ => None,
+            },
             crossterm::event::Event::Resize(cols, rows) => Some(Event::Resize { rows, cols }),
             _ => None,
         }
@@ -43,14 +89,14 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<Eve
         return None;
     }
     match key_event.code {
-        KeyCode::Char('c') if key_event.modifiers == crossterm::event::KeyModifiers::CONTROL => {
+        KeyCode::Char('c') if options.has_selection => Some(Event::CopySelection),
+        KeyCode::Char('c') if key_event.modifiers == KeyModifiers::CONTROL => {
             ctrl_c();
             Some(Event::InternalStop)
         }
         // Interactive branches
         KeyCode::Char('z')
-            if matches!(options.focus, LayoutSections::Pane)
-                && key_event.modifiers == crossterm::event::KeyModifiers::CONTROL =>
+            if matches!(options.focus, LayoutSections::Pane) && key_event.modifiers == KeyModifiers::CONTROL =>
         {
             Some(Event::ExitInteractive)
         }
@@ -106,8 +152,8 @@ fn encode_key(key: KeyEvent) -> Vec<u8> {
 
     // Normalize Backspace and Delete
     let code = match code {
-        Char('\x7f') => KeyCode::Backspace,
-        Char('\x08') => KeyCode::Delete,
+        Char('\x7f') => Backspace,
+        Char('\x08') => Delete,
         c => c,
     };
 
@@ -125,10 +171,7 @@ fn encode_key(key: KeyEvent) -> Vec<u8> {
         // eg: on macOS generates altgr style glyphs and keeps the ALT key
         // in the modifier set.  This confuses eg: zsh which then just displays
         // <fffffffff> as the input, so we want to avoid that.
-        Char(c)
-            if (c.is_ascii_alphanumeric() || c.is_ascii_punctuation())
-                && mods.contains(KeyModifiers::ALT) =>
-        {
+        Char(c) if (c.is_ascii_alphanumeric() || c.is_ascii_punctuation()) && mods.contains(KeyModifiers::ALT) => {
             buf.push(0x1b as char);
             buf.push(c);
         }
@@ -327,7 +370,7 @@ fn ctrl_mapping(c: char) -> Option<char> {
 
 /// if SHIFT is held and we have KeyCode::Char('c') we want to normalize
 /// that keycode to KeyCode::Char('C'); that is what this function does.
-pub fn normalize_shift_to_upper_case(code: KeyCode, modifiers: &KeyModifiers) -> KeyCode {
+fn normalize_shift_to_upper_case(code: KeyCode, modifiers: &KeyModifiers) -> KeyCode {
     if modifiers.contains(KeyModifiers::SHIFT) {
         match code {
             KeyCode::Char(c) if c.is_ascii_lowercase() => KeyCode::Char(c.to_ascii_uppercase()),

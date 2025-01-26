@@ -54,18 +54,14 @@ impl ChildState {
 pub enum ChildExit {
     Finished(Option<i32>),
     Killed,
-    /// The child process was killed by someone else. Note that on
-    /// windows, it is not possible to distinguish between whether
-    /// the process exited normally or was killed
+    /// The child process was killed by someone else
     KilledExternal,
     Failed,
 }
 
 #[derive(Debug, Clone)]
 pub enum ShutdownStyle {
-    /// On windows this will immediately kill, and on posix systems it
-    /// will send a SIGINT. If `Duration` elapses, we then follow up with a
-    /// `Kill`.
+    /// Send SIGINT first and if the process still alive after `Duration`, we then follow up with a `Kill`.
     Graceful(Duration),
 
     Kill,

@@ -5,3 +5,6 @@ mod size;
 mod table;
 mod task;
 mod term_output;
+
+mod clipboard;
+mod lib;
