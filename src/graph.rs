@@ -1,7 +1,6 @@
-use crate::event::{TaskResult, TaskStatus};
 use crate::runner::Task;
 use anyhow::Context;
-use futures::future::{join_all, JoinAll};
+use futures::future::{join_all};
 use log::{error, info, warn};
 use petgraph::algo::toposort;
 use petgraph::dot::{Config, Dot};
@@ -11,15 +10,28 @@ use petgraph::Direction;
 use std::cmp::max;
 use std::collections::HashMap;
 use std::fmt;
-use tokio::sync::{broadcast, mpsc, oneshot, watch};
-use tokio::task::JoinHandle;
+use tokio::sync::{broadcast, mpsc, watch};
+use tokio::task::{JoinError, JoinSet};
 
 #[derive(Clone)]
 pub struct TaskGraph {
     graph: DiGraph<Task, ()>,
 }
 
-pub type TaskVisitorMessage = (Task, bool, mpsc::Sender<TaskStatus>);
+pub struct VisitorMessage {
+    pub node: Task,
+    pub deps_ok: bool,
+    pub callback: mpsc::Sender<CallbackMessage>,
+}
+
+pub struct Visitor {
+    pub node_rx: mpsc::Receiver<VisitorMessage>,
+    pub cancel: watch::Sender<bool>,
+    pub future: JoinSet<Result<(), JoinError>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CallbackMessage(pub bool);
 
 impl TaskGraph {
     pub fn new(tasks: &Vec<Task>) -> anyhow::Result<TaskGraph> {
@@ -36,9 +48,7 @@ impl TaskGraph {
                 let from = nodes
                     .get(&t.name)
                     .with_context(|| format!("node {} should be found", &t.name))?;
-                let to = nodes
-                    .get(d)
-                    .with_context(|| format!("node {} should be found", d))?;
+                let to = nodes.get(d).with_context(|| format!("node {} should be found", d))?;
                 graph.add_edge(*from, *to, ());
             }
         }
@@ -66,29 +76,22 @@ impl TaskGraph {
         }
     }
 
-    pub fn visit(
-        &self,
-        concurrency: usize,
-    ) -> anyhow::Result<(
-        mpsc::Receiver<TaskVisitorMessage>,
-        watch::Sender<bool>,
-        JoinAll<JoinHandle<()>>,
-    )> {
+    pub fn visit(&self, concurrency: usize) -> anyhow::Result<Visitor> {
         // Channel for each node to notify all dependent nodes when it finishes
         let mut txs = HashMap::new();
         let mut rxs = HashMap::new();
         for node in self.graph.node_identifiers() {
             // Each node can finish at most once so we set the capacity to 1
-            let (tx, rx) = broadcast::channel::<TaskStatus>(1);
+            let (tx, rx) = broadcast::channel::<bool>(1);
             txs.insert(node, tx);
             rxs.insert(node, rx);
         }
         // Channel to notify when all dependency nodes have finished
         let (node_tx, node_rx) = mpsc::channel(max(concurrency, 1));
-        // Channel to stop visiting
+        // Channel to stop visitor
         let (cancel_tx, cancel_rx) = watch::channel(false);
 
-        let mut node_futures = Vec::new();
+        let mut nodes_fut = JoinSet::new();
         for node_id in self.graph.node_identifiers() {
             let tx = txs.remove(&node_id).with_context(|| "sender not found")?;
             let node_tx = node_tx.clone();
@@ -104,83 +107,60 @@ impl TaskGraph {
 
             let dep_tasks = neighbors
                 .clone()
-                .map(|n| {
-                    self.graph
-                        .node_weight(n)
-                        .with_context(|| "node not found")
-                        .cloned()
-                })
+                .map(|n| self.graph.node_weight(n).with_context(|| "node not found").cloned())
                 .collect::<anyhow::Result<Vec<_>>>()?;
             let mut dep_rxs = neighbors
                 .clone()
-                .map(|n| {
-                    txs.get(&n)
-                        .map(|tx| tx.subscribe())
-                        .with_context(|| "sender not found")
-                })
+                .map(|n| txs.get(&n).map(|tx| tx.subscribe()).with_context(|| "sender not found"))
                 .collect::<anyhow::Result<Vec<_>>>()?;
 
-            node_futures.push(tokio::spawn(async move {
+            nodes_fut.spawn(tokio::spawn(async move {
                 if !dep_tasks.is_empty() {
                     info!(
                         "Task \"{}\" is waiting for {} deps: {:?}",
                         task.name,
                         dep_tasks.len(),
-                        dep_tasks
-                            .iter()
-                            .map(|t| t.name.clone())
-                            .collect::<Vec<String>>()
+                        dep_tasks.iter().map(|t| t.name.clone()).collect::<Vec<String>>()
                     );
                 }
 
                 let deps = dep_rxs.iter_mut().map(|rx| rx.recv()).collect::<Vec<_>>();
                 let deps_fut = join_all(deps);
 
-                let mut deps_ok = true;
-                tokio::select! {
+                let deps_ok = tokio::select! {
                      _ = cancel_rx.changed() => {
                         info!("Visitor is cancelled");
-                        deps_ok = false
+                        false
                      }
-                    // If both the cancel and dependencies are ready, we want to
-                    // execute the cancel instead of sending an additional node.
                     results = deps_fut => {
-                        info!("Deps of task {:?} are resolved", task.name);
-                        // info!("Task {:?} is starting. cwd={:?}", task.name, task.working_dir);
-                        for res in results {
-                            match res {
-                                // No errors from reading dependency channels
-                                Ok(status) => {
-                                    match status {
-                                        TaskStatus::Ready => {}
-                                        TaskStatus::Finished(result) => match result {
-                                            TaskResult::Success => {}
-                                            _ => { deps_ok = false }
-                                        }
-                                        _ => { deps_ok = false }
-                                    }
-                                }
+                        info!("Task {:?} dependencies are resolved", task.name);
+                        results.iter().map(|r| match r {
+                                Ok(r) => *r,
                                 Err(e) => {
                                     error!("Cannot receive task result: {:?}", e);
-                                    deps_ok = false
+                                    false
                                 }
-                            }
-                        }
+                        }).all(|r| r)
                     }
-                }
+                };
 
-                let (callback_tx, mut callback_rx) = mpsc::channel(1);
-                let result = match node_tx.send((task.clone(), deps_ok, callback_tx)).await {
+                let (callback_tx, mut callback_rx) = mpsc::channel::<CallbackMessage>(1);
+                let result = match node_tx
+                    .send(VisitorMessage {
+                        node: task.clone(),
+                        deps_ok,
+                        callback: callback_tx.clone(),
+                    })
+                    .await
+                {
                     Ok(_) => {
                         match callback_rx.recv().await {
                             Some(result) => result,
                             _ => {
                                 // If the caller drops the callback sender without signaling
                                 // that the node processing is finished we assume that it is finished.
-                                info!(
-                                    "Callback sender was dropped without sending a finish signal"
-                                );
-                                TaskStatus::Unknown
+                                info!("Callback sender was dropped without sending a finish signal");
+                                CallbackMessage(false)
                             }
                         }
                     }
@@ -188,20 +168,22 @@ impl TaskGraph {
                         // Receiving end of node channel has been closed/dropped
                         // Since there's nothing the mark the node as being done
                         // we act as if we have been canceled.
-                        warn!("Cannot send task to the runner: {:?}", e);
-                        TaskStatus::Unknown
+                        warn!("Cannot send node to the runner: {:?}", e);
+                        CallbackMessage(false)
                     }
                 };
-                info!("Task {:?} finished. result: {:?}", task.name, result);
+                info!("Node {:?} finished. result: {:?}", task.name, result);
                 // Send errors indicate that there are no receivers which
                 // happens when this node has no dependents
-                tx.send(result).ok();
+                tx.send(result.0).ok();
             }));
         }
 
-        let join_all = join_all(node_futures);
-
-        Ok((node_rx, cancel_tx, join_all))
+        Ok(Visitor {
+            node_rx,
+            cancel: cancel_tx,
+            future: nodes_fut,
+        })
     }
 
     pub fn transitive_closure(&self, names: &Vec<String>) -> anyhow::Result<TaskGraph> {

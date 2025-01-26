@@ -5,7 +5,7 @@ use ratatui::{
     layout::{Constraint, Rect},
     style::{Color, Style, Stylize},
     text::Text,
-    widgets::{Block, Borders, Cell, Row, StatefulWidget, Table, TableState},
+    widgets::{Block, Cell, Row, StatefulWidget, Table, TableState},
 };
 
 /// A widget that renders a table of their tasks and their current status
@@ -53,7 +53,7 @@ impl TaskTable<'_> {
                         Row::new(vec![name_cell, Cell::new(Text::raw("\u{1FAB5}"))])
                         // 🪵
                     }
-                    TaskStatus::Running => Row::new(vec![
+                    TaskStatus::Running(_) => Row::new(vec![
                         name_cell,
                         Cell::new(Text::raw("\u{1F525}")), // 🔥
                     ]),
@@ -71,11 +71,11 @@ impl TaskTable<'_> {
                                 TaskResult::Failure(_) => Cell::new(Text::raw(
                                     "\u{274C}\u{200D}", // ❌
                                 )),
-                                TaskResult::BadDeps
-                                | TaskResult::NotReady
-                                | TaskResult::Stopped => Cell::new(Text::raw(
-                                    "\u{1F6AB}\u{200D}", // 🚫
-                                )),
+                                TaskResult::BadDeps | TaskResult::NotReady | TaskResult::Stopped => {
+                                    Cell::new(Text::raw(
+                                        "\u{1F6AB}\u{200D}", // 🚫
+                                    ))
+                                }
                                 TaskResult::Unknown => Cell::new(Text::raw(
                                     "\u{2753}\u{200D}", // ❓
                                 )),

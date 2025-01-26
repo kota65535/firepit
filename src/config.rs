@@ -98,7 +98,7 @@ impl ProjectConfig {
         dir: &Path,
     ) -> anyhow::Result<(ProjectConfig, HashMap<String, ProjectConfig>)> {
         let dir = path::absolute(dir)?;
-        let mut root_config = ProjectConfig::find_root(&dir)?;
+        let root_config = ProjectConfig::find_root(&dir)?;
         let mut children = HashMap::new();
         if root_config.is_root() {
             // Multi project
@@ -312,7 +312,7 @@ pub enum Restart {
 }
 
 pub fn default_service_restart() -> Restart {
-    Restart::Always
+    Restart::Never
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

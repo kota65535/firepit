@@ -49,12 +49,10 @@ impl CuiApp {
     pub async fn run(&mut self) -> anyhow::Result<()> {
         while let Some(event) = self.receiver.recv().await {
             match event {
-                Event::StartTask { task } => self.register_output_client(&task),
+                Event::StartTask { task, .. } => self.register_output_client(&task),
                 Event::TaskOutput { task, output } => {
                     let output_clients = self.output_clients.read().expect("lock poisoned");
-                    let output_client = output_clients
-                        .get(&task)
-                        .with_context(|| "Output client not found")?;
+                    let output_client = output_clients.get(&task).with_context(|| "Output client not found")?;
                     output_client
                         .stdout()
                         .write_all(output.as_slice())

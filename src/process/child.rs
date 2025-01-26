@@ -144,12 +144,10 @@ impl ChildHandle {
             pixel_width: 0,
             pixel_height: 0,
         };
-        let pair = pty_system
-            .openpty(size)
-            .map_err(|err| match err.downcast() {
-                Ok(err) => err,
-                Err(err) => io::Error::new(io::ErrorKind::Other, err),
-            })?;
+        let pair = pty_system.openpty(size).map_err(|err| match err.downcast() {
+            Ok(err) => err,
+            Err(err) => io::Error::new(io::ErrorKind::Other, err),
+        })?;
 
         let controller = pair.master;
         let receiver = pair.slave;
@@ -164,22 +162,16 @@ impl ChildHandle {
                 // We unset ECHOCTL to disable rendering of the closing of stdin
                 // as ^D
                 termios.local_flags &= !nix::sys::termios::LocalFlags::ECHOCTL;
-                if let Err(e) = nix::sys::termios::tcsetattr(
-                    file_desc,
-                    nix::sys::termios::SetArg::TCSANOW,
-                    &termios,
-                ) {
+                if let Err(e) = nix::sys::termios::tcsetattr(file_desc, nix::sys::termios::SetArg::TCSANOW, &termios) {
                     debug!("unable to unset ECHOCTL: {e}");
                 }
             }
         }
 
-        let child = receiver
-            .spawn_command(command)
-            .map_err(|err| match err.downcast() {
-                Ok(err) => err,
-                Err(err) => io::Error::new(io::ErrorKind::Other, err),
-            })?;
+        let child = receiver.spawn_command(command).map_err(|err| match err.downcast() {
+            Ok(err) => err,
+            Err(err) => io::Error::new(io::ErrorKind::Other, err),
+        })?;
 
         let pid = child.process_id();
 
@@ -223,9 +215,7 @@ impl ChildHandle {
                             // exited normally with exit code 1 or got killed by a signal is to
                             // display it as the signal will be included
                             // in the message.
-                            let exit_code = if status.exit_code() == 1
-                                && status.to_string().contains("Terminated by")
-                            {
+                            let exit_code = if status.exit_code() == 1 && status.to_string().contains("Terminated by") {
                                 None
                             } else {
                                 // This is safe as the portable_pty::ExitStatus's exit code is just
@@ -250,9 +240,7 @@ impl ChildHandle {
             ChildHandleImpl::Tokio(child) => child.kill().await,
             ChildHandleImpl::Pty(child) => {
                 let mut killer = child.clone_killer();
-                tokio::task::spawn_blocking(move || killer.kill())
-                    .await
-                    .unwrap()
+                tokio::task::spawn_blocking(move || killer.kill()).await.unwrap()
             }
         }
     }
@@ -427,11 +415,7 @@ pub enum ChildCommand {
 impl Child {
     /// Start a child process, returning a handle that can be used to interact
     /// with it. The command will be started immediately.
-    pub fn spawn(
-        command: Command,
-        shutdown_style: ShutdownStyle,
-        pty_size: Option<PtySize>,
-    ) -> io::Result<Self> {
+    pub fn spawn(command: Command, shutdown_style: ShutdownStyle, pty_size: Option<PtySize>) -> io::Result<Self> {
         let label = command.label();
         let SpawnResult {
             handle: mut child,
@@ -559,7 +543,7 @@ impl Child {
         code
     }
 
-    fn pid(&self) -> Option<u32> {
+    pub fn pid(&self) -> Option<u32> {
         self.pid
     }
 
@@ -581,10 +565,7 @@ impl Child {
 
     /// Wait for the `Child` to exit and pipe any stdout and stderr to the
     /// provided writer.
-    pub async fn wait_with_piped_outputs<W: Write>(
-        &mut self,
-        stdout_pipe: W,
-    ) -> Result<Option<ChildExit>, io::Error> {
+    pub async fn wait_with_piped_outputs<W: Write>(&mut self, stdout_pipe: W) -> Result<Option<ChildExit>, io::Error> {
         match self.outputs() {
             Some(ChildOutput::Std { stdout, stderr }) => {
                 self.wait_with_piped_async_outputs(

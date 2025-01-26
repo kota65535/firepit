@@ -1,11 +1,9 @@
-use crate::config::ProjectConfig;
 use crate::panic::panic_handler;
-use schemars::schema_for;
 
 mod cli;
 mod config;
 mod cui;
-mod error;
+pub mod error;
 pub mod event;
 mod graph;
 mod log;

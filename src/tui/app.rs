@@ -1,4 +1,4 @@
-use crate::event::{Direction, PaneSize, ScrollSize, TaskStatus};
+use crate::event::{Direction, PaneSize, ScrollSize, TaskRunning, TaskStatus};
 use crate::event::{Event, TaskResult};
 use crate::event::{EventReceiver, EventSender};
 use crate::tui::input;
@@ -10,7 +10,7 @@ use crate::tui::task::TaskDetail;
 use crate::tui::term_output::TerminalOutput;
 use anyhow::Context;
 use indexmap::IndexMap;
-use log::{debug, info};
+use log::{debug};
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Layout},
@@ -70,10 +70,7 @@ impl TuiApp {
         let size = SizeInfo::new(
             rect.height,
             rect.width,
-            target_tasks
-                .iter()
-                .chain(dep_tasks.iter())
-                .map(|s| s.as_str()),
+            target_tasks.iter().chain(dep_tasks.iter()).map(|s| s.as_str()),
         );
 
         debug!("Terminal size: height={} width={}", rect.height, rect.width);
@@ -84,22 +81,13 @@ impl TuiApp {
         let task_outputs = target_tasks
             .iter()
             .chain(dep_tasks.iter())
-            .map(|t| {
-                (
-                    t.clone(),
-                    TerminalOutput::new(t, pane_rows, pane_cols, None),
-                )
-            })
+            .map(|t| (t.clone(), TerminalOutput::new(t, pane_rows, pane_cols, None)))
             .collect::<IndexMap<_, _>>();
 
         let task_details = target_tasks
             .iter()
             .map(|t| (t.clone(), TaskDetail::new(t, true)))
-            .chain(
-                dep_tasks
-                    .iter()
-                    .map(|t| (t.clone(), TaskDetail::new(t, false))),
-            )
+            .chain(dep_tasks.iter().map(|t| (t.clone(), TaskDetail::new(t, false))))
             .collect::<IndexMap<_, _>>();
 
         let selected_task_index = 0;
@@ -219,10 +207,7 @@ impl TuiApp {
 
     fn cleanup(&mut self) -> anyhow::Result<()> {
         self.terminal.clear()?;
-        crossterm::execute!(
-            self.terminal.backend_mut(),
-            crossterm::terminal::LeaveAlternateScreen,
-        )?;
+        crossterm::execute!(self.terminal.backend_mut(), crossterm::terminal::LeaveAlternateScreen,)?;
         self.state.persist_tasks()?;
         crossterm::terminal::disable_raw_mode()?;
         self.terminal.show_cursor()?;
@@ -289,11 +274,7 @@ impl TuiAppState {
         self.has_user_scrolled = true;
     }
 
-    pub fn scroll_terminal_output(
-        &mut self,
-        direction: Direction,
-        stride: usize,
-    ) -> anyhow::Result<()> {
+    pub fn scroll_terminal_output(&mut self, direction: Direction, stride: usize) -> anyhow::Result<()> {
         self.active_task_mut()?.scroll(direction, stride)?;
         Ok(())
     }
@@ -307,12 +288,12 @@ impl TuiAppState {
             task.status = status;
         }
         if let Some(output) = self.task_outputs.get_mut(task) {
-            output.status = status
+            output.set_status(status)
         }
     }
 
-    pub fn start_task(&mut self, task: &str) {
-        self.set_status(task, TaskStatus::Running);
+    pub fn start_task(&mut self, task: &str, pid: u32, restart_count: u64) {
+        self.set_status(task, TaskStatus::Running(TaskRunning { pid, restart_count }));
     }
 
     pub fn ready_task(&mut self, task: &str) {
@@ -325,7 +306,7 @@ impl TuiAppState {
 
     pub fn has_stdin(&self) -> anyhow::Result<bool> {
         let task = self.active_task()?;
-        Ok(task.stdin.is_some())
+        Ok(task.stdin().is_some())
     }
 
     pub fn interact(&mut self) -> anyhow::Result<()> {
@@ -342,7 +323,7 @@ impl TuiAppState {
             .task_details
             .values()
             .zip(self.task_outputs.values())
-            .filter(|(s, _)| matches!(s.status, TaskStatus::Running | TaskStatus::Finished(_)))
+            .filter(|(s, _)| matches!(s.status, TaskStatus::Running(_) | TaskStatus::Finished(_)))
         {
             o.persist_screen()?
         }
@@ -397,7 +378,7 @@ impl TuiAppState {
             &active_task.name,
             &self.focus,
             self.has_sidebar,
-            self.done.then(|| self.exit_delay_left.as_secs())
+            self.done.then(|| self.exit_delay_left.as_secs()),
         );
         let table_to_render = TaskTable::new(&self.task_details);
 
@@ -406,23 +387,19 @@ impl TuiAppState {
     }
 
     /// Insert a stdin to be associated with a task
-    pub fn insert_stdin(
-        &mut self,
-        task: &str,
-        stdin: Option<Box<dyn Write + Send>>,
-    ) -> anyhow::Result<()> {
+    pub fn insert_stdin(&mut self, task: &str, stdin: Option<Box<dyn Write + Send>>) -> anyhow::Result<()> {
         let task = self
             .task_outputs
             .get_mut(task)
             .with_context(|| format!("{} not found", task))?;
-        task.stdin = stdin;
+        task.set_stdin(stdin);
         Ok(())
     }
 
     pub fn forward_input(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
         if matches!(self.focus, LayoutSections::Pane) {
             let task = self.active_task_mut()?;
-            if let Some(stdin) = &mut task.stdin {
+            if let Some(stdin) = task.stdin_mut() {
                 stdin
                     .write_all(bytes)
                     .with_context(|| format!("task {} failed to forward input", task.name))?;
@@ -451,8 +428,12 @@ impl TuiAppState {
 
     fn update(&mut self, event: Event) -> anyhow::Result<Option<oneshot::Sender<()>>> {
         match event {
-            Event::StartTask { task } => {
-                self.start_task(&task);
+            Event::StartTask {
+                task,
+                pid,
+                restart_count,
+            } => {
+                self.start_task(&task, pid, restart_count);
             }
             Event::TaskOutput { task, output } => {
                 self.process_output(&task, &output)?;

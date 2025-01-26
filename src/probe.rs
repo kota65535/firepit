@@ -1,4 +1,5 @@
-use crate::event::{Event, EventReceiver, EventSender, TaskResult, TaskStatus};
+use crate::event::{Event, EventReceiver, EventSender, TaskResult};
+use crate::graph::CallbackMessage;
 use crate::process::{ChildExit, Command, ProcessManager};
 use anyhow::Context;
 use log::info;
@@ -12,7 +13,7 @@ use tokio::sync::mpsc;
 pub enum Prober {
     LogLine(LogLineProber),
     Exec(ExecProber),
-    None,
+    None(NullProber),
 }
 
 #[derive(Debug, Clone)]
@@ -37,21 +38,25 @@ impl LogLineProber {
         &mut self,
         tx: EventSender,
         mut rx: EventReceiver,
-        callback: mpsc::Sender<TaskStatus>,
-    ) {
+        callback: mpsc::Sender<CallbackMessage>,
+    ) -> anyhow::Result<()> {
         tokio::time::sleep(Duration::from_secs(self.start_period)).await;
         let this = self.clone();
         let tx = tx.clone();
         let mut matched = false;
         while let Some(event) = rx.recv().await {
             match event {
-                Event::StartTask { task } => tx.start_task(task),
+                Event::StartTask {
+                    task,
+                    pid,
+                    restart_count,
+                } => tx.start_task(task, pid, restart_count)?,
                 Event::TaskOutput { task, output } => {
                     tx.output(task.clone(), output.clone()).ok();
                     let line = String::from_utf8(output).unwrap_or_default();
                     if !matched && this.regex.is_match(&line) {
-                        tx.ready_task(task.clone());
-                        callback.send(TaskStatus::Ready).await.ok();
+                        tx.ready_task(task.clone())?;
+                        callback.send(CallbackMessage(true)).await?;
                         matched = true
                     }
                 }
@@ -59,7 +64,7 @@ impl LogLineProber {
                     tx.set_stdin(task, stdin);
                 }
                 Event::ReadyTask { task } => {
-                    tx.ready_task(task);
+                    tx.ready_task(task)?;
                 }
                 Event::EndTask { task, result } => {
                     tx.end_task(task, result);
@@ -68,6 +73,7 @@ impl LogLineProber {
                 _ => {}
             }
         }
+        Ok(())
     }
 }
 
@@ -146,20 +152,21 @@ impl ExecProber {
         }
     }
 
-    pub async fn probe(&mut self, tx: EventSender, callback: mpsc::Sender<TaskStatus>) {
+    pub async fn probe(&mut self, tx: EventSender, callback: mpsc::Sender<CallbackMessage>) -> anyhow::Result<()> {
         tokio::time::sleep(Duration::from_secs(self.start_period)).await;
 
-        info!("Task {:?} prober started", self.name);
         let mut retries = 0;
         loop {
-            info!("Run prober");
             let success = match self.exec().await {
                 Ok(result) => result,
                 _ => false,
             };
             if success {
-                tx.ready_task(self.name.clone());
-                callback.send(TaskStatus::Ready).await.ok();
+                tx.ready_task(self.name.clone())?;
+                callback
+                    .send(CallbackMessage(true))
+                    .await
+                    .context("unable to send callback message")?;
                 break;
             }
             if retries >= self.retries {
@@ -171,5 +178,22 @@ impl ExecProber {
             retries += 1;
         }
         info!("Task {:?} prober finished", self.name);
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct NullProber {
+    name: String,
+}
+
+impl NullProber {
+    pub fn new(name: &str) -> Self {
+        Self { name: name.to_string() }
+    }
+
+    pub async fn probe(&self, tx: EventSender) -> anyhow::Result<()> {
+        tx.ready_task(self.name.clone())?;
+        Ok(())
     }
 }

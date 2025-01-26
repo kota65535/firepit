@@ -8,6 +8,8 @@ use tokio::sync::{mpsc, oneshot};
 pub enum Event {
     StartTask {
         task: String,
+        pid: u32,
+        restart_count: u64,
     },
     TaskOutput {
         task: String,
@@ -108,12 +110,20 @@ impl EventSender {
         self.to_owned()
     }
 
-    pub fn start_task(&self, task: String) {
-        self.tx.send(Event::StartTask { task }).ok();
+    pub fn start_task(&self, task: String, pid: u32, restart_count: u64) -> anyhow::Result<()> {
+        self.tx
+            .send(Event::StartTask {
+                task,
+                pid,
+                restart_count,
+            })
+            .map_err(|e| anyhow::anyhow!(e.to_string()))
     }
 
-    pub fn ready_task(&self, task: String) {
-        self.tx.send(Event::ReadyTask { task }).ok();
+    pub fn ready_task(&self, task: String) -> anyhow::Result<()> {
+        self.tx
+            .send(Event::ReadyTask { task })
+            .map_err(|e| anyhow::anyhow!(e.to_string()))
     }
 
     pub fn end_task(&self, task: String, result: TaskResult) {
@@ -154,10 +164,7 @@ impl Write for EventSender {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let task = self.name.clone();
         {
-            self.logs
-                .lock()
-                .expect("should not poisoned")
-                .extend_from_slice(buf);
+            self.logs.lock().expect("should not poisoned").extend_from_slice(buf);
         }
 
         self.output(task, buf.to_vec())
@@ -173,17 +180,23 @@ impl Write for EventSender {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TaskStatus {
     Planned,
-    Running,
+    Running(TaskRunning),
     Ready,
     Finished(TaskResult),
     Unknown,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TaskRunning {
+    pub pid: u32,
+    pub restart_count: u64,
+}
+
 impl Display for TaskStatus {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            TaskStatus::Planned => write!(f, "Planned"),
-            TaskStatus::Running => write!(f, "Running"),
+            TaskStatus::Planned => write!(f, "Waiting"),
+            TaskStatus::Running(r) => write!(f, "Running (PID: {}, Restart: {})", r.pid, r.restart_count),
             TaskStatus::Ready => write!(f, "Ready"),
             TaskStatus::Finished(result) => match result {
                 TaskResult::Success => write!(f, "Finished"),
