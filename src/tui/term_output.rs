@@ -1,7 +1,7 @@
 use crate::event::{Direction, TaskResult, TaskStatus};
 use std::{io::Write, mem};
 
-const SCROLLBACK_LEN: usize = 1024;
+const SCROLLBACK_LEN: usize = 4096;
 
 pub struct TerminalOutput {
     pub name: String,
