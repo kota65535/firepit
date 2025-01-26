@@ -449,9 +449,11 @@ impl TuiAppState {
         debug!("Original mouse event: {event:?}, table_width: {table_width}");
 
         // Subtract 1 from the y-axis due to the title of the pane
-        event.row -= 1;
+        if event.row >= 2 {
+            event.row -= 2;
+        }
         // Subtract the width of the table if we have sidebar
-        if self.has_sidebar && event.row > 0 && event.column >= table_width {
+        if self.has_sidebar && event.column >= table_width {
             event.column -= table_width;
         }
         debug!("Translated mouse event: {event:?}");

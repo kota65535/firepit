@@ -1,7 +1,7 @@
 use crate::tui::app::LayoutSections;
 use crate::tui::term_output::TerminalOutput;
 use ratatui::style::{Color, Stylize};
-use ratatui::widgets::Borders;
+use ratatui::widgets::{Borders, Padding};
 use ratatui::{
     style::Style,
     text::Line,
@@ -74,6 +74,7 @@ impl<'a> Widget for &TerminalPane<'a> {
     {
         let screen = self.terminal_output.parser.screen();
         let block = Block::default()
+            .padding(Padding::top(1))
             .borders(if self.has_sidebar { Borders::LEFT } else { Borders::NONE })
             .border_style(if self.highlight() {
                 Style::new().fg(Color::Yellow)
