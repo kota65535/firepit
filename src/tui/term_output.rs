@@ -121,7 +121,7 @@ impl TerminalOutput {
 
     pub fn scroll_to(&mut self, row: u16) {
         let screen = self.parser.screen_mut();
-        let scrollback_len = screen.grid().scrollback_len();
+        let scrollback_len = screen.current_scrollback_len();
         let row = row as usize;
         if scrollback_len > row {
             screen.set_scrollback(scrollback_len - row);
