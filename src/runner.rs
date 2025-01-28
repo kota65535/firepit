@@ -1,18 +1,19 @@
 use crate::config::{HealthCheckConfig, ProjectConfig, Restart, ServiceConfig};
 use crate::event::{EventReceiver, EventSender, TaskResult};
-use crate::graph::{CallbackMessage, TaskGraph, Visitor, VisitorMessage};
+use crate::graph::{CallbackMessage, NodeStatus, TaskGraph, Visitor, VisitorMessage};
 use crate::probe::{ExecProber, LogLineProber, NullProber, Prober};
 use crate::process::{ChildExit, Command, ProcessManager};
 use crate::signal::{get_signal, SignalHandler};
 use anyhow::Context;
 use futures::StreamExt;
-use log::{debug, info};
+use log::{debug, info, warn};
 use regex::Regex;
 use std::collections::HashMap;
 use std::path;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 use tokio::task::{JoinHandle, JoinSet};
 
 #[derive(Debug)]
@@ -20,7 +21,7 @@ pub struct TaskRunner {
     pub target_tasks: Vec<Task>,
     pub tasks: Vec<Task>,
     pub task_graph: TaskGraph,
-    pub manager: ProcessManager,
+    pub manager: Arc<Mutex<ProcessManager>>,
     pub signal_handler: SignalHandler,
     pub concurrency: usize,
 }
@@ -69,14 +70,15 @@ impl TaskRunner {
 
         debug!("Task graph:\n{:?}", task_graph);
 
-        let manager = ProcessManager::infer();
+        let manager = Arc::new(Mutex::new(ProcessManager::infer()));
         let signal = get_signal()?;
         let signal_handler = SignalHandler::new(signal);
         if let Some(subscriber) = signal_handler.subscribe() {
             let manager = manager.clone();
             tokio::spawn(async move {
                 let _guard = subscriber.listen().await;
-                manager.stop().await;
+                debug!("Stopping ProcessManager");
+                manager.lock().await.stop().await;
             });
         }
 
@@ -93,7 +95,7 @@ impl TaskRunner {
     pub async fn run(&mut self, mut app_tx: EventSender) -> anyhow::Result<()> {
         // Set pty size if possible
         if let Some(pane_size) = app_tx.pane_size().await {
-            self.manager.set_pty_size(pane_size.rows, pane_size.cols);
+            self.manager.lock().await.set_pty_size(pane_size.rows, pane_size.cols);
         }
 
         // Run visitor
@@ -124,15 +126,15 @@ impl TaskRunner {
             callback,
         }) = node_rx.recv().await
         {
-            let app_tx = app_tx.with_name(&task.name);
+            let mut app_tx = app_tx.with_name(&task.name);
             let manager = self.manager.clone();
 
             task_fut.spawn(tokio::spawn(async move {
                 // Skip the task if any dependency didn't finish successfully
                 if !deps_ok {
-                    info!("Task {:?} cannot run because of its failed dependency", task.name);
-                    app_tx.end_task(task.name, TaskResult::BadDeps);
-                    callback.send(CallbackMessage(false)).await?;
+                    info!("Task {:?} does not run because of its failed dependency", task.name);
+                    app_tx.finish_task(task.name, TaskResult::BadDeps);
+                    callback.send(CallbackMessage(NodeStatus::Failure)).await?;
                     return Ok::<(), anyhow::Error>(());
                 }
 
@@ -144,17 +146,55 @@ impl TaskRunner {
                     );
 
                     // Start prober
-                    let prober_fut = spawn_prober(&task.name, task.prober.clone(), app_tx.clone(), callback.clone());
+                    let prober_fut = if task.is_service {
+                        let fut = match task.prober.clone() {
+                            Prober::LogLine(mut prober) => {
+                                let (tx, rx) = mpsc::unbounded_channel();
+                                let mut log_tx = EventSender::new(tx).with_name(&task.name);
+                                let log_rx = EventReceiver::new(rx);
+                                std::mem::swap(&mut app_tx, &mut log_tx);
+                                let callback = callback.clone();
+                                tokio::spawn(async move { prober.probe(log_tx, log_rx, callback).await })
+                            }
+                            Prober::Exec(mut prober) => {
+                                let probe_tx = app_tx.clone();
+                                let callback = callback.clone();
+                                tokio::spawn(async move { prober.probe(probe_tx, callback).await })
+                            }
+                            Prober::None(prober) => {
+                                let probe_tx = app_tx.clone();
+                                tokio::spawn(async move { prober.probe(probe_tx).await })
+                            }
+                        };
+                        Some(fut)
+                    } else {
+                        None
+                    };
+
                     // Start task process
-                    let task_result =
-                        start_task_process(task.clone(), manager.clone(), app_tx.clone(), restart_count).await?;
                     // Stop prober after task process exits
-                    prober_fut.abort();
+                    let task_result =
+                        match run_task_process(task.clone(), manager.clone(), app_tx.clone(), restart_count).await {
+                            Ok(r) => r,
+                            Err(e) => {
+                                info!("Task {:?} does not start. reason: {:?}", task.name, e);
+                                callback.send(CallbackMessage(NodeStatus::Failure)).await.ok();
+                                prober_fut.map(|p| p.abort());
+                                break;
+                            }
+                        };
+                    prober_fut.map(|p| p.abort());
 
                     // Is this task successful?
                     let node_result = match task_result {
                         Some(task_result) => {
                             info!("Task {:?} finished. reason: {:?}", task.name, task_result);
+
+                            if manager.lock().await.is_closed() {
+                                debug!("Exiting because ProcessManager is closed");
+                                callback.send(CallbackMessage(NodeStatus::Failure)).await.ok();
+                                break;
+                            }
 
                             if task.is_service {
                                 let should_restart = match task.restart {
@@ -172,15 +212,15 @@ impl TaskRunner {
                             }
 
                             match task_result {
-                                TaskResult::Success => true,
-                                _ => false,
+                                TaskResult::Success => NodeStatus::Success,
+                                _ => NodeStatus::Failure,
                             }
                         }
-                        None => false,
+                        None => NodeStatus::Failure,
                     };
 
                     // Notify the visitor the task finished
-                    callback.send(CallbackMessage(node_result)).await?;
+                    callback.send(CallbackMessage(node_result)).await.ok();
                     break;
                 }
 
@@ -198,43 +238,20 @@ impl TaskRunner {
             }
         }
 
+        info!("Visitor is exiting");
+
         // Notify app the runner finish
         app_tx.stop().await;
+
+        info!("Runner is exiting");
 
         Ok(())
     }
 }
 
-fn spawn_prober(
-    task_name: &str,
-    prober: Prober,
-    mut app_tx: EventSender,
-    callback: mpsc::Sender<CallbackMessage>,
-) -> JoinHandle<anyhow::Result<()>> {
-    // Run prober
-    match prober {
-        Prober::LogLine(mut prober) => {
-            let (tx, rx) = mpsc::unbounded_channel();
-            let mut log_tx = EventSender::new(tx).with_name(task_name);
-            let log_rx = EventReceiver::new(rx);
-            std::mem::swap(&mut app_tx, &mut log_tx);
-            let callback = callback.clone();
-            tokio::spawn(async move { prober.probe(log_tx, log_rx, callback).await })
-        }
-        Prober::Exec(mut prober) => {
-            let probe_tx = app_tx.clone();
-            let callback = callback.clone();
-            tokio::spawn(async move { prober.probe(probe_tx, callback).await })
-        }
-        Prober::None(prober) => {
-            let probe_tx = app_tx.clone();
-            tokio::spawn(async move { prober.probe(probe_tx).await })
-        }
-    }
-}
-async fn start_task_process(
+async fn run_task_process(
     task: Task,
-    manager: ProcessManager,
+    manager: Arc<Mutex<ProcessManager>>,
     app_tx: EventSender,
     restart_count: u64,
 ) -> anyhow::Result<Option<TaskResult>> {
@@ -248,21 +265,32 @@ async fn start_task_process(
         .current_dir(task.working_dir.clone())
         .to_owned();
 
-    let mut process = match manager.spawn(cmd, Duration::from_millis(500)) {
+    if app_tx.tx.is_closed() {
+        return Ok(None);
+    }
+
+    let mut process = match manager.lock().await.spawn(cmd, Duration::from_millis(500)) {
         Some(Ok(child)) => child,
-        Some(Err(e)) => return Err(anyhow::Error::from(e).context(format!("failed to spawn task {:?}", task.name))),
+        Some(Err(e)) => anyhow::bail!("failed to spawn task {:?}: {:?}", task.name, e),
         _ => return Ok(None),
     };
 
+    info!("Task {:?} has started. PID={}", task.name, process.pid().unwrap_or(0));
+
     // Notify the app the task started
-    app_tx.start_task(task.name.clone(), process.pid().unwrap(), restart_count)?;
+    app_tx.start_task(task.name.clone(), process.pid().unwrap(), restart_count);
 
     // Transfer stdin of the process to the app
     if let Some(stdin) = process.stdin() {
         app_tx.set_stdin(task.name.clone(), stdin);
     }
 
-    // Wait until end
+    // Wait until complete
+    info!(
+        "Task {:?} waiting for output. PID={}",
+        task.name,
+        process.pid().unwrap_or(0)
+    );
     let result = match process.wait_with_piped_outputs(app_tx.clone()).await {
         Ok(Some(exit_status)) => match exit_status {
             ChildExit::Finished(Some(code)) if code == 0 => TaskResult::Success,
@@ -277,8 +305,10 @@ async fn start_task_process(
         Ok(None) => return Err(anyhow::anyhow!("unable to determine why child exited")),
     };
 
+    info!("Task {:?} has finished. PID={}", task.name, process.pid().unwrap_or(0));
+
     // Notify the app the task ended
-    app_tx.end_task(task.name.clone(), result.clone());
+    app_tx.finish_task(task.name.clone(), result.clone());
 
     Ok(Some(result))
 }

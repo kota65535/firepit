@@ -11,7 +11,7 @@ use crate::tui::task::TaskDetail;
 use crate::tui::term_output::TerminalOutput;
 use anyhow::Context;
 use indexmap::IndexMap;
-use log::debug;
+use log::{debug, info};
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Layout},
@@ -149,7 +149,9 @@ impl TuiApp {
             Ok(callback) => (Ok(()), callback),
             Err(err) => (Err(err).with_context(|| "failed to run tui app"), None),
         };
-        self.cleanup()
+        self.cleanup()?;
+        info!("App is exiting");
+        Ok(())
     }
 
     pub async fn run_inner(&mut self) -> anyhow::Result<Option<oneshot::Sender<()>>> {
@@ -683,7 +685,7 @@ impl TuiAppState {
             Event::Tick => {
                 // self.table.tick();
             }
-            Event::EndTask { task, result } => {
+            Event::FinishTask { task, result } => {
                 self.finish_task(&task, result);
                 self.insert_stdin(&task, None)?;
             }

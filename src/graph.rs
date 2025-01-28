@@ -27,12 +27,19 @@ pub struct VisitorMessage {
 
 pub struct Visitor {
     pub node_rx: mpsc::Receiver<VisitorMessage>,
-    pub cancel: watch::Sender<bool>,
+    pub cancel: broadcast::Sender<bool>,
     pub future: FuturesUnordered<JoinHandle<anyhow::Result<()>>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct CallbackMessage(pub bool);
+pub struct CallbackMessage(pub NodeStatus);
+
+#[derive(Debug, Clone)]
+pub enum NodeStatus {
+    Success,
+    Failure,
+    Ready,
+}
 
 impl TaskGraph {
     pub fn new(tasks: &Vec<Task>) -> anyhow::Result<TaskGraph> {
@@ -83,20 +90,20 @@ impl TaskGraph {
         let mut rxs = HashMap::new();
         for node_id in self.graph.node_identifiers() {
             // Each node can finish at most once so we set the capacity to 1
-            let (tx, rx) = broadcast::channel::<bool>(1);
+            let (tx, rx) = broadcast::channel::<NodeStatus>(1);
             txs.insert(node_id, tx);
             rxs.insert(node_id, rx);
         }
         // Channel to notify when all dependency nodes have finished
         let (node_tx, node_rx) = mpsc::channel(max(concurrency, 1));
         // Channel to stop visitor
-        let (cancel_tx, cancel_rx) = watch::channel(false);
+        let (cancel_tx, cancel_rx) = broadcast::channel(1);
 
         let nodes_fut = FuturesUnordered::new();
         for node_id in self.graph.node_identifiers() {
             let tx = txs.remove(&node_id).with_context(|| "sender not found")?;
             let node_tx = node_tx.clone();
-            let mut cancel_rx = cancel_rx.clone();
+            let mut cancel_rx = cancel_rx.resubscribe();
 
             let task = self
                 .graph
@@ -133,14 +140,14 @@ impl TaskGraph {
                 let deps_fut = join_all(deps);
 
                 let deps_ok = tokio::select! {
-                     _ = cancel_rx.changed() => {
+                     _ = cancel_rx.recv() => {
                         info!("Visitor is cancelled");
                         false
                      }
                     results = deps_fut => {
                         info!("Node {:?} dependencies have finished", task.name);
                         results.iter().map(|r| match r {
-                                Ok(r) => *r,
+                                Ok(r) => matches!(r, NodeStatus::Success|NodeStatus::Ready),
                                 Err(e) => {
                                     error!("Node {:?} cannot receive the result: {:?}", task.name, e);
                                     false
@@ -168,7 +175,7 @@ impl TaskGraph {
                                     "Node {:?} callback sender was dropped without sending a finish signal",
                                     task.name
                                 );
-                                CallbackMessage(false)
+                                CallbackMessage(NodeStatus::Failure)
                             }
                         }
                     }
@@ -177,13 +184,24 @@ impl TaskGraph {
                         // Since there's nothing the mark the node as being done
                         // we act as if we have been canceled.
                         warn!("Node {:?} cannot send to the runner: {:?}", task.name, e);
-                        CallbackMessage(false)
+                        CallbackMessage(NodeStatus::Failure)
                     }
                 };
+                let result = result.0;
                 info!("Node {:?} finished. result: {:?}", task.name, result);
                 // Send errors indicate that there are no receivers which
                 // happens when this node has no dependents
-                tx.send(result.0).ok();
+                tx.send(result.clone()).ok();
+
+                if matches!(result, NodeStatus::Ready) {
+                    tokio::select! {
+                        _ = cancel_rx.recv() => {
+                           info!("Visitor is cancelled");
+                        }
+                        _ = callback_rx.recv() => {}
+                    }
+                }
+                info!("Node {:?} visitor finished", task.name);
                 Ok(())
             }));
         }

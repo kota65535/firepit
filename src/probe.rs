@@ -1,5 +1,5 @@
 use crate::event::{Event, EventReceiver, EventSender, TaskResult};
-use crate::graph::CallbackMessage;
+use crate::graph::{CallbackMessage, NodeStatus};
 use crate::process::{ChildExit, Command, ProcessManager};
 use anyhow::Context;
 use log::info;
@@ -50,13 +50,13 @@ impl LogLineProber {
                     task,
                     pid,
                     restart_count,
-                } => tx.start_task(task, pid, restart_count)?,
+                } => tx.start_task(task, pid, restart_count),
                 Event::TaskOutput { task, output } => {
-                    tx.output(task.clone(), output.clone()).ok();
+                    tx.output(task.clone(), output.clone());
                     let line = String::from_utf8(output).unwrap_or_default();
                     if !matched && this.regex.is_match(&line) {
-                        tx.ready_task(task.clone())?;
-                        callback.send(CallbackMessage(true)).await?;
+                        tx.ready_task(task.clone());
+                        callback.send(CallbackMessage(NodeStatus::Ready)).await?;
                         matched = true
                     }
                 }
@@ -64,10 +64,10 @@ impl LogLineProber {
                     tx.set_stdin(task, stdin);
                 }
                 Event::ReadyTask { task } => {
-                    tx.ready_task(task)?;
+                    tx.ready_task(task);
                 }
-                Event::EndTask { task, result } => {
-                    tx.end_task(task, result);
+                Event::FinishTask { task, result } => {
+                    tx.finish_task(task, result);
                     break;
                 }
                 _ => {}
@@ -162,15 +162,15 @@ impl ExecProber {
                 _ => false,
             };
             if success {
-                tx.ready_task(self.name.clone())?;
+                tx.ready_task(self.name.clone());
                 callback
-                    .send(CallbackMessage(true))
+                    .send(CallbackMessage(NodeStatus::Ready))
                     .await
                     .context("unable to send callback message")?;
                 break;
             }
             if retries >= self.retries {
-                tx.end_task(self.name.clone(), TaskResult::Failure(1));
+                tx.finish_task(self.name.clone(), TaskResult::Failure(1));
                 break;
             }
 
@@ -193,7 +193,7 @@ impl NullProber {
     }
 
     pub async fn probe(&self, tx: EventSender) -> anyhow::Result<()> {
-        tx.ready_task(self.name.clone())?;
+        tx.ready_task(self.name.clone());
         Ok(())
     }
 }

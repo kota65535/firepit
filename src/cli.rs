@@ -59,38 +59,23 @@ pub async fn run() -> anyhow::Result<()> {
         .collect::<Vec<_>>();
     info!("Dep tasks: {:?}", dep_tasks);
 
-    let mut set = JoinSet::new();
-
-    let app_tx = match root.ui {
+    let (app_tx, app_fut) = match root.ui {
         UI::Cui => {
             let mut app = CuiApp::new();
             let sender = app.sender();
-            set.spawn(async move { app.run().await });
-            sender
+            let fut = tokio::spawn(async move { app.run().await });
+            (sender, fut)
         }
         UI::Tui => {
             let mut app = TuiApp::new(target_tasks, dep_tasks)?;
             let sender = app.sender();
-            set.spawn(async move { app.run().await });
-            sender
+            let fut = tokio::spawn(async move { app.run().await });
+            (sender, fut)
         }
     };
 
-    set.spawn(async move { runner.run(app_tx.clone()).await });
-
-    while let Some(r) = set.join_next().await {
-        match r {
-            Ok(r) => match r {
-                Ok(_) => {}
-                Err(e) => {
-                    anyhow::bail!("{:?}", e);
-                }
-            },
-            Err(e) => {
-                anyhow::bail!("{:?}", e);
-            }
-        }
-    }
+    runner.run(app_tx.clone()).await?;
+    app_fut.await?;
 
     Ok(())
 }

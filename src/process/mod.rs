@@ -96,11 +96,7 @@ impl ProcessManager {
             return None;
         }
         let pty_size = self.use_pty.then(|| lock.pty_size()).flatten();
-        let child = Child::spawn(
-            command,
-            child::ShutdownStyle::Graceful(stop_timeout),
-            pty_size,
-        );
+        let child = Child::spawn(command, child::ShutdownStyle::Graceful(stop_timeout), pty_size);
         if let Ok(child) = &child {
             lock.children.push(child.clone());
         }
@@ -157,6 +153,10 @@ impl ProcessManager {
             // just allocate a new vec rather than clearing the old one
             lock.children = vec![];
         }
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.state.lock().expect("not poisoned").is_closing
     }
 
     pub fn set_pty_size(&self, rows: u16, cols: u16) {

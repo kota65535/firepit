@@ -1,4 +1,5 @@
 use crate::tui::app::FRAME_RATE;
+use log::{debug, info};
 use std::fmt::{Display, Formatter};
 use std::io;
 use std::io::Write;
@@ -21,7 +22,7 @@ pub enum Event {
     ReadyTask {
         task: String,
     },
-    EndTask {
+    FinishTask {
         task: String,
         result: TaskResult,
     },
@@ -114,7 +115,7 @@ impl EventReceiver {
 
 #[derive(Debug, Clone)]
 pub struct EventSender {
-    tx: mpsc::UnboundedSender<Event>,
+    pub tx: mpsc::UnboundedSender<Event>,
     name: String,
     logs: Arc<Mutex<Vec<u8>>>,
 }
@@ -143,28 +144,32 @@ impl EventSender {
         self.to_owned()
     }
 
-    pub fn start_task(&self, task: String, pid: u32, restart_count: u64) -> anyhow::Result<()> {
-        self.tx
-            .send(Event::StartTask {
-                task,
-                pid,
-                restart_count,
-            })
-            .map_err(|e| anyhow::anyhow!(e.to_string()))
+    pub fn start_task(&self, task: String, pid: u32, restart_count: u64) {
+        if let Err(e) = self.tx.send(Event::StartTask {
+            task,
+            pid,
+            restart_count,
+        }) {
+            debug!("failed to send StartTask event: {:?}", e)
+        }
     }
 
-    pub fn ready_task(&self, task: String) -> anyhow::Result<()> {
-        self.tx
-            .send(Event::ReadyTask { task })
-            .map_err(|e| anyhow::anyhow!(e.to_string()))
+    pub fn ready_task(&self, task: String) {
+        if let Err(e) = self.tx.send(Event::ReadyTask { task }) {
+            debug!("failed to send ReadyTask event: {:?}", e)
+        }
     }
 
-    pub fn end_task(&self, task: String, result: TaskResult) {
-        self.tx.send(Event::EndTask { task, result }).ok();
+    pub fn finish_task(&self, task: String, result: TaskResult) {
+        if let Err(e) = self.tx.send(Event::FinishTask { task, result }) {
+            debug!("failed to send FinishTask event: {:?}", e)
+        }
     }
 
     pub fn set_stdin(&self, task: String, stdin: Box<dyn Write + Send>) {
-        self.tx.send(Event::SetStdin { task, stdin }).ok();
+        if let Err(e) = self.tx.send(Event::SetStdin { task, stdin }) {
+            debug!("failed to send SetStdin event: {:?}", e)
+        }
     }
 
     /// Stop rendering TUI and restore terminal to default configuration
@@ -172,24 +177,35 @@ impl EventSender {
         let (callback_tx, callback_rx) = oneshot::channel();
         // Send stop event, if receiver has dropped ignore error as
         // it'll be a no-op.
-        self.tx.send(Event::Stop(callback_tx)).ok();
+        if let Err(e) = self.tx.send(Event::Stop(callback_tx)) {
+            debug!("failed to send Stop event: {:?}", e)
+        }
         // Wait for callback to be sent or the channel closed.
-        callback_rx.await.ok();
+        if let Err(e) = callback_rx.await {
+            debug!("failed to receive callback of Stop event: {:?}", e)
+        }
     }
 
-    pub fn output(&self, task: String, output: Vec<u8>) -> anyhow::Result<()> {
-        self.tx
-            .send(Event::TaskOutput { task, output })
-            .map_err(|err| anyhow::anyhow!(err.to_string()))
+    pub fn output(&self, task: String, output: Vec<u8>) {
+        if let Err(e) = self.tx.send(Event::TaskOutput { task, output }) {
+            debug!("failed to send Output event: {:?}", e)
+        }
     }
 
     /// Fetches the size of the terminal pane
     pub async fn pane_size(&self) -> Option<PaneSize> {
         let (callback_tx, callback_rx) = oneshot::channel();
-        // Send query, if no receiver to handle the request return None
-        self.tx.send(Event::PaneSizeQuery(callback_tx)).ok()?;
-        // Wait for callback to be sent
-        callback_rx.await.ok()
+        if let Err(e) = self.tx.send(Event::PaneSizeQuery(callback_tx)) {
+            debug!("failed to send PaneSizeQuery event: {:?}", e)
+        }
+        // Wait for callback to be sent or the channel closed.
+        match callback_rx.await {
+            Ok(size) => Some(size),
+            Err(e) => {
+                debug!("failed to receive callback of PaneSizeQuery event: {:?}", e);
+                None
+            }
+        }
     }
 }
 
@@ -200,8 +216,7 @@ impl Write for EventSender {
             self.logs.lock().expect("should not poisoned").extend_from_slice(buf);
         }
 
-        self.output(task, buf.to_vec())
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+        self.output(task, buf.to_vec());
         Ok(buf.len())
     }
 

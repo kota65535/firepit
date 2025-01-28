@@ -457,7 +457,7 @@ impl Child {
                 }
             }
 
-            debug!("child process stopped");
+            debug!("Child process stopped. PID={}", pid.unwrap_or(0));
         });
 
         Ok(Self {
