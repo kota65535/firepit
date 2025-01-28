@@ -6,6 +6,9 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
 
 pub enum Event {
+    ///
+    /// Task Events
+    ///
     StartTask {
         task: String,
         pid: u32,
@@ -22,24 +25,37 @@ pub enum Event {
         task: String,
         result: TaskResult,
     },
+    SetStdin {
+        task: String,
+        stdin: Box<dyn Write + Send>,
+    },
     PaneSizeQuery(oneshot::Sender<PaneSize>),
     Stop(oneshot::Sender<()>),
     // Stop initiated by the TUI itself
     InternalStop,
-    Tick,
+
+    ///
+    /// UI Events
+    ///
     Up,
     Down,
     ScrollUp(ScrollSize),
     ScrollDown(ScrollSize),
-    SetStdin {
-        task: String,
-        stdin: Box<dyn std::io::Write + Send>,
-    },
+    ToggleSidebar,
+    Tick,
+
+    ///
+    /// Interaction Events
+    ///
     EnterInteractive,
     ExitInteractive,
     Input {
         bytes: Vec<u8>,
     },
+
+    ///
+    /// Mouse Events
+    ///
     Mouse(crossterm::event::MouseEvent),
     MouseMultiClick(crossterm::event::MouseEvent, usize),
     CopySelection,
@@ -47,7 +63,19 @@ pub enum Event {
         rows: u16,
         cols: u16,
     },
-    ToggleSidebar,
+
+    ///
+    /// Search Events
+    ///
+    EnterSearch,
+    SearchInputChar(char),
+    SearchBackspace,
+    SearchRun,
+    SearchNext,
+    SearchPrevious,
+    SearchExit {
+        restore_scroll: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -135,7 +163,7 @@ impl EventSender {
         self.tx.send(Event::EndTask { task, result }).ok();
     }
 
-    pub fn set_stdin(&self, task: String, stdin: Box<dyn std::io::Write + Send>) {
+    pub fn set_stdin(&self, task: String, stdin: Box<dyn Write + Send>) {
         self.tx.send(Event::SetStdin { task, stdin }).ok();
     }
 

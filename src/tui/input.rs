@@ -1,14 +1,12 @@
-use crate::event::{Direction, Event, ScrollSize};
+use crate::event::{Event, ScrollSize};
 use crate::tui::app::LayoutSections;
 use crate::tui::lib::RingBuffer;
 use crossterm::event::{EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use futures::StreamExt;
 use itertools::Itertools;
-use log::{debug, info};
-use std::collections::VecDeque;
-use std::ops::Sub;
+use log::debug;
 use std::time::{Duration, Instant};
-use tokio::{sync::mpsc, task::JoinHandle};
+use tokio::sync::mpsc;
 
 #[derive(Debug, Clone)]
 pub struct InputHandler {
@@ -89,6 +87,13 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<Eve
         return None;
     }
     match key_event.code {
+        // If we're on the list and user presses `/` enter search mode
+        KeyCode::Char('/') if matches!(options.focus, LayoutSections::TaskList(_)) => Some(Event::EnterSearch),
+        KeyCode::Char(c) if matches!(options.focus, LayoutSections::Search { .. }) => Some(Event::SearchInputChar(c)),
+        KeyCode::Backspace if matches!(options.focus, LayoutSections::Search { .. }) => Some(Event::SearchBackspace),
+        KeyCode::Esc => Some(Event::SearchExit { restore_scroll: true }),
+        KeyCode::Enter if matches!(options.focus, LayoutSections::Search { .. }) => Some(Event::SearchRun),
+
         KeyCode::Char('c') if options.has_selection => Some(Event::CopySelection),
         KeyCode::Char('c') if key_event.modifiers == KeyModifiers::CONTROL => {
             ctrl_c();
@@ -111,10 +116,12 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<Eve
         KeyCode::Char('u') => Some(Event::ScrollUp(ScrollSize::Half)),
         KeyCode::Char('f') => Some(Event::ScrollDown(ScrollSize::Full)),
         KeyCode::Char('b') => Some(Event::ScrollUp(ScrollSize::Full)),
-        KeyCode::Char('g') => Some(Event::ScrollDown(ScrollSize::Edge)),
-        KeyCode::Char('G') => Some(Event::ScrollUp(ScrollSize::Edge)),
+        KeyCode::Char('G') => Some(Event::ScrollDown(ScrollSize::Edge)),
+        KeyCode::Char('g') => Some(Event::ScrollUp(ScrollSize::Edge)),
         KeyCode::Char('j') => Some(Event::Down),
         KeyCode::Char('k') => Some(Event::Up),
+        KeyCode::Char('n') => Some(Event::SearchNext),
+        KeyCode::Char('N') => Some(Event::SearchPrevious),
         KeyCode::Up => Some(Event::Up),
         KeyCode::Down => Some(Event::Down),
         KeyCode::Enter => Some(Event::EnterInteractive),

@@ -8,3 +8,4 @@ mod term_output;
 
 mod clipboard;
 mod lib;
+mod search;

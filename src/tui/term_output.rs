@@ -16,7 +16,7 @@ impl TerminalOutput {
         Self {
             name: name.to_string(),
             output: Vec::new(),
-            parser: vt100::Parser::new(rows, cols, SCROLLBACK_LEN),
+            parser: vt100::Parser::new(rows, cols - 1, SCROLLBACK_LEN),
             stdin,
             status: TaskStatus::Planned,
         }
@@ -102,14 +102,14 @@ impl TerminalOutput {
         let new_scrollback = match direction {
             Direction::Up => {
                 if stride == 0 {
-                    0
+                    SCROLLBACK_LEN
                 } else {
                     scrollback + stride
                 }
             }
             Direction::Down => {
                 if stride == 0 {
-                    SCROLLBACK_LEN
+                    0
                 } else {
                     scrollback.saturating_sub(stride)
                 }
@@ -117,6 +117,17 @@ impl TerminalOutput {
         };
         self.parser.screen_mut().set_scrollback(new_scrollback);
         Ok(())
+    }
+
+    pub fn scroll_to(&mut self, row: u16) {
+        let screen = self.parser.screen_mut();
+        let scrollback_len = screen.grid().scrollback_len();
+        let row = row as usize;
+        if scrollback_len > row {
+            screen.set_scrollback(scrollback_len - row);
+        } else {
+            screen.set_scrollback(0);
+        }
     }
 
     pub fn persist_screen(&self) -> anyhow::Result<()> {

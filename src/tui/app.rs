@@ -2,9 +2,9 @@ use crate::event::{Direction, PaneSize, ScrollSize, TaskRunning, TaskStatus};
 use crate::event::{Event, TaskResult};
 use crate::event::{EventReceiver, EventSender};
 use crate::tui::clipboard::copy_to_clipboard;
-use crate::tui::input;
 use crate::tui::input::{InputHandler, InputOptions};
 use crate::tui::pane::TerminalPane;
+use crate::tui::search::{Match, SearchResults};
 use crate::tui::size::SizeInfo;
 use crate::tui::table::TaskTable;
 use crate::tui::task::TaskDetail;
@@ -33,7 +33,8 @@ pub const EXIT_DELAY: Duration = Duration::from_secs(2);
 #[derive(Debug, Clone)]
 pub enum LayoutSections {
     Pane,
-    TaskList,
+    TaskList(Option<SearchResults>),
+    Search { query: String },
 }
 
 pub struct TuiApp {
@@ -104,7 +105,7 @@ impl TuiApp {
                 size,
                 task_outputs,
                 task_details,
-                focus: LayoutSections::TaskList,
+                focus: LayoutSections::TaskList(None),
                 scroll: TableState::default().with_selected(selected_task_index),
                 selected_task_index,
                 has_sidebar: true,
@@ -297,6 +298,11 @@ impl TuiAppState {
         Ok(())
     }
 
+    pub fn scroll_to_row(&mut self, row: u16) -> anyhow::Result<()> {
+        self.active_task_mut()?.scroll_to(row);
+        Ok(())
+    }
+
     pub fn task_names(&self) -> Vec<String> {
         self.task_outputs.iter().map(|t| t.0.clone()).collect()
     }
@@ -329,7 +335,7 @@ impl TuiAppState {
 
     pub fn interact(&mut self) -> anyhow::Result<()> {
         if matches!(self.focus, LayoutSections::Pane) {
-            self.focus = LayoutSections::TaskList
+            self.focus = LayoutSections::TaskList(None)
         } else if self.has_stdin()? {
             self.focus = LayoutSections::Pane;
         }
@@ -474,8 +480,178 @@ impl TuiAppState {
     }
 
     pub fn clear_selection(&mut self) -> anyhow::Result<()> {
-        let mut task = self.active_task_mut()?;
+        let task = self.active_task_mut()?;
         task.clear_selection();
+        Ok(())
+    }
+
+    pub fn enter_search(&mut self) -> anyhow::Result<()> {
+        self.remove_search_highlight()?;
+        self.focus = LayoutSections::Search { query: "".to_string() };
+        // We set scroll as we want to keep the current selection
+        self.has_user_scrolled = true;
+        Ok(())
+    }
+
+    pub fn remove_search_highlight(&mut self) -> anyhow::Result<()> {
+        let LayoutSections::TaskList(Some(results)) = &mut self.focus else {
+            return Ok(());
+        };
+        let results = results.clone();
+        let task = self.active_task_mut()?;
+        if task.name != results.task {
+            return Ok(());
+        }
+        if let Some(Match(row, col)) = results.current() {
+            self.highlight_cell(row, col, false)?;
+        }
+        Ok(())
+    }
+
+    pub fn run_search(&mut self) -> anyhow::Result<()> {
+        let LayoutSections::Search { query, .. } = &mut self.focus else {
+            return Ok(());
+        };
+        let query = query.clone();
+        let task = self.active_task_mut()?;
+        let screen = task.parser.screen_mut();
+        let size = screen.size();
+
+        let mut matches = Vec::new();
+        let mut buf = String::new();
+        let mut previous_rows = Vec::new();
+        for (row_idx, row) in screen.grid_mut().all_rows_mut().enumerate() {
+            let mut s = String::new();
+            row.write_contents(&mut s, 0, size.1, true);
+            buf.push_str(&s);
+            if row.wrapped() {
+                previous_rows.push((row, s.len()));
+                continue;
+            }
+            for (mut col_idx, _) in buf.match_indices(&query) {
+                if previous_rows.is_empty() {
+                    matches.push(Match(row_idx as u16, col_idx as u16));
+                } else {
+                    let mut row_idx = row_idx - previous_rows.len();
+                    for (pr, l) in previous_rows.iter() {
+                        if col_idx <= size.1 as usize {
+                            matches.push(Match(row_idx as u16, col_idx as u16));
+                        } else {
+                            col_idx -= l;
+                        }
+                        row_idx += 1;
+                    }
+                }
+            }
+            previous_rows.clear();
+            buf.clear();
+        }
+
+        let search_results = SearchResults::new(&task.name, query, matches)?;
+
+        if let Some(Match(row, col)) = search_results.current() {
+            self.highlight_cell(row, col, true)?;
+            self.scroll_to_row(row)?;
+        }
+
+        self.focus = LayoutSections::TaskList(Some(search_results));
+        Ok(())
+    }
+
+    fn highlight_cell(&mut self, row: u16, col: u16, highlight: bool) -> anyhow::Result<()> {
+        let task = self.active_task_mut()?;
+        let screen = task.parser.screen_mut();
+        let cell = screen
+            .grid_mut()
+            .all_rows_mut()
+            .nth(row as usize)
+            .map(|r| r.get_mut(col))
+            .flatten();
+        if let Some(cell) = cell {
+            if highlight {
+                cell.attrs.bgcolor = vt100::Color::Rgb(150, 30, 30)
+            } else {
+                cell.attrs.bgcolor = vt100::Color::Default;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn next_search_result(&mut self) -> anyhow::Result<()> {
+        let LayoutSections::TaskList(Some(results)) = &mut self.focus else {
+            return Ok(());
+        };
+        let mut results = results.clone();
+
+        self.remove_search_highlight()?;
+
+        if let Some(Match(row, col)) = results.next() {
+            self.highlight_cell(row, col, true)?;
+            self.scroll_to_row(row)?;
+        }
+
+        self.focus = LayoutSections::TaskList(Some(results));
+
+        Ok(())
+    }
+
+    pub fn previous_search_result(&mut self) -> anyhow::Result<()> {
+        let LayoutSections::TaskList(Some(results)) = &mut self.focus else {
+            return Ok(());
+        };
+        let mut results = results.clone();
+
+        self.remove_search_highlight()?;
+
+        if let Some(Match(row, col)) = results.previous() {
+            self.highlight_cell(row, col, true)?;
+            self.scroll_to_row(row)?;
+        }
+
+        self.focus = LayoutSections::TaskList(Some(results));
+
+        Ok(())
+    }
+
+    pub fn exit_search(&mut self, reset_scroll: bool) -> anyhow::Result<()> {
+        if let LayoutSections::TaskList(results) = &mut self.focus {
+            let Some(mut results) = results.clone() else {
+                return Ok(());
+            };
+            let task = self.active_task_mut()?;
+            if task.name != results.task {
+                return Ok(());
+            }
+            self.remove_search_highlight()?;
+            results.reset();
+        };
+
+        // if reset_scroll {
+        //     self.scroll_terminal_output(Direction::Down, self.scroll_size(ScrollSize::Edge))?;
+        // }
+
+        self.focus = LayoutSections::TaskList(None);
+
+        Ok(())
+    }
+
+    pub fn search_input_char(&mut self, c: char) -> anyhow::Result<()> {
+        let LayoutSections::Search { query, .. } = &mut self.focus else {
+            debug!("Modifying search query while not searching");
+            return Ok(());
+        };
+        query.push(c);
+        Ok(())
+    }
+
+    pub fn search_remove_char(&mut self) -> anyhow::Result<()> {
+        let LayoutSections::Search { query, .. } = &mut self.focus else {
+            debug!("Modified search query while not searching");
+            return Ok(());
+        };
+        if query.pop().is_none() {
+            self.exit_search(false)?;
+        }
         Ok(())
     }
 
@@ -512,9 +688,11 @@ impl TuiAppState {
                 self.insert_stdin(&task, None)?;
             }
             Event::Up => {
+                self.exit_search(true)?;
                 self.previous();
             }
             Event::Down => {
+                self.exit_search(true)?;
                 self.next();
             }
             Event::ScrollUp(size) => {
@@ -554,6 +732,27 @@ impl TuiAppState {
             Event::CopySelection => {
                 self.copy_selection()?;
                 self.clear_selection()?;
+            }
+            Event::EnterSearch => {
+                self.enter_search()?;
+            }
+            Event::SearchInputChar(c) => {
+                self.search_input_char(c)?;
+            }
+            Event::SearchBackspace => {
+                self.search_remove_char()?;
+            }
+            Event::SearchRun => {
+                self.run_search()?;
+            }
+            Event::SearchNext => {
+                self.next_search_result()?;
+            }
+            Event::SearchPrevious => {
+                self.previous_search_result()?;
+            }
+            Event::SearchExit { restore_scroll } => {
+                self.exit_search(restore_scroll)?;
             }
             Event::PaneSizeQuery(callback) => {
                 // If caller has already hung up do nothing

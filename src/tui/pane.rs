@@ -56,12 +56,13 @@ impl<'a> TerminalPane<'a> {
                     Line::from(format!("{FOOTER_TEXT_ACTIVE} {task_list_message} {HAS_SELECTION}")).centered()
                 }
                 LayoutSections::Pane => Line::from(FOOTER_TEXT_ACTIVE.to_owned()).centered(),
-                LayoutSections::TaskList if self.terminal_output.has_selection() => {
+                LayoutSections::TaskList(_) if self.terminal_output.has_selection() => {
                     Line::from(format!("{FOOTER_TEXT_INACTIVE} {task_list_message} {HAS_SELECTION}")).centered()
                 }
-                LayoutSections::TaskList => {
+                LayoutSections::TaskList(_) => {
                     Line::from(format!("{FOOTER_TEXT_INACTIVE} {task_list_message}")).centered()
                 }
+                LayoutSections::Search { query } => Line::from(format!("/ {}", query)).left_aligned(),
             }
         }
     }
