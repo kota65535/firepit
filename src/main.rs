@@ -1,4 +1,5 @@
 use crate::panic::panic_handler;
+use ::log::error;
 
 mod cli;
 mod config;
@@ -15,8 +16,13 @@ mod signal;
 mod tui;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() {
     std::panic::set_hook(Box::new(panic_handler));
 
-    cli::run().await
+    match cli::run().await {
+        Ok(_) => {}
+        Err(e) => {
+            error!("Error: {:?}", e);
+        }
+    }
 }

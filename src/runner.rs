@@ -4,9 +4,9 @@ use crate::graph::{CallbackMessage, TaskGraph, Visitor, VisitorMessage};
 use crate::probe::{ExecProber, LogLineProber, NullProber, Prober};
 use crate::process::{ChildExit, Command, ProcessManager};
 use crate::signal::{get_signal, SignalHandler};
-use anyhow::{Context};
-use futures::future::{join};
-use log::{debug, error, info};
+use anyhow::Context;
+use futures::StreamExt;
+use log::{debug, info};
 use regex::Regex;
 use std::collections::HashMap;
 use std::path;
@@ -97,12 +97,15 @@ impl TaskRunner {
         }
 
         // Run visitor
-        let visitor = self.task_graph.visit(self.concurrency)?;
         let Visitor {
             mut node_rx,
             cancel: cancel_tx,
-            future: visitor_fut,
-        } = visitor;
+            future: mut visitor_fut,
+        } = self
+            .task_graph
+            .visit(self.concurrency)
+            .with_context(|| "Error while visiting task graph")?;
+        info!("Visitor started");
 
         // Cancel visitor if we received any signal
         if let Some(subscriber) = self.signal_handler.subscribe() {
@@ -114,7 +117,7 @@ impl TaskRunner {
 
         let mut task_fut = JoinSet::new();
 
-        // Receive next task when deps end (finished or killed)
+        // Receive the next task when its dependencies finished
         while let Some(VisitorMessage {
             node: task,
             deps_ok,
@@ -125,9 +128,9 @@ impl TaskRunner {
             let manager = self.manager.clone();
 
             task_fut.spawn(tokio::spawn(async move {
-                // Skip the task if any deps didn't end successfully
+                // Skip the task if any dependency didn't finish successfully
                 if !deps_ok {
-                    info!("Skipping task {:?}", task.name);
+                    info!("Task {:?} cannot run because of its failed dependency", task.name);
                     app_tx.end_task(task.name, TaskResult::BadDeps);
                     callback.send(CallbackMessage(false)).await?;
                     return Ok::<(), anyhow::Error>(());
@@ -140,12 +143,15 @@ impl TaskRunner {
                         task.name, task.shell, &task.shell_args, task.command, task.env, task.working_dir
                     );
 
+                    // Start prober
                     let prober_fut = spawn_prober(&task.name, task.prober.clone(), app_tx.clone(), callback.clone());
-                    let task_fut = spawn_task_process(task.clone(), manager.clone(), app_tx.clone(), restart_count);
-
-                    let task_result = task_fut.await??;
+                    // Start task process
+                    let task_result =
+                        start_task_process(task.clone(), manager.clone(), app_tx.clone(), restart_count).await?;
+                    // Stop prober after task process exits
                     prober_fut.abort();
 
+                    // Is this task successful?
                     let node_result = match task_result {
                         Some(task_result) => {
                             info!("Task {:?} finished. reason: {:?}", task.name, task_result);
@@ -173,9 +179,8 @@ impl TaskRunner {
                         None => false,
                     };
 
-                    // Notify the visitor the task ended
+                    // Notify the visitor the task finished
                     callback.send(CallbackMessage(node_result)).await?;
-
                     break;
                 }
 
@@ -183,20 +188,13 @@ impl TaskRunner {
             }));
         }
 
-        // Wait visitor and task processes to finish
-        let (visitor_res, task_res) = join(visitor_fut.join_all(), task_fut.join_all()).await;
-
-        for r in visitor_res {
+        while let Some(r) = visitor_fut.next().await {
             match r {
-                Ok(()) => {}
-                Err(e) => error!("{:?}", e),
-            }
-        }
-        for r in task_res {
-            match r {
-                Ok(Ok(_)) => {}
-                Ok(Err(e)) => error!("{:?}", e),
-                Err(e) => error!("{:?}", e),
+                Ok(r) => match r {
+                    Ok(r) => r,
+                    Err(e) => anyhow::bail!("error while waiting visitor thread: {:?}", e),
+                },
+                Err(e) => anyhow::bail!("error while waiting visitor thread: {:?}", e),
             }
         }
 
@@ -234,57 +232,55 @@ fn spawn_prober(
         }
     }
 }
-fn spawn_task_process(
+async fn start_task_process(
     task: Task,
     manager: ProcessManager,
     app_tx: EventSender,
     restart_count: u64,
-) -> JoinHandle<anyhow::Result<Option<TaskResult>>> {
-    tokio::spawn(async move {
-        let mut args = Vec::new();
-        args.extend(task.shell_args.clone());
-        args.push(task.command.clone());
+) -> anyhow::Result<Option<TaskResult>> {
+    let mut args = Vec::new();
+    args.extend(task.shell_args.clone());
+    args.push(task.command.clone());
 
-        let cmd = Command::new(task.shell.clone())
-            .args(args)
-            .envs(task.env.clone())
-            .current_dir(task.working_dir.clone())
-            .to_owned();
+    let cmd = Command::new(task.shell.clone())
+        .args(args)
+        .envs(task.env.clone())
+        .current_dir(task.working_dir.clone())
+        .to_owned();
 
-        let mut process = match manager.spawn(cmd, Duration::from_millis(500)) {
-            Some(Ok(child)) => child,
-            Some(Err(e)) => return Err(anyhow::Error::from(e).context(format!("failed to spawn task {:?}", task.name))),
-            _ => return Ok(None),
-        };
+    let mut process = match manager.spawn(cmd, Duration::from_millis(500)) {
+        Some(Ok(child)) => child,
+        Some(Err(e)) => return Err(anyhow::Error::from(e).context(format!("failed to spawn task {:?}", task.name))),
+        _ => return Ok(None),
+    };
 
-        // Transfer stdin of the process to the app
-        if let Some(stdin) = process.stdin() {
-            app_tx.set_stdin(task.name.clone(), stdin);
+    // Notify the app the task started
+    app_tx.start_task(task.name.clone(), process.pid().unwrap(), restart_count)?;
+
+    // Transfer stdin of the process to the app
+    if let Some(stdin) = process.stdin() {
+        app_tx.set_stdin(task.name.clone(), stdin);
+    }
+
+    // Wait until end
+    let result = match process.wait_with_piped_outputs(app_tx.clone()).await {
+        Ok(Some(exit_status)) => match exit_status {
+            ChildExit::Finished(Some(code)) if code == 0 => TaskResult::Success,
+            ChildExit::Finished(Some(code)) => TaskResult::Failure(code),
+            ChildExit::Killed | ChildExit::KilledExternal => TaskResult::Stopped,
+            ChildExit::Failed => TaskResult::Unknown,
+            _ => TaskResult::Unknown,
+        },
+        Err(e) => {
+            return Err(anyhow::Error::from(e).context(format!("error while waiting task {:?}", task.name)));
         }
+        Ok(None) => return Err(anyhow::anyhow!("unable to determine why child exited")),
+    };
 
-        // Notify the app the task started
-        app_tx.start_task(task.name.clone(), process.pid().unwrap(), restart_count)?;
+    // Notify the app the task ended
+    app_tx.end_task(task.name.clone(), result.clone());
 
-        // Wait until end
-        let result = match process.wait_with_piped_outputs(app_tx.clone()).await {
-            Ok(Some(exit_status)) => match exit_status {
-                ChildExit::Finished(Some(code)) if code == 0 => TaskResult::Success,
-                ChildExit::Finished(Some(code)) => TaskResult::Failure(code),
-                ChildExit::Killed | ChildExit::KilledExternal => TaskResult::Stopped,
-                ChildExit::Failed => TaskResult::Unknown,
-                _ => TaskResult::Unknown,
-            },
-            Err(e) => {
-                return Err(anyhow::Error::from(e).context(format!("error while waiting task {:?}", task.name)));
-            }
-            Ok(None) => return Err(anyhow::anyhow!("unable to determine why child exited")),
-        };
-
-        // Notify the app the task ended
-        // TODO: 引数を消す
-        app_tx.end_task(task.name.clone(), result.clone());
-        Ok(Some(result))
-    })
+    Ok(Some(result))
 }
 
 fn dir_contains(a: &PathBuf, b: &PathBuf) -> bool {

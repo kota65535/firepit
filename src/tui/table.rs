@@ -73,7 +73,7 @@ impl TaskTable<'_> {
                                 )),
                                 TaskResult::BadDeps | TaskResult::NotReady | TaskResult::Stopped => {
                                     Cell::new(Text::raw(
-                                        "\u{1F6AB}\u{200D}", // 🚫
+                                        "\u{1F6AB}", // 🚫
                                     ))
                                 }
                                 TaskResult::Unknown => Cell::new(Text::raw(

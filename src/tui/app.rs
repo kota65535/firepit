@@ -28,7 +28,7 @@ use tokio::{
 };
 
 pub const FRAME_RATE: Duration = Duration::from_millis(3);
-pub const EXIT_DELAY: Duration = Duration::from_secs(2);
+pub const EXIT_DELAY: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Clone)]
 pub enum LayoutSections {

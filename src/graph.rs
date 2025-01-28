@@ -1,6 +1,7 @@
 use crate::runner::Task;
 use anyhow::Context;
-use futures::future::{join_all};
+use futures::future::join_all;
+use futures::stream::FuturesUnordered;
 use log::{error, info, warn};
 use petgraph::algo::toposort;
 use petgraph::dot::{Config, Dot};
@@ -11,7 +12,7 @@ use std::cmp::max;
 use std::collections::HashMap;
 use std::fmt;
 use tokio::sync::{broadcast, mpsc, watch};
-use tokio::task::{JoinError, JoinSet};
+use tokio::task::JoinHandle;
 
 #[derive(Clone)]
 pub struct TaskGraph {
@@ -27,7 +28,7 @@ pub struct VisitorMessage {
 pub struct Visitor {
     pub node_rx: mpsc::Receiver<VisitorMessage>,
     pub cancel: watch::Sender<bool>,
-    pub future: JoinSet<Result<(), JoinError>>,
+    pub future: FuturesUnordered<JoinHandle<anyhow::Result<()>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -80,18 +81,18 @@ impl TaskGraph {
         // Channel for each node to notify all dependent nodes when it finishes
         let mut txs = HashMap::new();
         let mut rxs = HashMap::new();
-        for node in self.graph.node_identifiers() {
+        for node_id in self.graph.node_identifiers() {
             // Each node can finish at most once so we set the capacity to 1
             let (tx, rx) = broadcast::channel::<bool>(1);
-            txs.insert(node, tx);
-            rxs.insert(node, rx);
+            txs.insert(node_id, tx);
+            rxs.insert(node_id, rx);
         }
         // Channel to notify when all dependency nodes have finished
         let (node_tx, node_rx) = mpsc::channel(max(concurrency, 1));
         // Channel to stop visitor
         let (cancel_tx, cancel_rx) = watch::channel(false);
 
-        let mut nodes_fut = JoinSet::new();
+        let nodes_fut = FuturesUnordered::new();
         for node_id in self.graph.node_identifiers() {
             let tx = txs.remove(&node_id).with_context(|| "sender not found")?;
             let node_tx = node_tx.clone();
@@ -102,22 +103,26 @@ impl TaskGraph {
                 .node_weight(node_id)
                 .with_context(|| "node not found")?
                 .clone();
-
             let neighbors = self.graph.neighbors_directed(node_id, Direction::Outgoing);
-
             let dep_tasks = neighbors
                 .clone()
                 .map(|n| self.graph.node_weight(n).with_context(|| "node not found").cloned())
                 .collect::<anyhow::Result<Vec<_>>>()?;
             let mut dep_rxs = neighbors
                 .clone()
-                .map(|n| txs.get(&n).map(|tx| tx.subscribe()).with_context(|| "sender not found"))
+                .map(|n| {
+                    rxs.get(&n)
+                        .map(|rx| rx.resubscribe())
+                        .with_context(|| "sender not found")
+                })
                 .collect::<anyhow::Result<Vec<_>>>()?;
 
-            nodes_fut.spawn(tokio::spawn(async move {
-                if !dep_tasks.is_empty() {
+            nodes_fut.push(tokio::spawn(async move {
+                if dep_tasks.is_empty() {
+                    info!("Node {:?} has no dependency", task.name)
+                } else {
                     info!(
-                        "Task \"{}\" is waiting for {} deps: {:?}",
+                        "Node {:?} is waiting for {} deps: {:?}",
                         task.name,
                         dep_tasks.len(),
                         dep_tasks.iter().map(|t| t.name.clone()).collect::<Vec<String>>()
@@ -133,11 +138,11 @@ impl TaskGraph {
                         false
                      }
                     results = deps_fut => {
-                        info!("Task {:?} dependencies are resolved", task.name);
+                        info!("Node {:?} dependencies have finished", task.name);
                         results.iter().map(|r| match r {
                                 Ok(r) => *r,
                                 Err(e) => {
-                                    error!("Cannot receive task result: {:?}", e);
+                                    error!("Node {:?} cannot receive the result: {:?}", task.name, e);
                                     false
                                 }
                         }).all(|r| r)
@@ -159,7 +164,10 @@ impl TaskGraph {
                             _ => {
                                 // If the caller drops the callback sender without signaling
                                 // that the node processing is finished we assume that it is finished.
-                                info!("Callback sender was dropped without sending a finish signal");
+                                warn!(
+                                    "Node {:?} callback sender was dropped without sending a finish signal",
+                                    task.name
+                                );
                                 CallbackMessage(false)
                             }
                         }
@@ -168,7 +176,7 @@ impl TaskGraph {
                         // Receiving end of node channel has been closed/dropped
                         // Since there's nothing the mark the node as being done
                         // we act as if we have been canceled.
-                        warn!("Cannot send node to the runner: {:?}", e);
+                        warn!("Node {:?} cannot send to the runner: {:?}", task.name, e);
                         CallbackMessage(false)
                     }
                 };
@@ -176,9 +184,9 @@ impl TaskGraph {
                 // Send errors indicate that there are no receivers which
                 // happens when this node has no dependents
                 tx.send(result.0).ok();
+                Ok(())
             }));
         }
-
         Ok(Visitor {
             node_rx,
             cancel: cancel_tx,

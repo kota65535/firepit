@@ -1,10 +1,8 @@
 use crate::config::{ProjectConfig, UI};
 use crate::cui::app::CuiApp;
-use crate::error::MultiError;
 use crate::log::init_logger;
 use crate::runner::TaskRunner;
 use crate::tui::app::TuiApp;
-use anyhow::anyhow;
 use clap::Parser;
 use log::{debug, info};
 use schemars::schema_for;
@@ -28,7 +26,7 @@ pub async fn run() -> anyhow::Result<()> {
     let dir = path::absolute(args.dir)?;
     let (root, children) = ProjectConfig::new_multi(&dir)?;
 
-    init_logger(&root.log.clone())?;
+    init_logger(&root.log, &root.ui)?;
 
     let schema = schema_for!(ProjectConfig);
     debug!("Json schema: \n{}", serde_json::to_string(&schema).unwrap());
@@ -50,11 +48,7 @@ pub async fn run() -> anyhow::Result<()> {
 
     let mut runner = TaskRunner::new(&root, &children, &args.tasks, dir)?;
 
-    let target_tasks = runner
-        .target_tasks
-        .iter()
-        .map(|t| t.name.clone())
-        .collect::<Vec<_>>();
+    let target_tasks = runner.target_tasks.iter().map(|t| t.name.clone()).collect::<Vec<_>>();
     info!("Target tasks: {:?}", target_tasks);
 
     let dep_tasks = runner
@@ -84,15 +78,18 @@ pub async fn run() -> anyhow::Result<()> {
 
     set.spawn(async move { runner.run(app_tx.clone()).await });
 
-    let results = set.join_all().await;
-
-    let errors = results
-        .into_iter()
-        .filter_map(|r| r.err())
-        .collect::<Vec<_>>();
-
-    if !errors.is_empty() {
-        return Err(anyhow!(MultiError::new(errors)));
+    while let Some(r) = set.join_next().await {
+        match r {
+            Ok(r) => match r {
+                Ok(_) => {}
+                Err(e) => {
+                    anyhow::bail!("{:?}", e);
+                }
+            },
+            Err(e) => {
+                anyhow::bail!("{:?}", e);
+            }
+        }
     }
 
     Ok(())
