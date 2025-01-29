@@ -1,5 +1,5 @@
 use crate::tui::app::FRAME_RATE;
-use log::{debug, info};
+use log::debug;
 use std::fmt::{Display, Formatter};
 use std::io;
 use std::io::Write;

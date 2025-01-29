@@ -11,7 +11,7 @@ use petgraph::Direction;
 use std::cmp::max;
 use std::collections::HashMap;
 use std::fmt;
-use tokio::sync::{broadcast, mpsc, watch};
+use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
 
 #[derive(Clone)]

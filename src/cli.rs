@@ -7,7 +7,6 @@ use clap::Parser;
 use log::{debug, info};
 use schemars::schema_for;
 use std::path;
-use tokio::task::JoinSet;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]

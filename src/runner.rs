@@ -6,7 +6,7 @@ use crate::process::{ChildExit, Command, ProcessManager};
 use crate::signal::{get_signal, SignalHandler};
 use anyhow::Context;
 use futures::StreamExt;
-use log::{debug, info, warn};
+use log::{debug, info};
 use regex::Regex;
 use std::collections::HashMap;
 use std::path;
