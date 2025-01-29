@@ -5,6 +5,8 @@ use crate::probe::{ExecProber, LogLineProber, NullProber, Prober};
 use crate::process::{ChildExit, Command, ProcessManager};
 use crate::signal::{get_signal, SignalHandler};
 use anyhow::Context;
+use futures::future::join;
+use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use log::{debug, info};
 use regex::Regex;
@@ -21,7 +23,7 @@ pub struct TaskRunner {
     pub target_tasks: Vec<Task>,
     pub tasks: Vec<Task>,
     pub task_graph: TaskGraph,
-    pub manager: Arc<Mutex<ProcessManager>>,
+    pub manager: ProcessManager,
     pub signal_handler: SignalHandler,
     pub concurrency: usize,
 }
@@ -57,7 +59,6 @@ impl TaskRunner {
                         .values()
                         .filter(|p| dir_contains(&dir, &p.dir))
                         .filter_map(|p| p.task(t))
-                        .collect::<Vec<_>>()
                 })
                 .collect::<Vec<Task>>()
         } else {
@@ -70,7 +71,7 @@ impl TaskRunner {
 
         debug!("Task graph:\n{:?}", task_graph);
 
-        let manager = Arc::new(Mutex::new(ProcessManager::infer()));
+        let manager = ProcessManager::infer();
         let signal = get_signal()?;
         let signal_handler = SignalHandler::new(signal);
         if let Some(subscriber) = signal_handler.subscribe() {
@@ -78,7 +79,7 @@ impl TaskRunner {
             tokio::spawn(async move {
                 let _guard = subscriber.listen().await;
                 debug!("Stopping ProcessManager");
-                manager.lock().await.stop().await;
+                manager.stop().await;
             });
         }
 
@@ -95,7 +96,7 @@ impl TaskRunner {
     pub async fn run(&mut self, mut app_tx: EventSender) -> anyhow::Result<()> {
         // Set pty size if possible
         if let Some(pane_size) = app_tx.pane_size().await {
-            self.manager.lock().await.set_pty_size(pane_size.rows, pane_size.cols);
+            self.manager.set_pty_size(pane_size.rows, pane_size.cols);
         }
 
         // Run visitor
@@ -117,7 +118,7 @@ impl TaskRunner {
             });
         }
 
-        let mut task_fut = JoinSet::new();
+        let mut task_fut = FuturesUnordered::new();
 
         // Receive the next task when its dependencies finished
         while let Some(VisitorMessage {
@@ -132,7 +133,7 @@ impl TaskRunner {
             // Keep original EventSender
             let app_tx_orig = app_tx.clone();
 
-            task_fut.spawn(tokio::spawn(async move {
+            task_fut.push(tokio::spawn(async move {
                 // Skip the task if any dependency didn't finish successfully
                 if !deps_ok {
                     info!("Task {:?} does not run because of its failed dependency", task.name);
@@ -171,12 +172,6 @@ impl TaskRunner {
                         Some(task_result) => {
                             info!("Task {:?} finished. reason: {:?}", task.name, task_result);
 
-                            if manager.lock().await.is_closed() {
-                                debug!("Exiting because ProcessManager is closed");
-                                callback.send(CallbackMessage(NodeStatus::Failure)).await.ok();
-                                break;
-                            }
-
                             if task.is_service {
                                 let should_restart = match task.restart {
                                     Restart::Never => false,
@@ -209,6 +204,7 @@ impl TaskRunner {
             }));
         }
 
+        debug!("Waiting for visitor");
         while let Some(r) = visitor_fut.next().await {
             match r {
                 Ok(r) => match r {
@@ -218,13 +214,22 @@ impl TaskRunner {
                 Err(e) => anyhow::bail!("error while waiting visitor thread: {:?}", e),
             }
         }
+        debug!("Visitor finished");
 
-        info!("Visitor is exiting");
+        debug!("Waiting for tasks");
+        while let Some(r) = task_fut.next().await {
+            match r {
+                Ok(r) => match r {
+                    Ok(r) => r,
+                    Err(e) => anyhow::bail!("error while waiting task thread: {:?}", e),
+                },
+                Err(e) => anyhow::bail!("error while waiting task thread: {:?}", e),
+            }
+        }
+        debug!("Tasks finished");
 
-        // Notify app the runner finish
+        // Notify app the runner finished
         app_tx.stop().await;
-
-        info!("Runner is exiting");
 
         Ok(())
     }
@@ -265,7 +270,7 @@ fn spawn_prober(
 
 async fn run_task_process(
     task: Task,
-    manager: Arc<Mutex<ProcessManager>>,
+    manager: ProcessManager,
     app_tx: EventSender,
     restart_count: u64,
 ) -> anyhow::Result<Option<TaskResult>> {
@@ -283,7 +288,7 @@ async fn run_task_process(
         return Ok(None);
     }
 
-    let mut process = match manager.lock().await.spawn(cmd, Duration::from_millis(500)) {
+    let mut process = match manager.spawn(cmd, Duration::from_millis(500)) {
         Some(Ok(child)) => child,
         Some(Err(e)) => anyhow::bail!("failed to spawn task {:?}: {:?}", task.name, e),
         _ => return Ok(None),
