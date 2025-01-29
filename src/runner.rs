@@ -183,6 +183,7 @@ impl TaskRunner {
                                 };
                                 if should_restart {
                                     restart_count += 1;
+                                    info!("Task {:?} should restart: {:?}", task.name, restart_count);
                                     continue;
                                 }
                             }

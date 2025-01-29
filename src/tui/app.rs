@@ -53,7 +53,6 @@ pub struct TuiAppState {
     focus: LayoutSections,
     scroll: TableState,
     selected_task_index: usize,
-    has_user_scrolled: bool,
     has_sidebar: bool,
     done: bool,
     exit_delay: Duration,
@@ -109,7 +108,6 @@ impl TuiApp {
                 scroll: TableState::default().with_selected(selected_task_index),
                 selected_task_index,
                 has_sidebar: true,
-                has_user_scrolled: false,
                 done: false,
                 exit_delay: EXIT_DELAY,
                 exit_delay_left: EXIT_DELAY,
@@ -282,7 +280,6 @@ impl TuiAppState {
         let next_index = (self.selected_task_index + 1).clamp(0, num_rows - 1);
         self.selected_task_index = next_index;
         self.scroll.select(Some(next_index));
-        self.has_user_scrolled = true;
     }
 
     pub fn previous(&mut self) {
@@ -292,7 +289,6 @@ impl TuiAppState {
         };
         self.selected_task_index = i;
         self.scroll.select(Some(i));
-        self.has_user_scrolled = true;
     }
 
     pub fn scroll_terminal_output(&mut self, direction: Direction, stride: usize) -> anyhow::Result<()> {
@@ -357,10 +353,6 @@ impl TuiAppState {
     }
 
     fn select_task(&mut self, task_name: &str) -> anyhow::Result<()> {
-        if !self.has_user_scrolled {
-            return Ok(());
-        }
-
         let new_index_to_highlight = self
             .task_outputs
             .iter()
@@ -371,12 +363,6 @@ impl TuiAppState {
         self.scroll.select(Some(new_index_to_highlight));
 
         Ok(())
-    }
-
-    pub fn reset_scroll(&mut self) {
-        self.has_user_scrolled = false;
-        self.scroll.select(Some(0));
-        self.selected_task_index = 0;
     }
 
     pub fn resize(&mut self, rows: u16, cols: u16) {
@@ -490,8 +476,6 @@ impl TuiAppState {
     pub fn enter_search(&mut self) -> anyhow::Result<()> {
         self.remove_search_highlight()?;
         self.focus = LayoutSections::Search { query: "".to_string() };
-        // We set scroll as we want to keep the current selection
-        self.has_user_scrolled = true;
         Ok(())
     }
 
@@ -615,7 +599,7 @@ impl TuiAppState {
         Ok(())
     }
 
-    pub fn exit_search(&mut self, reset_scroll: bool) -> anyhow::Result<()> {
+    pub fn exit_search(&mut self) -> anyhow::Result<()> {
         if let LayoutSections::TaskList(results) = &mut self.focus {
             let Some(mut results) = results.clone() else {
                 return Ok(());
@@ -627,10 +611,6 @@ impl TuiAppState {
             self.remove_search_highlight()?;
             results.reset();
         };
-
-        // if reset_scroll {
-        //     self.scroll_terminal_output(Direction::Down, self.scroll_size(ScrollSize::Edge))?;
-        // }
 
         self.focus = LayoutSections::TaskList(None);
 
@@ -652,7 +632,7 @@ impl TuiAppState {
             return Ok(());
         };
         if query.pop().is_none() {
-            self.exit_search(false)?;
+            self.exit_search()?;
         }
         Ok(())
     }
@@ -668,58 +648,60 @@ impl TuiAppState {
             Event::ReadyTask { task } => {
                 self.ready_task(&task);
             }
-            Event::InternalStop => {
-                debug!("shutting down due to internal failure");
-                self.done = true;
-                self.exit_delay = Duration::ZERO;
-            }
-            Event::Stop(callback) => {
-                debug!("shutting down due to message");
-                self.done = true;
-                return Ok(Some(callback));
-            }
-            Event::Tick => {
-                // self.table.tick();
-            }
             Event::FinishTask { task, result } => {
                 self.finish_task(&task, result);
                 self.insert_stdin(&task, None)?;
             }
+            Event::SetStdin { task, stdin } => {
+                self.insert_stdin(&task, Some(stdin))?;
+            }
+            Event::PaneSizeQuery(callback) => {
+                // If caller has already hung up do nothing
+                callback
+                    .send(PaneSize {
+                        rows: self.size.pane_rows(),
+                        cols: self.size.pane_cols(),
+                    })
+                    .ok();
+            }
+            Event::Stop(callback) => {
+                debug!("Shutting down initiated by runner");
+                self.done = true;
+                return Ok(Some(callback));
+            }
+            Event::InternalStop => {
+                debug!("Shutting down initiated by TUI");
+                self.done = true;
+                self.exit_delay = Duration::ZERO;
+            }
+            Event::Tick => {
+                // self.table.tick();
+            }
             Event::Up => {
-                self.exit_search(true)?;
+                self.exit_search()?;
                 self.previous();
             }
             Event::Down => {
-                self.exit_search(true)?;
+                self.exit_search()?;
                 self.next();
             }
             Event::ScrollUp(size) => {
-                self.has_user_scrolled = true;
                 self.scroll_terminal_output(Direction::Up, self.scroll_size(size))?;
             }
             Event::ScrollDown(size) => {
-                self.has_user_scrolled = true;
                 self.scroll_terminal_output(Direction::Down, self.scroll_size(size))?;
-            }
-            Event::EnterInteractive => {
-                self.has_user_scrolled = true;
-                self.interact()?;
-            }
-            Event::ExitInteractive => {
-                self.has_user_scrolled = true;
-                self.interact()?;
             }
             Event::ToggleSidebar => {
                 self.has_sidebar = !self.has_sidebar;
             }
+            Event::EnterInteractive => {
+                self.interact()?;
+            }
+            Event::ExitInteractive => {
+                self.interact()?;
+            }
             Event::Input { bytes } => {
                 self.forward_input(&bytes)?;
-            }
-            Event::SetStdin { task, stdin } => {
-                self.insert_stdin(&task, Some(stdin))?;
-            }
-            Event::Resize { rows, cols } => {
-                self.resize(rows, cols);
             }
             Event::Mouse(m) => {
                 self.handle_mouse(m, 1)?;
@@ -730,6 +712,9 @@ impl TuiAppState {
             Event::CopySelection => {
                 self.copy_selection()?;
                 self.clear_selection()?;
+            }
+            Event::Resize { rows, cols } => {
+                self.resize(rows, cols);
             }
             Event::EnterSearch => {
                 self.enter_search()?;
@@ -749,19 +734,9 @@ impl TuiAppState {
             Event::SearchPrevious => {
                 self.previous_search_result()?;
             }
-            Event::SearchExit { restore_scroll } => {
-                self.exit_search(restore_scroll)?;
+            Event::ExitSearch => {
+                self.exit_search()?;
             }
-            Event::PaneSizeQuery(callback) => {
-                // If caller has already hung up do nothing
-                callback
-                    .send(PaneSize {
-                        rows: self.size.pane_rows(),
-                        cols: self.size.pane_cols(),
-                    })
-                    .ok();
-            }
-            _ => {}
         }
         Ok(None)
     }

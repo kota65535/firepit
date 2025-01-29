@@ -18,6 +18,20 @@ pub struct InputOptions<'a> {
     pub has_selection: bool,
 }
 
+impl InputOptions<'_> {
+    pub fn on_task_list(&self) -> bool {
+        matches!(self.focus, LayoutSections::TaskList { .. })
+    }
+
+    pub fn on_search(&self) -> bool {
+        matches!(self.focus, LayoutSections::Search { .. })
+    }
+
+    pub fn on_pane(&self) -> bool {
+        matches!(self.focus, LayoutSections::Pane { .. })
+    }
+}
+
 impl InputHandler {
     pub fn new() -> Self {
         Self {
@@ -28,19 +42,16 @@ impl InputHandler {
     pub fn start(&self) -> mpsc::Receiver<crossterm::event::Event> {
         let (tx, rx) = mpsc::channel(1024);
 
-        // quick check if stdin is tty
-        if !atty::is(atty::Stream::Stdin) {
-            return rx;
-        }
-
-        let mut events = EventStream::new();
-        tokio::spawn(async move {
-            while let Some(Ok(event)) = events.next().await {
-                if tx.send(event).await.is_err() {
-                    break;
+        if atty::is(atty::Stream::Stdin) {
+            let mut events = EventStream::new();
+            tokio::spawn(async move {
+                while let Some(Ok(event)) = events.next().await {
+                    if tx.send(event).await.is_err() {
+                        break;
+                    }
                 }
-            }
-        });
+            });
+        }
 
         rx
     }
@@ -87,44 +98,46 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<Eve
         return None;
     }
     match key_event.code {
-        // If we're on the list and user presses `/` enter search mode
-        KeyCode::Char('/') if matches!(options.focus, LayoutSections::TaskList(_)) => Some(Event::EnterSearch),
-        KeyCode::Char(c) if matches!(options.focus, LayoutSections::Search { .. }) => Some(Event::SearchInputChar(c)),
-        KeyCode::Backspace if matches!(options.focus, LayoutSections::Search { .. }) => Some(Event::SearchBackspace),
-        KeyCode::Esc => Some(Event::SearchExit { restore_scroll: true }),
-        KeyCode::Enter if matches!(options.focus, LayoutSections::Search { .. }) => Some(Event::SearchRun),
-
+        // On task list
+        KeyCode::Char('/') if options.on_task_list() => Some(Event::EnterSearch),
+        KeyCode::Char('h') if options.on_task_list() => Some(Event::ToggleSidebar),
+        KeyCode::Char('e') if options.on_task_list() => Some(Event::ScrollDown(ScrollSize::One)),
+        KeyCode::Char('y') if options.on_task_list() => Some(Event::ScrollUp(ScrollSize::One)),
+        KeyCode::Char('d') if options.on_task_list() => Some(Event::ScrollDown(ScrollSize::Half)),
+        KeyCode::Char('u') if options.on_task_list() => Some(Event::ScrollUp(ScrollSize::Half)),
+        KeyCode::Char('f') if options.on_task_list() => Some(Event::ScrollDown(ScrollSize::Full)),
+        KeyCode::Char('b') if options.on_task_list() => Some(Event::ScrollUp(ScrollSize::Full)),
+        KeyCode::Char('G') if options.on_task_list() => Some(Event::ScrollDown(ScrollSize::Edge)),
+        KeyCode::Char('g') if options.on_task_list() => Some(Event::ScrollUp(ScrollSize::Edge)),
+        KeyCode::Char('j') if options.on_task_list() => Some(Event::Down),
+        KeyCode::Char('k') if options.on_task_list() => Some(Event::Up),
+        KeyCode::Char('n') if options.on_task_list() => Some(Event::SearchNext),
+        KeyCode::Char('N') if options.on_task_list() => Some(Event::SearchPrevious),
+        KeyCode::Up if options.on_task_list() => Some(Event::Up),
+        KeyCode::Down if options.on_task_list() => Some(Event::Down),
         KeyCode::Char('c') if options.has_selection => Some(Event::CopySelection),
+        KeyCode::Enter if options.on_task_list() => Some(Event::EnterInteractive),
+
+        // On pane (interactive mode)
+        KeyCode::Char('z') if options.on_pane() && key_event.modifiers == KeyModifiers::CONTROL => {
+            Some(Event::ExitInteractive)
+        }
+        // If we're in interactive mode, convert the key event to bytes to send to stdin
+        _ if options.on_pane() => Some(Event::Input {
+            bytes: encode_key(key_event),
+        }),
+
+        // On search
+        KeyCode::Char(c) if options.on_search() => Some(Event::SearchInputChar(c)),
+        KeyCode::Backspace if options.on_search() => Some(Event::SearchBackspace),
+        KeyCode::Esc if options.on_search() => Some(Event::ExitSearch),
+        KeyCode::Enter if options.on_search() => Some(Event::SearchRun),
+
+        // Global
         KeyCode::Char('c') if key_event.modifiers == KeyModifiers::CONTROL => {
             ctrl_c();
             Some(Event::InternalStop)
         }
-        // Interactive branches
-        KeyCode::Char('z')
-            if matches!(options.focus, LayoutSections::Pane) && key_event.modifiers == KeyModifiers::CONTROL =>
-        {
-            Some(Event::ExitInteractive)
-        }
-        // If we're in interactive mode, convert the key event to bytes to send to stdin
-        _ if matches!(options.focus, LayoutSections::Pane) => Some(Event::Input {
-            bytes: encode_key(key_event),
-        }),
-        KeyCode::Char('h') => Some(Event::ToggleSidebar),
-        KeyCode::Char('e') => Some(Event::ScrollDown(ScrollSize::One)),
-        KeyCode::Char('y') => Some(Event::ScrollUp(ScrollSize::One)),
-        KeyCode::Char('d') => Some(Event::ScrollDown(ScrollSize::Half)),
-        KeyCode::Char('u') => Some(Event::ScrollUp(ScrollSize::Half)),
-        KeyCode::Char('f') => Some(Event::ScrollDown(ScrollSize::Full)),
-        KeyCode::Char('b') => Some(Event::ScrollUp(ScrollSize::Full)),
-        KeyCode::Char('G') => Some(Event::ScrollDown(ScrollSize::Edge)),
-        KeyCode::Char('g') => Some(Event::ScrollUp(ScrollSize::Edge)),
-        KeyCode::Char('j') => Some(Event::Down),
-        KeyCode::Char('k') => Some(Event::Up),
-        KeyCode::Char('n') => Some(Event::SearchNext),
-        KeyCode::Char('N') => Some(Event::SearchPrevious),
-        KeyCode::Up => Some(Event::Up),
-        KeyCode::Down => Some(Event::Down),
-        KeyCode::Enter => Some(Event::EnterInteractive),
         _ => None,
     }
 }
