@@ -46,11 +46,7 @@ impl LogLineProber {
         let mut matched = false;
         while let Some(event) = rx.recv().await {
             match event {
-                Event::StartTask {
-                    task,
-                    pid,
-                    restart_count,
-                } => tx.start_task(task, pid, restart_count),
+                Event::StartTask { task, pid, restart } => tx.start_task(task, pid, restart),
                 Event::TaskOutput { task, output } => {
                     tx.output(task.clone(), output.clone());
                     let line = String::from_utf8(output).unwrap_or_default();
@@ -60,12 +56,8 @@ impl LogLineProber {
                         matched = true
                     }
                 }
-                Event::SetStdin { task, stdin } => {
-                    tx.set_stdin(task, stdin);
-                }
-                Event::ReadyTask { task } => {
-                    tx.ready_task(task);
-                }
+                Event::SetStdin { task, stdin } => tx.set_stdin(task, stdin),
+                Event::ReadyTask { task } => tx.ready_task(task),
                 Event::FinishTask { task, result } => {
                     tx.finish_task(task, result);
                     break;
@@ -152,31 +144,60 @@ impl ExecProber {
         }
     }
 
-    pub async fn probe(&mut self, tx: EventSender, callback: mpsc::Sender<CallbackMessage>) -> anyhow::Result<()> {
+    pub async fn probe(
+        &mut self,
+        tx: EventSender,
+        mut rx: EventReceiver,
+        callback: mpsc::Sender<CallbackMessage>,
+    ) -> anyhow::Result<()> {
         tokio::time::sleep(Duration::from_secs(self.start_period)).await;
 
-        let mut retries = 0;
-        loop {
-            let success = match self.exec().await {
-                Ok(result) => result,
-                _ => false,
-            };
-            if success {
-                tx.ready_task(self.name.clone());
-                callback
-                    .send(CallbackMessage(NodeStatus::Ready))
-                    .await
-                    .context("unable to send callback message")?;
-                break;
+        let tx1 = tx.clone();
+        let interceptor_fut = tokio::spawn(async move {
+            while let Some(event) = rx.recv().await {
+                match event {
+                    Event::StartTask { task, pid, restart } => tx1.start_task(task, pid, restart),
+                    Event::TaskOutput { task, output } => tx1.output(task.clone(), output.clone()),
+                    Event::SetStdin { task, stdin } => tx1.set_stdin(task, stdin),
+                    Event::ReadyTask { task } => tx1.ready_task(task),
+                    Event::FinishTask { task, result } => {
+                        tx1.finish_task(task, result);
+                        break;
+                    }
+                    _ => {}
+                }
             }
-            if retries >= self.retries {
-                tx.finish_task(self.name.clone(), TaskResult::Failure(1));
-                break;
-            }
+        });
 
-            tokio::time::sleep(Duration::from_secs(self.interval)).await;
-            retries += 1;
+        let this = self.clone();
+        let tx2 = tx.clone();
+        let probe_fut = tokio::spawn(async move {
+            let mut retries = 0;
+            loop {
+                let success = match this.exec().await {
+                    Ok(result) => result,
+                    _ => false,
+                };
+                if success {
+                    tx2.ready_task(this.name.clone());
+                    callback.send(CallbackMessage(NodeStatus::Ready)).await.ok();
+                    break;
+                }
+                if retries >= this.retries {
+                    tx2.finish_task(this.name.clone(), TaskResult::Failure(1));
+                    break;
+                }
+
+                tokio::time::sleep(Duration::from_secs(this.interval)).await;
+                retries += 1;
+            }
+        });
+
+        tokio::select! {
+            _ = interceptor_fut => {}
+            _ = probe_fut => {}
         }
+
         info!("Task {:?} prober finished", self.name);
         Ok(())
     }

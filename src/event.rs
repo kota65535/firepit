@@ -13,7 +13,7 @@ pub enum Event {
     StartTask {
         task: String,
         pid: u32,
-        restart_count: u64,
+        restart: u64,
     },
     TaskOutput {
         task: String,
@@ -144,12 +144,8 @@ impl EventSender {
         self.to_owned()
     }
 
-    pub fn start_task(&self, task: String, pid: u32, restart_count: u64) {
-        if let Err(e) = self.tx.send(Event::StartTask {
-            task,
-            pid,
-            restart_count,
-        }) {
+    pub fn start_task(&self, task: String, pid: u32, restart: u64) {
+        if let Err(e) = self.tx.send(Event::StartTask { task, pid, restart }) {
             debug!("failed to send StartTask event: {:?}", e)
         }
     }
@@ -237,14 +233,14 @@ pub enum TaskStatus {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TaskRunning {
     pub pid: u32,
-    pub restart_count: u64,
+    pub restart: u64,
 }
 
 impl Display for TaskStatus {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             TaskStatus::Planned => write!(f, "Waiting"),
-            TaskStatus::Running(r) => write!(f, "Running (PID: {}, Restart: {})", r.pid, r.restart_count),
+            TaskStatus::Running(r) => write!(f, "Running (PID: {}, Restart: {})", r.pid, r.restart),
             TaskStatus::Ready => write!(f, "Ready"),
             TaskStatus::Finished(result) => match result {
                 TaskResult::Success => write!(f, "Finished"),

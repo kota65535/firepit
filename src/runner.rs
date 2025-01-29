@@ -129,6 +129,9 @@ impl TaskRunner {
             let mut app_tx = app_tx.with_name(&task.name);
             let manager = self.manager.clone();
 
+            // Keep original EventSender
+            let app_tx_orig = app_tx.clone();
+
             task_fut.spawn(tokio::spawn(async move {
                 // Skip the task if any dependency didn't finish successfully
                 if !deps_ok {
@@ -145,45 +148,23 @@ impl TaskRunner {
                         task.name, task.shell, &task.shell_args, task.command, task.env, task.working_dir
                     );
 
-                    // Start prober
-                    let prober_fut = if task.is_service {
-                        let fut = match task.prober.clone() {
-                            Prober::LogLine(mut prober) => {
-                                let (tx, rx) = mpsc::unbounded_channel();
-                                let mut log_tx = EventSender::new(tx).with_name(&task.name);
-                                let log_rx = EventReceiver::new(rx);
-                                std::mem::swap(&mut app_tx, &mut log_tx);
-                                let callback = callback.clone();
-                                tokio::spawn(async move { prober.probe(log_tx, log_rx, callback).await })
-                            }
-                            Prober::Exec(mut prober) => {
-                                let probe_tx = app_tx.clone();
-                                let callback = callback.clone();
-                                tokio::spawn(async move { prober.probe(probe_tx, callback).await })
-                            }
-                            Prober::None(prober) => {
-                                let probe_tx = app_tx.clone();
-                                tokio::spawn(async move { prober.probe(probe_tx).await })
-                            }
-                        };
-                        Some(fut)
-                    } else {
-                        None
-                    };
+                    app_tx = app_tx_orig.clone();
 
+                    // Start prober
+                    let prober_fut = spawn_prober(&task, &mut app_tx, callback.clone());
                     // Start task process
-                    // Stop prober after task process exits
                     let task_result =
                         match run_task_process(task.clone(), manager.clone(), app_tx.clone(), restart_count).await {
                             Ok(r) => r,
                             Err(e) => {
                                 info!("Task {:?} does not start. reason: {:?}", task.name, e);
                                 callback.send(CallbackMessage(NodeStatus::Failure)).await.ok();
-                                prober_fut.map(|p| p.abort());
+                                prober_fut.await;
                                 break;
                             }
                         };
-                    prober_fut.map(|p| p.abort());
+                    // Stop prober after task process exits
+                    prober_fut.await;
 
                     // Is this task successful?
                     let node_result = match task_result {
@@ -246,6 +227,39 @@ impl TaskRunner {
         info!("Runner is exiting");
 
         Ok(())
+    }
+}
+
+fn spawn_prober(
+    task: &Task,
+    app_tx: &mut EventSender,
+    callback: mpsc::Sender<CallbackMessage>,
+) -> JoinHandle<anyhow::Result<()>> {
+    if task.is_service {
+        match task.prober.clone() {
+            Prober::LogLine(mut prober) => {
+                let (tx, rx) = mpsc::unbounded_channel();
+                let mut log_tx = EventSender::new(tx).with_name(&task.name);
+                let log_rx = EventReceiver::new(rx);
+                std::mem::swap(app_tx, &mut log_tx);
+                let callback = callback.clone();
+                tokio::spawn(async move { prober.probe(log_tx, log_rx, callback).await })
+            }
+            Prober::Exec(mut prober) => {
+                let (tx, rx) = mpsc::unbounded_channel();
+                let mut log_tx = EventSender::new(tx).with_name(&task.name);
+                let log_rx = EventReceiver::new(rx);
+                std::mem::swap(app_tx, &mut log_tx);
+                let callback = callback.clone();
+                tokio::spawn(async move { prober.probe(log_tx, log_rx, callback).await })
+            }
+            Prober::None(prober) => {
+                let probe_tx = app_tx.clone();
+                tokio::spawn(async move { prober.probe(probe_tx).await })
+            }
+        }
+    } else {
+        tokio::spawn(async move { Ok(()) })
     }
 }
 

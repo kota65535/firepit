@@ -51,11 +51,8 @@ impl TerminalOutput {
         self.status = status;
         match status {
             TaskStatus::Running(info) => {
-                if info.restart_count > 0 {
-                    let msg = format!(
-                        "Process restarted (PID: {}, Restart: {})\r\n",
-                        info.pid, info.restart_count
-                    );
+                if info.restart > 0 {
+                    let msg = format!("Process restarted (PID: {}, Restart: {})\r\n", info.pid, info.restart);
                     self.process(console::style(msg).bold().to_string().as_bytes());
                 }
             }
