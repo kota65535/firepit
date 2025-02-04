@@ -1,4 +1,3 @@
-use crate::event::EventSender;
 use crate::process::{Child, ChildExit, Command, ProcessManager};
 use anyhow::Context;
 use log::{debug, warn};
@@ -189,7 +188,7 @@ mod test {
             env_logger::builder()
                 .filter_level(LevelFilter::Debug)
                 .is_test(true)
-                .init()
+                .try_init();
         });
     }
 
@@ -263,8 +262,6 @@ mod test {
     #[tokio::test]
     async fn test_exec_prober_fails() {
         setup();
-        let mut builder = env_logger::Builder::new();
-        builder.filter_level(LevelFilter::Debug).init();
         let prober = ExecProber::new(
             "test",
             "exit 1",

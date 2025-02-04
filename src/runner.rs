@@ -527,7 +527,6 @@ impl Task {
 }
 
 #[cfg(test)]
-
 mod test {
     use super::*;
     use crate::event::Event;
@@ -539,46 +538,9 @@ mod test {
     static INIT: Once = Once::new();
 
     pub fn setup() {
-        INIT.call_once(|| env_logger::builder().filter_level(LevelFilter::Debug).init());
-    }
-
-    pub async fn run_task(path: &Path, tasks: Vec<String>, num_ready_tasks: usize) -> HashMap<String, String> {
-        let config = ProjectConfig::new(path).unwrap();
-        let mut runner = TaskRunner::new(&config, &HashMap::new(), &tasks, Path::new(path)).unwrap();
-        let (tx, rx) = mpsc::unbounded_channel();
-        let sender = EventSender::new(tx);
-
-        let handler_fut = tokio::spawn(handle_events(rx, num_ready_tasks));
-        let runner_fut = tokio::spawn(async move { runner.run(sender).await });
-
-        let ret = handler_fut.await.unwrap().unwrap();
-        runner_fut.await.unwrap().unwrap();
-        ret
-    }
-
-    pub fn handle_events(mut rx: UnboundedReceiver<Event>, num_tasks: usize) -> JoinHandle<HashMap<String, String>> {
-        tokio::spawn(async move {
-            let mut status = HashMap::new();
-            while let Some(event) = rx.recv().await {
-                match event {
-                    Event::ReadyTask { task } => {
-                        status.insert(task, String::from("Ready"));
-                    }
-                    Event::FinishTask { task, result } => {
-                        status.insert(task, format!("Finished: {}", result));
-                    }
-                    Event::Stop(callback) => {
-                        callback.send(()).ok();
-                        break;
-                    }
-                    _ => {}
-                }
-                if status.len() >= num_tasks {
-                    break;
-                }
-            }
-            status
-        })
+        INIT.call_once(|| {
+            env_logger::builder().filter_level(LevelFilter::Debug).try_init();
+        });
     }
 
     #[tokio::test]
@@ -627,5 +589,48 @@ mod test {
         expected.insert(String::from("#baz"), String::from("Finished: Service not ready"));
 
         assert_eq!(status, expected);
+    }
+
+    async fn run_task(path: &Path, tasks: Vec<String>, num_ready_tasks: usize) -> HashMap<String, String> {
+        let config = ProjectConfig::new(path).unwrap();
+        let mut runner = TaskRunner::new(&config, &HashMap::new(), &tasks, Path::new(path)).unwrap();
+        let (tx, rx) = mpsc::unbounded_channel();
+        let sender = EventSender::new(tx);
+
+        let manager = runner.manager.clone();
+
+        let runner_fut = tokio::spawn(async move { runner.run(sender).await });
+        let status = handle_events(rx, num_ready_tasks).await.unwrap();
+
+        // Stop processes to forcing runner to finish
+        manager.stop().await;
+        runner_fut.await;
+
+        status
+    }
+
+    fn handle_events(mut rx: UnboundedReceiver<Event>, num_tasks: usize) -> JoinHandle<HashMap<String, String>> {
+        tokio::spawn(async move {
+            let mut status = HashMap::new();
+            while let Some(event) = rx.recv().await {
+                match event {
+                    Event::ReadyTask { task } => {
+                        status.insert(task, String::from("Ready"));
+                    }
+                    Event::FinishTask { task, result } => {
+                        status.insert(task, format!("Finished: {}", result));
+                    }
+                    Event::Stop(callback) => {
+                        callback.send(()).ok();
+                        break;
+                    }
+                    _ => {}
+                }
+                if status.len() >= num_tasks {
+                    break;
+                }
+            }
+            status
+        })
     }
 }
