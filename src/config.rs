@@ -1,6 +1,8 @@
 use anyhow::Context;
+use lazy_static::lazy_static;
+use regex::Regex;
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
@@ -10,7 +12,7 @@ use std::{io, path};
 
 const CONFIG_FILE: [&str; 2] = ["firepit.yml", "firepit.yaml"];
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct ProjectConfig {
     /// Child projects.
     /// Valid only in root project config.
@@ -94,9 +96,7 @@ pub fn default_ui() -> UI {
 }
 
 impl ProjectConfig {
-    pub fn new_multi(
-        dir: &Path,
-    ) -> anyhow::Result<(ProjectConfig, HashMap<String, ProjectConfig>)> {
+    pub fn new_multi(dir: &Path) -> anyhow::Result<(ProjectConfig, HashMap<String, ProjectConfig>)> {
         let dir = path::absolute(dir)?;
         let root_config = ProjectConfig::find_root(&dir)?;
         let mut children = HashMap::new();
@@ -132,8 +132,8 @@ impl ProjectConfig {
                 )
             })?;
         let reader = BufReader::new(file);
-        let mut data: ProjectConfig = serde_yaml::from_reader(reader)
-            .with_context(|| format!("cannot parse config file {:?} as YAML", path))?;
+        let mut data: ProjectConfig =
+            serde_yaml::from_reader(reader).with_context(|| format!("cannot parse config file {:?} as YAML", path))?;
         data.dir = path
             .to_path_buf()
             .parent()
@@ -163,9 +163,7 @@ impl ProjectConfig {
                     }
                 }
                 Err(err) => {
-                    if err.downcast_ref::<io::Error>().map(|e| e.kind())
-                        == Some(io::ErrorKind::NotFound)
-                    {
+                    if err.downcast_ref::<io::Error>().map(|e| e.kind()) == Some(io::ErrorKind::NotFound) {
                         continue; // Continue to the next ancestor directory if the config file is not found
                     } else {
                         return Err(err); // Return error if any other error
@@ -185,7 +183,7 @@ impl ProjectConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct TaskConfig {
     /// Command to run.
     pub command: String,
@@ -214,7 +212,7 @@ pub struct TaskConfig {
     pub service: Option<ServiceConfig>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct ShellConfig {
     /// Shell command.
     pub command: String,
@@ -224,21 +222,21 @@ pub struct ShellConfig {
     pub args: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct LogConfig {
     #[serde(default = "default_log_level")]
     pub level: String,
     pub file: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum HealthCheckConfig {
     Log(LogHealthCheckerConfig),
     Exec(ExecHealthCheckerConfig),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct LogHealthCheckerConfig {
     pub log: String,
     #[serde(default = "default_log_healthcheck_timeout")]
@@ -251,7 +249,7 @@ pub fn default_log_healthcheck_timeout() -> u64 {
     120
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct ExecHealthCheckerConfig {
     pub command: String,
 
@@ -288,14 +286,14 @@ pub fn default_healthcheck_start_period() -> u64 {
     0
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum ServiceConfig {
     Bool(bool),
     Struct(ServiceConfigStruct),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct ServiceConfigStruct {
     pub healthcheck: Option<HealthCheckConfig>,
 
@@ -303,19 +301,46 @@ pub struct ServiceConfigStruct {
     pub restart: Restart,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Debug, Clone, JsonSchema)]
 pub enum Restart {
-    Always,
-    OnFailure,
+    Always(u64),
+    OnFailure(u64),
     Never,
+}
+
+lazy_static! {
+    pub static ref ALWAYS: Regex = Regex::new(r"^always(:(\d+))?$").unwrap();
+    pub static ref ON_FAILURE: Regex = Regex::new(r"^on-failure(:(\d+))?$").unwrap();
+}
+
+impl<'de> Deserialize<'de> for Restart {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+
+        let r = match s {
+            s if ALWAYS.is_match(&s) => {
+                let num = ALWAYS.captures(s.as_str()).map(|c| c[2].parse::<u64>().unwrap_or(0));
+                Restart::Always(num.unwrap_or(0))
+            }
+            s if ON_FAILURE.is_match(&s) => {
+                let num = ALWAYS.captures(s.as_str()).map(|c| c[2].parse::<u64>().unwrap_or(0));
+                Restart::OnFailure(num.unwrap_or(0))
+            }
+            s if s == "never" => Restart::Never,
+            _ => return Err(serde::de::Error::custom(format!("invalid restart value: {}", s))),
+        };
+        Ok(r)
+    }
 }
 
 pub fn default_service_restart() -> Restart {
     Restart::Never
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[derive(Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum UI {
     #[serde(rename = "cui")]
     Cui,

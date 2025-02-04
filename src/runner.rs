@@ -2,7 +2,7 @@ use crate::config::{HealthCheckConfig, ProjectConfig, Restart, ServiceConfig};
 use crate::event::{EventSender, TaskResult};
 use crate::graph::{CallbackMessage, TaskGraph, Visitor, VisitorMessage};
 use crate::probe::{ExecProber, LogLineProber, Prober};
-use crate::process::{ChildExit, Command, ProcessManager};
+use crate::process::{Child, ChildExit, Command, ProcessManager};
 use crate::signal::{get_signal, SignalHandler};
 use anyhow::Context;
 use futures::stream::FuturesUnordered;
@@ -130,7 +130,7 @@ impl TaskRunner {
         while let Some(VisitorMessage {
             node: task,
             deps_ok,
-            count,
+            count: num_restart,
             callback,
         }) = node_rx.recv().await
         {
@@ -148,87 +148,113 @@ impl TaskRunner {
                     return Ok::<(), anyhow::Error>(());
                 }
 
-                if count >= 10 {
-                    info!("Task {:?} restarted too much!", task.name);
-                    info!("Task {:?} is not ready", task.name);
-                    app_tx.finish_task(TaskResult::NotReady);
-                    if let Err(e) = callback.send(CallbackMessage(Some(false))).await {
-                        warn!("Failed to send callback event: {:?}", e)
-                    }
-                    return Ok::<(), anyhow::Error>(());
-                }
-
                 info!(
                     "Task {:?} is starting ({}). \nshell: {:?} {:?}\ncommand: {:?}\nenv: {:?}\nworking_dir: {:?}",
-                    task.name, count, task.shell, &task.shell_args, task.command, task.env, task.working_dir
+                    task.name, num_restart, task.shell, &task.shell_args, task.command, task.env, task.working_dir
                 );
 
                 app_tx = app_tx.clone();
 
-                let node_result;
+                let process = match spawn_process(task.clone(), manager.clone()) {
+                    Ok(Some(process)) => process,
+                    Err(e) => anyhow::bail!("failed to spawn task {:?}: {:?}", task.name, e),
+                    _ => anyhow::bail!("failed to spawn task {:?}", task.name),
+                };
+                let pid = process.pid().unwrap_or(0);
+
+                // Notify the app the task started
+                app_tx.start_task(task.name.clone(), pid, num_restart);
+
+                let mut node_result = false;
                 if task.is_service {
+                    // Service task branch
                     let (cancel_prober_tx, cancel_prober_rx) = watch::channel(());
                     let log_rx = app_tx.subscribe_output();
-                    let mut task_fut =
-                        tokio::spawn(run_task_process(task.clone(), manager.clone(), app_tx.clone(), count));
+                    let mut task_fut = tokio::spawn(run_process(task.clone(), process, app_tx.clone()));
                     let mut prober_fut = tokio::spawn(run_prober(task.clone(), log_rx, cancel_prober_rx));
 
-                    let mut should_restart = false;
-                    tokio::select! {
-                        result = &mut task_fut => {
-                            // Service task should not finish before ready
-                            // So node result is considered as `false`
-                            let result = result.with_context(|| format!("Task {:?} failed to run", task.name))?;
-                            match result {
-                                Ok(result) => {
-                                    should_restart = match result {
-                                        Some(result) => {
-                                            match task.restart {
-                                                Restart::Never => false,
-                                                Restart::OnFailure => match result {
-                                                    TaskResult::Success => false,
-                                                    _ => true,
-                                                },
-                                                Restart::Always => true,
+                    let mut task_finished = None;
+                    let mut prober_finished = None;
+                    while task_finished.is_none() || prober_finished.is_none() {
+                        tokio::select! {
+                            // Process branch
+                            result = &mut task_fut, if task_finished.is_none() => {
+                                // Service task process should not finish before prober
+                                // So the node result is considered as `false`
+                                let result = result.with_context(|| format!("Task {:?} failed to run", task.name))?;
+                                let should_restart = match result {
+                                    Ok(result) => {
+                                        match result {
+                                            Some(result) => {
+                                                match task.restart {
+                                                    Restart::Never => false,
+                                                    Restart::OnFailure(max) => match result {
+                                                        TaskResult::Success => false,
+                                                        _ => max == 0 || num_restart < max,
+                                                    },
+                                                    Restart::Always(max) => max == 0 || num_restart < max,
+                                                }
                                             }
+                                            None => true
                                         }
-                                        None => true
-                                    };
+                                    }
+                                    Err(e) => {
+                                        info!("Task {:?} failed to run: {:?}", task.name, e);
+                                        false
+                                    }
+                                };
+                                if should_restart {
+                                    info!("Task {:?} should restart", task.name);
+                                    // Send restart message
+                                    if let Err(e) = callback.send(CallbackMessage(None)).await {
+                                        warn!("Failed to send callback event: {:?}", e)
+                                    }
+                                    // Finish this closure
+                                    return Ok(());
                                 }
-                                Err(e) => {
-                                    info!("Task {:?} failed to run", task.name.clone());
-                                }
+                                task_finished = Some(false)
                             }
+                            // Prober branch
+                            result = &mut prober_fut, if prober_finished.is_none() => {
+                                let result = result.with_context(|| format!("Task {:?} failed to run", task.name))?;
+                                // The prober result is the node result
+                                prober_finished = Some(result.unwrap_or(false));
+                            }
+                        }
+                        // If prober finished first
+                        if let Some(prober_ok) = prober_finished {
+                            if prober_ok {
+                                // ...and is successful, wait for the process
+                                info!("Task {:?} is ready", task.name);
+                                app_tx.ready_task();
+                                // Notify the visitor the task is ready
+                                if let Err(e) = callback.send(CallbackMessage(Some(true))).await {
+                                    warn!("Failed to send callback event: {:?}", e)
+                                }
+                                continue;
+                            } else {
+                                // ...and is failure, the process will be stopped eventually
+                                info!("Task {:?} is not ready", task.name);
+                                app_tx.finish_task(TaskResult::NotReady);
+                                node_result = false;
+                                break;
+                            }
+                        }
+                        // If task finished before prober, consider it as failed regardless of the result
+                        if let Some(_) = task_finished {
+                            info!("Task {:?} finished before it become ready", task.name);
                             if let Err(e) = cancel_prober_tx.send(()) {
                                 warn!("Failed to send cancel prober: {:?}", e)
                             }
-                            node_result = false
+                            app_tx.finish_task(TaskResult::NotReady);
+                            node_result = false;
+                            break;
                         }
-                        result = &mut prober_fut => {
-                            let result = result.with_context(|| format!("Task {:?} failed to run", task.name))?;
-                            // The prober result is the node result
-                            node_result = result.unwrap_or(false);
-                        }
-                    }
-
-                    // Restart task & prober
-                    if should_restart {
-                        info!("Task {:?} should restart", task.name);
-                        if let Err(e) = callback.send(CallbackMessage(None)).await {
-                            warn!("Failed to send callback event: {:?}", e)
-                        }
-                        return Ok(());
-                    }
-                    if node_result {
-                        info!("Task {:?} is ready", task.name);
-                        app_tx.ready_task()
-                    } else {
-                        info!("Task {:?} is not ready", task.name);
-                        app_tx.finish_task(TaskResult::NotReady)
                     }
                     node_result
                 } else {
-                    let task_result = run_task_process(task.clone(), manager.clone(), app_tx.clone(), 0).await?;
+                    // Normal task branch
+                    let task_result = run_process(task.clone(), process, app_tx.clone()).await?;
                     node_result = match task_result {
                         Some(TaskResult::Success) => true,
                         _ => false,
@@ -240,6 +266,7 @@ impl TaskRunner {
                 if let Err(e) = callback.send(CallbackMessage(Some(node_result))).await {
                     warn!("Failed to send callback event: {:?}", e)
                 }
+
                 Ok(())
             }));
         }
@@ -287,12 +314,7 @@ async fn run_prober(
     }
 }
 
-async fn run_task_process(
-    task: Task,
-    manager: ProcessManager,
-    app_tx: EventSender,
-    restart_count: u64,
-) -> anyhow::Result<Option<TaskResult>> {
+fn spawn_process(task: Task, manager: ProcessManager) -> anyhow::Result<Option<Child>> {
     let mut args = Vec::new();
     args.extend(task.shell_args.clone());
     args.push(task.command.clone());
@@ -303,11 +325,7 @@ async fn run_task_process(
         .current_dir(task.working_dir.clone())
         .to_owned();
 
-    if app_tx.tx.is_closed() {
-        return Ok(None);
-    }
-
-    let mut process = match manager.spawn(cmd, Duration::from_millis(500)) {
+    let process = match manager.spawn(cmd, Duration::from_millis(500)) {
         Some(Ok(child)) => child,
         Some(Err(e)) => anyhow::bail!("failed to spawn task {:?}: {:?}", task.name, e),
         _ => return Ok(None),
@@ -316,8 +334,11 @@ async fn run_task_process(
 
     info!("Task {:?} has started. PID={}", task.name, pid);
 
-    // Notify the app the task started
-    app_tx.start_task(task.name.clone(), process.pid().unwrap(), restart_count);
+    Ok(Some(process))
+}
+
+async fn run_process(task: Task, mut process: Child, app_tx: EventSender) -> anyhow::Result<Option<TaskResult>> {
+    let pid = process.pid().unwrap_or(0);
 
     // Transfer stdin of the process to the app
     if let Some(stdin) = process.stdin() {
@@ -513,6 +534,7 @@ mod test {
     use log::LevelFilter;
     use std::sync::Once;
     use tokio::sync::mpsc;
+    use tokio::task::JoinHandle;
 
     static INIT: Once = Once::new();
 
@@ -520,52 +542,90 @@ mod test {
         INIT.call_once(|| env_logger::builder().filter_level(LevelFilter::Debug).init());
     }
 
-    pub fn handle_events(mut rx: mpsc::UnboundedReceiver<Event>) {
+    pub async fn run_task(path: &Path, tasks: Vec<String>, num_ready_tasks: usize) -> HashMap<String, String> {
+        let config = ProjectConfig::new(path).unwrap();
+        let mut runner = TaskRunner::new(&config, &HashMap::new(), &tasks, Path::new(path)).unwrap();
+        let (tx, rx) = mpsc::unbounded_channel();
+        let sender = EventSender::new(tx);
+
+        let handler_fut = tokio::spawn(handle_events(rx, num_ready_tasks));
+        let runner_fut = tokio::spawn(async move { runner.run(sender).await });
+
+        let ret = handler_fut.await.unwrap().unwrap();
+        runner_fut.await.unwrap().unwrap();
+        ret
+    }
+
+    pub fn handle_events(mut rx: UnboundedReceiver<Event>, num_tasks: usize) -> JoinHandle<HashMap<String, String>> {
         tokio::spawn(async move {
+            let mut status = HashMap::new();
             while let Some(event) = rx.recv().await {
                 match event {
+                    Event::ReadyTask { task } => {
+                        status.insert(task, String::from("Ready"));
+                    }
+                    Event::FinishTask { task, result } => {
+                        status.insert(task, format!("Finished: {}", result));
+                    }
+                    Event::Stop(callback) => {
+                        callback.send(()).ok();
+                        break;
+                    }
                     _ => {}
                 }
+                if status.len() >= num_tasks {
+                    break;
+                }
             }
-        });
+            status
+        })
     }
 
     #[tokio::test]
     async fn test_basic() {
         setup();
         let path = Path::new("test/basic");
-        let c = ProjectConfig::new(path).unwrap();
-        let mut runner = TaskRunner::new(&c, &HashMap::new(), &vec![String::from("foo")], Path::new(path)).unwrap();
-        let (tx, rx) = mpsc::unbounded_channel();
-        let sender = EventSender::new(tx);
-        handle_events(rx);
+        let tasks = vec!["foo".to_string()];
 
-        let result = runner.run(sender).await.ok();
+        let status = run_task(path, tasks, 2).await;
+
+        let mut expected = HashMap::new();
+        expected.insert(String::from("#foo"), String::from("Finished: Success"));
+        expected.insert(String::from("#bar"), String::from("Finished: Success"));
+
+        assert_eq!(status, expected);
     }
 
     #[tokio::test]
     async fn test_service() {
         setup();
         let path = Path::new("test/service");
-        let c = ProjectConfig::new(path).unwrap();
-        let mut runner = TaskRunner::new(&c, &HashMap::new(), &vec![String::from("foo")], Path::new(path)).unwrap();
-        let (tx, rx) = mpsc::unbounded_channel();
-        let sender = EventSender::new(tx);
-        handle_events(rx);
+        let tasks = vec!["foo".to_string()];
 
-        let result = runner.run(sender).await.ok();
+        let status = run_task(path, tasks, 4).await;
+
+        let mut expected = HashMap::new();
+        expected.insert(String::from("#foo"), String::from("Finished: Success"));
+        expected.insert(String::from("#bar"), String::from("Ready"));
+        expected.insert(String::from("#baz"), String::from("Ready"));
+        expected.insert(String::from("#qux"), String::from("Ready"));
+
+        assert_eq!(status, expected);
     }
 
     #[tokio::test]
     async fn test_bad_service() {
         setup();
         let path = Path::new("test/bad_service");
-        let c = ProjectConfig::new(path).unwrap();
-        let mut runner = TaskRunner::new(&c, &HashMap::new(), &vec![String::from("foo")], Path::new(path)).unwrap();
-        let (tx, rx) = mpsc::unbounded_channel();
-        let sender = EventSender::new(tx);
-        handle_events(rx);
+        let tasks = vec!["foo".to_string()];
 
-        let result = runner.run(sender).await.ok();
+        let status = run_task(path, tasks, 3).await;
+
+        let mut expected = HashMap::new();
+        expected.insert(String::from("#foo"), String::from("Finished: Dependencies failed"));
+        expected.insert(String::from("#bar"), String::from("Finished: Service not ready"));
+        expected.insert(String::from("#baz"), String::from("Finished: Service not ready"));
+
+        assert_eq!(status, expected);
     }
 }

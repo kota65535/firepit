@@ -43,7 +43,6 @@ impl LogLineProber {
 
         loop {
             tokio::select! {
-                biased;
                 _ = cancel.changed() => {
                     debug!("Task {:?} prober cancelled", self.name);
                     return Ok(false);
@@ -126,7 +125,6 @@ impl ExecProber {
             };
 
             tokio::select! {
-                biased;
                 _ = cancel.changed() => {
                     debug!("Task {:?} prober cancelled", self.name);
                     return Ok(false);

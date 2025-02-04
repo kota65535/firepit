@@ -204,6 +204,10 @@ impl EventSender {
             Ok(_) => {}
         }
     }
+
+    pub fn is_closed(&self) -> bool {
+        self.tx.is_closed()
+    }
 }
 
 impl Write for EventSender {
@@ -249,7 +253,7 @@ impl Display for TaskStatus {
             TaskStatus::Finished(result) => match result {
                 TaskResult::Success => write!(f, "Finished"),
                 TaskResult::Failure(code) => write!(f, "Exited with code {code}"),
-                TaskResult::BadDeps => write!(f, "Dependency task Failed"),
+                TaskResult::BadDeps => write!(f, "Dependencies failed"),
                 TaskResult::NotReady => write!(f, "Service not ready"),
                 TaskResult::Stopped => write!(f, "Killed"),
                 TaskResult::Unknown => write!(f, "Unknown"),
@@ -283,10 +287,10 @@ impl Display for TaskResult {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             TaskResult::Success => write!(f, "Success"),
-            TaskResult::BadDeps => write!(f, "Dependency task Failed"),
-            TaskResult::Stopped => write!(f, "Stopped"),
-            TaskResult::NotReady => write!(f, "Service not ready in timeout"),
             TaskResult::Failure(code) => write!(f, "Failure with code {code}"),
+            TaskResult::BadDeps => write!(f, "Dependencies failed"),
+            TaskResult::Stopped => write!(f, "Stopped"),
+            TaskResult::NotReady => write!(f, "Service not ready"),
             TaskResult::Unknown => write!(f, "Unknown"),
         }
     }
