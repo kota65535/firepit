@@ -1,10 +1,11 @@
 use crate::tui::app::FRAME_RATE;
-use log::debug;
+use log::warn;
 use std::fmt::{Display, Formatter};
 use std::io;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
+#[derive(strum::AsRefStr)]
 
 pub enum Event {
     ///
@@ -116,6 +117,7 @@ pub struct EventSender {
     pub tx: mpsc::UnboundedSender<Event>,
     name: String,
     logs: Arc<Mutex<Vec<u8>>>,
+    log_subscribers: Vec<mpsc::UnboundedSender<Vec<u8>>>,
 }
 
 impl EventSender {
@@ -134,6 +136,7 @@ impl EventSender {
             tx,
             name: "".to_string(),
             logs: Default::default(),
+            log_subscribers: Default::default(),
         }
     }
 
@@ -143,71 +146,62 @@ impl EventSender {
     }
 
     pub fn start_task(&self, task: String, pid: u32, restart: u64) {
-        if let Err(e) = self.tx.send(Event::StartTask { task, pid, restart }) {
-            debug!("failed to send StartTask event: {:?}", e)
-        }
+        self.send(Event::StartTask { task, pid, restart })
     }
 
-    pub fn ready_task(&self, task: String) {
-        if let Err(e) = self.tx.send(Event::ReadyTask { task: task.clone() }) {
-            debug!("Failed to send {:?} ReadyTask event: {:?}", task, e)
-        }
+    pub fn ready_task(&self) {
+        self.send(Event::ReadyTask {
+            task: self.name.to_string(),
+        })
     }
 
-    pub fn finish_task(&self, task: String, result: TaskResult) {
-        if let Err(e) = self.tx.send(Event::FinishTask {
-            task: task.clone(),
+    pub fn finish_task(&self, result: TaskResult) {
+        self.send(Event::FinishTask {
+            task: self.name.clone(),
             result,
-        }) {
-            debug!("Failed to send {:?} FinishTask event: {:?}", task, e)
-        }
+        })
     }
 
     pub fn output(&self, task: String, output: Vec<u8>) {
-        if let Err(e) = self.tx.send(Event::TaskOutput {
-            task: task.clone(),
-            output,
-        }) {
-            debug!("Failed to send {:?} Output event: {:?}", task, e)
-        }
+        self.send(Event::TaskOutput { task, output })
     }
 
     pub fn set_stdin(&self, task: String, stdin: Box<dyn Write + Send>) {
-        if let Err(e) = self.tx.send(Event::SetStdin {
-            task: task.clone(),
-            stdin,
-        }) {
-            debug!("Failed to send {:?} SetStdin event: {:?}", task, e)
-        }
+        self.send(Event::SetStdin { task, stdin })
     }
 
-    /// Stop rendering TUI and restore terminal to default configuration
     pub async fn stop(&self) {
         let (callback_tx, callback_rx) = oneshot::channel();
-        // Send stop event, if receiver has dropped ignore error as
-        // it'll be a no-op.
-        if let Err(e) = self.tx.send(Event::Stop(callback_tx)) {
-            debug!("Failed to send Stop event: {:?}", e)
-        }
-        // Wait for callback to be sent or the channel closed.
+        self.send(Event::Stop(callback_tx));
         if let Err(e) = callback_rx.await {
-            debug!("Failed to receive callback of Stop event: {:?}", e)
+            warn!("Failed to receive callback of Stop event: {:?}", e)
         }
     }
 
-    /// Fetches the size of the terminal pane
     pub async fn pane_size(&self) -> Option<PaneSize> {
         let (callback_tx, callback_rx) = oneshot::channel();
-        if let Err(e) = self.tx.send(Event::PaneSizeQuery(callback_tx)) {
-            debug!("Failed to send PaneSizeQuery event: {:?}", e)
-        }
-        // Wait for callback to be sent or the channel closed.
+        self.send(Event::PaneSizeQuery(callback_tx));
         match callback_rx.await {
             Ok(size) => Some(size),
             Err(e) => {
-                debug!("Failed to receive callback of PaneSizeQuery event: {:?}", e);
+                warn!("Failed to receive callback of PaneSizeQuery event: {:?}", e);
                 None
             }
+        }
+    }
+
+    pub fn subscribe_output(&mut self) -> mpsc::UnboundedReceiver<Vec<u8>> {
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.log_subscribers.push(tx);
+        rx
+    }
+
+    pub fn send(&self, event: Event) {
+        match self.tx.send(event) {
+            Err(e) => {
+                warn!("Task {:?} failed to send {} event: {:?}", self.name, e.0.as_ref(), e);
+            }
+            Ok(_) => {}
         }
     }
 }
@@ -220,6 +214,9 @@ impl Write for EventSender {
         }
 
         self.output(task, buf.to_vec());
+        for tx in self.log_subscribers.iter() {
+            tx.send(buf.to_vec()).ok();
+        }
         Ok(buf.len())
     }
 

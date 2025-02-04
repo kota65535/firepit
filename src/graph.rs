@@ -2,7 +2,7 @@ use crate::runner::Task;
 use anyhow::Context;
 use futures::future::join_all;
 use futures::stream::FuturesUnordered;
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use petgraph::algo::toposort;
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{DiGraph, NodeIndex};
@@ -21,6 +21,7 @@ pub struct TaskGraph {
 
 pub struct VisitorMessage {
     pub node: Task,
+    pub count: u64,
     pub deps_ok: bool,
     pub callback: mpsc::Sender<CallbackMessage>,
 }
@@ -32,14 +33,7 @@ pub struct Visitor {
 }
 
 #[derive(Debug, Clone)]
-pub struct CallbackMessage(pub NodeStatus);
-
-#[derive(Debug, Clone)]
-pub enum NodeStatus {
-    Success,
-    Failure,
-    Ready,
-}
+pub struct CallbackMessage(pub Option<bool>);
 
 impl TaskGraph {
     pub fn new(tasks: &Vec<Task>) -> anyhow::Result<TaskGraph> {
@@ -90,7 +84,7 @@ impl TaskGraph {
         let mut rxs = HashMap::new();
         for node_id in self.graph.node_identifiers() {
             // Each node can finish at most once so we set the capacity to 1
-            let (tx, rx) = broadcast::channel::<NodeStatus>(1);
+            let (tx, rx) = broadcast::channel::<bool>(1);
             txs.insert(node_id, tx);
             rxs.insert(node_id, rx);
         }
@@ -147,7 +141,7 @@ impl TaskGraph {
                     results = deps_fut => {
                         info!("Node {:?} dependencies have finished", task.name);
                         results.iter().map(|r| match r {
-                                Ok(r) => matches!(r, NodeStatus::Success|NodeStatus::Ready),
+                                Ok(r) => *r,
                                 Err(e) => {
                                     error!("Node {:?} cannot receive the result: {:?}", task.name, e);
                                     false
@@ -156,51 +150,60 @@ impl TaskGraph {
                     }
                 };
 
-                let (callback_tx, mut callback_rx) = mpsc::channel::<CallbackMessage>(1);
-                let result = match node_tx
-                    .send(VisitorMessage {
-                        node: task.clone(),
-                        deps_ok,
-                        callback: callback_tx.clone(),
-                    })
-                    .await
-                {
-                    Ok(_) => {
-                        match callback_rx.recv().await {
-                            Some(result) => result,
-                            _ => {
-                                // If the caller drops the callback sender without signaling
-                                // that the node processing is finished we assume that it is finished.
-                                warn!(
-                                    "Node {:?} callback sender was dropped without sending a finish signal",
-                                    task.name
-                                );
-                                CallbackMessage(NodeStatus::Failure)
+                let mut count = 0;
+                loop {
+                    let (callback_tx, mut callback_rx) = mpsc::channel::<CallbackMessage>(1);
+                    let result = match node_tx
+                        .send(VisitorMessage {
+                            node: task.clone(),
+                            count,
+                            deps_ok,
+                            callback: callback_tx.clone(),
+                        })
+                        .await
+                    {
+                        Ok(_) => {
+                            match callback_rx.recv().await {
+                                Some(result) => result,
+                                _ => {
+                                    // If the caller drops the callback sender without signaling
+                                    // that the node processing is finished we assume that it is finished.
+                                    warn!(
+                                        "Node {:?} callback sender was dropped without sending a finish signal",
+                                        task.name
+                                    );
+                                    CallbackMessage(Some(false))
+                                }
                             }
                         }
-                    }
-                    Err(e) => {
-                        // Receiving end of node channel has been closed/dropped
-                        // Since there's nothing the mark the node as being done
-                        // we act as if we have been canceled.
-                        warn!("Node {:?} cannot send to the runner: {:?}", task.name, e);
-                        CallbackMessage(NodeStatus::Failure)
-                    }
-                };
-                let result = result.0;
-                info!("Node {:?} finished. result: {:?}", task.name, result);
-                // Send errors indicate that there are no receivers which
-                // happens when this node has no dependents
-                tx.send(result.clone()).ok();
-
-                if matches!(result, NodeStatus::Ready) {
-                    tokio::select! {
-                        _ = cancel_rx.recv() => {
-                           info!("Visitor is cancelled");
+                        Err(e) => {
+                            // Receiving end of node channel has been closed/dropped
+                            // Since there's nothing the mark the node as being done
+                            // we act as if we have been canceled.
+                            warn!("Node {:?} cannot send to the runner: {:?}", task.name, e);
+                            CallbackMessage(Some(false))
                         }
-                        _ = callback_rx.recv() => {}
+                    };
+                    let result = result.0;
+
+                    match result {
+                        Some(bool) => {
+                            // Send errors indicate that there are no receivers which
+                            // happens when this node has no dependents
+                            if let Err(e) = tx.send(bool) {
+                                debug!("Node {:?} cannot send result to the graph: {:?}", task.name, e);
+                            };
+                            info!("Node {:?} finished. result: {:?}", task.name, result);
+                            break;
+                        }
+                        None => {
+                            info!("Node {:?} result is empty, resending", task.name);
+                            count += 1;
+                            continue;
+                        }
                     }
                 }
+
                 info!("Node {:?} visitor finished", task.name);
                 Ok(())
             }));
@@ -236,6 +239,7 @@ impl TaskGraph {
         TaskGraph::new(&tasks)
     }
 
+    #[allow(dead_code)]
     pub fn tasks(&self) -> Vec<Task> {
         self.graph.node_weights().cloned().collect()
     }
@@ -258,8 +262,8 @@ impl fmt::Debug for TaskGraph {
             Dot::with_attr_getters(
                 &self.graph,
                 &[Config::EdgeNoLabel, Config::NodeNoLabel],
-                &|e, r| String::new(),
-                &|n, r| format!("label = \"{}\" ", r.1.name.clone())
+                &|_, _| String::new(),
+                &|_, r| format!("label = \"{}\" ", r.1.name.clone())
             )
         )
     }

@@ -70,6 +70,7 @@ impl ProcessManager {
     }
 
     /// Returns whether children will be spawned attached to a pseudoterminal
+    #[allow(dead_code)]
     pub fn use_pty(&self) -> bool {
         self.use_pty
     }

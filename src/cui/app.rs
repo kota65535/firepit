@@ -5,6 +5,7 @@ use crate::cui::prefixed::PrefixedWriter;
 use crate::event::EventSender;
 use crate::event::{Event, EventReceiver};
 use anyhow::Context;
+use log::warn;
 use std::collections::HashMap;
 use std::io::{stdout, Stdout, Write};
 use std::sync::{Arc, RwLock};
@@ -57,6 +58,12 @@ impl CuiApp {
                         .stdout()
                         .write_all(output.as_slice())
                         .context("failed to write to stdout")?;
+                }
+                Event::Stop(callback) => {
+                    if let Err(e) = callback.send(()) {
+                        warn!("Failed to send callback event: {:?}", e)
+                    }
+                    return Ok(());
                 }
                 _ => {}
             }

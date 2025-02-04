@@ -1,7 +1,7 @@
 use crossterm::ExecutableCommand;
 use human_panic::report::{Method, Report};
 
-pub fn panic_handler(panic_info: &std::panic::PanicInfo) {
+pub fn panic_handler(panic_info: &std::panic::PanicHookInfo) {
     let cause = panic_info.to_string();
 
     crossterm::terminal::disable_raw_mode().ok();

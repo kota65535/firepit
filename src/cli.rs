@@ -45,7 +45,7 @@ pub async fn run() -> anyhow::Result<()> {
     info!("Working dir: {:?}", dir);
     info!("Tasks: {:?}", args.tasks);
 
-    let mut runner = TaskRunner::new(&root, &children, &args.tasks, dir)?;
+    let mut runner = TaskRunner::new(&root, &children, &args.tasks, dir.as_path())?;
 
     let target_tasks = runner.target_tasks.iter().map(|t| t.name.clone()).collect::<Vec<_>>();
     info!("Target tasks: {:?}", target_tasks);
