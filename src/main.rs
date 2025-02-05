@@ -1,11 +1,10 @@
-use crate::panic::panic_handler;
 use ::log::error;
 
 mod cli;
 mod config;
 mod cui;
-pub mod error;
-pub mod event;
+mod error;
+mod event;
 mod graph;
 mod log;
 mod panic;
@@ -17,7 +16,7 @@ mod tui;
 
 #[tokio::main]
 async fn main() {
-    std::panic::set_hook(Box::new(panic_handler));
+    std::panic::set_hook(Box::new(panic::panic_handler));
 
     match cli::run().await {
         Ok(_) => {}
