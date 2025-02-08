@@ -71,7 +71,7 @@ pub struct ExecProber {
     working_dir: PathBuf,
     shell: String,
     shell_args: Vec<String>,
-    envs: HashMap<String, String>,
+    env: HashMap<String, String>,
     interval: u64,
     timeout: u64,
     retries: u64,
@@ -86,7 +86,7 @@ impl ExecProber {
         shell: &str,
         shell_args: Vec<String>,
         working_dir: PathBuf,
-        envs: HashMap<String, String>,
+        env: HashMap<String, String>,
         interval: u64,
         timeout: u64,
         retries: u64,
@@ -98,7 +98,7 @@ impl ExecProber {
             working_dir,
             shell: String::from(shell),
             shell_args,
-            envs,
+            env,
             interval,
             timeout,
             retries,
@@ -162,7 +162,7 @@ impl ExecProber {
         args.push(self.command.clone());
         let cmd = Command::new(self.shell.clone())
             .args(args)
-            .envs(self.envs.clone())
+            .envs(self.env.clone())
             .current_dir(self.working_dir.clone())
             .to_owned();
 

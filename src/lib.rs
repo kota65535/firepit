@@ -8,6 +8,7 @@ pub mod log;
 pub mod panic;
 pub mod probe;
 pub mod process;
+pub mod project;
 pub mod runner;
 pub mod signal;
 pub mod tui;

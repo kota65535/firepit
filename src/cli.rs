@@ -17,6 +17,10 @@ pub struct Args {
     // Working directory
     #[arg(short, long, default_value = ".")]
     pub dir: String,
+
+    // Watch mode
+    #[arg(short, long, default_value = "false")]
+    pub watch: bool,
 }
 
 pub async fn run() -> anyhow::Result<()> {

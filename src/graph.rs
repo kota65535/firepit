@@ -1,4 +1,4 @@
-use crate::runner::Task;
+use crate::project::Task;
 use anyhow::Context;
 use futures::future::join_all;
 use futures::stream::FuturesUnordered;

@@ -35,6 +35,7 @@ dotenvy = "0.15.7"
 base64 = "0.22.1"
 which = "7.0.1"
 strum = "0.26.3"
+assertables = "9.5.0"
 
 [build]
 target = "aarch64-apple-darwin"

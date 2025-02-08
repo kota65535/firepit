@@ -14,6 +14,8 @@ mod runner;
 mod signal;
 mod tui;
 
+mod project;
+
 #[tokio::main]
 async fn main() {
     std::panic::set_hook(Box::new(panic::panic_handler));

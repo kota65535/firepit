@@ -21,7 +21,7 @@ pub fn setup() {
 #[tokio::test]
 async fn test_basic() {
     setup();
-    let path = Path::new("tests/fixtures/basic");
+    let path = Path::new("tests/fixtures/runner/basic");
     let tasks = vec!["foo".to_string()];
 
     let status = run_task(path, tasks, 2).await;
@@ -36,7 +36,7 @@ async fn test_basic() {
 #[tokio::test]
 async fn test_service() {
     setup();
-    let path = Path::new("tests/fixtures/service");
+    let path = Path::new("tests/fixtures/runner//service");
     let tasks = vec!["foo".to_string()];
 
     let status = run_task(path, tasks, 4).await;
@@ -53,7 +53,7 @@ async fn test_service() {
 #[tokio::test]
 async fn test_bad_service() {
     setup();
-    let path = Path::new("tests/fixtures/bad_service");
+    let path = Path::new("tests/fixtures/runner//bad_service");
     let tasks = vec!["foo".to_string()];
 
     let status = run_task(path, tasks, 3).await;

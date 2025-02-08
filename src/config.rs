@@ -28,12 +28,13 @@ pub struct ProjectConfig {
     pub working_dir: String,
 
     /// Environment variables of all tasks.
-    /// If this is a child project, merged with the root project's one.
+    /// If this is a child project, merged with that of the root project.
     #[serde(default)]
     pub env: HashMap<String, String>,
 
     /// Dotenv files for all tasks.
     /// If this is a child project, merged with the root project's one.
+    /// The same environment variable wins for the later one.
     #[serde(default)]
     pub env_files: Vec<String>,
 
@@ -56,7 +57,7 @@ pub struct ProjectConfig {
     #[serde(default = "default_ui")]
     pub ui: UI,
 
-    /// Project directory.
+    /// project directory path (absolute).
     #[serde(skip)]
     pub dir: PathBuf,
 }
@@ -104,15 +105,16 @@ impl ProjectConfig {
             // Multi project
             for (name, path) in &root_config.projects {
                 let mut child_config = ProjectConfig::new(dir.join(path).as_path())?;
-                child_config.env.extend(root_config.env.clone());
-                child_config.env_files.extend(
-                    root_config
-                        .env_files
-                        .iter()
-                        .map(|f| dir.join(f).to_str().unwrap().to_string())
-                        .collect::<Vec<_>>(),
-                );
-
+                root_config.env.iter().for_each(|(k, v)| {
+                    child_config.env.entry(k.clone()).or_insert(v.clone());
+                });
+                child_config.env_files = root_config
+                    .env_files
+                    .clone()
+                    .iter()
+                    .map(|f| dir.join(f).to_str().unwrap().to_string())
+                    .chain(child_config.env_files)
+                    .collect();
                 children.insert(name.clone(), child_config);
             }
             Ok((root_config, children))
@@ -133,12 +135,21 @@ impl ProjectConfig {
             })?;
         let reader = BufReader::new(file);
         let mut data: ProjectConfig =
-            serde_yaml::from_reader(reader).with_context(|| format!("cannot parse config file {:?} as YAML", path))?;
+            serde_yaml::from_reader(reader).with_context(|| format!("cannot parse config file {:?}.", path))?;
+
+        // Get project dir
         data.dir = path
             .to_path_buf()
             .parent()
             .map(|p| p.to_path_buf())
-            .with_context(|| format!("cannot get the directory of {:?}", path))?;
+            .with_context(|| format!("cannot read the parent directory of {:?}", path))?;
+
+        // Ensure env_files paths are absolute
+        data.env_files = data
+            .env_files
+            .iter()
+            .map(|f| data.dir.join(f).to_str().expect("cannot join path").to_string())
+            .collect();
 
         Ok(data)
     }
@@ -258,6 +269,9 @@ pub struct ExecHealthCheckerConfig {
     #[serde(default)]
     pub env: HashMap<String, String>,
 
+    #[serde(default)]
+    pub env_files: Vec<String>,
+
     pub shell: Option<ShellConfig>,
 
     #[serde(default = "default_healthcheck_interval")]
@@ -326,7 +340,9 @@ impl<'de> Deserialize<'de> for Restart {
                 Restart::Always(num.unwrap_or(0))
             }
             s if ON_FAILURE.is_match(&s) => {
-                let num = ALWAYS.captures(s.as_str()).map(|c| c[2].parse::<u64>().unwrap_or(0));
+                let num = ON_FAILURE
+                    .captures(s.as_str())
+                    .map(|c| c[2].parse::<u64>().unwrap_or(0));
                 Restart::OnFailure(num.unwrap_or(0))
             }
             s if s == "never" => Restart::Never,

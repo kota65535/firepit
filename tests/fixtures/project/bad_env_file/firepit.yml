@@ -1,0 +1,6 @@
+env_files:
+  - .env.root
+
+tasks:
+  foo:
+    command: echo "foo"

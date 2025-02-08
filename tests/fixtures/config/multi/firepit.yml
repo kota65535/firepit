@@ -1,0 +1,15 @@
+projects:
+  foo: foo
+  bar: bar
+
+env_files:
+  - .env.root
+
+shell:
+  command: shell-root
+  args:
+    - args-root
+
+env:
+  A: a
+  B: b
