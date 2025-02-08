@@ -25,6 +25,7 @@ pub struct Args {
 }
 
 pub async fn run() -> anyhow::Result<()> {
+    // Arguments
     let args = Args::parse();
     let dir = path::absolute(args.dir)?;
 
@@ -50,21 +51,22 @@ pub async fn run() -> anyhow::Result<()> {
     let schema = schema_for!(ProjectConfig);
     debug!("Json schema: \n{}", serde_json::to_string(&schema).unwrap());
 
+    // Aggregate information in config files into more workable form
     let ws = Workspace::new(&root, &children)?;
 
+    // Create runner
     let mut runner = TaskRunner::new(&ws, &args.tasks, dir.as_path())?;
-
-    let target_tasks = runner.target_tasks.iter().map(|t| t.clone()).collect::<Vec<_>>();
-    info!("Target tasks: {:?}", target_tasks);
+    info!("Target tasks: {:?}", runner.target_tasks);
 
     let dep_tasks = runner
         .tasks
         .iter()
         .map(|t| t.name.clone())
-        .filter(|t| !target_tasks.contains(t))
+        .filter(|t| !runner.target_tasks.contains(t))
         .collect::<Vec<_>>();
     info!("Dep tasks: {:?}", dep_tasks);
 
+    // Create & start UI
     let (app_tx, app_fut) = match root.ui {
         UI::Cui => {
             let mut app = CuiApp::new();
@@ -73,15 +75,19 @@ pub async fn run() -> anyhow::Result<()> {
             (sender, fut)
         }
         UI::Tui => {
-            let mut app = TuiApp::new(target_tasks, dep_tasks)?;
+            let mut app = TuiApp::new(&runner.target_tasks, &dep_tasks)?;
             let sender = app.sender();
             let fut = tokio::spawn(async move { app.run().await });
             (sender, fut)
         }
     };
 
-    runner.run(app_tx.clone()).await?;
-    app_fut.await?;
+    // Start runner
+    let runner_fut = tokio::spawn(async move { runner.run(app_tx.clone()).await });
+
+    // Wait for both threads
+    runner_fut.await??;
+    app_fut.await??;
 
     Ok(())
 }

@@ -60,7 +60,7 @@ pub struct TuiAppState {
 }
 
 impl TuiApp {
-    pub fn new(target_tasks: Vec<String>, dep_tasks: Vec<String>) -> anyhow::Result<Self> {
+    pub fn new(target_tasks: &Vec<String>, dep_tasks: &Vec<String>) -> anyhow::Result<Self> {
         let (tx, rx) = mpsc::unbounded_channel();
 
         let terminal = Self::setup_terminal()?;

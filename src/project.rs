@@ -3,7 +3,7 @@ use crate::probe::{ExecProber, LogLineProber, Prober};
 use anyhow::Context;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub struct Workspace {
@@ -68,6 +68,43 @@ impl Workspace {
             tasks.extend(p.tasks.values().cloned().collect::<Vec<_>>());
         }
         tasks
+    }
+
+    pub fn target_tasks(&self, tasks: &Vec<String>, current_dir: &Path) -> anyhow::Result<Vec<String>> {
+        if self.root.dir == current_dir {
+            let mut target_tasks = Vec::new();
+            for t in tasks.iter() {
+                let target = match self.root.task(t) {
+                    Some(t) => vec![t.name],
+                    None => {
+                        let child_tasks = self
+                            .children
+                            .values()
+                            .filter_map(|p| p.task(t))
+                            .map(|t| t.name)
+                            .collect::<Vec<_>>();
+                        if child_tasks.is_empty() {
+                            anyhow::bail!("Task {:?} is not defined in any project", t);
+                        }
+                        child_tasks
+                    }
+                };
+                target_tasks.extend(target);
+            }
+            Ok(target_tasks)
+        } else {
+            let child = self
+                .children
+                .values()
+                .find(|c| c.dir == current_dir)
+                .with_context(|| format!("directory {:?} is not part of any projects", current_dir))?;
+            for t in tasks.iter() {
+                child
+                    .task(t)
+                    .with_context(|| format!("Task {:?} is not defined in project {:?}", t, child.name))?;
+            }
+            Ok(tasks.clone())
+        }
     }
 }
 

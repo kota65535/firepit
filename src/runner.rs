@@ -27,49 +27,15 @@ pub struct TaskRunner {
 
 impl TaskRunner {
     pub fn new(ws: &Workspace, target_tasks: &Vec<String>, dir: &Path) -> anyhow::Result<TaskRunner> {
-        let mut tasks = ws.tasks();
-        let target_tasks = if ws.root.dir == dir {
-            let mut new_target_tasks = Vec::new();
-            for t in target_tasks.iter() {
-                let target = match ws.root.task(t) {
-                    Some(t) => vec![t.name],
-                    None => {
-                        let child_tasks = ws
-                            .children
-                            .values()
-                            .filter_map(|p| p.task(t))
-                            .map(|t| t.name)
-                            .collect::<Vec<_>>();
-                        if child_tasks.is_empty() {
-                            anyhow::bail!("Task {:?} is not defined in any project", t);
-                        }
-                        child_tasks
-                    }
-                };
-                new_target_tasks.extend(target);
-            }
-            new_target_tasks
-        } else {
-            let child = ws
-                .children
-                .values()
-                .find(|c| c.dir == dir)
-                .with_context(|| format!("directory {:?} is not part of any projects", dir))?;
-            for t in target_tasks.iter() {
-                child
-                    .task(t)
-                    .with_context(|| format!("Task {:?} is not defined in project {:?}", t, child.name))?;
-            }
-            target_tasks.clone()
-        };
+        let all_tasks = ws.tasks();
+        let target_tasks = ws.target_tasks(target_tasks, dir)?;
 
-        let mut task_graph = TaskGraph::new(&tasks)?;
-        task_graph = task_graph.transitive_closure(&target_tasks.iter().map(|t| t.clone()).collect())?;
-        tasks = task_graph.sort()?;
-
+        let task_graph = TaskGraph::new(&all_tasks)?.transitive_closure(&target_tasks)?;
+        let tasks = task_graph.sort()?;
         debug!("Task graph:\n{:?}", task_graph);
 
         let manager = ProcessManager::infer();
+
         let signal = get_signal()?;
         let signal_handler = SignalHandler::new(signal);
         if let Some(subscriber) = signal_handler.subscribe() {
@@ -106,7 +72,7 @@ impl TaskRunner {
             .task_graph
             .visit(self.concurrency)
             .with_context(|| "Error while visiting task graph")?;
-        info!("Visitor started");
+        debug!("Visitor started");
 
         // Cancel visitor if we received any signal
         if let Some(subscriber) = self.signal_handler.subscribe() {
@@ -357,5 +323,15 @@ impl TaskRunner {
         app_tx.finish_task(result.clone());
 
         Ok(Some(result))
+    }
+
+    pub fn info(&self) {
+        info!("Target tasks: {:?}", self.target_tasks);
+        let dep_tasks = self
+            .tasks
+            .iter()
+            .filter(|t| !self.target_tasks.contains(&t.name))
+            .collect::<Vec<_>>();
+        info!("Dep tasks: {:?}", dep_tasks);
     }
 }
