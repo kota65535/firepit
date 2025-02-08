@@ -48,8 +48,7 @@ pub async fn run() -> anyhow::Result<()> {
 
     init_logger(&root.log, &root.ui)?;
 
-    let schema = schema_for!(ProjectConfig);
-    debug!("Json schema: \n{}", serde_json::to_string(&schema).unwrap());
+    debug!("Json schema: \n{}", root.schema()?);
 
     // Aggregate information in config files into more workable form
     let ws = Workspace::new(&root, &children)?;

@@ -169,7 +169,7 @@ impl ExecProber {
         match self.manager.spawn(cmd, Duration::from_millis(500)) {
             Some(Ok(child)) => Ok(child),
             Some(Err(e)) => Err(e).with_context(|| "unable to spawn task"),
-            _ => Err(anyhow::anyhow!("unable to spawn task")),
+            _ => anyhow::bail!("unable to spawn task"),
         }
     }
 }

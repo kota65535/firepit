@@ -211,6 +211,11 @@ impl ProjectConfig {
             })
             .collect()
     }
+
+    pub fn schema(&self) -> anyhow::Result<String> {
+        let schema = schemars::schema_for!(ProjectConfig);
+        serde_json::to_string(&schema).context("cannot create config scehma")
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]

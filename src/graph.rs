@@ -70,10 +70,7 @@ impl TaskGraph {
                 .collect::<Vec<_>>()),
             Err(err) => {
                 let task = self.graph.node_weight(err.node_id()).expect("should exist");
-                Err(anyhow::anyhow!(
-                    "cyclic dependency detected at task {}",
-                    task.name.clone()
-                ))
+                anyhow::bail!("cyclic dependency detected at task {}", task.name.clone())
             }
         }
     }
