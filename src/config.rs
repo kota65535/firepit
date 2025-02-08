@@ -415,14 +415,20 @@ impl<'de> Deserialize<'de> for Restart {
 
         let r = match s {
             s if ALWAYS.is_match(&s) => {
-                let num = ALWAYS.captures(s.as_str()).map(|c| c[2].parse::<u64>().unwrap_or(0));
-                Restart::Always(num.unwrap_or(0))
+                let num = ALWAYS
+                    .captures(s.as_str())
+                    .and_then(|c| c.get(2))
+                    .and_then(|m| m.as_str().parse::<u64>().ok())
+                    .unwrap_or(0);
+                Restart::Always(num)
             }
             s if ON_FAILURE.is_match(&s) => {
                 let num = ON_FAILURE
                     .captures(s.as_str())
-                    .map(|c| c[2].parse::<u64>().unwrap_or(0));
-                Restart::OnFailure(num.unwrap_or(0))
+                    .and_then(|c| c.get(2))
+                    .and_then(|m| m.as_str().parse::<u64>().ok())
+                    .unwrap_or(0);
+                Restart::Always(num)
             }
             s if s == "never" => Restart::Never,
             _ => return Err(serde::de::Error::custom(format!("invalid restart value: {}", s))),
