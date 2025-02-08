@@ -4,6 +4,7 @@ use std::path::Path;
 
 use firepit::config::ProjectConfig;
 use firepit::event::{Event, EventSender};
+use firepit::project::Workspace;
 use log::LevelFilter;
 use std::sync::Once;
 use tokio::sync::mpsc;
@@ -36,7 +37,7 @@ async fn test_basic() {
 #[tokio::test]
 async fn test_service() {
     setup();
-    let path = Path::new("tests/fixtures/runner//service");
+    let path = Path::new("tests/fixtures/runner/service");
     let tasks = vec!["foo".to_string()];
 
     let status = run_task(path, tasks, 4).await;
@@ -53,7 +54,7 @@ async fn test_service() {
 #[tokio::test]
 async fn test_bad_service() {
     setup();
-    let path = Path::new("tests/fixtures/runner//bad_service");
+    let path = Path::new("tests/fixtures/runner/bad_service");
     let tasks = vec!["foo".to_string()];
 
     let status = run_task(path, tasks, 3).await;
@@ -67,8 +68,8 @@ async fn test_bad_service() {
 }
 
 async fn run_task(path: &Path, tasks: Vec<String>, num_ready_tasks: usize) -> HashMap<String, String> {
-    let config = ProjectConfig::new(path).unwrap();
-    let mut runner = TaskRunner::new(&config, &HashMap::new(), &tasks, Path::new(path)).unwrap();
+    let ws = Workspace::new(&ProjectConfig::new(path).unwrap(), &HashMap::new()).unwrap();
+    let mut runner = TaskRunner::new(&ws, &tasks, Path::new(path)).unwrap();
     let (tx, rx) = mpsc::unbounded_channel();
     let sender = EventSender::new(tx);
 

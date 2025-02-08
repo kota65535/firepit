@@ -104,6 +104,9 @@ impl ProjectConfig {
         if root_config.is_root() {
             // Multi project
             for (name, path) in &root_config.projects {
+                if name.contains("#") {
+                    anyhow::bail!("Project name must not contain '#'. Found: {:?}", name)
+                }
                 let mut child_config = ProjectConfig::new(dir.join(path).as_path())?;
                 root_config.env.iter().for_each(|(k, v)| {
                     child_config.env.entry(k.clone()).or_insert(v.clone());
@@ -143,13 +146,6 @@ impl ProjectConfig {
             .parent()
             .map(|p| p.to_path_buf())
             .with_context(|| format!("cannot read the parent directory of {:?}", path))?;
-
-        // Ensure env_files paths are absolute
-        data.env_files = data
-            .env_files
-            .iter()
-            .map(|f| data.dir.join(f).to_str().expect("cannot join path").to_string())
-            .collect();
 
         Ok(data)
     }
@@ -192,6 +188,29 @@ impl ProjectConfig {
     pub fn is_child(&self, root: &ProjectConfig) -> bool {
         root.projects.values().any(|p| Path::new(p) == self.dir)
     }
+
+    pub fn working_dir_path(&self) -> PathBuf {
+        let wd = Path::new(&self.working_dir);
+        if wd.is_absolute() {
+            wd.to_path_buf()
+        } else {
+            self.dir.join(wd)
+        }
+    }
+
+    pub fn env_files_paths(&self) -> Vec<PathBuf> {
+        self.env_files
+            .iter()
+            .map(|f| {
+                let p = Path::new(f);
+                if p.is_absolute() {
+                    p.to_path_buf()
+                } else {
+                    self.dir.join(p)
+                }
+            })
+            .collect()
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -221,6 +240,36 @@ pub struct TaskConfig {
 
     /// Service configuration.
     pub service: Option<ServiceConfig>,
+}
+
+impl TaskConfig {
+    pub fn working_dir_path(&self, dir: &PathBuf) -> Option<PathBuf> {
+        match self.working_dir.clone() {
+            Some(wd) => {
+                let wd = Path::new(&wd);
+                if wd.is_absolute() {
+                    Some(wd.to_path_buf())
+                } else {
+                    Some(dir.join(wd))
+                }
+            }
+            None => None,
+        }
+    }
+
+    pub fn env_files_paths(&self, dir: &PathBuf) -> Vec<PathBuf> {
+        self.env_files
+            .iter()
+            .map(|f| {
+                let p = Path::new(f);
+                if p.is_absolute() {
+                    p.to_path_buf()
+                } else {
+                    dir.join(p)
+                }
+            })
+            .collect()
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -285,6 +334,36 @@ pub struct ExecHealthCheckerConfig {
 
     #[serde(default = "default_healthcheck_start_period")]
     pub start_period: u64,
+}
+
+impl ExecHealthCheckerConfig {
+    pub fn working_dir_path(&self, dir: &PathBuf) -> Option<PathBuf> {
+        match self.working_dir.clone() {
+            Some(wd) => {
+                let wd = Path::new(&wd);
+                if wd.is_absolute() {
+                    Some(wd.to_path_buf())
+                } else {
+                    Some(dir.join(wd))
+                }
+            }
+            None => None,
+        }
+    }
+
+    pub fn env_files_paths(&self, dir: &PathBuf) -> Vec<PathBuf> {
+        self.env_files
+            .iter()
+            .map(|f| {
+                let p = Path::new(f);
+                if p.is_absolute() {
+                    p.to_path_buf()
+                } else {
+                    dir.join(p)
+                }
+            })
+            .collect()
+    }
 }
 
 pub fn default_healthcheck_interval() -> u64 {

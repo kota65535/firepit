@@ -2,8 +2,8 @@ use crate::config::{HealthCheckConfig, ProjectConfig, Restart, ServiceConfig};
 use crate::probe::{ExecProber, LogLineProber, Prober};
 use anyhow::Context;
 use regex::Regex;
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct Project {
@@ -15,20 +15,80 @@ pub struct Project {
 
     /// Absolute path of the project directory.
     pub dir: PathBuf,
+}
 
-    /// Task concurrency.
+#[derive(Debug, Clone)]
+pub struct Workspace {
+    pub root: Project,
+    pub children: HashMap<String, Project>,
     pub concurrency: usize,
 }
 
-impl Project {
-    pub fn new(name: &str, config: &ProjectConfig) -> anyhow::Result<Project> {
-        let config = config.clone();
+impl Workspace {
+    pub fn new(
+        root_config: &ProjectConfig,
+        child_config: &HashMap<String, ProjectConfig>,
+    ) -> anyhow::Result<Workspace> {
+        let root = Project::new("", root_config)?;
+        let mut children = HashMap::new();
+        for (k, v) in child_config.iter() {
+            children.insert(k.clone(), Project::new(k, v)?);
+        }
 
+        Self::validate_projects(&root, &children)?;
+
+        Ok(Self {
+            root,
+            children,
+            concurrency: root_config.concurrency,
+        })
+    }
+
+    fn validate_projects(root: &Project, children: &HashMap<String, Project>) -> anyhow::Result<()> {
+        let mut tasks = root.tasks.values().map(|t| t.name.clone()).collect::<HashSet<_>>();
+        for p in children.values() {
+            tasks.extend(p.tasks.values().map(|t| t.name.clone()));
+        }
+
+        let mut deps = root
+            .tasks
+            .values()
+            .flat_map(|t| t.depends_on.iter())
+            .collect::<HashSet<_>>();
+        for p in children.values() {
+            deps.extend(
+                p.tasks
+                    .values()
+                    .flat_map(|t| t.depends_on.iter())
+                    .collect::<HashSet<_>>(),
+            );
+        }
+
+        for d in deps.iter() {
+            if !tasks.contains(*d) {
+                anyhow::bail!("Task {:?} is not defined.", d);
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn tasks(&self) -> Vec<Task> {
+        // All tasks
+        let mut tasks = self.root.tasks.values().cloned().collect::<Vec<_>>();
+        for p in self.children.values() {
+            tasks.extend(p.tasks.values().cloned().collect::<Vec<_>>());
+        }
+        tasks
+    }
+}
+
+impl Project {
+    pub fn new(name: &str, root: &ProjectConfig) -> anyhow::Result<Project> {
         Ok(Project {
             name: name.to_owned(),
-            tasks: Task::from_project_config(name, &config)?,
-            dir: config.dir.clone(),
-            concurrency: config.concurrency,
+            tasks: Task::from_project_config(name, &root)?,
+            dir: root.dir.clone(),
         })
     }
 
@@ -61,21 +121,13 @@ pub struct Task {
     pub restart: Restart,
 }
 
-pub fn load_env_files(files: &Vec<String>) -> anyhow::Result<HashMap<String, String>> {
-    let mut ret = HashMap::new();
-    for f in files.iter() {
-        for item in dotenvy::from_path_iter(Path::new(f)).with_context(|| format!("cannot read env file {:?}", f))? {
-            let (key, value) = item.with_context(|| format!("cannot parse env file {:?}", f))?;
-            ret.insert(key, value);
-        }
-    }
-    Ok(ret)
-}
-
 impl Task {
     pub fn from_project_config(project_name: &str, config: &ProjectConfig) -> anyhow::Result<HashMap<String, Task>> {
         let mut ret = HashMap::new();
         for (task_name, task_config) in config.tasks.iter() {
+            if task_name.contains("#") {
+                anyhow::bail!("Task name must not contain '#'. Found: {:?}", task_name)
+            }
             let task_config = task_config.clone();
             let task_name = Task::qualified_name(project_name, task_name);
 
@@ -83,19 +135,16 @@ impl Task {
             let task_shell = task_config.shell.clone().unwrap_or(config.shell.clone());
 
             // Working directory
-            let mut task_working_dir = PathBuf::from(task_config.working_dir.unwrap_or(config.working_dir.clone()));
-            task_working_dir = if task_working_dir.is_absolute() {
-                task_working_dir
-            } else {
-                config.dir.join(task_working_dir)
-            };
+            let task_working_dir = task_config
+                .working_dir_path(&config.dir)
+                .unwrap_or(config.working_dir_path());
 
             // Environment variables
-            let project_env = load_env_files(&config.env_files)?
+            let project_env = Self::load_env_files(&config.env_files_paths())?
                 .into_iter()
                 .chain(config.env.clone().into_iter())
                 .collect::<HashMap<_, _>>();
-            let task_env = load_env_files(&task_config.env_files)?
+            let task_env = Self::load_env_files(&task_config.env_files_paths(&config.dir))?
                 .into_iter()
                 .chain(task_config.env.clone().into_iter())
                 .collect::<HashMap<_, _>>();
@@ -121,17 +170,12 @@ impl Task {
                                 // Exec Probe
                                 HealthCheckConfig::Exec(c) => {
                                     // Shell
-                                    let hc_shell = c.shell.unwrap_or(task_shell.clone());
+                                    let hc_shell = c.shell.clone().unwrap_or(task_shell.clone());
                                     // Working directory
-                                    let mut hc_working_dir =
-                                        c.working_dir.map(PathBuf::from).unwrap_or(task_working_dir.clone());
-                                    hc_working_dir = if hc_working_dir.is_absolute() {
-                                        hc_working_dir
-                                    } else {
-                                        config.dir.join(hc_working_dir)
-                                    };
+                                    let hc_working_dir =
+                                        c.working_dir_path(&config.dir).unwrap_or(task_working_dir.clone());
                                     // Environment variables
-                                    let hc_env = load_env_files(&c.env_files)?
+                                    let hc_env = Self::load_env_files(&c.env_files_paths(&config.dir))?
                                         .into_iter()
                                         .chain(c.env.clone().into_iter())
                                         .collect::<HashMap<_, _>>();
@@ -184,6 +228,18 @@ impl Task {
         }
         Ok(ret)
     }
+
+    pub fn load_env_files(files: &Vec<PathBuf>) -> anyhow::Result<HashMap<String, String>> {
+        let mut ret = HashMap::new();
+        for f in files.iter() {
+            for item in dotenvy::from_path_iter(f).with_context(|| format!("cannot read env file {:?}", f))? {
+                let (key, value) = item.with_context(|| format!("cannot parse env file {:?}", f))?;
+                ret.insert(key, value);
+            }
+        }
+        Ok(ret)
+    }
+
     pub fn qualified_name(project_name: &str, task_name: &str) -> String {
         if task_name.contains('#') {
             task_name.to_string()
