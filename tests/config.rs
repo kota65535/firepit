@@ -3,7 +3,6 @@ use firepit::config::ProjectConfig;
 use log::LevelFilter;
 use std::collections::HashMap;
 use std::env;
-use std::fmt::{Debug, Display};
 use std::path::Path;
 use std::sync::Once;
 
@@ -40,7 +39,7 @@ fn test_multi() {
 
     // root
     assert_eq_env(&root.env, &HashMap::from([("A", "a"), ("B", "b")]));
-    assert_eq!(root.env_files, vec![to_absolute_path(&path, ".env.root")]);
+    assert_eq!(root.env_files, vec![".env.root"]);
     assert_eq!(root.shell.command, "shell-root");
     assert_eq!(root.shell.args, vec!["args-root"]);
 
@@ -51,10 +50,7 @@ fn test_multi() {
     );
     assert_eq!(
         foo.env_files,
-        vec![
-            to_absolute_path(&path, ".env.root"),
-            to_absolute_path(&path, "foo/.env.foo")
-        ]
+        vec![to_absolute_path(&path, ".env.root"), String::from(".env.foo")]
     );
     assert_eq!(foo.shell.command, "shell-foo");
     assert_eq!(foo.shell.args, vec!["args-foo"]);
@@ -66,10 +62,7 @@ fn test_multi() {
     );
     assert_eq!(
         bar.env_files,
-        vec![
-            to_absolute_path(&path, ".env.root"),
-            to_absolute_path(&path, "bar/.env.bar")
-        ]
+        vec![to_absolute_path(&path, ".env.root"), String::from(".env.bar")]
     );
     assert_eq!(bar.shell.command, "shell-bar");
     assert_eq!(bar.shell.args, vec!["args-bar"]);

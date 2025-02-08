@@ -7,9 +7,7 @@ use crate::tui::app::TuiApp;
 use clap::Parser;
 use log::{debug, info};
 use schemars::schema_for;
-use std::collections::HashMap;
 use std::path;
-use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]

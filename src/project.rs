@@ -6,18 +6,6 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
-pub struct Project {
-    /// Project name.
-    pub name: String,
-
-    /// Project tasks.
-    pub tasks: HashMap<String, Task>,
-
-    /// Absolute path of the project directory.
-    pub dir: PathBuf,
-}
-
-#[derive(Debug, Clone)]
 pub struct Workspace {
     pub root: Project,
     pub children: HashMap<String, Project>,
@@ -81,6 +69,18 @@ impl Workspace {
         }
         tasks
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct Project {
+    /// Project name.
+    pub name: String,
+
+    /// Project tasks.
+    pub tasks: HashMap<String, Task>,
+
+    /// Absolute path of the project directory.
+    pub dir: PathBuf,
 }
 
 impl Project {
