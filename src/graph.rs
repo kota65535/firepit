@@ -148,28 +148,58 @@ impl TaskGraph {
                 };
 
                 let mut count = 0;
-                loop {
+                'send: loop {
                     let (callback_tx, mut callback_rx) = mpsc::channel::<CallbackMessage>(1);
-                    let result = match node_tx
-                        .send(VisitorMessage {
-                            node: task.clone(),
-                            count,
-                            deps_ok,
-                            callback: callback_tx.clone(),
-                        })
-                        .await
-                    {
+                    let message = VisitorMessage {
+                        node: task.clone(),
+                        count,
+                        deps_ok,
+                        callback: callback_tx.clone(),
+                    };
+                    match node_tx.send(message).await {
                         Ok(_) => {
-                            match callback_rx.recv().await {
-                                Some(result) => result,
-                                _ => {
-                                    // If the caller drops the callback sender without signaling
-                                    // that the node processing is finished we assume that it is finished.
-                                    warn!(
-                                        "Node {:?} callback sender was dropped without sending a finish signal",
-                                        task.name
-                                    );
-                                    CallbackMessage(Some(false))
+                            'recv: loop {
+                                match callback_rx.recv().await {
+                                    Some(CallbackMessage(result)) => {
+                                        match result {
+                                            Some(bool) => {
+                                                // Send errors indicate that there are no receivers which
+                                                // happens when this node has no dependents
+                                                if let Err(e) = tx.send(bool) {
+                                                    debug!(
+                                                        "Node {:?} cannot send result to the graph: {:?}",
+                                                        task.name, e
+                                                    );
+                                                };
+                                                // Service task should continue recv loop so that it can restart
+                                                // after reaching the ready state
+                                                if bool && task.is_service {
+                                                    info!(
+                                                        "Node {:?} is finished but continue. result: {:?}",
+                                                        task.name, result
+                                                    );
+                                                    continue 'recv;
+                                                }
+                                                info!("Node {:?} finished. result: {:?}", task.name, result);
+                                                break 'send;
+                                            }
+                                            None => {
+                                                info!("Node {:?} result is empty, resending", task.name);
+                                                count += 1;
+                                                continue 'send;
+                                            }
+                                        }
+                                    }
+                                    _ => {
+                                        // If the caller drops the callback sender without signaling
+                                        // that the node processing is finished we assume that it is finished.
+                                        warn!(
+                                            "Node {:?} callback sender was dropped without sending a finish signal",
+                                            task.name
+                                        );
+                                        tx.send(false).ok();
+                                        break 'send;
+                                    }
                                 }
                             }
                         }
@@ -178,27 +208,10 @@ impl TaskGraph {
                             // Since there's nothing the mark the node as being done
                             // we act as if we have been canceled.
                             warn!("Node {:?} cannot send to the runner: {:?}", task.name, e);
-                            CallbackMessage(Some(false))
+                            tx.send(false).ok();
+                            break 'send;
                         }
                     };
-                    let result = result.0;
-
-                    match result {
-                        Some(bool) => {
-                            // Send errors indicate that there are no receivers which
-                            // happens when this node has no dependents
-                            if let Err(e) = tx.send(bool) {
-                                debug!("Node {:?} cannot send result to the graph: {:?}", task.name, e);
-                            };
-                            info!("Node {:?} finished. result: {:?}", task.name, result);
-                            break;
-                        }
-                        None => {
-                            info!("Node {:?} result is empty, resending", task.name);
-                            count += 1;
-                            continue;
-                        }
-                    }
                 }
 
                 info!("Node {:?} visitor finished", task.name);
