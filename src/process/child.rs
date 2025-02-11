@@ -444,7 +444,7 @@ impl Child {
             // On Windows it is important that this gets dropped once the child process
             // exits
             let controller = controller;
-            debug!("waiting for task");
+            debug!("Waiting for task");
             let manager = ChildStateManager {
                 shutdown_style,
                 task_state,

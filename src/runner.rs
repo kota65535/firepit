@@ -72,7 +72,7 @@ impl TaskRunner {
             .task_graph
             .visit(self.concurrency)
             .with_context(|| "Error while visiting task graph")?;
-        debug!("visitor started");
+        debug!("Visitor started");
 
         // Cancel visitor if we received any signal
         if let Some(subscriber) = self.signal_handler.subscribe() {
@@ -188,6 +188,11 @@ impl TaskRunner {
                                 probe_finished = Some(result.unwrap_or(false));
                             }
                         }
+
+                        if probe_finished.is_some() && task_finished.is_some() {
+                            info!("Task is ready but finished and no restart");
+                            break;
+                        }
                         // If probe finished first
                         if let Some(probe_ok) = probe_finished {
                             if probe_ok {
@@ -299,7 +304,7 @@ impl TaskRunner {
         };
         let pid = process.pid().unwrap_or(0);
 
-        info!("Task {:?} has started. PID={}", task.name, pid);
+        info!("Task has started. PID={}", pid);
 
         Ok(Some(process))
     }
@@ -313,7 +318,7 @@ impl TaskRunner {
         }
 
         // Wait until complete
-        info!("Task {:?} waiting for output. PID={}", task.name, pid);
+        info!("Task is waiting for output. PID={}", pid);
         let result = match process.wait_with_piped_outputs(app_tx.clone()).await {
             Ok(Some(exit_status)) => match exit_status {
                 ChildExit::Finished(Some(code)) if code == 0 => TaskResult::Success,
@@ -327,7 +332,7 @@ impl TaskRunner {
             Ok(None) => anyhow::bail!("unable to determine why child exited"),
         };
 
-        info!("Task {:?} has finished. PID={}", task.name, pid);
+        info!("Task has finished. PID={}", pid);
 
         // Notify the app the task ended
         app_tx.finish_task(result.clone());

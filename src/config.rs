@@ -297,12 +297,12 @@ pub struct LogConfig {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum HealthCheckConfig {
-    Log(LogHealthCheckerConfig),
-    Exec(ExecHealthCheckerConfig),
+    Log(LogProbeConfig),
+    Exec(ExecProbeConfig),
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
-pub struct LogHealthCheckerConfig {
+pub struct LogProbeConfig {
     pub log: String,
     #[serde(default = "default_log_healthcheck_timeout")]
     pub timeout: u64,
@@ -315,7 +315,7 @@ pub fn default_log_healthcheck_timeout() -> u64 {
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
-pub struct ExecHealthCheckerConfig {
+pub struct ExecProbeConfig {
     pub command: String,
 
     pub working_dir: Option<String>,
@@ -341,7 +341,7 @@ pub struct ExecHealthCheckerConfig {
     pub start_period: u64,
 }
 
-impl ExecHealthCheckerConfig {
+impl ExecProbeConfig {
     pub fn working_dir_path(&self, dir: &PathBuf) -> Option<PathBuf> {
         match self.working_dir.clone() {
             Some(wd) => {
