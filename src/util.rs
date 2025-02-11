@@ -1,13 +1,36 @@
 #[macro_export]
 macro_rules! tokio_spawn {
-    ($name:expr, $future:expr) => {
-        tokio::task::Builder::new().name($name).spawn($future).unwrap()
-    };
+    ($name:literal, {$($field:ident = $value:expr),*}, $future:expr) => {{
+        use tracing::Instrument;
+        tokio::task::Builder::new()
+            .name(&format!("{} {}", $name, stringify!($($field = $value),*)))
+            .spawn($future.instrument(tracing::info_span!($name, $($field = $value),*)))
+            .unwrap()
+    }};
+
+    ($name:literal, $future:expr) => {{
+        use tracing::Instrument;
+        tokio::task::Builder::new()
+            .name($name)
+            .spawn($future.instrument(tracing::info_span!($name)))
+            .unwrap()
+    }};
 }
 
 #[macro_export]
 macro_rules! tokio_spawn_blocking {
-    ($name:expr, $future:expr) => {
-        tokio::task::Builder::new().name($name).spawn_blocking($future).unwrap()
-    };
+   ($name:literal, {$($field:ident = $value:expr),*}, $block:expr) => {{
+        tokio::task::spawn_blocking(move || {
+            let span = tracing::info_span!($name, $($field = $value),*);
+            let _guard = span.enter();
+            ($block)()
+        })
+   }};
+   ($name:literal, $block:expr) => {{
+        tokio::task::spawn_blocking(move || {
+            let span = tracing::info_span!($name);
+            let _guard = span.enter();
+            ($block)()
+        })
+   }};
 }

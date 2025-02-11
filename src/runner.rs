@@ -1,7 +1,7 @@
 use crate::config::Restart;
 use crate::event::{EventSender, TaskResult};
 use crate::graph::{CallbackMessage, TaskGraph, Visitor, VisitorMessage};
-use crate::probe::Prober;
+use crate::probe::Probe;
 use crate::process::{Child, ChildExit, Command, ProcessManager};
 use crate::project::{Task, Workspace};
 use crate::signal::{get_signal, SignalHandler};
@@ -40,13 +40,11 @@ impl TaskRunner {
         let signal_handler = SignalHandler::new(signal);
         if let Some(subscriber) = signal_handler.subscribe() {
             let manager = manager.clone();
-            tokio::task::Builder::new()
-                .name("runner canceller by signal")
-                .spawn(async move {
-                    let _guard = subscriber.listen().await;
-                    debug!("Stopping ProcessManager");
-                    manager.stop().await;
-                })?;
+            tokio_spawn!("signal runner canceller", async move {
+                let _guard = subscriber.listen().await;
+                debug!("Stopping ProcessManager");
+                manager.stop().await;
+            });
         }
 
         Ok(TaskRunner {
@@ -74,11 +72,11 @@ impl TaskRunner {
             .task_graph
             .visit(self.concurrency)
             .with_context(|| "Error while visiting task graph")?;
-        debug!("Visitor started");
+        debug!("visitor started");
 
         // Cancel visitor if we received any signal
         if let Some(subscriber) = self.signal_handler.subscribe() {
-            tokio_spawn!("visitor canceller by signal", async move {
+            tokio_spawn!("signal visitor canceller", async move {
                 let _guard = subscriber.listen().await;
                 cancel_tx.send(true)
             });
@@ -97,10 +95,11 @@ impl TaskRunner {
             let mut app_tx = app_tx.with_name(&task.name);
             let manager = self.manager.clone();
 
-            task_fut.push(tokio_spawn!(&format!("task {}", task.name), async move {
+            let task_name = task.name.clone();
+            task_fut.push(tokio_spawn!("task", { task = task_name }, async move {
                 // Skip the task if any dependency didn't finish successfully
                 if !deps_ok {
-                    info!("Task {:?} does not run because of its failed dependency", task.name);
+                    info!("Task does not run as its dependency task failed");
                     app_tx.finish_task(TaskResult::BadDeps);
                     if let Err(e) = callback.send(CallbackMessage(Some(false))).await {
                         warn!("Failed to send callback event: {:?}", e)
@@ -109,8 +108,8 @@ impl TaskRunner {
                 }
 
                 info!(
-                    "Task {:?} is starting ({}). \nshell: {:?} {:?}\ncommand: {:?}\nenv: {:?}\nworking_dir: {:?}",
-                    task.name, num_restart, task.shell, &task.shell_args, task.command, task.env, task.working_dir
+                    "Task is starting.\nrestart: {:?}\nshell: {:?} {:?}\ncommand: {:?}\nenv: {:?}\nworking_dir: {:?}",
+                    num_restart, task.shell, &task.shell_args, task.command, task.env, task.working_dir
                 );
 
                 app_tx = app_tx.clone();
@@ -128,26 +127,28 @@ impl TaskRunner {
                 let mut node_result = false;
                 if task.is_service {
                     // Service task branch
-                    let (cancel_prober_tx, cancel_prober_rx) = watch::channel(());
+                    let (cancel_probe_tx, cancel_probe_rx) = watch::channel(());
                     let log_rx = app_tx.subscribe_output();
                     let mut task_fut = tokio_spawn!(
-                        &format!("process {}", task.name),
+                        "process",
+                        { task = task.name },
                         Self::run_process(task.clone(), process, app_tx.clone())
                     );
-                    let mut prober_fut = tokio_spawn!(
-                        &format!("prober {}", task.name),
-                        Self::run_prober(task.clone(), log_rx, cancel_prober_rx)
+                    let mut probe_fut = tokio_spawn!(
+                        "probe",
+                        { task = task.name },
+                        Self::run_probe(task.clone(), log_rx, cancel_probe_rx)
                     );
 
                     let mut task_finished = None;
-                    let mut prober_finished = None;
-                    while task_finished.is_none() || prober_finished.is_none() {
+                    let mut probe_finished = None;
+                    while task_finished.is_none() || probe_finished.is_none() {
                         tokio::select! {
                             // Process branch
                             result = &mut task_fut, if task_finished.is_none() => {
-                                // Service task process should not finish before prober
+                                // Service task process should not finish before probe
                                 // So the node result is considered as `false`
-                                let result = result.with_context(|| format!("Task {:?} failed to run", task.name))?;
+                                let result = result.with_context(|| format!("task {:?} failed to run", task.name))?;
                                 let should_restart = match result {
                                     Ok(result) => {
                                         match result {
@@ -165,12 +166,12 @@ impl TaskRunner {
                                         }
                                     }
                                     Err(e) => {
-                                        info!("Task {:?} failed to run: {:?}", task.name, e);
+                                        info!("Task failed to run: {:?}", e);
                                         false
                                     }
                                 };
                                 if should_restart {
-                                    info!("Task {:?} should restart", task.name);
+                                    info!("Task should restart");
                                     // Send restart message
                                     if let Err(e) = callback.send(CallbackMessage(None)).await {
                                         warn!("Failed to send callback event: {:?}", e)
@@ -181,17 +182,17 @@ impl TaskRunner {
                                 task_finished = Some(false)
                             }
                             // Prober branch
-                            result = &mut prober_fut, if prober_finished.is_none() => {
-                                let result = result.with_context(|| format!("Task {:?} failed to run", task.name))?;
-                                // The prober result is the node result
-                                prober_finished = Some(result.unwrap_or(false));
+                            result = &mut probe_fut, if probe_finished.is_none() => {
+                                let result = result.with_context(|| format!("task {:?} failed to run", task.name))?;
+                                // The probe result is the node result
+                                probe_finished = Some(result.unwrap_or(false));
                             }
                         }
-                        // If prober finished first
-                        if let Some(prober_ok) = prober_finished {
-                            if prober_ok {
+                        // If probe finished first
+                        if let Some(probe_ok) = probe_finished {
+                            if probe_ok {
                                 // ...and is successful, wait for the process
-                                info!("Task {:?} is ready", task.name);
+                                info!("Task is ready");
                                 app_tx.ready_task();
                                 // Notify the visitor the task is ready
                                 if let Err(e) = callback.send(CallbackMessage(Some(true))).await {
@@ -200,17 +201,17 @@ impl TaskRunner {
                                 continue;
                             } else {
                                 // ...and is failure, the process will be stopped eventually
-                                info!("Task {:?} is not ready", task.name);
+                                info!("Task is not ready");
                                 app_tx.finish_task(TaskResult::NotReady);
                                 node_result = false;
                                 break;
                             }
                         }
-                        // If task finished before prober, consider it as failed regardless of the result
+                        // If task finished before probe, consider it as failed regardless of the result
                         if let Some(_) = task_finished {
-                            info!("Task {:?} finished before it become ready", task.name);
-                            if let Err(e) = cancel_prober_tx.send(()) {
-                                warn!("Failed to send cancel prober: {:?}", e)
+                            info!("Task finished before it become ready");
+                            if let Err(e) = cancel_probe_tx.send(()) {
+                                warn!("Failed to send cancel probe: {:?}", e)
                             }
                             app_tx.finish_task(TaskResult::NotReady);
                             node_result = false;
@@ -267,15 +268,15 @@ impl TaskRunner {
         Ok(())
     }
 
-    async fn run_prober(
+    async fn run_probe(
         task: Task,
         log_rx: UnboundedReceiver<Vec<u8>>,
         cancel: watch::Receiver<()>,
     ) -> anyhow::Result<bool> {
-        match task.prober.clone() {
-            Prober::LogLine(prober) => prober.probe(log_rx, cancel).await,
-            Prober::Exec(prober) => prober.probe(cancel).await,
-            Prober::None => Ok(true),
+        match task.probe.clone() {
+            Probe::LogLine(probe) => probe.run(log_rx, cancel).await,
+            Probe::Exec(probe) => probe.run(cancel).await,
+            Probe::None => Ok(true),
         }
     }
 

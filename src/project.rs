@@ -1,5 +1,5 @@
 use crate::config::{HealthCheckConfig, ProjectConfig, Restart, ServiceConfig};
-use crate::probe::{ExecProber, LogLineProber, Prober};
+use crate::probe::{ExecProbe, LogLineProbe, Probe};
 use anyhow::Context;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
@@ -54,7 +54,7 @@ impl Workspace {
 
         for d in deps.iter() {
             if !tasks.contains(*d) {
-                anyhow::bail!("Task {:?} is not defined.", d);
+                anyhow::bail!("task {:?} is not defined.", d);
             }
         }
 
@@ -84,7 +84,7 @@ impl Workspace {
                             .map(|t| t.name)
                             .collect::<Vec<_>>();
                         if child_tasks.is_empty() {
-                            anyhow::bail!("Task {:?} is not defined in any project", t);
+                            anyhow::bail!("task {:?} is not defined in any project", t);
                         }
                         child_tasks
                     }
@@ -101,7 +101,7 @@ impl Workspace {
             for t in tasks.iter() {
                 child
                     .task(t)
-                    .with_context(|| format!("Task {:?} is not defined in project {:?}", t, child.name))?;
+                    .with_context(|| format!("task {:?} is not defined in project {:?}", t, child.name))?;
             }
             Ok(tasks.clone())
         }
@@ -153,7 +153,7 @@ pub struct Task {
 
     pub is_service: bool,
 
-    pub prober: Prober,
+    pub probe: Probe,
 
     pub restart: Restart,
 }
@@ -191,14 +191,14 @@ impl Task {
                 .collect::<HashMap<_, _>>();
 
             // Probes
-            let (is_service, prober, restart) = match task_config.service {
+            let (is_service, probe, restart) = match task_config.service {
                 Some(service) => match service {
-                    ServiceConfig::Bool(bool) => (bool, Prober::None, Restart::Never),
+                    ServiceConfig::Bool(bool) => (bool, Probe::None, Restart::Never),
                     ServiceConfig::Struct(st) => {
-                        let prober = match st.healthcheck {
+                        let probe = match st.healthcheck {
                             Some(healthcheck) => match healthcheck {
                                 // Log Probe
-                                HealthCheckConfig::Log(c) => Prober::LogLine(LogLineProber::new(
+                                HealthCheckConfig::Log(c) => Probe::LogLine(LogLineProbe::new(
                                     &task_name,
                                     Regex::new(&c.log).with_context(|| format!("invalid regex pattern {:?}", c.log))?,
                                     c.timeout,
@@ -221,7 +221,7 @@ impl Task {
                                         .chain(hc_env.into_iter())
                                         .collect::<HashMap<_, _>>();
 
-                                    Prober::Exec(ExecProber::new(
+                                    Probe::Exec(ExecProbe::new(
                                         &task_name,
                                         &c.command,
                                         &hc_shell.command,
@@ -235,12 +235,12 @@ impl Task {
                                     ))
                                 }
                             },
-                            None => Prober::None,
+                            None => Probe::None,
                         };
-                        (true, prober, st.restart)
+                        (true, probe, st.restart)
                     }
                 },
-                _ => (false, Prober::None, Restart::Never),
+                _ => (false, Probe::None, Restart::Never),
             };
 
             ret.insert(
@@ -258,7 +258,7 @@ impl Task {
                         .map(|s| Task::qualified_name(project_name, s))
                         .collect(),
                     is_service,
-                    prober,
+                    probe,
                     restart,
                 },
             );

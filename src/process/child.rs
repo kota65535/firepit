@@ -236,7 +236,10 @@ impl ChildHandle {
             ChildHandleImpl::Tokio(child) => child.kill().await,
             ChildHandleImpl::Pty(child) => {
                 let mut killer = child.clone_killer();
-                tokio_spawn_blocking!("kill", move || killer.kill()).await.unwrap()
+                let pid = self.pid.clone();
+                tokio_spawn_blocking!("kill", { pid = pid }, move || killer.kill())
+                    .await
+                    .unwrap()
             }
         }
     }
@@ -437,7 +440,7 @@ impl Child {
         let state = Arc::new(RwLock::new(ChildState::Running(command_tx)));
         let task_state = state.clone();
 
-        let _task = tokio_spawn!(&format!("child {} exit handler", label), async move {
+        let _task = tokio_spawn!("child", { task = label }, async move {
             // On Windows it is important that this gets dropped once the child process
             // exits
             let controller = controller;
@@ -587,7 +590,8 @@ impl Child {
         // TODO: in order to not impose that a stdout_pipe is Send we send the bytes
         // across a channel
         let (byte_tx, mut byte_rx) = mpsc::channel(48);
-        tokio_spawn_blocking!(&format!("child {} output handler", self.label()), move || {
+        let pid = self.pid.clone();
+        tokio_spawn_blocking!("child", { pid = pid }, move || {
             let mut buffer = [0; 1024];
             let mut last_byte = None;
             loop {

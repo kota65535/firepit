@@ -7,7 +7,7 @@ use crate::tokio_spawn;
 use crate::tui::app::TuiApp;
 use clap::Parser;
 use std::path;
-use tracing::{debug, info};
+use tracing::{debug, info, Instrument};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
