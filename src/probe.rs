@@ -37,7 +37,7 @@ impl LogLineProbe {
         mut log_rx: mpsc::UnboundedReceiver<Vec<u8>>,
         mut cancel: watch::Receiver<()>,
     ) -> anyhow::Result<bool> {
-        debug!("Prober started (LogLineProber)");
+        debug!("Prober started (LogLineProber) after {} sec", self.start_period);
         tokio::time::sleep(Duration::from_secs(self.start_period)).await;
 
         loop {
@@ -108,14 +108,14 @@ impl ExecProbe {
     }
 
     pub async fn run(&self, mut cancel: watch::Receiver<()>) -> anyhow::Result<bool> {
-        debug!("Prober started (ExecProber)");
+        debug!("Prober started (ExecProber) after {} sec", self.start_period);
         tokio::time::sleep(Duration::from_secs(self.start_period)).await;
 
         let mut retries = 0;
         loop {
             debug!("Prober try ({}/{})", retries, self.retries);
 
-            let mut process = match self.exec() {
+            let mut process = match self.exec().await {
                 Ok(p) => p,
                 Err(e) => {
                     warn!("Prober failed to exec: {:?}", e);
@@ -126,6 +126,7 @@ impl ExecProbe {
             tokio::select! {
                 _ = cancel.changed() => {
                     debug!("Prober cancelled");
+                    if let Some(pid) = process.pid() { self.manager.stop_by_pid(pid).await; }
                     return Ok(false);
                 },
                 _ = tokio::time::sleep(Duration::from_secs(self.timeout)) => {
@@ -152,11 +153,12 @@ impl ExecProbe {
             }
             retries += 1;
 
+            debug!("Prober will retry after {} sec", self.interval);
             tokio::time::sleep(Duration::from_secs(self.interval)).await;
         }
     }
 
-    fn exec(&self) -> anyhow::Result<Child> {
+    async fn exec(&self) -> anyhow::Result<Child> {
         let mut args = Vec::new();
         args.extend(self.shell_args.clone());
         args.push(self.command.clone());
@@ -167,7 +169,7 @@ impl ExecProbe {
             .with_label(&format!("{} probe", self.name))
             .to_owned();
 
-        match self.manager.spawn(cmd, Duration::from_millis(500)) {
+        match self.manager.spawn(cmd, Duration::from_millis(500)).await {
             Some(Ok(child)) => Ok(child),
             Some(Err(e)) => Err(e).with_context(|| "unable to spawn task"),
             _ => anyhow::bail!("unable to spawn task"),

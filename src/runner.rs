@@ -60,7 +60,7 @@ impl TaskRunner {
     pub async fn run(&mut self, mut app_tx: EventSender) -> anyhow::Result<()> {
         // Set pty size if possible
         if let Some(pane_size) = app_tx.pane_size().await {
-            self.manager.set_pty_size(pane_size.rows, pane_size.cols);
+            self.manager.set_pty_size(pane_size.rows, pane_size.cols).await;
         }
 
         // Run visitor
@@ -96,7 +96,7 @@ impl TaskRunner {
             let manager = self.manager.clone();
 
             let task_name = task.name.clone();
-            task_fut.push(tokio_spawn!("task", { task = task_name }, async move {
+            task_fut.push(tokio_spawn!("task", { name = task_name }, async move {
                 // Skip the task if any dependency didn't finish successfully
                 if !deps_ok {
                     info!("Task does not run as its dependency task failed");
@@ -114,7 +114,7 @@ impl TaskRunner {
 
                 app_tx = app_tx.clone();
 
-                let process = match Self::spawn_process(task.clone(), manager.clone()) {
+                let process = match Self::spawn_process(task.clone(), manager.clone()).await {
                     Ok(Some(process)) => process,
                     Err(e) => anyhow::bail!("failed to spawn task {:?}: {:?}", task.name, e),
                     _ => anyhow::bail!("failed to spawn task {:?}", task.name),
@@ -131,12 +131,12 @@ impl TaskRunner {
                     let log_rx = app_tx.subscribe_output();
                     let mut task_fut = tokio_spawn!(
                         "process",
-                        { task = task.name },
+                        { name = task.name },
                         Self::run_process(task.clone(), process, app_tx.clone())
                     );
                     let mut probe_fut = tokio_spawn!(
                         "probe",
-                        { task = task.name },
+                        { name = task.name },
                         Self::run_probe(task.clone(), log_rx, cancel_probe_rx)
                     );
 
@@ -149,6 +149,14 @@ impl TaskRunner {
                                 // Service task process should not finish before probe
                                 // So the node result is considered as `false`
                                 let result = result.with_context(|| format!("task {:?} failed to run", task.name))?;
+
+                                match result {
+                                    Ok(Some(result)) => {
+                                        app_tx.finish_task(result.clone());
+                                    }
+                                    _ => {}
+                                }
+
                                 let should_restart = match result {
                                     Ok(result) => {
                                         match result {
@@ -226,8 +234,14 @@ impl TaskRunner {
                     node_result
                 } else {
                     // Normal task branch
-                    let task_result = Self::run_process(task.clone(), process, app_tx.clone()).await?;
-                    node_result = match task_result {
+                    let result = Self::run_process(task.clone(), process, app_tx.clone()).await?;
+                    match result {
+                        Some(result) => {
+                            app_tx.finish_task(result.clone());
+                        }
+                        _ => {}
+                    };
+                    node_result = match result {
                         Some(TaskResult::Success) => true,
                         _ => false,
                     };
@@ -238,6 +252,8 @@ impl TaskRunner {
                 if let Err(e) = callback.send(CallbackMessage(Some(node_result))).await {
                     warn!("Failed to send callback event: {:?}", e)
                 }
+
+                manager.stop_by_pid(pid).await;
 
                 Ok(())
             }));
@@ -285,7 +301,7 @@ impl TaskRunner {
         }
     }
 
-    fn spawn_process(task: Task, manager: ProcessManager) -> anyhow::Result<Option<Child>> {
+    async fn spawn_process(task: Task, manager: ProcessManager) -> anyhow::Result<Option<Child>> {
         let mut args = Vec::new();
         args.extend(task.shell_args.clone());
         args.push(task.command.clone());
@@ -297,14 +313,13 @@ impl TaskRunner {
             .with_label(&task.name)
             .to_owned();
 
-        let process = match manager.spawn(cmd, Duration::from_millis(500)) {
+        let process = match manager.spawn(cmd, Duration::from_millis(500)).await {
             Some(Ok(child)) => child,
             Some(Err(e)) => anyhow::bail!("failed to spawn task {:?}: {:?}", task.name, e),
             _ => return Ok(None),
         };
-        let pid = process.pid().unwrap_or(0);
 
-        info!("Task has started. PID={}", pid);
+        info!("Task has started. PID={}", process.pid().unwrap_or(0));
 
         Ok(Some(process))
     }
@@ -333,9 +348,6 @@ impl TaskRunner {
         };
 
         info!("Task has finished. PID={}", pid);
-
-        // Notify the app the task ended
-        app_tx.finish_task(result.clone());
 
         Ok(Some(result))
     }

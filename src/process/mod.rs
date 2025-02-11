@@ -12,14 +12,11 @@
 mod child;
 mod command;
 
-use std::{
-    io,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{io, sync::Arc, time::Duration};
 
 pub use command::Command;
 use futures::Future;
+use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tracing::{debug, trace};
 
@@ -85,10 +82,10 @@ impl ProcessManager {
     /// If spawn returns None, the process manager is closed and the child
     /// process was not spawned. If spawn returns Some(Err), the process
     /// manager is open, but the child process failed to spawn.
-    pub fn spawn(&self, command: Command, stop_timeout: Duration) -> Option<io::Result<Child>> {
+    pub async fn spawn(&self, command: Command, stop_timeout: Duration) -> Option<io::Result<Child>> {
         let label = command.label();
         trace!("acquiring lock for spawning {label}");
-        let mut lock = self.state.lock().unwrap();
+        let mut lock = self.state.lock().await;
         trace!("acquired lock for spawning {label}");
         if lock.is_closing {
             debug!("Process manager is closing, refuses to spawn");
@@ -101,6 +98,20 @@ impl ProcessManager {
         }
         trace!("releasing lock for spawning {label}");
         Some(child)
+    }
+
+    pub async fn stop_by_label(&self, label: &str) {
+        let mut lock = self.state.lock().await;
+        if let Some(c) = lock.children.iter_mut().find(|c| c.label() == label) {
+            c.stop().await;
+        }
+    }
+
+    pub async fn stop_by_pid(&self, pid: u32) {
+        let mut lock = self.state.lock().await;
+        if let Some(c) = lock.children.iter_mut().find(|c| c.pid() == Some(pid)) {
+            c.stop().await;
+        }
     }
 
     /// Stop the process manager, closing all child processes. On posix
@@ -132,7 +143,7 @@ impl ProcessManager {
         let mut set = JoinSet::new();
 
         {
-            let mut lock = self.state.lock().expect("not poisoned");
+            let mut lock = self.state.lock().await;
             lock.is_closing = true;
             for child in lock.children.iter() {
                 let child = child.clone();
@@ -147,19 +158,19 @@ impl ProcessManager {
         }
 
         {
-            let mut lock = self.state.lock().expect("not poisoned");
+            let mut lock = self.state.lock().await;
 
             // just allocate a new vec rather than clearing the old one
             lock.children = vec![];
         }
     }
 
-    pub fn is_closed(&self) -> bool {
-        self.state.lock().expect("not poisoned").is_closing
+    pub async fn is_closed(&self) -> bool {
+        self.state.lock().await.is_closing
     }
 
-    pub fn set_pty_size(&self, rows: u16, cols: u16) {
-        self.state.lock().expect("not poisoned").size = Some(PtySize { rows, cols });
+    pub async fn set_pty_size(&self, rows: u16, cols: u16) {
+        self.state.lock().await.size = Some(PtySize { rows, cols });
     }
 }
 

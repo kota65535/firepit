@@ -5,17 +5,20 @@ use std::path::Path;
 use firepit::config::ProjectConfig;
 use firepit::event::{Event, EventSender};
 use firepit::project::Workspace;
-use log::LevelFilter;
 use std::sync::Once;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::task::JoinHandle;
+use tracing_subscriber::EnvFilter;
 
 static INIT: Once = Once::new();
 
 pub fn setup() {
     INIT.call_once(|| {
-        env_logger::builder().filter_level(LevelFilter::Debug).try_init();
+        tracing_subscriber::fmt()
+            .with_env_filter(EnvFilter::new("debug"))
+            .with_ansi(false)
+            .init();
     });
 }
 
@@ -44,7 +47,7 @@ async fn test_service() {
 
     let mut expected = HashMap::new();
     expected.insert(String::from("#foo"), String::from("Finished: Success"));
-    expected.insert(String::from("#bar"), String::from("Ready"));
+    expected.insert(String::from("#bar"), String::from("Finished: Success"));
     expected.insert(String::from("#baz"), String::from("Ready"));
     expected.insert(String::from("#qux"), String::from("Ready"));
 

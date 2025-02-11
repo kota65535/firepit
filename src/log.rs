@@ -1,9 +1,8 @@
 use crate::config::{LogConfig, UI};
 use std::fs::File;
-use std::str::FromStr;
 use std::sync::Mutex;
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::fmt::writer::{BoxMakeWriter, MakeWriterExt};
+use tracing_subscriber::fmt::writer::BoxMakeWriter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
@@ -33,7 +32,8 @@ pub fn init_logger(log: &LogConfig, ui: &UI) -> anyhow::Result<()> {
         None => {
             if *ui != UI::Tui {
                 tracing_subscriber::fmt()
-                    .with_max_level(tracing::Level::from_str(&log.level)?)
+                    .with_env_filter(EnvFilter::new(&log.level))
+                    .with_ansi(false)
                     .init();
             }
             Ok(())

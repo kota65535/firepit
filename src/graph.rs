@@ -117,7 +117,7 @@ impl TaskGraph {
                 .collect::<anyhow::Result<Vec<_>>>()?;
 
             let task_name = task.name.clone();
-            nodes_fut.push(tokio_spawn!("node", { task = task_name }, async move {
+            nodes_fut.push(tokio_spawn!("node", { name = task_name }, async move {
                 if dep_tasks.is_empty() {
                     info!("No dependency")
                 } else {
@@ -206,7 +206,7 @@ impl TaskGraph {
                     };
                 }
 
-                info!("visitor finished");
+                info!("Visitor finished");
                 Ok(())
             }));
         }

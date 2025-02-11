@@ -1,16 +1,19 @@
 use assertables::assert_starts_with;
 use firepit::config::ProjectConfig;
-use log::LevelFilter;
 use std::collections::HashMap;
 use std::env;
 use std::path::Path;
 use std::sync::Once;
+use tracing_subscriber::EnvFilter;
 
 static INIT: Once = Once::new();
 
 pub fn setup() {
     INIT.call_once(|| {
-        env_logger::builder().filter_level(LevelFilter::Debug).try_init();
+        tracing_subscriber::fmt()
+            .with_env_filter(EnvFilter::new("debug"))
+            .with_ansi(false)
+            .init();
     });
 }
 
