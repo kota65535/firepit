@@ -16,14 +16,13 @@ impl ColorConfig {
     /// Infer the color choice from environment variables and checking if stdout
     /// is a tty
     pub fn infer() -> Self {
-        let env_setting =
-            std::env::var("FORCE_COLOR")
-                .ok()
-                .and_then(|force_color| match force_color.as_str() {
-                    "false" | "0" => Some(true),
-                    "true" | "1" | "2" | "3" => Some(false),
-                    _ => None,
-                });
+        let env_setting = std::env::var("FORCE_COLOR")
+            .ok()
+            .and_then(|force_color| match force_color.as_str() {
+                "false" | "0" => Some(true),
+                "true" | "1" | "2" | "3" => Some(false),
+                _ => None,
+            });
         let should_strip_ansi = env_setting.unwrap_or_else(|| !atty::is(atty::Stream::Stdout));
         Self { should_strip_ansi }
     }
@@ -55,18 +54,14 @@ impl ColorConfig {
 
         // On the macOS Terminal, the rainbow colors don't show up correctly.
         // Instead, we print in bold magenta
-        if matches!(env::var("TERM_PROGRAM"), Ok(terminal_program) if terminal_program == "Apple_Terminal")
-        {
+        if matches!(env::var("TERM_PROGRAM"), Ok(terminal_program) if terminal_program == "Apple_Terminal") {
             return BOLD.apply_to(MAGENTA.apply_to(text)).to_string().into();
         }
 
         let mut out = Vec::new();
         for (i, c) in text.char_indices() {
             let (r, g, b) = Self::rainbow_rgb(i);
-            out.push(format!(
-                "\x1b[1m\x1b[38;2;{};{};{}m{}\x1b[0m\x1b[0;1m",
-                r, g, b, c
-            ));
+            out.push(format!("\x1b[1m\x1b[38;2;{};{};{}m{}\x1b[0m\x1b[0;1m", r, g, b, c));
         }
         out.push(RESET.to_string());
 
@@ -105,9 +100,6 @@ mod test {
     fn test_color_config_resets_term() {
         let color_config = ColorConfig::new(false);
         let grey_str = GREY.apply_to("gray");
-        assert_eq!(
-            format!("{}", color_config.apply(grey_str)),
-            "\u{1b}[2mgray\u{1b}[0m"
-        );
+        assert_eq!(format!("{}", color_config.apply(grey_str)), "\u{1b}[2mgray\u{1b}[0m");
     }
 }

@@ -38,12 +38,7 @@ impl ColorSelector {
             return style;
         }
 
-        let color = {
-            self.inner
-                .write()
-                .expect("lock poisoned")
-                .insert_color(key.to_string())
-        };
+        let color = { self.inner.write().expect("lock poisoned").insert_color(key.to_string()) };
 
         color
     }

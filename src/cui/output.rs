@@ -77,9 +77,7 @@ impl<W: Write> OutputSink<W> {
     pub fn logger(&self, behavior: OutputClientBehavior) -> OutputClient<W> {
         let buffer = match behavior {
             OutputClientBehavior::Passthrough => None,
-            OutputClientBehavior::InMemoryBuffer | OutputClientBehavior::Grouped => {
-                Some(Default::default())
-            }
+            OutputClientBehavior::InMemoryBuffer | OutputClientBehavior::Grouped => Some(Default::default()),
         };
         let writers = self.writers.clone();
         OutputClient {
@@ -169,10 +167,7 @@ impl<W: Write> OutputClient<W> {
     }
 
     fn add_bytes_to_buffer(&self, bytes: SinkBytes<'static>) {
-        let buffer = self
-            .buffer
-            .as_ref()
-            .expect("attempted to add line to nil buffer");
+        let buffer = self.buffer.as_ref().expect("attempted to add line to nil buffer");
         buffer.write().expect("lock poisoned").push(bytes);
     }
 }

@@ -6,7 +6,6 @@ use crate::runner::TaskRunner;
 use crate::tokio_spawn;
 use crate::tui::app::TuiApp;
 use clap::Parser;
-use schemars::schema_for;
 use std::path;
 use tracing::{debug, info};
 
