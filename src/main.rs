@@ -18,6 +18,8 @@ mod project;
 
 mod util;
 
+mod watcher;
+
 #[tokio::main]
 async fn main() {
     std::panic::set_hook(Box::new(panic::panic_handler));

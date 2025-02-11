@@ -19,26 +19,26 @@ pub struct ProjectConfig {
     #[serde(default)]
     pub projects: HashMap<String, String>,
 
-    /// Shell configuration for all tasks.
+    /// Shell configuration for all tasks
     #[serde(default = "default_shell")]
     pub shell: ShellConfig,
 
-    /// Working directory for all tasks.
+    /// Working directory for all tasks
     #[serde(default = "default_working_dir")]
     pub working_dir: String,
 
     /// Environment variables of all tasks.
-    /// If this is a child project, merged with that of the root project.
+    /// Merged with those of child projects.
     #[serde(default)]
     pub env: HashMap<String, String>,
 
     /// Dotenv files for all tasks.
-    /// If this is a child project, merged with the root project's one.
-    /// The same environment variable wins for the later one.
+    /// Merged with those of child projects.
+    /// If environment variable duplicates, the later one wins.
     #[serde(default)]
     pub env_files: Vec<String>,
 
-    /// Task definitions.
+    /// Task definitions
     #[serde(default)]
     pub tasks: HashMap<String, TaskConfig>,
 
@@ -57,7 +57,7 @@ pub struct ProjectConfig {
     #[serde(default = "default_ui")]
     pub ui: UI,
 
-    /// project directory path (absolute).
+    /// project directory path (absolute)
     #[serde(skip)]
     pub dir: PathBuf,
 }
@@ -190,26 +190,11 @@ impl ProjectConfig {
     }
 
     pub fn working_dir_path(&self) -> PathBuf {
-        let wd = Path::new(&self.working_dir);
-        if wd.is_absolute() {
-            wd.to_path_buf()
-        } else {
-            self.dir.join(wd)
-        }
+        absolute_or_join(&self.working_dir, &self.dir)
     }
 
     pub fn env_files_paths(&self) -> Vec<PathBuf> {
-        self.env_files
-            .iter()
-            .map(|f| {
-                let p = Path::new(f);
-                if p.is_absolute() {
-                    p.to_path_buf()
-                } else {
-                    self.dir.join(p)
-                }
-            })
-            .collect()
+        self.env_files.iter().map(|f| absolute_or_join(f, &self.dir)).collect()
     }
 
     pub fn schema(&self) -> anyhow::Result<String> {
@@ -220,13 +205,13 @@ impl ProjectConfig {
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct TaskConfig {
-    /// Command to run.
+    /// Command to run
     pub command: String,
 
-    /// Shell configuration.
+    /// Shell configuration
     pub shell: Option<ShellConfig>,
 
-    /// Working directory.
+    /// Working directory
     pub working_dir: Option<String>,
 
     /// Environment variables.
@@ -234,46 +219,54 @@ pub struct TaskConfig {
     #[serde(default)]
     pub env: HashMap<String, String>,
 
-    /// Dotenv files.
+    /// Dotenv files
     /// Merged with the project's env.
     #[serde(default)]
     pub env_files: Vec<String>,
 
-    /// Names of Tasks on which this task depends.
+    /// Dependency task names
     #[serde(default)]
     pub depends_on: Vec<String>,
 
-    /// Service configuration.
+    /// Service configuration
     pub service: Option<ServiceConfig>,
+
+    /// Inputs files
+    #[serde(default)]
+    pub inputs: Vec<String>,
+
+    /// Output files
+    #[serde(default)]
+    pub outputs: Vec<String>,
 }
 
 impl TaskConfig {
     pub fn working_dir_path(&self, dir: &PathBuf) -> Option<PathBuf> {
         match self.working_dir.clone() {
-            Some(wd) => {
-                let wd = Path::new(&wd);
-                if wd.is_absolute() {
-                    Some(wd.to_path_buf())
-                } else {
-                    Some(dir.join(wd))
-                }
-            }
+            Some(wd) => Some(absolute_or_join(&wd, dir)),
             None => None,
         }
     }
 
     pub fn env_files_paths(&self, dir: &PathBuf) -> Vec<PathBuf> {
-        self.env_files
-            .iter()
-            .map(|f| {
-                let p = Path::new(f);
-                if p.is_absolute() {
-                    p.to_path_buf()
-                } else {
-                    dir.join(p)
-                }
-            })
-            .collect()
+        self.env_files.iter().map(|f| absolute_or_join(f, dir)).collect()
+    }
+
+    pub fn inputs_paths(&self, dir: &PathBuf) -> Vec<PathBuf> {
+        self.inputs.iter().map(|f| absolute_or_join(f, dir)).collect()
+    }
+
+    pub fn outputs_paths(&self, dir: &PathBuf) -> Vec<PathBuf> {
+        self.outputs.iter().map(|f| absolute_or_join(f, dir)).collect()
+    }
+}
+
+fn absolute_or_join(path: &str, dir: &PathBuf) -> PathBuf {
+    let p = Path::new(path);
+    if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        dir.join(p)
     }
 }
 
