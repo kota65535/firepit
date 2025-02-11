@@ -1,10 +1,12 @@
+use crate::tokio_spawn;
 use crate::tui::app::FRAME_RATE;
-use log::warn;
 use std::fmt::{Display, Formatter};
 use std::io;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
+use tracing::warn;
+
 #[derive(strum::AsRefStr)]
 
 pub enum Event {
@@ -123,7 +125,7 @@ pub struct EventSender {
 impl EventSender {
     pub fn new(tx: mpsc::UnboundedSender<Event>) -> Self {
         let tick_sender = tx.clone();
-        tokio::spawn(async move {
+        tokio_spawn!("tick", async move {
             let mut interval = tokio::time::interval(FRAME_RATE);
             loop {
                 interval.tick().await;

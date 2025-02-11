@@ -1,11 +1,11 @@
 use crate::process::{Child, ChildExit, Command, ProcessManager};
 use anyhow::Context;
-use log::{debug, warn};
 use regex::Regex;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::sync::{mpsc, watch};
+use tracing::{debug, warn};
 
 #[derive(Debug, Clone)]
 pub enum Prober {
@@ -161,9 +161,10 @@ impl ExecProber {
         args.extend(self.shell_args.clone());
         args.push(self.command.clone());
         let cmd = Command::new(self.shell.clone())
-            .args(args)
-            .envs(self.env.clone())
-            .current_dir(self.working_dir.clone())
+            .with_args(args)
+            .with_envs(self.env.clone())
+            .with_current_dir(self.working_dir.clone())
+            .with_label(&format!("{} prober", self.name))
             .to_owned();
 
         match self.manager.spawn(cmd, Duration::from_millis(500)) {
@@ -178,17 +179,13 @@ impl ExecProber {
 #[allow(unused)]
 mod test {
     use super::*;
-    use log::LevelFilter;
     use std::sync::Once;
 
     static INIT: Once = Once::new();
 
     pub fn setup() {
         INIT.call_once(|| {
-            env_logger::builder()
-                .filter_level(LevelFilter::Debug)
-                .is_test(true)
-                .try_init();
+            tracing_subscriber::fmt().with_max_level(tracing::Level::DEBUG).init();
         });
     }
 

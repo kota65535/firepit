@@ -3,11 +3,12 @@ use crate::cui::app::CuiApp;
 use crate::log::init_logger;
 use crate::project::Workspace;
 use crate::runner::TaskRunner;
+use crate::tokio_spawn;
 use crate::tui::app::TuiApp;
 use clap::Parser;
-use log::{debug, info};
 use schemars::schema_for;
 use std::path;
+use tracing::{debug, info};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -70,19 +71,19 @@ pub async fn run() -> anyhow::Result<()> {
         UI::Cui => {
             let mut app = CuiApp::new();
             let sender = app.sender();
-            let fut = tokio::spawn(async move { app.run().await });
+            let fut = tokio_spawn!("app", async move { app.run().await });
             (sender, fut)
         }
         UI::Tui => {
             let mut app = TuiApp::new(&runner.target_tasks, &dep_tasks)?;
             let sender = app.sender();
-            let fut = tokio::spawn(async move { app.run().await });
+            let fut = tokio_spawn!("app", async move { app.run().await });
             (sender, fut)
         }
     };
 
     // Start runner
-    let runner_fut = tokio::spawn(async move { runner.run(app_tx.clone()).await });
+    let runner_fut = tokio_spawn!("runner", async move { runner.run(app_tx.clone()).await });
 
     // Wait for both threads
     runner_fut.await??;

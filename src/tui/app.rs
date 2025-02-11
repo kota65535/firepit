@@ -11,7 +11,6 @@ use crate::tui::task::TaskDetail;
 use crate::tui::term_output::TerminalOutput;
 use anyhow::Context;
 use indexmap::IndexMap;
-use log::{debug, info};
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Layout},
@@ -26,6 +25,7 @@ use tokio::{
     sync::{mpsc, oneshot},
     time::Instant,
 };
+use tracing::{debug, info};
 
 pub const FRAME_RATE: Duration = Duration::from_millis(3);
 pub const EXIT_DELAY: Duration = Duration::from_secs(3);

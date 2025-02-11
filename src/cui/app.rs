@@ -5,11 +5,11 @@ use crate::cui::prefixed::PrefixedWriter;
 use crate::event::EventSender;
 use crate::event::{Event, EventReceiver};
 use anyhow::Context;
-use log::warn;
 use std::collections::HashMap;
 use std::io::{stdout, Stdout, Write};
 use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc;
+use tracing::warn;
 
 pub struct CuiApp {
     color_selector: ColorSelector,

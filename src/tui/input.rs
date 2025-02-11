@@ -1,12 +1,13 @@
 use crate::event::{Event, ScrollSize};
+use crate::tokio_spawn;
 use crate::tui::app::LayoutSections;
 use crate::tui::lib::RingBuffer;
 use crossterm::event::{EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use futures::StreamExt;
 use itertools::Itertools;
-use log::debug;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
+use tracing::debug;
 
 #[derive(Debug, Clone)]
 pub struct InputHandler {
@@ -44,7 +45,7 @@ impl InputHandler {
 
         if atty::is(atty::Stream::Stdin) {
             let mut events = EventStream::new();
-            tokio::spawn(async move {
+            tokio_spawn!("input handler", async move {
                 while let Some(Ok(event)) = events.next().await {
                     if tx.send(event).await.is_err() {
                         break;

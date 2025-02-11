@@ -16,6 +16,7 @@ pub struct Command {
     env: BTreeMap<OsString, OsString>,
     open_stdin: bool,
     env_clear: bool,
+    label: Option<String>,
 }
 
 impl Command {
@@ -28,27 +29,25 @@ impl Command {
             env: BTreeMap::new(),
             open_stdin: true,
             env_clear: false,
+            label: None,
         }
     }
 
-    pub fn args<I, S>(&mut self, args: I) -> &mut Self
+    pub fn with_args<I, S>(&mut self, args: I) -> &mut Self
     where
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
     {
-        self.args = args
-            .into_iter()
-            .map(|arg| arg.as_ref().to_os_string())
-            .collect();
+        self.args = args.into_iter().map(|arg| arg.as_ref().to_os_string()).collect();
         self
     }
 
-    pub fn current_dir(&mut self, dir: PathBuf) -> &mut Self {
+    pub fn with_current_dir(&mut self, dir: PathBuf) -> &mut Self {
         self.cwd = Some(dir);
         self
     }
 
-    pub fn envs<I, K, V>(&mut self, vars: I) -> &mut Self
+    pub fn with_envs<I, K, V>(&mut self, vars: I) -> &mut Self
     where
         I: IntoIterator<Item = (K, V)>,
         K: AsRef<OsStr>,
@@ -61,7 +60,7 @@ impl Command {
         self
     }
 
-    pub fn env<K, V>(&mut self, key: K, val: V) -> &mut Self
+    pub fn with_env<K, V>(&mut self, key: K, val: V) -> &mut Self
     where
         K: AsRef<OsStr>,
         V: AsRef<OsStr>,
@@ -84,21 +83,30 @@ impl Command {
         self
     }
 
-    pub fn label(&self) -> String {
-        format!(
-            "({}) {} {}",
-            self.cwd
-                .as_deref()
-                .map(|dir| dir.to_str().unwrap())
-                .unwrap_or_default(),
-            self.program.to_string_lossy(),
-            self.args.iter().map(|s| s.to_string_lossy()).join(" ")
-        )
-    }
-
     /// If stdin is expected to be opened
     pub fn will_open_stdin(&self) -> bool {
         self.open_stdin
+    }
+
+    pub fn label(&self) -> String {
+        match self.label.clone() {
+            Some(label) => label,
+            None => self.default_label(),
+        }
+    }
+
+    pub fn with_label(&mut self, label: &str) -> &mut Self {
+        self.label = Some(label.to_string());
+        self
+    }
+
+    pub fn default_label(&self) -> String {
+        format!(
+            "({}) {} {}",
+            self.cwd.as_deref().map(|dir| dir.to_str().unwrap()).unwrap_or_default(),
+            self.program.to_string_lossy(),
+            self.args.iter().map(|s| s.to_string_lossy()).join(" ")
+        )
     }
 }
 
@@ -111,6 +119,7 @@ impl From<Command> for tokio::process::Command {
             env,
             open_stdin,
             env_clear,
+            ..
         } = value;
 
         let mut cmd = tokio::process::Command::new(program);
@@ -123,11 +132,7 @@ impl From<Command> for tokio::process::Command {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             // Only open stdin if configured to do so
-            .stdin(if open_stdin {
-                Stdio::piped()
-            } else {
-                Stdio::null()
-            });
+            .stdin(if open_stdin { Stdio::piped() } else { Stdio::null() });
         if let Some(cwd) = cwd {
             cmd.current_dir(cwd.as_path());
         }

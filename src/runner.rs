@@ -5,15 +5,15 @@ use crate::probe::Prober;
 use crate::process::{Child, ChildExit, Command, ProcessManager};
 use crate::project::{Task, Workspace};
 use crate::signal::{get_signal, SignalHandler};
+use crate::tokio_spawn;
 use anyhow::Context;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use log::{debug, info, warn};
-use nix::NixPath;
 use std::path::Path;
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::watch;
+use tracing::{debug, info, warn};
 
 #[derive(Debug)]
 pub struct TaskRunner {
@@ -40,11 +40,13 @@ impl TaskRunner {
         let signal_handler = SignalHandler::new(signal);
         if let Some(subscriber) = signal_handler.subscribe() {
             let manager = manager.clone();
-            tokio::spawn(async move {
-                let _guard = subscriber.listen().await;
-                debug!("Stopping ProcessManager");
-                manager.stop().await;
-            });
+            tokio::task::Builder::new()
+                .name("runner canceller by signal")
+                .spawn(async move {
+                    let _guard = subscriber.listen().await;
+                    debug!("Stopping ProcessManager");
+                    manager.stop().await;
+                })?;
         }
 
         Ok(TaskRunner {
@@ -76,7 +78,7 @@ impl TaskRunner {
 
         // Cancel visitor if we received any signal
         if let Some(subscriber) = self.signal_handler.subscribe() {
-            tokio::spawn(async move {
+            tokio_spawn!("visitor canceller by signal", async move {
                 let _guard = subscriber.listen().await;
                 cancel_tx.send(true)
             });
@@ -95,7 +97,7 @@ impl TaskRunner {
             let mut app_tx = app_tx.with_name(&task.name);
             let manager = self.manager.clone();
 
-            task_fut.push(tokio::spawn(async move {
+            task_fut.push(tokio_spawn!(&format!("task {}", task.name), async move {
                 // Skip the task if any dependency didn't finish successfully
                 if !deps_ok {
                     info!("Task {:?} does not run because of its failed dependency", task.name);
@@ -128,8 +130,14 @@ impl TaskRunner {
                     // Service task branch
                     let (cancel_prober_tx, cancel_prober_rx) = watch::channel(());
                     let log_rx = app_tx.subscribe_output();
-                    let mut task_fut = tokio::spawn(Self::run_process(task.clone(), process, app_tx.clone()));
-                    let mut prober_fut = tokio::spawn(Self::run_prober(task.clone(), log_rx, cancel_prober_rx));
+                    let mut task_fut = tokio_spawn!(
+                        &format!("process {}", task.name),
+                        Self::run_process(task.clone(), process, app_tx.clone())
+                    );
+                    let mut prober_fut = tokio_spawn!(
+                        &format!("prober {}", task.name),
+                        Self::run_prober(task.clone(), log_rx, cancel_prober_rx)
+                    );
 
                     let mut task_finished = None;
                     let mut prober_finished = None;
@@ -277,9 +285,10 @@ impl TaskRunner {
         args.push(task.command.clone());
 
         let cmd = Command::new(task.shell.clone())
-            .args(args)
-            .envs(task.env.clone())
-            .current_dir(task.working_dir.clone())
+            .with_args(args)
+            .with_envs(task.env.clone())
+            .with_current_dir(task.working_dir.clone())
+            .with_label(&task.name)
             .to_owned();
 
         let process = match manager.spawn(cmd, Duration::from_millis(500)) {
@@ -323,15 +332,5 @@ impl TaskRunner {
         app_tx.finish_task(result.clone());
 
         Ok(Some(result))
-    }
-
-    pub fn info(&self) {
-        info!("Target tasks: {:?}", self.target_tasks);
-        let dep_tasks = self
-            .tasks
-            .iter()
-            .filter(|t| !self.target_tasks.contains(&t.name))
-            .collect::<Vec<_>>();
-        info!("Dep tasks: {:?}", dep_tasks);
     }
 }

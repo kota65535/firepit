@@ -36,6 +36,9 @@ base64 = "0.22.1"
 which = "7.0.1"
 strum = "0.26.3"
 assertables = "9.5.0"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tracing = "0.1.41"
+console-subscriber = "0.4.1"
 
 [build]
 target = "aarch64-apple-darwin"

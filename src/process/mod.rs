@@ -20,8 +20,8 @@ use std::{
 
 pub use command::Command;
 use futures::Future;
-use log::{debug, log_enabled, trace};
 use tokio::task::JoinSet;
+use tracing::{debug, trace};
 
 pub use self::child::{Child, ChildExit};
 
@@ -86,9 +86,7 @@ impl ProcessManager {
     /// process was not spawned. If spawn returns Some(Err), the process
     /// manager is open, but the child process failed to spawn.
     pub fn spawn(&self, command: Command, stop_timeout: Duration) -> Option<io::Result<Child>> {
-        let label = log_enabled!(log::Level::Trace)
-            .then(|| command.label())
-            .unwrap_or_default();
+        let label = command.label();
         trace!("acquiring lock for spawning {label}");
         let mut lock = self.state.lock().unwrap();
         trace!("acquired lock for spawning {label}");

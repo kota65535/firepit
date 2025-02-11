@@ -1,8 +1,8 @@
 use crate::project::Task;
+use crate::tokio_spawn;
 use anyhow::Context;
 use futures::future::join_all;
 use futures::stream::FuturesUnordered;
-use log::{debug, error, info, warn};
 use petgraph::algo::toposort;
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{DiGraph, NodeIndex};
@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::fmt;
 use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
+use tracing::{debug, error, info, warn};
 
 #[derive(Clone)]
 pub struct TaskGraph {
@@ -115,7 +116,7 @@ impl TaskGraph {
                 })
                 .collect::<anyhow::Result<Vec<_>>>()?;
 
-            nodes_fut.push(tokio::spawn(async move {
+            nodes_fut.push(tokio_spawn!(&format!("node {}", task.name), async move {
                 if dep_tasks.is_empty() {
                     info!("Node {:?} has no dependency", task.name)
                 } else {

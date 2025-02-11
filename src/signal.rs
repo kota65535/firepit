@@ -1,5 +1,5 @@
+use crate::tokio_spawn;
 use futures::{stream::FuturesUnordered, StreamExt};
-use log::{debug, warn};
 use nix::sys::signal::Signal;
 use std::{
     fmt::Debug,
@@ -7,6 +7,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tokio::sync::{mpsc, oneshot};
+use tracing::{debug, warn};
 
 /// SignalHandler provides a mechanism to subscribe to a future and get alerted
 /// whenever the future completes or the handler gets a close message.
@@ -53,7 +54,7 @@ impl SignalHandler {
         let state = Arc::new(Mutex::new(HandlerState::default()));
         let worker_state = state.clone();
         let (close, mut rx) = mpsc::channel::<()>(1);
-        tokio::spawn(async move {
+        tokio_spawn!("signal handler", async move {
             tokio::select! {
                 // We don't care if we get a signal or if we are unable to receive signals
                 // Either way we start the shutdown.

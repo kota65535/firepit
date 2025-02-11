@@ -16,6 +16,8 @@ mod tui;
 
 mod project;
 
+mod util;
+
 #[tokio::main]
 async fn main() {
     std::panic::set_hook(Box::new(panic::panic_handler));

@@ -24,7 +24,8 @@ use std::{
     time::Duration,
 };
 
-use log::{debug, trace};
+use super::{Command, PtySize};
+use crate::{tokio_spawn, tokio_spawn_blocking};
 use portable_pty::{native_pty_system, Child as PtyChild, MasterPty as PtyController};
 use tokio::{
     io::{AsyncBufRead, AsyncBufReadExt, BufReader},
@@ -32,8 +33,7 @@ use tokio::{
     process::Command as TokioCommand,
     sync::{mpsc, watch, RwLock},
 };
-
-use super::{Command, PtySize};
+use tracing::{debug, trace};
 
 #[derive(Debug)]
 pub enum ChildState {
@@ -236,7 +236,7 @@ impl ChildHandle {
             ChildHandleImpl::Tokio(child) => child.kill().await,
             ChildHandleImpl::Pty(child) => {
                 let mut killer = child.clone_killer();
-                tokio::task::spawn_blocking(move || killer.kill()).await.unwrap()
+                tokio_spawn_blocking!("kill", move || killer.kill()).await.unwrap()
             }
         }
     }
@@ -437,7 +437,7 @@ impl Child {
         let state = Arc::new(RwLock::new(ChildState::Running(command_tx)));
         let task_state = state.clone();
 
-        let _task = tokio::spawn(async move {
+        let _task = tokio_spawn!(&format!("child {} exit handler", label), async move {
             // On Windows it is important that this gets dropped once the child process
             // exits
             let controller = controller;
@@ -587,7 +587,7 @@ impl Child {
         // TODO: in order to not impose that a stdout_pipe is Send we send the bytes
         // across a channel
         let (byte_tx, mut byte_rx) = mpsc::channel(48);
-        tokio::task::spawn_blocking(move || {
+        tokio_spawn_blocking!(&format!("child {} output handler", self.label()), move || {
             let mut buffer = [0; 1024];
             let mut last_byte = None;
             loop {
