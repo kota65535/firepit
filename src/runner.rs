@@ -9,11 +9,14 @@ use crate::tokio_spawn;
 use anyhow::Context;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use std::path::Path;
+use glob_match::glob_match;
+use log::{debug, info, warn};
+use petgraph::Direction;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
-use tokio::sync::watch;
-use tracing::{debug, info, warn};
+use tokio::sync::{broadcast, mpsc, oneshot, watch};
 
 #[derive(Debug)]
 pub struct TaskRunner {
@@ -23,6 +26,28 @@ pub struct TaskRunner {
     pub manager: ProcessManager,
     pub signal_handler: SignalHandler,
     pub concurrency: usize,
+    pub cancel_txs: HashMap<String, broadcast::Sender<bool>>,
+    pub cancel_rxs: HashMap<String, broadcast::Receiver<bool>>,
+}
+
+impl Clone for TaskRunner {
+    fn clone(&self) -> Self {
+        let mut cancel_rxs = HashMap::new();
+        for (k, v) in self.cancel_txs.iter() {
+            cancel_rxs.insert(k.clone(), v.subscribe());
+        }
+
+        Self {
+            target_tasks: self.target_tasks.clone(),
+            tasks: self.tasks.clone(),
+            task_graph: self.task_graph.clone(),
+            manager: self.manager.clone(),
+            signal_handler: self.signal_handler.clone(),
+            concurrency: self.concurrency,
+            cancel_txs: self.cancel_txs.clone(),
+            cancel_rxs,
+        }
+    }
 }
 
 impl TaskRunner {
@@ -30,60 +55,147 @@ impl TaskRunner {
         let all_tasks = ws.tasks();
         let target_tasks = ws.target_tasks(target_tasks, dir)?;
 
-        let task_graph = TaskGraph::new(&all_tasks)?.transitive_closure(&target_tasks)?;
+        let task_graph = TaskGraph::new(&all_tasks)?.transitive_closure(&target_tasks, Direction::Outgoing)?;
         let tasks = task_graph.sort()?;
         debug!("Task graph:\n{:?}", task_graph);
 
         let manager = ProcessManager::infer();
 
-        let signal = get_signal()?;
-        let signal_handler = SignalHandler::new(signal);
-        if let Some(subscriber) = signal_handler.subscribe() {
-            let manager = manager.clone();
-            tokio_spawn!("signal runner canceller", async move {
-                let _guard = subscriber.listen().await;
-                debug!("Stopping ProcessManager");
-                manager.stop().await;
-            });
+        let mut cancel_txs = HashMap::new();
+        let mut cancel_rxs = HashMap::new();
+        for t in tasks.iter() {
+            let (cancel_tx, cancel_rx) = broadcast::channel(1);
+            cancel_txs.insert(t.name.clone(), cancel_tx);
+            cancel_rxs.insert(t.name.clone(), cancel_rx);
         }
 
         Ok(TaskRunner {
             tasks,
             target_tasks,
             task_graph,
-            signal_handler,
+            signal_handler: SignalHandler::new(get_signal()?),
             manager,
             concurrency: ws.concurrency,
+            cancel_txs,
+            cancel_rxs,
         })
     }
 
-    pub async fn run(&mut self, mut app_tx: EventSender) -> anyhow::Result<()> {
+    pub async fn start(&mut self, app_tx: EventSender) -> anyhow::Result<()> {
         // Set pty size if possible
         if let Some(pane_size) = app_tx.pane_size().await {
             self.manager.set_pty_size(pane_size.rows, pane_size.cols).await;
         }
 
+        let task_graph = self.task_graph.clone();
+        self.run(task_graph, app_tx).await
+    }
+
+    pub async fn watch(
+        &mut self,
+        mut tokio_rx: mpsc::UnboundedReceiver<HashSet<PathBuf>>,
+        app_tx: EventSender,
+    ) -> anyhow::Result<()> {
+        let manager = self.manager.clone();
+        let tasks = self.tasks.clone();
+        let cancel_txs = self.cancel_txs.clone();
+        let mut count = 1;
+
+        let (cancel_tx, mut cancel_rx) = watch::channel(());
+
+        if let Some(subscriber) = self.signal_handler.subscribe() {
+            tokio_spawn!("watcher-canceller-signal", async move {
+                let _guard = subscriber.listen().await;
+                cancel_tx.send(()).ok();
+            });
+        }
+        loop {
+            tokio::select! {
+                _ = cancel_rx.changed() => {
+                    break
+                }
+                Some(paths) = tokio_rx.recv() => {
+                    let mut this = self.clone();
+                    let app_tx = app_tx.clone();
+                    info!("{} Changed files", paths.len());
+                    let mut changed_tasks = Vec::new();
+                    for p in paths.iter() {
+                        for t in tasks.iter() {
+                            for i in t.inputs.iter() {
+                                if glob_match(&i.to_string_lossy(), p.to_str().unwrap()) {
+                                    changed_tasks.push(t.name.clone())
+                                }
+                            }
+                        }
+                    }
+                    if changed_tasks.len() > 0 {
+                        info!("Changed tasks: {:?}", changed_tasks);
+                        let task_graph = this
+                            .task_graph
+                            .transitive_closure(&changed_tasks, Direction::Incoming)?;
+                        let affected_tasks = task_graph.sort()?;
+                        info!(
+                        "Affected tasks: {:?}",
+                        affected_tasks.iter().map(|t| t.name.clone()).collect::<Vec<_>>()
+                    );
+                        for t in affected_tasks.iter() {
+                            info!("Cancelling task: {}", t.name);
+                            if let Err(err) = cancel_txs.get(&t.name).unwrap().send(true) {
+                                warn!("Failed to send cancel signal: {:?}", err);
+                            }
+                            manager.stop_by_label(&t.name).await;
+                        }
+                        info!("Cancelled all tasks");
+                        tokio_spawn!("runner", { n = count }, async move {
+                            this.run(task_graph, app_tx).await;
+                            info!("Watcher run finished!");
+                        });
+                        count += 1;
+                    }
+                }
+            }
+        }
+        info!("Watcher runner finished");
+        Ok(())
+    }
+
+    pub async fn run(&mut self, task_graph: TaskGraph, mut app_tx: EventSender) -> anyhow::Result<()> {
         // Run visitor
         let Visitor {
             mut node_rx,
-            cancel: cancel_tx,
+            cancel: cancel_visitor,
             future: mut visitor_fut,
-        } = self
-            .task_graph
+        } = task_graph
             .visit(self.concurrency)
             .with_context(|| "Error while visiting task graph")?;
         debug!("Visitor started");
 
-        // Cancel visitor if we received any signal
+        // Set signal handler
         if let Some(subscriber) = self.signal_handler.subscribe() {
-            tokio_spawn!("signal visitor canceller", async move {
+            let manager = self.manager.clone();
+            let cancel_visitor = cancel_visitor.clone();
+            tokio_spawn!("runner-canceller-signal", async move {
                 let _guard = subscriber.listen().await;
-                cancel_tx.send(true)
+                debug!("Stopping ProcessManager");
+                manager.stop().await;
+                cancel_visitor.send(())
+            });
+        }
+
+        let (visitor_canceller_tx, visitor_canceller_rx) = oneshot::channel();
+        if let Some(subscriber) = self.signal_handler.subscribe() {
+            let cancel_visitor = cancel_visitor.clone();
+            tokio_spawn!("visitor-canceller", async move {
+                tokio::select! {
+                    _guard = subscriber.listen() => {}
+                    _ = visitor_canceller_rx => {
+                        cancel_visitor.send(());
+                    }
+                }
             });
         }
 
         let mut task_fut = FuturesUnordered::new();
-
         // Receive the next task when its dependencies finished
         while let Some(VisitorMessage {
             node: task,
@@ -94,8 +206,9 @@ impl TaskRunner {
         {
             let mut app_tx = app_tx.with_name(&task.name);
             let manager = self.manager.clone();
-
+            let mut cancel_rx = self.cancel_rxs.get(&task.name).unwrap().resubscribe();
             let task_name = task.name.clone();
+            let cancel_visitor = cancel_visitor.clone();
             task_fut.push(tokio_spawn!("task", { name = task_name }, async move {
                 // Skip the task if any dependency didn't finish successfully
                 if !deps_ok {
@@ -132,7 +245,7 @@ impl TaskRunner {
                     let mut task_fut = tokio_spawn!(
                         "process",
                         { name = task.name },
-                        Self::run_process(task.clone(), process, app_tx.clone())
+                        Self::run_process(task.clone(), process, app_tx.clone(), cancel_rx.resubscribe())
                     );
                     let mut probe_fut = tokio_spawn!(
                         "probe",
@@ -195,6 +308,17 @@ impl TaskRunner {
                                 // The probe result is the node result
                                 probe_finished = Some(result.unwrap_or(false));
                             }
+                            // Cancel branch
+                            _ = cancel_rx.recv() => {
+                                info!("Task is canceled, stopping...");
+                                if let Err(e) = cancel_probe_tx.send(()) {
+                                    warn!("Failed to send cancel probe: {:?}", e)
+                                }
+                                if let Err(e) = cancel_visitor.send(()) {
+                                    warn!("Failed to send cancel visitor: {:?}", e)
+                                }
+                                return Ok(());
+                            }
                         }
 
                         if probe_finished.is_some() && task_finished.is_some() {
@@ -234,7 +358,14 @@ impl TaskRunner {
                     node_result
                 } else {
                     // Normal task branch
-                    let result = Self::run_process(task.clone(), process, app_tx.clone()).await?;
+                    let result = tokio::select! {
+                        task_result = Self::run_process(task.clone(), process, app_tx.clone(), cancel_rx.resubscribe()) => {
+                            task_result?
+                        }
+                        _ = cancel_rx.recv() => {
+                            return Ok(());
+                        }
+                    };
                     match result {
                         Some(result) => {
                             app_tx.finish_task(result.clone());
@@ -284,7 +415,9 @@ impl TaskRunner {
         debug!("Tasks finished");
 
         // Notify app the runner finished
-        app_tx.stop().await;
+        // app_tx.stop().await;
+
+        visitor_canceller_tx.send(()).ok();
 
         Ok(())
     }
@@ -324,7 +457,12 @@ impl TaskRunner {
         Ok(Some(process))
     }
 
-    async fn run_process(task: Task, mut process: Child, app_tx: EventSender) -> anyhow::Result<Option<TaskResult>> {
+    async fn run_process(
+        task: Task,
+        mut process: Child,
+        app_tx: EventSender,
+        mut cancel_rx: broadcast::Receiver<bool>,
+    ) -> anyhow::Result<Option<TaskResult>> {
         let pid = process.pid().unwrap_or(0);
 
         // Transfer stdin of the process to the app
@@ -334,21 +472,27 @@ impl TaskRunner {
 
         // Wait until complete
         info!("Task is waiting for output. PID={}", pid);
-        let result = match process.wait_with_piped_outputs(app_tx.clone()).await {
-            Ok(Some(exit_status)) => match exit_status {
-                ChildExit::Finished(Some(code)) if code == 0 => TaskResult::Success,
-                ChildExit::Finished(Some(code)) => TaskResult::Failure(code),
-                ChildExit::Killed | ChildExit::KilledExternal => TaskResult::Stopped,
-                ChildExit::Failed => TaskResult::Unknown,
-                _ => TaskResult::Unknown,
-            },
-            Err(e) => anyhow::bail!("error while waiting task {:?}: {:?}", task.name, e),
-
-            Ok(None) => anyhow::bail!("unable to determine why child exited"),
-        };
-
-        info!("Task has finished. PID={}", pid);
-
-        Ok(Some(result))
+        tokio::select! {
+            _ = cancel_rx.recv() => {
+                info!("Task is canceled, stopping...");
+                process.kill().await;
+                return Ok(None);
+            }
+            result = process.wait_with_piped_outputs(app_tx.clone()) => {
+                let result = match result {
+                    Ok(Some(exit_status)) => match exit_status {
+                        ChildExit::Finished(Some(code)) if code == 0 => TaskResult::Success,
+                        ChildExit::Finished(Some(code)) => TaskResult::Failure(code),
+                        ChildExit::Killed | ChildExit::KilledExternal => TaskResult::Stopped,
+                        ChildExit::Failed => TaskResult::Unknown,
+                        _ => TaskResult::Unknown,
+                    },
+                    Err(e) => anyhow::bail!("error while waiting task {:?}: {:?}", task.name, e),
+                    Ok(None) => anyhow::bail!("unable to determine why child exited"),
+                };
+                info!("Task has finished. PID={}", pid);
+                return Ok(Some(result))
+            }
+        }
     }
 }

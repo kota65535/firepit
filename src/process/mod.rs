@@ -15,7 +15,9 @@ mod command;
 use std::{io, sync::Arc, time::Duration};
 
 pub use command::Command;
-use futures::Future;
+use futures::stream::FuturesUnordered;
+use futures::{Future, StreamExt};
+use tokio::join;
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tracing::{debug, trace};
@@ -100,17 +102,33 @@ impl ProcessManager {
         Some(child)
     }
 
-    pub async fn stop_by_label(&self, label: &str) {
-        let mut lock = self.state.lock().await;
-        if let Some(c) = lock.children.iter_mut().find(|c| c.label() == label) {
-            c.stop().await;
-        }
+    pub async fn stop_by_label(&self, label: &str) -> anyhow::Result<Vec<ChildExit>> {
+        let mut children = {
+            let lock = self.state.lock().await;
+            lock.children
+                .iter()
+                .filter(|c| c.label() == label)
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+
+        let results = FuturesUnordered::from_iter(children.iter_mut().map(|c| c.stop()))
+            .filter_map(|r| async move { r })
+            .collect()
+            .await;
+
+        Ok(results)
     }
 
-    pub async fn stop_by_pid(&self, pid: u32) {
-        let mut lock = self.state.lock().await;
-        if let Some(c) = lock.children.iter_mut().find(|c| c.pid() == Some(pid)) {
-            c.stop().await;
+    pub async fn stop_by_pid(&self, pid: u32) -> Option<ChildExit> {
+        let child = {
+            let mut lock = self.state.lock().await;
+            lock.children.iter_mut().find(|c| c.pid() == Some(pid)).cloned()
+        };
+        if let Some(mut c) = child {
+            c.stop().await
+        } else {
+            None
         }
     }
 

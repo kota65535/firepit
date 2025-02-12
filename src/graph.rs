@@ -6,7 +6,7 @@ use futures::stream::FuturesUnordered;
 use petgraph::algo::toposort;
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{DiGraph, NodeIndex};
-use petgraph::visit::{depth_first_search, IntoNodeIdentifiers};
+use petgraph::visit::{depth_first_search, IntoNodeIdentifiers, NodeCount, Reversed};
 use petgraph::Direction;
 use std::cmp::max;
 use std::collections::HashMap;
@@ -29,7 +29,7 @@ pub struct VisitorMessage {
 
 pub struct Visitor {
     pub node_rx: mpsc::Receiver<VisitorMessage>,
-    pub cancel: broadcast::Sender<bool>,
+    pub cancel: broadcast::Sender<()>,
     pub future: FuturesUnordered<JoinHandle<anyhow::Result<()>>>,
 }
 
@@ -160,36 +160,44 @@ impl TaskGraph {
                     match node_tx.send(message).await {
                         Ok(_) => {
                             'recv: loop {
-                                match callback_rx.recv().await {
-                                    Some(CallbackMessage(result)) => {
+                                tokio::select! {
+                                    result = callback_rx.recv() => {
                                         match result {
-                                            Some(bool) => {
-                                                // Send errors indicate that there are no receivers which
-                                                // happens when this node has no dependents
-                                                if let Err(e) = tx.send(bool) {
-                                                    debug!("Cannot send the result to the graph: {:?}", e);
-                                                };
-                                                // Service task should continue recv loop so that it can restart
-                                                // after reaching the ready state
-                                                if bool && task.is_service {
-                                                    info!("Result: {:?}, still waiting callback", result);
-                                                    continue 'recv;
+                                            Some(CallbackMessage(result)) => {
+                                                match result {
+                                                    Some(bool) => {
+                                                        // Send errors indicate that there are no receivers which
+                                                        // happens when this node has no dependents
+                                                        if let Err(e) = tx.send(bool) {
+                                                            debug!("Cannot send the result to the graph: {:?}", e);
+                                                        };
+                                                        // Service task should continue recv loop so that it can restart
+                                                        // after reaching the ready state
+                                                        if bool && task.is_service {
+                                                            info!("Result: {:?}, still waiting callback", result);
+                                                            continue 'recv;
+                                                        }
+                                                        info!("Result: {:?}", result);
+                                                        break 'send;
+                                                    }
+                                                    None => {
+                                                        info!("Result is empty, resending");
+                                                        count += 1;
+                                                        continue 'send;
+                                                    }
                                                 }
-                                                info!("Result: {:?}", result);
-                                                break 'send;
                                             }
-                                            None => {
-                                                info!("Result is empty, resending");
-                                                count += 1;
-                                                continue 'send;
+                                            _ => {
+                                                // If the caller drops the callback sender without signaling
+                                                // that the node processing is finished we assume that it is finished.
+                                                warn!("Callback sender dropped");
+                                                tx.send(false).ok();
+                                                break 'send;
                                             }
                                         }
                                     }
-                                    _ => {
-                                        // If the caller drops the callback sender without signaling
-                                        // that the node processing is finished we assume that it is finished.
-                                        warn!("Callback sender dropped");
-                                        tx.send(false).ok();
+                                    _ = cancel_rx.recv() => {
+                                        info!("Visitor cancelled");
                                         break 'send;
                                     }
                                 }
@@ -217,7 +225,7 @@ impl TaskGraph {
         })
     }
 
-    pub fn transitive_closure(&self, names: &Vec<String>) -> anyhow::Result<TaskGraph> {
+    pub fn transitive_closure(&self, names: &Vec<String>, direction: Direction) -> anyhow::Result<TaskGraph> {
         let mut visited = Vec::<NodeIndex>::new();
         let visitor = |idx| {
             if let petgraph::visit::DfsEvent::Discover(n, _) = idx {
@@ -230,9 +238,12 @@ impl TaskGraph {
             .filter_map(|n| self.node_by_task(n))
             .map(|n| n.1)
             .collect::<Vec<_>>();
-        depth_first_search(&self.graph, indices, visitor);
 
-        // TODO: nicer error handling
+        match direction {
+            Direction::Outgoing => depth_first_search(&self.graph, indices, visitor),
+            Direction::Incoming => depth_first_search(Reversed(&self.graph), indices, visitor),
+        };
+
         let tasks = visited
             .iter()
             .map(|&i| self.graph.node_weight(i).unwrap().clone())

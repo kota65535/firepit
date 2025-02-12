@@ -13,3 +13,4 @@ pub mod runner;
 pub mod signal;
 pub mod tui;
 pub mod util;
+pub mod watcher;

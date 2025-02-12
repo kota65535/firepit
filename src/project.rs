@@ -136,26 +136,41 @@ impl Project {
 
 #[derive(Debug, Clone)]
 pub struct Task {
+    /// Unique task name
     pub name: String,
 
+    /// Command to run
     pub command: String,
 
+    /// Shell command
     pub shell: String,
 
+    /// Shell command arguments
     pub shell_args: Vec<String>,
 
+    /// Environment variables
     pub env: HashMap<String, String>,
 
+    /// Dependency task names
     pub depends_on: Vec<String>,
 
     /// Task working directory path (absolute).
     pub working_dir: PathBuf,
 
+    /// Whether this task is a service or not
     pub is_service: bool,
 
+    /// Health checker
     pub probe: Probe,
 
+    /// Restart setting
     pub restart: Restart,
+
+    /// Input files
+    pub inputs: Vec<PathBuf>,
+
+    /// Output files
+    pub outputs: Vec<PathBuf>,
 }
 
 impl Task {
@@ -189,6 +204,9 @@ impl Task {
                 .into_iter()
                 .chain(task_env.clone().into_iter())
                 .collect::<HashMap<_, _>>();
+
+            let inputs = task_config.inputs_paths(&config.dir);
+            let outputs = task_config.outputs_paths(&config.dir);
 
             // Probes
             let (is_service, probe, restart) = match task_config.service {
@@ -247,7 +265,7 @@ impl Task {
                 task_name.clone(),
                 Task {
                     name: task_name.clone(),
-                    command: task_config.command,
+                    command: task_config.command.clone(),
                     shell: task_shell.command,
                     shell_args: task_shell.args,
                     working_dir: task_working_dir,
@@ -260,6 +278,8 @@ impl Task {
                     is_service,
                     probe,
                     restart,
+                    inputs,
+                    outputs,
                 },
             );
         }

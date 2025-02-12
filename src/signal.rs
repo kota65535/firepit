@@ -54,7 +54,7 @@ impl SignalHandler {
         let state = Arc::new(Mutex::new(HandlerState::default()));
         let worker_state = state.clone();
         let (close, mut rx) = mpsc::channel::<()>(1);
-        tokio_spawn!("signal handler", async move {
+        tokio_spawn!("signal-handler", async move {
             tokio::select! {
                 // We don't care if we get a signal or if we are unable to receive signals
                 // Either way we start the shutdown.

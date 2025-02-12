@@ -3,11 +3,15 @@ use crate::cui::app::CuiApp;
 use crate::log::init_logger;
 use crate::project::Workspace;
 use crate::runner::TaskRunner;
+use crate::signal::{get_signal, SignalHandler};
 use crate::tokio_spawn;
 use crate::tui::app::TuiApp;
+use crate::watcher::FileWatcher;
 use clap::Parser;
 use std::path;
-use tracing::{debug, info, Instrument};
+use std::path::Path;
+use std::time::Duration;
+use tracing::{debug, info};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -81,12 +85,27 @@ pub async fn run() -> anyhow::Result<()> {
         }
     };
 
-    // Start runner
-    let runner_fut = tokio_spawn!("runner", async move { runner.run(app_tx.clone()).await });
+    let mut file_watcher = FileWatcher::new()?;
+    let fwh = file_watcher.run(&dir, Duration::from_millis(500))?;
 
-    // Wait for both threads
+    let mut task_watcher = runner.clone();
+
+    // Start task runner
+    let app_tx_cloned = app_tx.clone();
+    let runner_fut = tokio_spawn!("runner", { n = 0 }, async move { runner.start(app_tx_cloned).await });
+
+    // Start task watcher
+    let app_tx_cloned = app_tx.clone();
+    let watcher_fut = tokio_spawn!(
+        "watcher",
+        async move { task_watcher.watch(fwh.rx, app_tx_cloned).await }
+    );
+
+    // Wait all
     runner_fut.await??;
+    watcher_fut.await??;
     app_fut.await??;
+    fwh.future.join();
 
     Ok(())
 }

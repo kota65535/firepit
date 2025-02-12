@@ -45,7 +45,7 @@ impl InputHandler {
 
         if atty::is(atty::Stream::Stdin) {
             let mut events = EventStream::new();
-            tokio_spawn!("input handler", async move {
+            tokio_spawn!("input-handler", async move {
                 while let Some(Ok(event)) = events.next().await {
                     if tx.send(event).await.is_err() {
                         break;

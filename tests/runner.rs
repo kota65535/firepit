@@ -78,7 +78,7 @@ async fn run_task(path: &Path, tasks: Vec<String>, num_ready_tasks: usize) -> Ha
 
     let manager = runner.manager.clone();
 
-    let runner_fut = tokio::spawn(async move { runner.run(sender).await });
+    let runner_fut = tokio::spawn(async move { runner.start(sender).await });
     let status = handle_events(rx, num_ready_tasks).await.unwrap();
 
     // Stop processes to forcing runner to finish

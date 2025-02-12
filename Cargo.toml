@@ -21,11 +21,9 @@ serde_yaml = "0.9.34"
 tokio = { version = "1.41.1", features = ["full"] }
 vt100 = { git = "https://github.com/kota65535/vt100-rust", branch = "main" }
 lazy_static = "1.5.0"
-either = "1.13.0"
 ratatui = "=0.26.1"
 tui-term = { version = "=0.1.9", default-features = false }
 log = "0.4.22"
-env_logger = "0.11.6"
 indexmap = "2.7.1"
 human-panic = "2.0.2"
 regex = "1.11.1"
@@ -39,6 +37,8 @@ assertables = "9.5.0"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 tracing = "0.1.41"
 console-subscriber = "0.4.1"
+notify = "8.0.0"
+glob-match = "0.2.1"
 
 [build]
 target = "aarch64-apple-darwin"
