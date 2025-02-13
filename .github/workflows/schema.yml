@@ -38,6 +38,7 @@ jobs:
           git diff --name-only --exit-code
         continue-on-error: true
       - name: Commit & Push
+        if: steps.diff.outcome == 'failure'
         run: |
           git add .
           git commit --author=. -m 'Generate schema'
