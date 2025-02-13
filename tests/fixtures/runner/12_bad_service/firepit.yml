@@ -18,5 +18,5 @@ tasks:
     service:
       restart: always:5
       healthcheck:
-        command: nc localhost 12345
+        command: nc -z localhost 12345
         start_period: 1

@@ -13,7 +13,7 @@ tasks:
       - 'bar.txt'
     service:
       healthcheck:
-        command: nc localhost $(cat bar.txt)
+        command: nc -z localhost $(cat bar.txt)
         start_period: 1
 
 ui: tui
