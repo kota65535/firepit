@@ -1,5 +1,3 @@
-use ::log::error;
-
 mod cli;
 mod config;
 mod cui;
@@ -26,7 +24,7 @@ async fn main() {
     match cli::run().await {
         Ok(_) => {}
         Err(e) => {
-            error!("Error: {:?}", e);
+            eprintln!("Error: {:?}", e);
         }
     }
 }

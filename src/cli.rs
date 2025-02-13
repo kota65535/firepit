@@ -14,14 +14,15 @@ use tracing::{debug, info};
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Args {
-    #[arg(required = true)]
+    /// Task names to run
+    #[arg(required = false)]
     pub tasks: Vec<String>,
 
-    // Working directory
+    /// Working directory
     #[arg(short, long, default_value = ".")]
     pub dir: String,
 
-    // Watch mode
+    /// Watch mode
     #[arg(short, long, default_value = "false")]
     pub watch: bool,
 }
@@ -36,24 +37,18 @@ pub async fn run() -> anyhow::Result<()> {
 
     // Load config files
     let (root, children) = ProjectConfig::new_multi(&dir)?;
-    info!("Root project dir: {:?}", root.dir);
-    if !children.is_empty() {
-        info!(
-            "Child projects: \n{}",
-            children
-                .iter()
-                .map(|(k, v)| format!("{}: {:?}", k, v.dir))
-                .collect::<Vec<_>>()
-                .join("\n")
-        );
-    }
-
-    init_logger(&root.log)?;
 
     debug!("Json schema: \n{}", root.schema()?);
 
     // Aggregate information in config files into more workable form
     let ws = Workspace::new(&root, &children)?;
+    init_logger(&root.log)?;
+
+    // Print workspace information if no task specified
+    ws.print_info();
+    if args.tasks.is_empty() {
+        return Ok(());
+    }
 
     // Create runner
     let mut runner = TaskRunner::new(&ws, &args.tasks, dir.as_path())?;
