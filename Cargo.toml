@@ -40,9 +40,6 @@ console-subscriber = "0.4.1"
 notify = "8.0.0"
 globmatch = "0.3.0"
 
-[build]
-target = "aarch64-apple-darwin"
-
 # The profile that 'dist' will build with
 [profile.dist]
 inherits = "release"
