@@ -20,7 +20,7 @@ pub struct FileWatcherState {
     is_closing: bool,
 }
 
-pub struct WatchHandle {
+pub struct FileWatcherHandle {
     pub rx: mpsc::UnboundedReceiver<HashSet<PathBuf>>,
     pub cancel: watch::Sender<()>,
     pub future: std::thread::JoinHandle<()>,
@@ -34,7 +34,7 @@ impl FileWatcher {
         })
     }
 
-    pub fn run(&mut self, path: &Path, debounce_duration: Duration) -> anyhow::Result<WatchHandle> {
+    pub fn run(&mut self, path: &Path, debounce_duration: Duration) -> anyhow::Result<FileWatcherHandle> {
         let (tokio_tx, tokio_rx) = mpsc::unbounded_channel::<HashSet<PathBuf>>();
         let (std_tx, std_rx) = std::sync::mpsc::channel::<notify::Result<notify::Event>>();
 
@@ -100,7 +100,7 @@ impl FileWatcher {
             }
         });
 
-        Ok(WatchHandle {
+        Ok(FileWatcherHandle {
             rx: tokio_rx,
             cancel: cancel_tx,
             future,

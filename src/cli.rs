@@ -83,29 +83,33 @@ pub async fn run() -> anyhow::Result<()> {
         }
     };
 
-    let mut file_watcher = FileWatcher::new()?;
-    let fwh = file_watcher.run(&dir, Duration::from_millis(500))?;
-
-    let mut task_watcher = runner.clone();
+    let mut watcher_fut = None;
+    let mut watch_runner_fut = None;
+    if args.watch {
+        let mut file_watcher = FileWatcher::new()?;
+        let watcher_handle = file_watcher.run(&dir, Duration::from_millis(500))?;
+        let mut watch_runner = runner.clone();
+        let app_tx = app_tx.clone();
+        watcher_fut = Some(watcher_handle.future);
+        watch_runner_fut = Some(tokio_spawn!("watch-runner", async move {
+            watch_runner.watch(watcher_handle.rx, app_tx).await
+        }));
+    }
 
     // Start task runner
-    let app_tx_cloned = app_tx.clone();
-    let runner_fut = tokio_spawn!("runner", { n = 0 }, async move { runner.start(app_tx_cloned).await });
-
-    // Start task watcher
-    let app_tx_cloned = app_tx.clone();
-    let watcher_fut = tokio_spawn!(
-        "watcher",
-        async move { task_watcher.watch(fwh.rx, app_tx_cloned).await }
-    );
+    let app_tx = app_tx.clone();
+    let runner_fut = tokio_spawn!("runner", { n = 0 }, async move { runner.start(app_tx).await });
 
     // Wait all
     runner_fut.await??;
-    watcher_fut.await??;
     app_fut.await??;
-    fwh.future
-        .join()
-        .map_err(|e| anyhow::anyhow!("failed to join; {:?}", e))?;
+
+    if let (Some(watcher_fut), Some(watch_runner_fut)) = (watcher_fut, watch_runner_fut) {
+        watcher_fut
+            .join()
+            .map_err(|e| anyhow::anyhow!("failed to join; {:?}", e))?;
+        watch_runner_fut.await??;
+    }
 
     Ok(())
 }
