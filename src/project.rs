@@ -5,6 +5,7 @@ use anyhow::Context;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use tracing::warn;
 
 #[derive(Debug, Clone)]
 pub struct Workspace {

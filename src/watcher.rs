@@ -1,6 +1,5 @@
 use crate::signal::{get_signal, SignalHandler};
 use crate::tokio_spawn;
-use log::{info, warn};
 use notify::Watcher;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -8,6 +7,7 @@ use std::sync::mpsc::RecvTimeoutError;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::{mpsc, watch};
+use tracing::{info, warn};
 
 #[derive(Clone)]
 pub struct FileWatcher {
