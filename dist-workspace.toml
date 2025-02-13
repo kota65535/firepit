@@ -17,3 +17,6 @@ install-path = "CARGO_HOME"
 install-updater = true
 
 github-build-setup = "build-workaround"
+
+[dist.bin-aliases]
+firepit = ["fire"]
