@@ -43,8 +43,8 @@ pub async fn run() -> anyhow::Result<()> {
     init_logger(&root.log)?;
 
     // Print workspace information if no task specified
-    ws.print_info();
     if args.tasks.is_empty() {
+        ws.print_info();
         return Ok(());
     }
 
