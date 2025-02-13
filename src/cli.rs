@@ -14,14 +14,15 @@ use tracing::{debug, info};
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Args {
-    #[arg(required = true)]
+    /// Task names to run
+    #[arg(required = false)]
     pub tasks: Vec<String>,
 
-    // Working directory
+    /// Working directory
     #[arg(short, long, default_value = ".")]
     pub dir: String,
 
-    // Watch mode
+    /// Watch mode
     #[arg(short, long, default_value = "false")]
     pub watch: bool,
 }
@@ -36,24 +37,18 @@ pub async fn run() -> anyhow::Result<()> {
 
     // Load config files
     let (root, children) = ProjectConfig::new_multi(&dir)?;
-    info!("Root project dir: {:?}", root.dir);
-    if !children.is_empty() {
-        info!(
-            "Child projects: \n{}",
-            children
-                .iter()
-                .map(|(k, v)| format!("{}: {:?}", k, v.dir))
-                .collect::<Vec<_>>()
-                .join("\n")
-        );
-    }
-
-    init_logger(&root.log)?;
 
     debug!("Json schema: \n{}", root.schema()?);
 
     // Aggregate information in config files into more workable form
     let ws = Workspace::new(&root, &children)?;
+    init_logger(&root.log)?;
+
+    // Print workspace information if no task specified
+    ws.print_info();
+    if args.tasks.is_empty() {
+        return Ok(());
+    }
 
     // Create runner
     let mut runner = TaskRunner::new(&ws, &args.tasks, dir.as_path())?;
@@ -83,29 +78,33 @@ pub async fn run() -> anyhow::Result<()> {
         }
     };
 
-    let mut file_watcher = FileWatcher::new()?;
-    let fwh = file_watcher.run(&dir, Duration::from_millis(500))?;
-
-    let mut task_watcher = runner.clone();
+    let mut watcher_fut = None;
+    let mut watch_runner_fut = None;
+    if args.watch {
+        let mut file_watcher = FileWatcher::new()?;
+        let watcher_handle = file_watcher.run(&dir, Duration::from_millis(500))?;
+        let mut watch_runner = runner.clone();
+        let app_tx = app_tx.clone();
+        watcher_fut = Some(watcher_handle.future);
+        watch_runner_fut = Some(tokio_spawn!("watch-runner", async move {
+            watch_runner.watch(watcher_handle.rx, app_tx).await
+        }));
+    }
 
     // Start task runner
-    let app_tx_cloned = app_tx.clone();
-    let runner_fut = tokio_spawn!("runner", { n = 0 }, async move { runner.start(app_tx_cloned).await });
-
-    // Start task watcher
-    let app_tx_cloned = app_tx.clone();
-    let watcher_fut = tokio_spawn!(
-        "watcher",
-        async move { task_watcher.watch(fwh.rx, app_tx_cloned).await }
-    );
+    let app_tx = app_tx.clone();
+    let runner_fut = tokio_spawn!("runner", { n = 0 }, async move { runner.start(app_tx).await });
 
     // Wait all
     runner_fut.await??;
-    watcher_fut.await??;
     app_fut.await??;
-    fwh.future
-        .join()
-        .map_err(|e| anyhow::anyhow!("failed to join; {:?}", e))?;
+
+    if let (Some(watcher_fut), Some(watch_runner_fut)) = (watcher_fut, watch_runner_fut) {
+        watcher_fut
+            .join()
+            .map_err(|e| anyhow::anyhow!("failed to join; {:?}", e))?;
+        watch_runner_fut.await??;
+    }
 
     Ok(())
 }

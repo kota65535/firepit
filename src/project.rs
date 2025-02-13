@@ -1,4 +1,5 @@
 use crate::config::{HealthCheckConfig, ProjectConfig, Restart, ServiceConfig};
+use crate::cui::lib::BOLD;
 use crate::probe::{ExecProbe, LogLineProbe, Probe};
 use anyhow::Context;
 use regex::Regex;
@@ -106,6 +107,25 @@ impl Workspace {
             }
             Ok(tasks.clone())
         }
+    }
+
+    pub fn print_info(&self) {
+        let mut lines = Vec::new();
+        lines.push(format!(
+            "{}:\n  dir: {:?}\n  tasks: {:?}",
+            BOLD.apply_to("root").to_string(),
+            self.root.dir,
+            self.root.tasks.keys().collect::<Vec<_>>()
+        ));
+        for (k, v) in self.children.iter() {
+            lines.push(format!(
+                "{}:\n  dir: {:?}\n  tasks: {:?}",
+                BOLD.apply_to(k).to_string(),
+                v.dir,
+                v.tasks.keys().collect::<Vec<_>>()
+            ))
+        }
+        println!("{}", lines.join("\n"));
     }
 }
 

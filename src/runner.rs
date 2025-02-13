@@ -9,7 +9,6 @@ use crate::tokio_spawn;
 use anyhow::Context;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use log::{debug, info, warn};
 use petgraph::Direction;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -17,6 +16,7 @@ use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::{broadcast, watch};
 use tokio::task::JoinHandle;
+use tracing::{debug, info, warn};
 
 #[derive(Debug)]
 pub struct TaskRunner {
