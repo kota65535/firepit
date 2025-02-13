@@ -6,39 +6,39 @@ repository = "https://github.com/kota65535/firepit"
 
 [dependencies]
 anyhow = { version = "1.0.93", features = ["backtrace"] }
+assertables = "9.5.0"
 atty = "0.2.14"
+base64 = "0.22.1"
 clap = { version = "4.5.20", features = ["derive"] }
 console = "0.15.8"
+console-subscriber = "0.4.1"
 crossterm = { version = "0.28.1", features = ["event-stream"] }
+dotenvy = "0.15.7"
 futures = "0.3.31"
+globmatch = "0.3.0"
+human-panic = "2.0.2"
+indexmap = "2.7.1"
 itertools = "0.13.0"
+lazy_static = "1.5.0"
 libc = "0.2.162"
+log = "0.4.22"
 nix = { version = "0.26.2", features = ["signal"] }
+notify = "8.0.0"
 petgraph = "0.6.5"
 portable-pty = "0.8.1"
-serde = { version = "1.0.214", features = ["derive"] }
-serde_yaml = "0.9.34"
-tokio = { version = "1.41.1", features = ["full"] }
-vt100 = { git = "https://github.com/kota65535/vt100-rust", branch = "main" }
-lazy_static = "1.5.0"
 ratatui = "=0.26.1"
-tui-term = { version = "=0.1.9", default-features = false }
-log = "0.4.22"
-indexmap = "2.7.1"
-human-panic = "2.0.2"
 regex = "1.11.1"
 schemars = "0.8.21"
+serde = { version = "1.0.214", features = ["derive"] }
 serde_json = "1.0.137"
-dotenvy = "0.15.7"
-base64 = "0.22.1"
-which = "7.0.1"
+serde_yaml = "0.9.34"
 strum = "0.26.3"
-assertables = "9.5.0"
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tokio = { version = "1.41.1", features = ["full"] }
 tracing = "0.1.41"
-console-subscriber = "0.4.1"
-notify = "8.0.0"
-globmatch = "0.3.0"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tui-term = { version = "=0.1.9", default-features = false }
+vt100 = { git = "https://github.com/kota65535/vt100-rust", branch = "main" }
+which = "7.0.1"
 
 # The profile that 'dist' will build with
 [profile.dist]

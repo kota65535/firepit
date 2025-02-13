@@ -8,12 +8,12 @@ tasks:
       - foo.input
     outputs:
       - foo.out
-  
+
   bar:
     command: echo "bar"
     depends_on:
       - baz
-  
+
   baz:
     command: echo "baz"
 

@@ -4,18 +4,18 @@ tasks:
     depends_on:
       - bar
     inputs:
-      - 'foo.txt'
+      - "foo.txt"
 
   bar:
     command: echo "bar"
     depends_on:
       - baz
     inputs:
-      - 'bar.txt'
+      - "bar.txt"
 
   baz:
     command: echo "baz"
     inputs:
-      - 'baz.txt'
+      - "baz.txt"
 
 ui: tui

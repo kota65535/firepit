@@ -4,13 +4,13 @@ tasks:
     depends_on:
       - bar
     inputs:
-      - 'foo.txt'
+      - "foo.txt"
 
   bar:
     command: |
       nc -kl 12000
     inputs:
-      - 'bar.txt'
+      - "bar.txt"
     service:
       healthcheck:
         command: nc -z localhost $(cat bar.txt)

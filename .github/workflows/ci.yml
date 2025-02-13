@@ -11,7 +11,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ ubuntu-latest, macos-latest ]
+        os: [ubuntu-latest, macos-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,4 +31,4 @@ jobs:
       - name: Run tests
         run: cargo test --all --locked
         env:
-          RUST_BACKTRACE: '1'
+          RUST_BACKTRACE: "1"
