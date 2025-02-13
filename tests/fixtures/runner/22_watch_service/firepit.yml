@@ -1,0 +1,18 @@
+tasks:
+  foo:
+    command: echo "foo"
+    depends_on:
+      - bar
+    inputs:
+      - 'foo.txt'
+
+  bar:
+    command: |
+      nc -kl 12000
+    inputs:
+      - 'bar.txt'
+    service:
+      healthcheck:
+        command: nc localhost $(cat bar.txt)
+
+ui: tui
