@@ -19,7 +19,6 @@ tasks:
         log: baz
   qux:
     command: |
-      sleep 1
       echo "qux"
       nc -kl 11001
     service:
