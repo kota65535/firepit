@@ -17,6 +17,7 @@ pub enum Event {
         task: String,
         pid: u32,
         restart: u64,
+        run: u64,
     },
     TaskOutput {
         task: String,
@@ -147,8 +148,13 @@ impl EventSender {
         self.to_owned()
     }
 
-    pub fn start_task(&self, task: String, pid: u32, restart: u64) {
-        self.send(Event::StartTask { task, pid, restart })
+    pub fn start_task(&self, task: String, pid: u32, restart: u64, run: u64) {
+        self.send(Event::StartTask {
+            task,
+            pid,
+            restart,
+            run,
+        })
     }
 
     pub fn ready_task(&self) {
@@ -244,6 +250,7 @@ pub enum TaskStatus {
 pub struct TaskRunning {
     pub pid: u32,
     pub restart: u64,
+    pub run: u64,
 }
 
 impl Display for TaskStatus {
@@ -255,6 +262,7 @@ impl Display for TaskStatus {
             TaskStatus::Finished(result) => match result {
                 TaskResult::Success => write!(f, "Finished"),
                 TaskResult::Failure(code) => write!(f, "Exited with code {code}"),
+                TaskResult::UpToDate => write!(f, "Up to date"),
                 TaskResult::BadDeps => write!(f, "Dependencies failed"),
                 TaskResult::NotReady => write!(f, "Service not ready"),
                 TaskResult::Stopped => write!(f, "Killed"),
@@ -278,6 +286,8 @@ pub enum TaskResult {
     /// Dependencies not satisfied
     BadDeps,
 
+    UpToDate,
+
     /// Service not ready
     NotReady,
 
@@ -290,6 +300,7 @@ impl Display for TaskResult {
         match self {
             TaskResult::Success => write!(f, "Success"),
             TaskResult::Failure(code) => write!(f, "Failure with code {code}"),
+            TaskResult::UpToDate => write!(f, "Up to date"),
             TaskResult::BadDeps => write!(f, "Dependencies failed"),
             TaskResult::Stopped => write!(f, "Stopped"),
             TaskResult::NotReady => write!(f, "Service not ready"),

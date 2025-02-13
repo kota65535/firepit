@@ -3,13 +3,11 @@ use crate::cui::app::CuiApp;
 use crate::log::init_logger;
 use crate::project::Workspace;
 use crate::runner::TaskRunner;
-use crate::signal::{get_signal, SignalHandler};
 use crate::tokio_spawn;
 use crate::tui::app::TuiApp;
 use crate::watcher::FileWatcher;
 use clap::Parser;
 use std::path;
-use std::path::Path;
 use std::time::Duration;
 use tracing::{debug, info};
 

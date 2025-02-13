@@ -64,6 +64,9 @@ impl TerminalOutput {
                     TaskResult::Failure(code) => {
                         format!("Process finished with exit code {code}")
                     }
+                    TaskResult::UpToDate => {
+                        format!("Task is up-to-date")
+                    }
                     TaskResult::Stopped => {
                         format!("Process killed by someone else")
                     }

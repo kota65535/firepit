@@ -6,7 +6,7 @@ use futures::stream::FuturesUnordered;
 use petgraph::algo::toposort;
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{DiGraph, NodeIndex};
-use petgraph::visit::{depth_first_search, IntoNodeIdentifiers, NodeCount, Reversed};
+use petgraph::visit::{depth_first_search, IntoNodeIdentifiers, Reversed};
 use petgraph::Direction;
 use std::cmp::max;
 use std::collections::HashMap;
@@ -46,13 +46,20 @@ impl TaskGraph {
             nodes.insert(t.name.clone(), idx);
         }
 
+        // It is user's responsibility to ensure that the dependency task exists.
+        // If the specified dependency task does not exist, it is simply ignored
         for t in tasks {
             for d in &t.depends_on {
-                let from = nodes
-                    .get(&t.name)
-                    .with_context(|| format!("node {} should be found", &t.name))?;
-                let to = nodes.get(d).with_context(|| format!("node {} should be found", d))?;
-                graph.add_edge(*from, *to, ());
+                let from = nodes.get(&t.name);
+                let to = nodes.get(d);
+                match (from, to) {
+                    (Some(from), Some(to)) => {
+                        graph.add_edge(*from, *to, ());
+                    }
+                    _ => {
+                        warn!("Cannot find node for task {} and dependency {}", t.name, d);
+                    }
+                }
             }
         }
 
@@ -86,34 +93,26 @@ impl TaskGraph {
             txs.insert(node_id, tx);
             rxs.insert(node_id, rx);
         }
-        // Channel to notify when all dependency nodes have finished
+        // Channel to notify when all its dependency nodes have finished
         let (node_tx, node_rx) = mpsc::channel(max(concurrency, 1));
         // Channel to stop visitor
         let (cancel_tx, cancel_rx) = broadcast::channel(1);
 
         let nodes_fut = FuturesUnordered::new();
         for node_id in self.graph.node_identifiers() {
-            let tx = txs.remove(&node_id).with_context(|| "sender not found")?;
+            let tx = txs.remove(&node_id).context("sender not found")?;
             let node_tx = node_tx.clone();
             let mut cancel_rx = cancel_rx.resubscribe();
 
-            let task = self
-                .graph
-                .node_weight(node_id)
-                .with_context(|| "node not found")?
-                .clone();
+            let task = self.graph.node_weight(node_id).context("node not found")?.clone();
             let neighbors = self.graph.neighbors_directed(node_id, Direction::Outgoing);
             let dep_tasks = neighbors
                 .clone()
-                .map(|n| self.graph.node_weight(n).with_context(|| "node not found").cloned())
+                .map(|n| self.graph.node_weight(n).context("node not found").cloned())
                 .collect::<anyhow::Result<Vec<_>>>()?;
             let mut dep_rxs = neighbors
                 .clone()
-                .map(|n| {
-                    rxs.get(&n)
-                        .map(|rx| rx.resubscribe())
-                        .with_context(|| "sender not found")
-                })
+                .map(|n| rxs.get(&n).map(|rx| rx.resubscribe()).context("sender not found"))
                 .collect::<anyhow::Result<Vec<_>>>()?;
 
             let task_name = task.name.clone();
@@ -132,10 +131,12 @@ impl TaskGraph {
                 let deps_fut = join_all(deps);
 
                 let deps_ok = tokio::select! {
+                    // Cancelling branch, quits immediately
                      _ = cancel_rx.recv() => {
                         info!("Visitor cancelled");
-                        false
+                        return Ok(())
                      }
+                    // Normal branch, waiting for all dependency tasks
                     results = deps_fut => {
                         info!("Dependencies finished");
                         results.iter().map(|r| match r {
@@ -161,6 +162,12 @@ impl TaskGraph {
                         Ok(_) => {
                             'recv: loop {
                                 tokio::select! {
+                                    // Cancelling branch, quits immediately
+                                    _ = cancel_rx.recv() => {
+                                        info!("Visitor cancelled");
+                                        return Ok(())
+                                    }
+                                    // Normal branch, waiting for the node result
                                     result = callback_rx.recv() => {
                                         match result {
                                             Some(CallbackMessage(result)) => {
@@ -195,10 +202,6 @@ impl TaskGraph {
                                                 break 'send;
                                             }
                                         }
-                                    }
-                                    _ = cancel_rx.recv() => {
-                                        info!("Visitor cancelled");
-                                        break 'send;
                                     }
                                 }
                             }

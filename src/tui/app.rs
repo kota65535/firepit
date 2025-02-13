@@ -314,8 +314,8 @@ impl TuiAppState {
         }
     }
 
-    pub fn start_task(&mut self, task: &str, pid: u32, restart: u64) {
-        self.set_status(task, TaskStatus::Running(TaskRunning { pid, restart }));
+    pub fn start_task(&mut self, task: &str, pid: u32, restart: u64, run: u64) {
+        self.set_status(task, TaskStatus::Running(TaskRunning { pid, restart, run }));
     }
 
     pub fn ready_task(&mut self, task: &str) {
@@ -639,8 +639,13 @@ impl TuiAppState {
 
     fn update(&mut self, event: Event) -> anyhow::Result<Option<oneshot::Sender<()>>> {
         match event {
-            Event::StartTask { task, pid, restart } => {
-                self.start_task(&task, pid, restart);
+            Event::StartTask {
+                task,
+                pid,
+                restart,
+                run,
+            } => {
+                self.start_task(&task, pid, restart, run);
             }
             Event::TaskOutput { task, output } => {
                 self.process_output(&task, &output)?;

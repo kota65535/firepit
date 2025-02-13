@@ -71,6 +71,9 @@ impl TaskTable<'_> {
                                 TaskResult::Failure(_) => Cell::new(Text::raw(
                                     "\u{274C}\u{200D}", // ❌
                                 )),
+                                TaskResult::UpToDate => Cell::new(Text::raw(
+                                    "\u{1F333}", // 🌳
+                                )),
                                 TaskResult::BadDeps | TaskResult::NotReady | TaskResult::Stopped => {
                                     Cell::new(Text::raw(
                                         "\u{1F6AB}", // 🚫

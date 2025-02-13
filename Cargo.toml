@@ -38,7 +38,7 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 tracing = "0.1.41"
 console-subscriber = "0.4.1"
 notify = "8.0.0"
-glob-match = "0.2.1"
+globmatch = "0.3.0"
 
 [build]
 target = "aarch64-apple-darwin"

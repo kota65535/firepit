@@ -4,6 +4,7 @@ use anyhow::Context;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use tracing::warn;
 
 #[derive(Debug, Clone)]
 pub struct Workspace {
@@ -171,6 +172,8 @@ pub struct Task {
 
     /// Output files
     pub outputs: Vec<PathBuf>,
+
+    pub dir: PathBuf,
 }
 
 impl Task {
@@ -280,6 +283,7 @@ impl Task {
                     restart,
                     inputs,
                     outputs,
+                    dir: config.dir.clone(),
                 },
             );
         }
@@ -302,6 +306,97 @@ impl Task {
             task_name.to_string()
         } else {
             format!("{}#{}", project_name, task_name)
+        }
+    }
+
+    pub fn match_inputs(&self, paths: &HashSet<PathBuf>) -> bool {
+        self.inputs
+            .iter()
+            .map(|i| {
+                self.match_glob(i.to_str().unwrap_or(""), paths).unwrap_or_else(|err| {
+                    warn!("{:?}", err);
+                    false
+                })
+            })
+            .any(|b| b)
+    }
+
+    pub fn is_up_to_date(&self) -> bool {
+        if self.is_service {
+            return false;
+        }
+        if self.inputs.is_empty() || self.outputs.is_empty() {
+            return false;
+        }
+        let mut input_modified_time: u64 = 0;
+        for p in self.inputs.iter() {
+            let paths = self.glob(p).unwrap_or_else(|err| {
+                warn!("{:?}", err);
+                Vec::new()
+            });
+            let modified_time = self.latest_modified_time(&paths);
+            if modified_time > input_modified_time {
+                input_modified_time = modified_time;
+            }
+        }
+        let mut output_modified_time: u64 = 0;
+        for p in self.outputs.iter() {
+            let paths = self.glob(p).unwrap_or_else(|err| {
+                warn!("{:?}", err);
+                Vec::new()
+            });
+            let modified_time = self.latest_modified_time(&paths);
+            if modified_time > output_modified_time {
+                output_modified_time = modified_time;
+            }
+        }
+        input_modified_time < output_modified_time
+    }
+
+    fn latest_modified_time(&self, paths: &Vec<PathBuf>) -> u64 {
+        let timestamps = paths
+            .iter()
+            .map(|p| self.modified_time(p))
+            .collect::<anyhow::Result<Vec<_>>>()
+            .unwrap_or_else(|err| {
+                warn!("{:?}", err);
+                Vec::new()
+            });
+        timestamps.into_iter().flatten().max().unwrap_or(0)
+    }
+
+    fn match_glob(&self, pattern: &str, path: &HashSet<PathBuf>) -> anyhow::Result<bool> {
+        let glob = globmatch::Builder::new(pattern)
+            .build_glob()
+            .map_err(|err| anyhow::anyhow!("cannot build glob pattern: {:?}", err))?;
+        Ok(path.iter().any(|p| glob.is_match(p)))
+    }
+
+    fn modified_time(&self, path: &Path) -> anyhow::Result<Option<u64>> {
+        let metadata = std::fs::metadata(&path).with_context(|| format!("failed to get metadata of {:?}", path))?;
+        if !metadata.is_file() {
+            return Ok(None);
+        }
+        let modified_time = metadata
+            .modified()
+            .with_context(|| format!("failed to get modified time of {:?}", path))?;
+        let duration_since_epoch = modified_time.duration_since(std::time::UNIX_EPOCH)?;
+        let timestamp = duration_since_epoch.as_secs();
+        Ok(Some(timestamp))
+    }
+
+    fn glob(&self, pattern: &PathBuf) -> anyhow::Result<Vec<PathBuf>> {
+        let file_name = pattern.file_name().map(|f| f.to_string_lossy());
+        let dir_name = pattern.parent();
+
+        match (file_name, dir_name) {
+            (Some(file_name), Some(dir_name)) => {
+                let matcher = globmatch::Builder::new(file_name.as_ref())
+                    .build(dir_name)
+                    .map_err(|err| anyhow::anyhow!("cannot build glob pattern: {:?}", err))?;
+                Ok(matcher.into_iter().flatten().collect::<Vec<_>>())
+            }
+            _ => Ok(vec![]),
         }
     }
 }

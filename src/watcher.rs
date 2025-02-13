@@ -1,4 +1,4 @@
-use crate::signal::{get_signal, SignalHandler, SignalSubscriber};
+use crate::signal::{get_signal, SignalHandler};
 use crate::tokio_spawn;
 use log::{info, warn};
 use notify::Watcher;
@@ -32,10 +32,6 @@ impl FileWatcher {
             inner: Arc::new(Mutex::new(FileWatcherState { is_closing: false })),
             signal_handler: SignalHandler::new(get_signal()?),
         })
-    }
-
-    pub fn is_closing(&self) -> bool {
-        self.inner.lock().expect("not poisoned").is_closing
     }
 
     pub fn run(&mut self, path: &Path, debounce_duration: Duration) -> anyhow::Result<WatchHandle> {
