@@ -172,8 +172,6 @@ pub struct Task {
 
     /// Output files
     pub outputs: Vec<PathBuf>,
-
-    pub dir: PathBuf,
 }
 
 impl Task {
@@ -278,7 +276,6 @@ impl Task {
                     restart,
                     inputs,
                     outputs,
-                    dir: config.dir.clone(),
                 },
             );
         }
@@ -308,8 +305,8 @@ impl Task {
         self.inputs
             .iter()
             .map(|i| {
-                self.match_glob(i.to_str().unwrap_or(""), paths).unwrap_or_else(|err| {
-                    warn!("{:?}", err);
+                self.match_glob(i.to_str().unwrap_or(""), paths).unwrap_or_else(|e| {
+                    warn!("{:?}", e);
                     false
                 })
             })
@@ -325,8 +322,8 @@ impl Task {
         }
         let mut input_modified_time: u64 = 0;
         for p in self.inputs.iter() {
-            let paths = self.glob(p).unwrap_or_else(|err| {
-                warn!("{:?}", err);
+            let paths = self.glob(p).unwrap_or_else(|e| {
+                warn!("{:?}", e);
                 Vec::new()
             });
             let modified_time = self.latest_modified_time(&paths);
@@ -336,8 +333,8 @@ impl Task {
         }
         let mut output_modified_time: u64 = 0;
         for p in self.outputs.iter() {
-            let paths = self.glob(p).unwrap_or_else(|err| {
-                warn!("{:?}", err);
+            let paths = self.glob(p).unwrap_or_else(|e| {
+                warn!("{:?}", e);
                 Vec::new()
             });
             let modified_time = self.latest_modified_time(&paths);
@@ -353,8 +350,8 @@ impl Task {
             .iter()
             .map(|p| self.modified_time(p))
             .collect::<anyhow::Result<Vec<_>>>()
-            .unwrap_or_else(|err| {
-                warn!("{:?}", err);
+            .unwrap_or_else(|e| {
+                warn!("{:?}", e);
                 Vec::new()
             });
         timestamps.into_iter().flatten().max().unwrap_or(0)
@@ -363,7 +360,7 @@ impl Task {
     fn match_glob(&self, pattern: &str, path: &HashSet<PathBuf>) -> anyhow::Result<bool> {
         let glob = globmatch::Builder::new(pattern)
             .build_glob()
-            .map_err(|err| anyhow::anyhow!("cannot build glob pattern: {:?}", err))?;
+            .map_err(|e| anyhow::anyhow!("cannot build glob pattern: {:?}", e))?;
         Ok(path.iter().any(|p| glob.is_match(p)))
     }
 
@@ -388,7 +385,7 @@ impl Task {
             (Some(file_name), Some(dir_name)) => {
                 let matcher = globmatch::Builder::new(file_name.as_ref())
                     .build(dir_name)
-                    .map_err(|err| anyhow::anyhow!("cannot build glob pattern: {:?}", err))?;
+                    .map_err(|e| anyhow::anyhow!("cannot build glob pattern: {:?}", e))?;
                 Ok(matcher.into_iter().flatten().collect::<Vec<_>>())
             }
             _ => Ok(vec![]),

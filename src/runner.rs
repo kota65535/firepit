@@ -158,7 +158,9 @@ impl TaskRunner {
                             if let Err(err) = cancel_txs.get(&t.name).unwrap().send(()) {
                                 warn!("Failed to send cancel task {:?}: {:?}", &t.name, err);
                             }
-                            manager.stop_by_label(&t.name).await;
+                            if let Err(e) = manager.stop_by_label(&t.name).await {
+                                warn!("Failed to stop task {:?}: {:?}", &t.name, e);
+                            }
                         }
                         info!("Cancelled all tasks");
                         tokio_spawn!("runner", { n = count }, async move {

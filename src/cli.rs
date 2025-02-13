@@ -103,7 +103,9 @@ pub async fn run() -> anyhow::Result<()> {
     runner_fut.await??;
     watcher_fut.await??;
     app_fut.await??;
-    fwh.future.join();
+    fwh.future
+        .join()
+        .map_err(|e| anyhow::anyhow!("failed to join; {:?}", e))?;
 
     Ok(())
 }

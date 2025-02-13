@@ -61,10 +61,10 @@ impl SignalHandler {
                 Some(signal_num) = signal_source => {
                     match Signal::try_from(signal_num) {
                         Ok(signal) => {
-                            debug!("Got signal: {:?}({})", signal, signal_num)
+                            debug!("Got signal {:?}({})", signal, signal_num)
                         }
                         Err(e) => {
-                            warn!("Unexpected signal ({})", signal_num)
+                            warn!("Unexpected signal {}: {:?})", signal_num, e)
                         }
                     }
 

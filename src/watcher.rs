@@ -42,6 +42,7 @@ impl FileWatcher {
         watcher.watch(&path, notify::RecursiveMode::Recursive)?;
 
         let state = self.inner.clone();
+        // Cancel file watcher when got signal
         if let Some(subscriber) = self.signal_handler.subscribe() {
             tokio_spawn!("watcher-canceller-signal", async move {
                 let _guard = subscriber.listen().await;
@@ -52,6 +53,7 @@ impl FileWatcher {
         let tx = tokio_tx.clone();
         let (cancel_tx, mut cancel_rx) = watch::channel(());
 
+        // Cancel file watcher if cancel is sent
         let state = self.inner.clone();
         tokio::spawn(async move {
             while let Ok(_) = cancel_rx.changed().await {

@@ -109,7 +109,7 @@ async fn test_watch() {
         Some(runs_expected),
         Some(10),
         async {
-            File::create("tests/fixtures/runner/21_watch/bar.txt");
+            File::create("tests/fixtures/runner/21_watch/bar.txt").ok();
         },
     )
     .await;
