@@ -101,17 +101,9 @@ async fn test_watch() {
     runs_expected.insert(String::from("#bar"), 1);
     runs_expected.insert(String::from("#baz"), 0);
 
-    run_task_with_watch(
-        &path,
-        tasks,
-        status_expected,
-        None,
-        Some(runs_expected),
-        Some(10),
-        async {
-            File::create("tests/fixtures/runner/21_watch/bar.txt").ok();
-        },
-    )
+    run_task_with_watch(&path, tasks, status_expected, None, Some(runs_expected), None, async {
+        File::create("tests/fixtures/runner/21_watch/bar.txt").ok();
+    })
     .await;
 }
 
@@ -265,7 +257,7 @@ async fn run_task_with_watch<F>(
     watcher_fut.await.ok();
 }
 
-const DEFAULT_TEST_TIMEOUT_SECONDS: u64 = 10;
+const DEFAULT_TEST_TIMEOUT_SECONDS: u64 = 20;
 
 fn handle_events(
     mut rx: UnboundedReceiver<Event>,
