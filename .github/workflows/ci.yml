@@ -7,7 +7,7 @@ on:
   pull_request:
 
 jobs:
-  cargo-test:
+  test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
