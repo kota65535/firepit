@@ -231,11 +231,11 @@ pub struct TaskConfig {
     /// Service configuration
     pub service: Option<ServiceConfig>,
 
-    /// Inputs files
+    /// Inputs file glob patterns
     #[serde(default)]
     pub inputs: Vec<String>,
 
-    /// Output files
+    /// Output file glob patterns
     #[serde(default)]
     pub outputs: Vec<String>,
 }
