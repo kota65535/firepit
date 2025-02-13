@@ -157,6 +157,8 @@ async fn test_up_to_date() {
     let path = path::absolute(Path::new("tests/fixtures/runner/31_up_to_date")).unwrap();
     let tasks = vec!["foo".to_string()];
 
+    File::create(path.join("foo.out")).ok();
+
     let mut expected = HashMap::new();
     expected.insert(String::from("#foo"), String::from("Finished: Up to date"));
     expected.insert(String::from("#bar"), String::from("Finished: Success"));
