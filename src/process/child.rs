@@ -347,15 +347,6 @@ impl ShutdownStyle {
                         }
                     }
                 }
-
-                #[cfg(windows)]
-                {
-                    debug!("timeout not supported on windows, killing");
-                    match child.kill().await {
-                        Ok(_) => ChildState::Exited(ChildExit::Killed),
-                        Err(_) => ChildState::Exited(ChildExit::Failed),
-                    }
-                }
             }
             ShutdownStyle::Kill => match child.kill().await {
                 Ok(_) => ChildState::Exited(ChildExit::Killed),

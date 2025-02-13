@@ -48,7 +48,7 @@ pub async fn run() -> anyhow::Result<()> {
         );
     }
 
-    init_logger(&root.log, &root.ui)?;
+    init_logger(&root.log)?;
 
     debug!("Json schema: \n{}", root.schema()?);
 

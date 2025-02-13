@@ -3,7 +3,6 @@ use ::log::error;
 mod cli;
 mod config;
 mod cui;
-mod error;
 mod event;
 mod graph;
 mod log;

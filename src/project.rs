@@ -177,6 +177,10 @@ pub struct Task {
 }
 
 impl Task {
+    fn merge_env(a: HashMap<String, String>, b: HashMap<String, String>) -> anyhow::Result<HashMap<String, String>> {
+        Ok(a.into_iter().chain(b.into_iter()).collect::<HashMap<_, _>>())
+    }
+
     pub fn from_project_config(project_name: &str, config: &ProjectConfig) -> anyhow::Result<HashMap<String, Task>> {
         let mut ret = HashMap::new();
         for (task_name, task_config) in config.tasks.iter() {
@@ -195,18 +199,12 @@ impl Task {
                 .unwrap_or(config.working_dir_path());
 
             // Environment variables
-            let project_env = Self::load_env_files(&config.env_files_paths())?
-                .into_iter()
-                .chain(config.env.clone().into_iter())
-                .collect::<HashMap<_, _>>();
-            let task_env = Self::load_env_files(&task_config.env_files_paths(&config.dir))?
-                .into_iter()
-                .chain(task_config.env.clone().into_iter())
-                .collect::<HashMap<_, _>>();
-            let merged_task_env = project_env
-                .into_iter()
-                .chain(task_env.clone().into_iter())
-                .collect::<HashMap<_, _>>();
+            let project_env = Self::merge_env(Self::load_env_files(&config.env_files_paths())?, config.env.clone())?;
+            let task_env = Self::merge_env(
+                Self::load_env_files(&task_config.env_files_paths(&config.dir))?,
+                task_config.env.clone(),
+            )?;
+            let merged_task_env = Self::merge_env(project_env, task_env)?;
 
             let inputs = task_config.inputs_paths(&config.dir);
             let outputs = task_config.outputs_paths(&config.dir);
@@ -233,14 +231,11 @@ impl Task {
                                     let hc_working_dir =
                                         c.working_dir_path(&config.dir).unwrap_or(task_working_dir.clone());
                                     // Environment variables
-                                    let hc_env = Self::load_env_files(&c.env_files_paths(&config.dir))?
-                                        .into_iter()
-                                        .chain(c.env.clone().into_iter())
-                                        .collect::<HashMap<_, _>>();
-                                    let merged_hc_env = task_env
-                                        .into_iter()
-                                        .chain(hc_env.into_iter())
-                                        .collect::<HashMap<_, _>>();
+                                    let hc_env = Self::merge_env(
+                                        Self::load_env_files(&c.env_files_paths(&config.dir))?,
+                                        c.env.clone(),
+                                    )?;
+                                    let merged_hc_env = Self::merge_env(merged_task_env.clone(), hc_env)?;
 
                                     Probe::Exec(ExecProbe::new(
                                         &task_name,

@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::{broadcast, watch};
+use tokio::task::JoinHandle;
 
 #[derive(Debug)]
 pub struct TaskRunner {
@@ -114,7 +115,7 @@ impl TaskRunner {
         let cancel_txs = self.task_cancel_txs.clone();
         let mut count = 1;
 
-        // Cancel runner when got signal
+        // Cancel watch runner when got signal
         let cancel_tx = self.cancel_tx.clone();
         if let Some(subscriber) = self.signal_handler.subscribe() {
             tokio_spawn!("watcher-canceller", async move {
@@ -129,8 +130,7 @@ impl TaskRunner {
             tokio::select! {
                 // Cancelling branch, quits immediately
                 _ = cancel_rx.changed() => {
-                    info!("Watch runner cancelled");
-                    return Ok(())
+                    break;
                 }
                 // Normal branch, calculates affected tasks from the changed files
                 Some(paths) = tokio_rx.recv() => {
@@ -174,6 +174,8 @@ impl TaskRunner {
     }
 
     pub async fn run(&mut self, task_graph: TaskGraph, mut app_tx: EventSender, num_runs: u64) -> anyhow::Result<()> {
+        info!("Run started");
+
         // Run visitor
         let Visitor {
             mut node_rx,
@@ -181,26 +183,28 @@ impl TaskRunner {
             future: mut visitor_fut,
         } = task_graph
             .visit(self.concurrency)
-            .with_context(|| "Error while visiting task graph")?;
+            .with_context(|| "error while visiting task graph")?;
         debug!("Visitor started");
 
-        // Canceller
+        // Cancel runner when got signal
         let mut cancel_rx = self.cancel_rx.clone();
         let signal_handler = self.signal_handler.clone();
         let manager = self.manager.clone();
         let cancel_visitor_cloned = cancel_visitor.clone();
         tokio_spawn!("runner-canceller", async move {
-            let sbsc = signal_handler.subscribe().unwrap();
+            let subscriber = signal_handler.subscribe().unwrap();
             tokio::select! {
                 _ = cancel_rx.changed() => {}
-                _ = sbsc.listen() => {}
+                _ = subscriber.listen() => {}
             }
+            // Cancel visitor and stop all processes
             manager.stop().await;
             if let Err(err) = cancel_visitor_cloned.send(()) {
                 warn!("Failed to send cancel signal: {:?}", err);
             }
         });
 
+        // Task futures
         let mut task_fut = FuturesUnordered::new();
 
         // Receive the next task when its dependencies finished
@@ -217,7 +221,7 @@ impl TaskRunner {
             let task_name = task.name.clone();
             let cancel_visitor_cloned = cancel_visitor.clone();
             task_fut.push(tokio_spawn!("task", { name = task_name }, async move {
-                // Skip the task if any dependency didn't finish successfully
+                // Skip the task if any dependency task didn't finish successfully
                 if !deps_ok {
                     info!("Task does not run as its dependency task failed");
                     app_tx.finish_task(TaskResult::BadDeps);
@@ -227,6 +231,7 @@ impl TaskRunner {
                     return Ok::<(), anyhow::Error>(());
                 }
 
+                // Skip the task if output files are newer than input files if both defined
                 if task.is_up_to_date() {
                     info!("Task output files are newer than input files");
                     app_tx.finish_task(TaskResult::UpToDate);
@@ -406,28 +411,12 @@ impl TaskRunner {
             }));
         }
 
-        debug!("Waiting for visitor");
-        while let Some(r) = visitor_fut.next().await {
-            match r {
-                Ok(r) => match r {
-                    Ok(r) => r,
-                    Err(e) => anyhow::bail!("error while waiting visitor thread: {:?}", e),
-                },
-                Err(e) => anyhow::bail!("error while waiting visitor thread: {:?}", e),
-            }
-        }
+        debug!("Waiting for visitor...");
+        Self::join(&mut visitor_fut).await?;
         debug!("Visitor finished");
 
-        debug!("Waiting for tasks");
-        while let Some(r) = task_fut.next().await {
-            match r {
-                Ok(r) => match r {
-                    Ok(r) => r,
-                    Err(e) => anyhow::bail!("error while waiting task thread: {:?}", e),
-                },
-                Err(e) => anyhow::bail!("error while waiting task thread: {:?}", e),
-            }
-        }
+        debug!("Waiting for tasks...");
+        Self::join(&mut task_fut).await?;
         debug!("Tasks finished");
 
         // Notify app the runner finished
@@ -437,6 +426,20 @@ impl TaskRunner {
             warn!("Failed to send cancel visitor: {:?}", err);
         }
 
+        info!("Run finished");
+        Ok(())
+    }
+
+    async fn join<T>(futures: &mut FuturesUnordered<JoinHandle<T>>) -> anyhow::Result<()> {
+        while let Some(r) = futures.next().await {
+            match r {
+                Ok(_) => match r {
+                    Err(e) => anyhow::bail!("error while waiting futures: {:?}", e),
+                    _ => {}
+                },
+                Err(e) => anyhow::bail!("error while waiting futures: {:?}", e),
+            }
+        }
         Ok(())
     }
 
