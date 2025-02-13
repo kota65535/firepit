@@ -14,5 +14,6 @@ tasks:
     service:
       healthcheck:
         command: nc localhost $(cat bar.txt)
+        start_period: 1
 
 ui: tui

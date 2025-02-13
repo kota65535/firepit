@@ -25,3 +25,4 @@ tasks:
     service:
       healthcheck:
         command: nc localhost 11001
+        start_period: 1

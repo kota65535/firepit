@@ -15,8 +15,8 @@ jobs:
 
       - name: Install Netcat
         run: |
-          sudo apt-get update
-          sudo apt-get install -y netcat-openbsd
+          sudo apt update
+          sudo apt install -y netcat-openbsd
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
