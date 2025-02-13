@@ -1,0 +1,15 @@
+tasks:
+  foo:
+    command: echo "foo"
+    depends_on:
+      - bar
+
+  bar:
+    command: echo "bar"
+    depends_on:
+      - baz
+
+  baz:
+    command: echo "baz"
+
+ui: cui

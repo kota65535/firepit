@@ -1,0 +1,24 @@
+env:
+  B: b-foo
+  C: c
+
+env_files:
+  - .env.foo
+
+shell:
+  command: shell-foo
+  args:
+    - args-foo
+
+tasks:
+  foo:
+    command: echo "foo"
+  foo-2:
+    command: echo "foo-2"
+    shell:
+      command: shell-foo-2
+      args:
+        - args-foo-2
+    env:
+      B: b-foo-2
+      D: d

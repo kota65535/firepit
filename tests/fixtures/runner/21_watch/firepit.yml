@@ -1,0 +1,21 @@
+tasks:
+  foo:
+    command: echo "foo"
+    depends_on:
+      - bar
+    inputs:
+      - "foo.txt"
+
+  bar:
+    command: echo "bar"
+    depends_on:
+      - baz
+    inputs:
+      - "bar.txt"
+
+  baz:
+    command: echo "baz"
+    inputs:
+      - "baz.txt"
+
+ui: tui

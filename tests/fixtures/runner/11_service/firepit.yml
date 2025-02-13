@@ -1,0 +1,31 @@
+tasks:
+  foo:
+    command: echo "foo"
+    depends_on:
+      - bar
+      - baz
+      - qux
+  bar:
+    command: |
+      echo "bar"
+    service: true
+  baz:
+    command: |
+      sleep 1
+      echo "baz"
+      nc -kl 11000
+    service:
+      healthcheck:
+        log: baz
+  qux:
+    command: |
+      echo "qux"
+      nc -kl 11001
+    service:
+      healthcheck:
+        command: nc -z localhost 11001
+        start_period: 1
+
+log:
+  file: 11_service.log
+  level: debug

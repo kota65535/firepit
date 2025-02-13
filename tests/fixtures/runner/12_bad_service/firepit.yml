@@ -1,0 +1,22 @@
+tasks:
+  foo:
+    command: echo "foo"
+    depends_on:
+      - bar
+      - baz
+  bar:
+    command: |
+      sleep 10
+    service:
+      healthcheck:
+        log: bar
+        timeout: 1
+  baz:
+    command: |
+      sleep 1
+      echo "bar"
+    service:
+      restart: always:5
+      healthcheck:
+        command: nc -z localhost 12345
+        start_period: 1
