@@ -48,6 +48,8 @@ jobs:
   test:
     runs-on: ${{ matrix.runner }}
     name: test (${{ join(matrix.targets, ', ') }})
+    needs:
+      - plan
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.plan.outputs.val).ci.github.artifacts_matrix }}
