@@ -306,7 +306,7 @@
           }
         },
         "inputs": {
-          "description": "Inputs files",
+          "description": "Inputs file glob patterns",
           "default": [],
           "type": "array",
           "items": {
@@ -314,7 +314,7 @@
           }
         },
         "outputs": {
-          "description": "Output files",
+          "description": "Output file glob patterns",
           "default": [],
           "type": "array",
           "items": {
