@@ -14,7 +14,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Netcat
-        run: sudo apt-get update && sudo apt-get install -y netcat
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y netcat-openbsd
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
