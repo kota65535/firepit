@@ -68,7 +68,7 @@ async fn test_service() {
     expected.insert(String::from("#baz"), String::from("Ready"));
     expected.insert(String::from("#qux"), String::from("Ready"));
 
-    run_task(path, tasks, expected, None, None, None).await;
+    run_task(path, tasks, expected, None, None, Some(20)).await;
 }
 
 #[tokio::test]
@@ -82,7 +82,7 @@ async fn test_bad_service() {
     expected.insert(String::from("#bar"), String::from("Finished: Service not ready"));
     expected.insert(String::from("#baz"), String::from("Finished: Service not ready"));
 
-    run_task(path, tasks, expected, None, None, None).await;
+    run_task(path, tasks, expected, None, None, Some(20)).await;
 }
 
 #[tokio::test]
@@ -133,7 +133,7 @@ async fn test_watch_service() {
         status_expected,
         None,
         Some(runs_expected),
-        Some(10),
+        Some(20),
         async {
             tokio::time::sleep(Duration::from_secs(1)).await;
             let mut f = File::create("tests/fixtures/runner/22_watch_service/bar.txt").unwrap();
