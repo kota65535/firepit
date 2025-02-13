@@ -42,7 +42,7 @@ on:
   pull_request:
   push:
     tags:
-      - '**[0-9]+.[0-9]+.[0-9]+*'
+      - "**[0-9]+.[0-9]+.[0-9]+*"
 
 jobs:
   # Run 'dist plan' (or host) to determine what tasks we need to do
@@ -126,7 +126,7 @@ jobs:
             echo "$HOME/.cargo/bin" >> $GITHUB_PATH
           fi
       - name: Update RUSTFLAGS with --cfg tokio_unstable
-        run: echo RUSTFLAGS="$RUSTFLAGS --cfg tokio_unstable" >> "$GITHUB_ENV"
+        run: "echo RUSTFLAGS=\"$RUSTFLAGS --cfg tokio_unstable\" >> \"$GITHUB_ENV\""
       - name: Install dist
         run: ${{ matrix.install_dist.run }}
       # Get the dist-manifest
