@@ -1,0 +1,46 @@
+name: Schema
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run
+        run: cargo run --bin schema
+
+      - name: Configure git
+        uses: kota65535/github-git-config-action@v1
+        with:
+          user.name: github-actions[bot]
+          user.email: 41898282+github-actions[bot]@users.noreply.github.com
+          github-token: ${{ secrets.PERSONAL_TOKEN }}
+
+      - name: Diff
+        id: diff
+        run: |
+          git add -N .
+          git diff --name-only --exit-code
+        continue-on-error: true
+      - name: Commit & Push
+        if: steps.diff.outcome == 'failure'
+        run: |
+          git add .
+          git commit --author=. -m 'generate schema'
+          git pull --rebase --autostash
+          git push origin HEAD

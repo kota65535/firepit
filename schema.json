@@ -1,0 +1,363 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ProjectConfig",
+  "type": "object",
+  "properties": {
+    "concurrency": {
+      "description": "Task concurrency. Valid only in root project config.",
+      "default": 4,
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0.0
+    },
+    "env": {
+      "description": "Environment variables of all tasks. Merged with those of child projects.",
+      "default": {},
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "env_files": {
+      "description": "Dotenv files for all tasks. Merged with those of child projects. If environment variable duplicates, the later one wins.",
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "log": {
+      "description": "Log configuration. Valid only in root project config.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/LogConfig"
+        }
+      ]
+    },
+    "projects": {
+      "description": "Child projects. Valid only in root project config.",
+      "default": {},
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "shell": {
+      "description": "Shell configuration for all tasks",
+      "allOf": [
+        {
+          "$ref": "#/definitions/ShellConfig"
+        }
+      ]
+    },
+    "tasks": {
+      "description": "Task definitions",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/TaskConfig"
+      }
+    },
+    "ui": {
+      "description": "UI configuration. Valid only in root project config.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/UI"
+        }
+      ]
+    },
+    "working_dir": {
+      "description": "Working directory for all tasks",
+      "default": ".",
+      "type": "string"
+    }
+  },
+  "definitions": {
+    "ExecProbeConfig": {
+      "type": "object",
+      "required": [
+        "command"
+      ],
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "env": {
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "env_files": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "interval": {
+          "default": 30,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "retries": {
+          "default": 3,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "shell": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ShellConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "start_period": {
+          "default": 0,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "timeout": {
+          "default": 30,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "working_dir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "HealthCheckConfig": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/LogProbeConfig"
+        },
+        {
+          "$ref": "#/definitions/ExecProbeConfig"
+        }
+      ]
+    },
+    "LogConfig": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "level": {
+          "default": "info",
+          "type": "string"
+        }
+      }
+    },
+    "LogProbeConfig": {
+      "type": "object",
+      "required": [
+        "log"
+      ],
+      "properties": {
+        "log": {
+          "type": "string"
+        },
+        "start_period": {
+          "default": 0,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "timeout": {
+          "default": 120,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "Restart": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "Never"
+          ]
+        },
+        {
+          "type": "object",
+          "required": [
+            "Always"
+          ],
+          "properties": {
+            "Always": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "OnFailure"
+          ],
+          "properties": {
+            "OnFailure": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ServiceConfig": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/definitions/ServiceConfigStruct"
+        }
+      ]
+    },
+    "ServiceConfigStruct": {
+      "type": "object",
+      "properties": {
+        "healthcheck": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/HealthCheckConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "restart": {
+          "$ref": "#/definitions/Restart"
+        }
+      }
+    },
+    "ShellConfig": {
+      "type": "object",
+      "required": [
+        "command"
+      ],
+      "properties": {
+        "args": {
+          "description": "Arguments of the shell command.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "command": {
+          "description": "Shell command.",
+          "type": "string"
+        }
+      }
+    },
+    "TaskConfig": {
+      "type": "object",
+      "required": [
+        "command"
+      ],
+      "properties": {
+        "command": {
+          "description": "Command to run",
+          "type": "string"
+        },
+        "depends_on": {
+          "description": "Dependency task names",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "env": {
+          "description": "Environment variables. Merged with the project's env.",
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "env_files": {
+          "description": "Dotenv files Merged with the project's env.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "inputs": {
+          "description": "Inputs file glob patterns",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "outputs": {
+          "description": "Output file glob patterns",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "service": {
+          "description": "Service configuration",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ServiceConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "shell": {
+          "description": "Shell configuration",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ShellConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "working_dir": {
+          "description": "Working directory",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "UI": {
+      "type": "string",
+      "enum": [
+        "cui",
+        "tui"
+      ]
+    }
+  }
+}

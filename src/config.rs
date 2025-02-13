@@ -197,9 +197,9 @@ impl ProjectConfig {
         self.env_files.iter().map(|f| absolute_or_join(f, &self.dir)).collect()
     }
 
-    pub fn schema(&self) -> anyhow::Result<String> {
+    pub fn schema() -> anyhow::Result<String> {
         let schema = schemars::schema_for!(ProjectConfig);
-        serde_json::to_string(&schema).context("cannot create config scehma")
+        serde_json::to_string_pretty(&schema).context("cannot create config scehma")
     }
 }
 
@@ -231,11 +231,11 @@ pub struct TaskConfig {
     /// Service configuration
     pub service: Option<ServiceConfig>,
 
-    /// Inputs files
+    /// Inputs file glob patterns
     #[serde(default)]
     pub inputs: Vec<String>,
 
-    /// Output files
+    /// Output file glob patterns
     #[serde(default)]
     pub outputs: Vec<String>,
 }

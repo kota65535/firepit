@@ -38,8 +38,6 @@ pub async fn run() -> anyhow::Result<()> {
     // Load config files
     let (root, children) = ProjectConfig::new_multi(&dir)?;
 
-    debug!("Json schema: \n{}", root.schema()?);
-
     // Aggregate information in config files into more workable form
     let ws = Workspace::new(&root, &children)?;
     init_logger(&root.log)?;
