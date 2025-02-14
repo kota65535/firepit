@@ -51,36 +51,21 @@ impl TerminalOutput {
         self.status = status;
         match status {
             TaskStatus::Running(info) => {
-                if info.restart > 0 {
-                    let msg = format!("Process restarted (PID: {}, Restart: {})\r\n", info.pid, info.restart);
-                    self.process(console::style(msg).bold().to_string().as_bytes());
+                if info.restart > 0 || info.run > 0 {
+                    let msg = "Process restarted";
+                    self.process(console::style(format!("\r\n{}\r\n", msg)).bold().to_string().as_bytes());
                 }
             }
             TaskStatus::Finished(result) => {
                 let msg = match result {
-                    TaskResult::Success => {
-                        format!("Process finished with exit code 0")
-                    }
-                    TaskResult::Failure(code) => {
-                        format!("Process finished with exit code {code}")
-                    }
-                    TaskResult::UpToDate => {
-                        format!("Task is up-to-date")
-                    }
-                    TaskResult::Stopped => {
-                        format!("Process killed by someone else")
-                    }
-                    TaskResult::BadDeps => {
-                        format!("Some dependency task failed")
-                    }
-                    TaskResult::NotReady => {
-                        format!("Task is not ready before timeout")
-                    }
-                    TaskResult::Unknown => {
-                        format!("Task finished by unknown reason")
-                    }
+                    TaskResult::Success => Some("Process finished with exit code 0".to_string()),
+                    TaskResult::Failure(code) => Some(format!("Process finished with exit code {code}")),
+                    TaskResult::Stopped => Some("Process is terminated".to_string()),
+                    _ => None,
                 };
-                self.process(console::style(format!("\r\n{}\r\n", msg)).bold().to_string().as_bytes());
+                if let Some(msg) = msg {
+                    self.process(console::style(format!("\r\n{}\r\n", msg)).bold().to_string().as_bytes());
+                }
             }
             _ => {}
         }

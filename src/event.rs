@@ -13,6 +13,9 @@ pub enum Event {
     ///
     /// Task Events
     ///
+    PlanTask {
+        task: String,
+    },
     StartTask {
         task: String,
         pid: u32,
@@ -148,6 +151,10 @@ impl EventSender {
         self.to_owned()
     }
 
+    pub fn plan_task(&self, task: &str) {
+        self.send(Event::PlanTask { task: task.to_string() })
+    }
+
     pub fn start_task(&self, task: String, pid: u32, restart: u64, run: u64) {
         self.send(Event::StartTask {
             task,
@@ -259,39 +266,32 @@ impl Display for TaskStatus {
             TaskStatus::Planned => write!(f, "Waiting"),
             TaskStatus::Running(r) => write!(f, "Running (PID: {}, Restart: {})", r.pid, r.restart),
             TaskStatus::Ready => write!(f, "Ready"),
-            TaskStatus::Finished(result) => match result {
-                TaskResult::Success => write!(f, "Finished"),
-                TaskResult::Failure(code) => write!(f, "Exited with code {code}"),
-                TaskResult::UpToDate => write!(f, "Up to date"),
-                TaskResult::BadDeps => write!(f, "Dependencies failed"),
-                TaskResult::NotReady => write!(f, "Service not ready"),
-                TaskResult::Stopped => write!(f, "Killed"),
-                TaskResult::Unknown => write!(f, "Unknown"),
-            },
+            TaskStatus::Finished(result) => write!(f, "Finished: {}", result),
             TaskStatus::Unknown => write!(f, "Unknown"),
         }
     }
 }
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum TaskResult {
-    /// Run successfully.
+    /// Finished successfully
     Success,
 
-    /// Exited with non-zero code.
+    /// Finished with non-zero exit code
     Failure(i32),
 
-    /// Killed by signal.
+    /// Killed by signal
     Stopped,
 
-    /// Dependencies not satisfied
+    /// Not run because dependency task failed
     BadDeps,
 
+    /// Not run because it is up-to-date
     UpToDate,
 
-    /// Service not ready
+    /// Stopped because it does not become ready
     NotReady,
 
-    /// The other reason.
+    /// Any other reason
     Unknown,
 }
 
@@ -299,9 +299,9 @@ impl Display for TaskResult {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             TaskResult::Success => write!(f, "Success"),
-            TaskResult::Failure(code) => write!(f, "Failure with code {code}"),
-            TaskResult::UpToDate => write!(f, "Up to date"),
-            TaskResult::BadDeps => write!(f, "Dependencies failed"),
+            TaskResult::Failure(code) => write!(f, "Failure with exit code {code}"),
+            TaskResult::UpToDate => write!(f, "Up-to-date"),
+            TaskResult::BadDeps => write!(f, "Dependency task failed"),
             TaskResult::Stopped => write!(f, "Stopped"),
             TaskResult::NotReady => write!(f, "Service not ready"),
             TaskResult::Unknown => write!(f, "Unknown"),

@@ -43,8 +43,8 @@ pub async fn run() -> anyhow::Result<()> {
     init_logger(&root.log)?;
 
     // Print workspace information if no task specified
-    ws.print_info();
     if args.tasks.is_empty() {
+        ws.print_info();
         return Ok(());
     }
 
@@ -76,32 +76,37 @@ pub async fn run() -> anyhow::Result<()> {
         }
     };
 
-    let mut watcher_fut = None;
-    let mut watch_runner_fut = None;
     if args.watch {
+        // Run file watcher
         let mut file_watcher = FileWatcher::new()?;
         let watcher_handle = file_watcher.run(&dir, Duration::from_millis(500))?;
+
+        // Start runner for file watcher
         let mut watch_runner = runner.clone();
-        let app_tx = app_tx.clone();
-        watcher_fut = Some(watcher_handle.future);
-        watch_runner_fut = Some(tokio_spawn!("watch-runner", async move {
-            watch_runner.watch(watcher_handle.rx, app_tx).await
-        }));
-    }
+        let watch_app_tx = app_tx.clone();
+        let watch_runner_fut = tokio_spawn!("watch-runner", async move {
+            watch_runner.watch(watcher_handle.rx, watch_app_tx).await
+        });
 
-    // Start task runner
-    let app_tx = app_tx.clone();
-    let runner_fut = tokio_spawn!("runner", { n = 0 }, async move { runner.start(app_tx).await });
+        // Start normal task runner
+        let runner_fut = tokio_spawn!("runner", { n = 0 }, async move { runner.start(app_tx).await });
 
-    // Wait all
-    runner_fut.await??;
-    app_fut.await??;
-
-    if let (Some(watcher_fut), Some(watch_runner_fut)) = (watcher_fut, watch_runner_fut) {
-        watcher_fut
+        // Wait all
+        runner_fut.await??;
+        app_fut.await??;
+        watch_runner_fut.await??;
+        watcher_handle
+            .future
             .join()
             .map_err(|e| anyhow::anyhow!("failed to join; {:?}", e))?;
-        watch_runner_fut.await??;
+    } else {
+        // Start task runner
+        let app_tx = app_tx.clone();
+        let runner_fut = tokio_spawn!("runner", { n = 0 }, async move { runner.start(app_tx).await });
+
+        // Wait all
+        runner_fut.await??;
+        app_fut.await??;
     }
 
     Ok(())
