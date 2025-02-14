@@ -178,6 +178,10 @@ impl TaskRunner {
     pub async fn run(&mut self, task_graph: TaskGraph, mut app_tx: EventSender, num_runs: u64) -> anyhow::Result<()> {
         info!("Run started");
 
+        for t in self.target_tasks.iter() {
+            app_tx.plan_task(t)
+        }
+
         // Run visitor
         let Visitor {
             mut node_rx,
@@ -280,7 +284,19 @@ impl TaskRunner {
                     let mut probe_finished = None;
                     while task_finished.is_none() || probe_finished.is_none() {
                         tokio::select! {
-                            // Process branch
+                            // Cancel branch, quits this closure immediately
+                            _ = cancel_rx.recv() => {
+                                info!("Task is canceled, stopping...");
+                                if let Err(e) = cancel_probe_tx.send(()) {
+                                    warn!("Failed to send cancel probe: {:?}", e)
+                                }
+                                if let Err(e) = cancel_visitor_cloned.send(()) {
+                                    warn!("Failed to send cancel visitor: {:?}", e)
+                                }
+                                app_tx.finish_task(TaskResult::Stopped);
+                                return Ok(());
+                            }
+                            // Process branch, waits its completion
                             result = &mut task_fut, if task_finished.is_none() => {
                                 // Service task process should not finish before probe
                                 // So the node result is considered as `false`
@@ -325,22 +341,11 @@ impl TaskRunner {
                                 }
                                 task_finished = Some(false)
                             }
-                            // Prober branch
+                            // Probe branch
                             result = &mut probe_fut, if probe_finished.is_none() => {
                                 let result = result.with_context(|| format!("task {:?} failed to run", task.name))?;
                                 // The probe result is the node result
                                 probe_finished = Some(result.unwrap_or(false));
-                            }
-                            // Cancel branch
-                            _ = cancel_rx.recv() => {
-                                info!("Task is canceled, stopping...");
-                                if let Err(e) = cancel_probe_tx.send(()) {
-                                    warn!("Failed to send cancel probe: {:?}", e)
-                                }
-                                if let Err(e) = cancel_visitor_cloned.send(()) {
-                                    warn!("Failed to send cancel visitor: {:?}", e)
-                                }
-                                return Ok(());
                             }
                         }
 
@@ -360,14 +365,15 @@ impl TaskRunner {
                                 }
                                 continue;
                             } else {
-                                // ...and is failure, the process will be stopped eventually
+                                // ...and is failure, kill the process
                                 info!("Task is not ready");
                                 app_tx.finish_task(TaskResult::NotReady);
+                                manager.stop_by_pid(pid).await;
                                 node_result = false;
                                 break;
                             }
                         }
-                        // If task finished before probe, consider it as failed regardless of the result
+                        // If process finished before probe, consider it as failed regardless of the result
                         if let Some(_) = task_finished {
                             info!("Task finished before it become ready");
                             if let Err(e) = cancel_probe_tx.send(()) {
@@ -406,8 +412,6 @@ impl TaskRunner {
                 if let Err(e) = callback.send(CallbackMessage(Some(node_result))).await {
                     warn!("Failed to send callback event: {:?}", e)
                 }
-
-                manager.stop_by_pid(pid).await;
 
                 Ok(())
             }));
@@ -499,7 +503,7 @@ impl TaskRunner {
             _ = cancel_rx.recv() => {
                 info!("Task is canceled, stopping...");
                 process.kill().await;
-                return Ok(None);
+                Ok(None)
             }
             result = process.wait_with_piped_outputs(app_tx.clone()) => {
                 let result = match result {
@@ -514,7 +518,7 @@ impl TaskRunner {
                     Ok(None) => anyhow::bail!("unable to determine why child exited"),
                 };
                 info!("Task has finished. PID={}", pid);
-                return Ok(Some(result))
+                Ok(Some(result))
             }
         }
     }

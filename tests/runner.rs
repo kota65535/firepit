@@ -49,9 +49,9 @@ async fn test_dependency_failure() {
     let tasks = vec!["foo".to_string()];
 
     let mut expected = HashMap::new();
-    expected.insert(String::from("#foo"), String::from("Finished: Dependencies failed"));
-    expected.insert(String::from("#bar"), String::from("Finished: Dependencies failed"));
-    expected.insert(String::from("#baz"), String::from("Finished: Failure with code 1"));
+    expected.insert(String::from("#foo"), String::from("Finished: Dependency task failed"));
+    expected.insert(String::from("#bar"), String::from("Finished: Dependency task failed"));
+    expected.insert(String::from("#baz"), String::from("Finished: Failure with exit code 1"));
 
     run_task(path, tasks, expected, None, None, None).await;
 }
@@ -78,7 +78,7 @@ async fn test_bad_service() {
     let tasks = vec!["foo".to_string()];
 
     let mut expected = HashMap::new();
-    expected.insert(String::from("#foo"), String::from("Finished: Dependencies failed"));
+    expected.insert(String::from("#foo"), String::from("Finished: Dependency task failed"));
     expected.insert(String::from("#bar"), String::from("Finished: Service not ready"));
     expected.insert(String::from("#baz"), String::from("Finished: Service not ready"));
 
@@ -152,7 +152,7 @@ async fn test_up_to_date() {
     File::create(path.join("foo.out")).ok();
 
     let mut expected = HashMap::new();
-    expected.insert(String::from("#foo"), String::from("Finished: Up to date"));
+    expected.insert(String::from("#foo"), String::from("Finished: Up-to-date"));
     expected.insert(String::from("#bar"), String::from("Finished: Success"));
     expected.insert(String::from("#baz"), String::from("Finished: Success"));
 
