@@ -107,7 +107,7 @@ impl ProjectConfig {
                 if name.contains("#") {
                     anyhow::bail!("Project name must not contain '#'. Found: {:?}", name)
                 }
-                let mut child_config = ProjectConfig::new(dir.join(path).as_path())?;
+                let mut child_config = ProjectConfig::new(root_config.dir.join(path).as_path())?;
                 root_config.env.iter().for_each(|(k, v)| {
                     child_config.env.entry(k.clone()).or_insert(v.clone());
                 });
@@ -115,7 +115,7 @@ impl ProjectConfig {
                     .env_files
                     .clone()
                     .iter()
-                    .map(|f| dir.join(f).to_str().unwrap().to_string())
+                    .map(|f| root_config.dir.join(f).to_str().unwrap().to_string())
                     .chain(child_config.env_files)
                     .collect();
                 children.insert(name.clone(), child_config);
@@ -186,7 +186,7 @@ impl ProjectConfig {
     }
 
     pub fn is_child(&self, root: &ProjectConfig) -> bool {
-        root.projects.values().any(|p| Path::new(p) == self.dir)
+        root.projects.values().any(|p| Path::join(&root.dir, p) == self.dir)
     }
 
     pub fn working_dir_path(&self) -> PathBuf {
