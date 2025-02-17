@@ -22,7 +22,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run
-        run: cargo run --bin schema
+        run: cargo run --bin firepit-schema
 
       - name: Configure git
         uses: kota65535/github-git-config-action@v1
