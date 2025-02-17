@@ -349,7 +349,12 @@ impl TuiAppState {
             .task_details
             .values()
             .zip(self.task_outputs.values())
-            .filter(|(s, _)| matches!(s.status, TaskStatus::Running(_) | TaskStatus::Finished(_)))
+            .filter(|(s, _)| {
+                matches!(
+                    s.status,
+                    TaskStatus::Running(_) | TaskStatus::Ready | TaskStatus::Finished(_)
+                )
+            })
         {
             o.persist_screen()?
         }
