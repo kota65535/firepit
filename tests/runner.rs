@@ -10,6 +10,7 @@ use firepit::config::ProjectConfig;
 use firepit::event::{Event, EventSender};
 use firepit::project::Workspace;
 use firepit::watcher::FileWatcher;
+use rstest::rstest;
 use std::sync::Once;
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -39,7 +40,7 @@ async fn test_basic() {
     expected.insert(String::from("#bar"), String::from("Finished: Success"));
     expected.insert(String::from("#baz"), String::from("Finished: Success"));
 
-    run_task(path, tasks, expected, None, None, None).await;
+    run_task(&path, tasks, expected, None, None, None).await;
 }
 
 #[tokio::test]
@@ -54,6 +55,25 @@ async fn test_dependency_failure() {
     expected.insert(String::from("#baz"), String::from("Finished: Failure with exit code 1"));
 
     run_task(path, tasks, expected, None, None, None).await;
+}
+
+#[tokio::test]
+#[rstest]
+#[rstest]
+#[case("")]
+#[case("foo")]
+async fn test_multi(#[case] dir: &str) {
+    setup();
+    let base = Path::new("tests/fixtures/runner/03_multi");
+    let path = base.join(dir);
+    let tasks = vec!["foo".to_string()];
+
+    let mut expected = HashMap::new();
+    expected.insert(String::from("foo#foo"), String::from("Finished: Success"));
+    expected.insert(String::from("bar#bar"), String::from("Finished: Success"));
+    expected.insert(String::from("#baz"), String::from("Finished: Success"));
+
+    run_task(&path, tasks, expected, None, None, None).await;
 }
 
 #[tokio::test]
@@ -168,7 +188,8 @@ async fn run_task(
     timeout_seconds: Option<u64>,
 ) {
     let path = path::absolute(path).unwrap();
-    let ws = Workspace::new(&ProjectConfig::new(&path).unwrap(), &HashMap::new()).unwrap();
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
+    let ws = Workspace::new(&root, &children).unwrap();
 
     // Create runner
     let mut runner = TaskRunner::new(&ws, &tasks, Path::new(&path)).unwrap();

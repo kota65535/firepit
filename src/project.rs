@@ -73,8 +73,8 @@ impl Workspace {
     }
 
     pub fn target_tasks(&self, tasks: &Vec<String>, current_dir: &Path) -> anyhow::Result<Vec<String>> {
+        let mut target_tasks = Vec::new();
         if self.root.dir == current_dir {
-            let mut target_tasks = Vec::new();
             for t in tasks.iter() {
                 let target = match self.root.task(t) {
                     Some(t) => vec![t.name],
@@ -93,7 +93,6 @@ impl Workspace {
                 };
                 target_tasks.extend(target);
             }
-            Ok(target_tasks)
         } else {
             let child = self
                 .children
@@ -101,12 +100,15 @@ impl Workspace {
                 .find(|c| c.dir == current_dir)
                 .with_context(|| format!("directory {:?} is not part of any projects", current_dir))?;
             for t in tasks.iter() {
-                child
-                    .task(t)
-                    .with_context(|| format!("task {:?} is not defined in project {:?}", t, child.name))?;
+                target_tasks.push(
+                    child
+                        .task(t)
+                        .map(|t| t.name)
+                        .with_context(|| format!("task {:?} is not defined in project {:?}", t, child.name))?,
+                );
             }
-            Ok(tasks.clone())
         }
+        Ok(target_tasks)
     }
 
     pub fn print_info(&self) {
