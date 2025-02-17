@@ -1,3 +1,4 @@
+use crate::cui::lib::BOLD;
 use crate::event::{Direction, TaskResult, TaskStatus};
 use std::{io::Write, mem};
 
@@ -120,7 +121,7 @@ impl TerminalOutput {
         let title = self.title(&self.name);
         let screen = self.parser.entire_screen();
         let (_, cols) = screen.size();
-        stdout.write_all(title.as_bytes())?;
+        stdout.write_all(BOLD.apply_to(title).to_string().as_bytes())?;
         stdout.write_all(b"\r\n")?;
         for row in screen.rows_formatted(0, cols) {
             stdout.write_all(&row)?;
