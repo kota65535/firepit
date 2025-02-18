@@ -248,15 +248,15 @@ impl TaskConfig {
         }
     }
 
-    pub fn env_files_paths(&self, dir: &PathBuf) -> Vec<PathBuf> {
+    pub fn env_file_paths(&self, dir: &PathBuf) -> Vec<PathBuf> {
         self.env_files.iter().map(|f| absolute_or_join(f, dir)).collect()
     }
 
-    pub fn inputs_paths(&self, dir: &PathBuf) -> Vec<PathBuf> {
+    pub fn input_paths(&self, dir: &PathBuf) -> Vec<PathBuf> {
         self.inputs.iter().map(|f| absolute_or_join(f, dir)).collect()
     }
 
-    pub fn outputs_paths(&self, dir: &PathBuf) -> Vec<PathBuf> {
+    pub fn output_paths(&self, dir: &PathBuf) -> Vec<PathBuf> {
         self.outputs.iter().map(|f| absolute_or_join(f, dir)).collect()
     }
 }

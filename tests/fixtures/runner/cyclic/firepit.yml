@@ -1,0 +1,9 @@
+projects:
+  foo: foo
+  bar: bar
+
+tasks:
+  baz:
+    command: echo "baz"
+    depends_on:
+      - foo#foo

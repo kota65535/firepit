@@ -11,7 +11,7 @@ use firepit::event::{Event, EventSender};
 use firepit::project::Workspace;
 use firepit::watcher::FileWatcher;
 use rstest::rstest;
-use std::sync::Once;
+use std::sync::{LazyLock, Once};
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::{mpsc, watch};
@@ -29,58 +29,106 @@ pub fn setup() {
     });
 }
 
+static BASE_PATH: LazyLock<&Path> = LazyLock::new(|| Path::new("tests/fixtures/runner"));
+
 #[tokio::test]
-async fn test_basic() {
+async fn test_basic_single() {
     setup();
-    let path = Path::new("tests/fixtures/runner/01_basic");
-    let tasks = vec!["foo".to_string()];
+    let path = BASE_PATH.join("basic_single");
+    let tasks = vec![String::from("foo")];
 
-    let mut expected = HashMap::new();
-    expected.insert(String::from("#foo"), String::from("Finished: Success"));
-    expected.insert(String::from("#bar"), String::from("Finished: Success"));
-    expected.insert(String::from("#baz"), String::from("Finished: Success"));
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#foo"), String::from("Finished: Success"));
+    statuses.insert(String::from("#bar"), String::from("Finished: Success"));
+    statuses.insert(String::from("#baz"), String::from("Finished: Success"));
 
-    run_task(&path, tasks, expected, None, None, None).await;
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#foo"), String::from("foo"));
+    outputs.insert(String::from("#bar"), String::from("bar"));
+    outputs.insert(String::from("#baz"), String::from("baz"));
+
+    run_task(&path, tasks, statuses, Some(outputs), None, None, None)
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
-async fn test_dependency_failure() {
+async fn test_basic_failure() {
     setup();
-    let path = Path::new("tests/fixtures/runner/02_fail");
-    let tasks = vec!["foo".to_string()];
+    let path = BASE_PATH.join("basic_failure");
+    let tasks = vec![String::from("foo")];
 
-    let mut expected = HashMap::new();
-    expected.insert(String::from("#foo"), String::from("Finished: Dependency task failed"));
-    expected.insert(String::from("#bar"), String::from("Finished: Dependency task failed"));
-    expected.insert(String::from("#baz"), String::from("Finished: Failure with exit code 1"));
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#foo"), String::from("Finished: Dependency task failed"));
+    statuses.insert(String::from("#bar"), String::from("Finished: Dependency task failed"));
+    statuses.insert(String::from("#baz"), String::from("Finished: Failure with exit code 1"));
 
-    run_task(path, tasks, expected, None, None, None).await;
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#baz"), String::from("baz"));
+
+    run_task(&path, tasks, statuses, Some(outputs), None, None, None)
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
-#[rstest]
 #[rstest]
 #[case("")]
 #[case("foo")]
-async fn test_multi(#[case] dir: &str) {
+async fn test_basic_multi(#[case] dir: &str) {
     setup();
-    let base = Path::new("tests/fixtures/runner/03_multi");
-    let path = base.join(dir);
-    let tasks = vec!["foo".to_string()];
+    let path = BASE_PATH.join("basic_multi").join(dir);
 
-    let mut expected = HashMap::new();
-    expected.insert(String::from("foo#foo"), String::from("Finished: Success"));
-    expected.insert(String::from("bar#bar"), String::from("Finished: Success"));
-    expected.insert(String::from("#baz"), String::from("Finished: Success"));
+    // With qualified task name
+    let tasks = vec![String::from("#baz")];
 
-    run_task(&path, tasks, expected, None, None, None).await;
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("foo#foo"), String::from("Finished: Success"));
+    statuses.insert(String::from("bar#bar"), String::from("Finished: Success"));
+    statuses.insert(String::from("#baz"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("foo#foo"), String::from("foo"));
+    outputs.insert(String::from("bar#bar"), String::from("bar"));
+    outputs.insert(String::from("#baz"), String::from("baz"));
+
+    run_task(&path, tasks, statuses, Some(outputs), None, None, None)
+        .await
+        .unwrap();
+
+    // With unqualified task name
+    let tasks = vec![String::from("foo")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("foo#foo"), String::from("Finished: Success"));
+    statuses.insert(String::from("bar#bar"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("foo#foo"), String::from("foo"));
+    outputs.insert(String::from("bar#bar"), String::from("bar"));
+
+    run_task(&path, tasks, statuses, Some(outputs), None, None, None)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn test_cyclic() {
+    setup();
+    let path = BASE_PATH.join("cyclic");
+    let tasks = vec![String::from("foo")];
+
+    let err = run_task(&path, tasks, HashMap::new(), None, None, None, None)
+        .await
+        .expect_err("should fail");
+    assert!(err.to_string().contains("cyclic dependency"));
 }
 
 #[tokio::test]
 async fn test_service() {
     setup();
-    let path = Path::new("tests/fixtures/runner/11_service");
-    let tasks = vec!["foo".to_string()];
+    let path = BASE_PATH.join("service");
+    let tasks = vec![String::from("foo")];
 
     let mut expected = HashMap::new();
     expected.insert(String::from("#foo"), String::from("Finished: Success"));
@@ -88,50 +136,68 @@ async fn test_service() {
     expected.insert(String::from("#baz"), String::from("Ready"));
     expected.insert(String::from("#qux"), String::from("Ready"));
 
-    run_task(path, tasks, expected, None, None, Some(20)).await;
+    run_task(&path, tasks, expected, None, None, None, Some(20))
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
-async fn test_bad_service() {
+async fn test_service_failure() {
     setup();
-    let path = Path::new("tests/fixtures/runner/12_bad_service");
-    let tasks = vec!["foo".to_string()];
+    let path = BASE_PATH.join("service_failure");
+    let tasks = vec![String::from("foo")];
 
     let mut expected = HashMap::new();
     expected.insert(String::from("#foo"), String::from("Finished: Dependency task failed"));
     expected.insert(String::from("#bar"), String::from("Finished: Service not ready"));
     expected.insert(String::from("#baz"), String::from("Finished: Service not ready"));
 
-    run_task(path, tasks, expected, None, None, Some(20)).await;
+    run_task(&path, tasks, expected, None, None, None, Some(20))
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
 async fn test_watch() {
     setup();
-    let path = Path::new("tests/fixtures/runner/21_watch");
-    let tasks = vec!["foo".to_string()];
+    let path = BASE_PATH.join("watch");
+    let tasks = vec![String::from("foo")];
 
     let mut status_expected = HashMap::new();
     status_expected.insert(String::from("#foo"), String::from("Finished: Success"));
     status_expected.insert(String::from("#bar"), String::from("Finished: Success"));
     status_expected.insert(String::from("#baz"), String::from("Finished: Success"));
 
+    let mut outputs_expected = HashMap::new();
+    outputs_expected.insert(String::from("#foo"), String::from("foofoo"));
+    outputs_expected.insert(String::from("#bar"), String::from("barbar"));
+    outputs_expected.insert(String::from("#baz"), String::from("baz"));
+
     let mut runs_expected = HashMap::new();
     runs_expected.insert(String::from("#foo"), 1);
     runs_expected.insert(String::from("#bar"), 1);
     runs_expected.insert(String::from("#baz"), 0);
 
-    run_task_with_watch(&path, tasks, status_expected, None, Some(runs_expected), None, async {
-        File::create("tests/fixtures/runner/21_watch/bar.txt").ok();
-    })
+    run_task_with_watch(
+        &path,
+        tasks,
+        status_expected,
+        Some(outputs_expected),
+        None,
+        Some(runs_expected),
+        None,
+        async {
+            File::create(BASE_PATH.join("watch").join("bar.txt")).ok();
+        },
+    )
     .await;
 }
 
 #[tokio::test]
 async fn test_watch_service() {
     setup();
-    let path = Path::new("tests/fixtures/runner/22_watch_service");
-    let tasks = vec!["foo".to_string()];
+    let path = BASE_PATH.join("watch_service");
+    let tasks = vec![String::from("foo")];
 
     let mut status_expected = HashMap::new();
     status_expected.insert(String::from("#foo"), String::from("Finished: Success"));
@@ -142,7 +208,7 @@ async fn test_watch_service() {
     runs_expected.insert(String::from("#bar"), 1);
 
     {
-        let mut f = File::create("tests/fixtures/runner/22_watch_service/bar.txt").unwrap();
+        let mut f = File::create(path.join("bar.txt")).unwrap();
         f.write_all(b"12001").unwrap();
     }
     tokio::time::sleep(Duration::from_secs(1)).await;
@@ -152,11 +218,12 @@ async fn test_watch_service() {
         tasks,
         status_expected,
         None,
+        None,
         Some(runs_expected),
         Some(20),
         async {
             tokio::time::sleep(Duration::from_secs(1)).await;
-            let mut f = File::create("tests/fixtures/runner/22_watch_service/bar.txt").unwrap();
+            let mut f = File::create(BASE_PATH.join("watch_service").join("bar.txt")).unwrap();
             f.write_all(b"12000").unwrap();
         },
     )
@@ -166,8 +233,8 @@ async fn test_watch_service() {
 #[tokio::test]
 async fn test_up_to_date() {
     setup();
-    let path = path::absolute(Path::new("tests/fixtures/runner/31_up_to_date")).unwrap();
-    let tasks = vec!["foo".to_string()];
+    let path = BASE_PATH.join("up_to_date");
+    let tasks = vec![String::from("foo")];
 
     File::create(path.join("foo.out")).ok();
 
@@ -176,23 +243,24 @@ async fn test_up_to_date() {
     expected.insert(String::from("#bar"), String::from("Finished: Success"));
     expected.insert(String::from("#baz"), String::from("Finished: Success"));
 
-    run_task(&path, tasks, expected, None, None, None).await;
+    run_task(&path, tasks, expected, None, None, None, None).await.unwrap();
 }
 
 async fn run_task(
     path: &Path,
     tasks: Vec<String>,
     status_expected: HashMap<String, String>,
+    outputs_expected: Option<HashMap<String, String>>,
     restarts_expected: Option<HashMap<String, u64>>,
     runs_expected: Option<HashMap<String, u64>>,
     timeout_seconds: Option<u64>,
-) {
-    let path = path::absolute(path).unwrap();
-    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
-    let ws = Workspace::new(&root, &children).unwrap();
+) -> anyhow::Result<()> {
+    let path = path::absolute(path)?;
+    let (root, children) = ProjectConfig::new_multi(&path)?;
+    let ws = Workspace::new(&root, &children)?;
 
     // Create runner
-    let mut runner = TaskRunner::new(&ws, &tasks, Path::new(&path)).unwrap();
+    let mut runner = TaskRunner::new(&ws, &tasks, Path::new(&path))?;
     let (tx, rx) = mpsc::unbounded_channel();
     let sender = EventSender::new(tx);
 
@@ -209,22 +277,24 @@ async fn run_task(
         rx,
         cancel_tx,
         status_expected,
+        outputs_expected,
         restarts_expected,
         runs_expected,
         timeout_seconds,
     )
-    .await
-    .unwrap();
+    .await?;
 
     // Stop processes to forcing runner to finish
     manager.stop().await;
-    runner_fut.await.ok();
+    runner_fut.await?;
+    Ok(())
 }
 
 async fn run_task_with_watch<F>(
     path: &Path,
     tasks: Vec<String>,
     status_expected: HashMap<String, String>,
+    outputs_expected: Option<HashMap<String, String>>,
     restarts_expected: Option<HashMap<String, u64>>,
     runs_expected: Option<HashMap<String, u64>>,
     timeout_seconds: Option<u64>,
@@ -265,6 +335,7 @@ async fn run_task_with_watch<F>(
         rx,
         cancel_tx,
         status_expected,
+        outputs_expected,
         restarts_expected,
         runs_expected,
         timeout_seconds,
@@ -283,13 +354,15 @@ const DEFAULT_TEST_TIMEOUT_SECONDS: u64 = 20;
 fn handle_events(
     mut rx: UnboundedReceiver<Event>,
     cancel_tx: watch::Sender<()>,
-    status_expected: HashMap<String, String>,
+    statuses_expected: HashMap<String, String>,
+    outputs_expected: Option<HashMap<String, String>>,
     restarts_expected: Option<HashMap<String, u64>>,
     runs_expected: Option<HashMap<String, u64>>,
     timeout_seconds: Option<u64>,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
-        let mut status = HashMap::new();
+        let mut statuses = HashMap::new();
+        let mut outputs = HashMap::<String, String>::new();
         let mut restarts = HashMap::new();
         let mut runs = HashMap::new();
 
@@ -312,20 +385,36 @@ fn handle_events(
                             runs.insert(task.clone(), run);
                         }
                         Event::ReadyTask { task } => {
-                            status.insert(task, String::from("Ready"));
+                            statuses.insert(task, String::from("Ready"));
                         }
                         Event::FinishTask { task, result } => {
-                            status.insert(task, format!("Finished: {}", result));
+                            statuses.insert(task, format!("Finished: {}", result));
                         }
                         Event::Stop(callback) => {
                             callback.send(()).ok();
                             break;
                         }
+                        Event::TaskOutput { task, output } => {
+                            let str = String::from_utf8(output.clone()).unwrap();
+                            match outputs.get(&task) {
+                                Some(t) => {
+                                    let s = format!("{}{}", t, str);
+                                    outputs.insert(task.clone(), normalize_str(&s));
+                                }
+                                None => {
+                                    outputs.insert(task.clone(), normalize_str(&str));
+                                }
+                            }
+                        }
                         _ => {}
                     }
                 }
             }
-            if status_expected == status
+            if statuses_expected == statuses
+                && match outputs_expected.clone() {
+                    Some(expected) => expected == outputs,
+                    None => true,
+                }
                 && match restarts_expected.clone() {
                     Some(expected) => expected == restarts,
                     None => true,
@@ -339,7 +428,10 @@ fn handle_events(
             }
         }
         cancel_tx.send(()).unwrap();
-        assert_eq!(status_expected, status);
+        assert_eq!(statuses_expected, statuses);
+        if let Some(outputs_expected) = outputs_expected {
+            assert_eq!(outputs_expected, outputs);
+        }
         if let Some(restarts_expected) = restarts_expected {
             assert_eq!(restarts_expected, restarts);
         }
@@ -347,4 +439,8 @@ fn handle_events(
             assert_eq!(runs_expected, runs);
         }
     })
+}
+
+fn normalize_str(s: &str) -> String {
+    s.trim().chars().filter(|&c| !c.is_control()).collect()
 }
