@@ -5,5 +5,5 @@ projects:
 tasks:
   baz:
     command: echo "baz"
-
-ui: cui
+    depends_on:
+      - foo#foo

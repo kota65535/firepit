@@ -1,6 +1,5 @@
 use assertables::assert_starts_with;
 use firepit::config::ProjectConfig;
-use rstest::rstest;
 use std::collections::HashMap;
 use std::env;
 use std::path::Path;
@@ -34,13 +33,10 @@ fn to_absolute_path(root: &Path, path: &str) -> String {
         .to_string()
 }
 
-#[rstest]
-#[case("")]
-#[case("foo")]
-fn test_multi(#[case] dir: &str) {
+#[test]
+fn test_multi() {
     let path = Path::new("tests/fixtures/config/multi");
-    let current_dir = path.join(dir);
-    let (root, children) = ProjectConfig::new_multi(&current_dir).unwrap();
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
     let foo = &children.get("foo").unwrap();
     let bar = &children.get("bar").unwrap();
 

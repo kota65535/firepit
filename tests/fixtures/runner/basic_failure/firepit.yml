@@ -10,6 +10,6 @@ tasks:
       - baz
 
   baz:
-    command: echo "baz"
-
-ui: cui
+    command: |
+      echo "baz"
+      exit 1

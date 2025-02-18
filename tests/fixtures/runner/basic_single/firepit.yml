@@ -1,13 +1,8 @@
 tasks:
   foo:
-    command: |
-      echo "foo" > foo.out
+    command: echo "foo"
     depends_on:
       - bar
-    inputs:
-      - foo.input
-    outputs:
-      - foo.out
 
   bar:
     command: echo "bar"
@@ -16,5 +11,3 @@ tasks:
 
   baz:
     command: echo "baz"
-
-ui: cui
