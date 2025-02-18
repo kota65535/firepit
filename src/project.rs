@@ -72,40 +72,69 @@ impl Workspace {
         tasks
     }
 
+    pub fn task(&self, name: &str) -> Option<Task> {
+        self.root
+            .tasks
+            .values()
+            .find(|t| t.name == name)
+            .or_else(|| {
+                self.children
+                    .values()
+                    .flat_map(|c| c.tasks.values())
+                    .find(|t| t.name == name)
+            })
+            .cloned()
+    }
+
     pub fn target_tasks(&self, tasks: &Vec<String>, current_dir: &Path) -> anyhow::Result<Vec<String>> {
         let mut target_tasks = Vec::new();
         if self.root.dir == current_dir {
+            // In root directory...
             for t in tasks.iter() {
-                let target = match self.root.task(t) {
-                    Some(t) => vec![t.name],
-                    None => {
-                        let child_tasks = self
-                            .children
-                            .values()
-                            .filter_map(|p| p.task(t))
-                            .map(|t| t.name)
-                            .collect::<Vec<_>>();
-                        if child_tasks.is_empty() {
-                            anyhow::bail!("task {:?} is not defined in any project", t);
+                // If the name is qualified, simply find it
+                if t.contains('#') {
+                    let found = self.task(t).with_context(|| format!("task {:?} is not defined", t))?;
+                    target_tasks.push(found.name);
+                } else {
+                    // If the name is not qualified, search first in root tasks
+                    // An if not found, search in child projects
+                    let target = match self.root.task(t) {
+                        Some(t) => vec![t.name],
+                        None => {
+                            let child_tasks = self
+                                .children
+                                .values()
+                                .filter_map(|p| p.task(t))
+                                .map(|t| t.name)
+                                .collect::<Vec<_>>();
+                            if child_tasks.is_empty() {
+                                anyhow::bail!("task {:?} is not defined in any project", t);
+                            }
+                            child_tasks
                         }
-                        child_tasks
-                    }
-                };
-                target_tasks.extend(target);
+                    };
+                    target_tasks.extend(target);
+                }
             }
         } else {
-            let child = self
-                .children
-                .values()
-                .find(|c| c.dir == current_dir)
-                .with_context(|| format!("directory {:?} is not part of any projects", current_dir))?;
+            // In child directory...
             for t in tasks.iter() {
-                target_tasks.push(
-                    child
+                // If the name is qualified, simply find it
+                if t.contains('#') {
+                    let found = self.task(t).with_context(|| format!("task {:?} is not defined", t))?;
+                    target_tasks.push(found.name);
+                } else {
+                    // If the name is not qualified, search in the project of the current directory
+                    let child = self
+                        .children
+                        .values()
+                        .find(|c| c.dir == current_dir)
+                        .with_context(|| format!("directory {:?} is not part of any projects", current_dir))?;
+                    let found = child
                         .task(t)
-                        .map(|t| t.name)
-                        .with_context(|| format!("task {:?} is not defined in project {:?}", t, child.name))?,
-                );
+                        .with_context(|| format!("task {:?} is not defined in project {:?}", t, child.name))?;
+                    target_tasks.push(found.name);
+                }
             }
         }
         Ok(target_tasks)
@@ -219,15 +248,33 @@ impl Task {
                 .unwrap_or(config.working_dir_path());
 
             // Environment variables
+            // Priority:
+            // 1. Root project env file
+            // 2. Root project env
+            // 3. Project env file
+            // 4. Project env
+            // 5. Task env file
+            // 6. Task env
             let project_env = Self::merge_env(Self::load_env_files(&config.env_files_paths())?, config.env.clone())?;
             let task_env = Self::merge_env(
-                Self::load_env_files(&task_config.env_files_paths(&config.dir))?,
+                Self::load_env_files(&task_config.env_file_paths(&config.dir))?,
                 task_config.env.clone(),
             )?;
             let merged_task_env = Self::merge_env(project_env, task_env)?;
 
-            let inputs = task_config.inputs_paths(&config.dir);
-            let outputs = task_config.outputs_paths(&config.dir);
+            // Input files
+            let inputs = task_config
+                .input_paths(&config.dir)
+                .into_iter()
+                .chain(task_config.env_file_paths(&config.dir).into_iter())
+                .collect::<Vec<_>>();
+
+            // Output files
+            let outputs = task_config
+                .output_paths(&config.dir)
+                .into_iter()
+                .chain(task_config.env_file_paths(&config.dir).into_iter())
+                .collect::<Vec<_>>();
 
             // Probes
             let (is_service, probe, restart) = match task_config.service {
