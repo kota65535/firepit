@@ -85,7 +85,7 @@ pub async fn run() -> anyhow::Result<()> {
     // Create & start UI
     let (app_tx, app_fut) = match root.ui {
         UI::Cui => {
-            let mut app = CuiApp::new();
+            let mut app = CuiApp::new()?;
             let sender = app.sender();
             let fut = tokio_spawn!("app", async move { app.run().await });
             (sender, fut)

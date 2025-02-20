@@ -4,7 +4,7 @@ use crate::graph::{CallbackMessage, TaskGraph, Visitor, VisitorMessage};
 use crate::probe::Probe;
 use crate::process::{Child, ChildExit, Command, ProcessManager};
 use crate::project::{Task, Workspace};
-use crate::signal::{get_signal, SignalHandler};
+use crate::signal::SignalHandler;
 use crate::tokio_spawn;
 use anyhow::Context;
 use futures::stream::FuturesUnordered;
@@ -69,7 +69,7 @@ impl TaskRunner {
         let tasks = task_graph.sort()?;
         debug!("Task graph:\n{:?}", task_graph);
 
-        let signal_handler = SignalHandler::new(get_signal()?);
+        let signal_handler = SignalHandler::infer()?;
         let manager = ProcessManager::infer();
 
         let mut task_cancel_txs = HashMap::new();
@@ -198,10 +198,10 @@ impl TaskRunner {
         let manager = self.manager.clone();
         let cancel_visitor_cloned = cancel_visitor.clone();
         tokio_spawn!("runner-canceller", async move {
-            let subscriber = signal_handler.subscribe().unwrap();
+            let subscriber = signal_handler.subscribe();
             tokio::select! {
                 _ = cancel_rx.changed() => {}
-                _ = subscriber.listen() => {}
+                _ = subscriber.unwrap().listen(), if subscriber.is_some() => {}
             }
             // Cancel visitor and stop all processes
             manager.stop().await;
