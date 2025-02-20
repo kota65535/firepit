@@ -1,4 +1,4 @@
-use crate::event::{Direction, PaneSize, ScrollSize, TaskRunning, TaskStatus};
+use crate::event::{Direction, PaneSize, ScrollSize, TaskRunDetail, TaskStatus};
 use crate::event::{Event, TaskResult};
 use crate::event::{EventReceiver, EventSender};
 use crate::tui::clipboard::copy_to_clipboard;
@@ -318,8 +318,16 @@ impl TuiAppState {
         self.set_status(task, TaskStatus::Planned);
     }
 
-    pub fn start_task(&mut self, task: &str, pid: u32, restart: u64, run: u64) {
-        self.set_status(task, TaskStatus::Running(TaskRunning { pid, restart, run }));
+    pub fn start_task(&mut self, task: &str, pid: u32, restart: u64, max_restart: Option<u64>, reload: u64) {
+        self.set_status(
+            task,
+            TaskStatus::Running(TaskRunDetail {
+                pid,
+                restart,
+                max_restart,
+                reload,
+            }),
+        );
     }
 
     pub fn ready_task(&mut self, task: &str) {
@@ -655,9 +663,10 @@ impl TuiAppState {
                 task,
                 pid,
                 restart,
-                run,
+                max_restart,
+                reload,
             } => {
-                self.start_task(&task, pid, restart, run);
+                self.start_task(&task, pid, restart, max_restart, reload);
             }
             Event::TaskOutput { task, output } => {
                 self.process_output(&task, &output)?;

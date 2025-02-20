@@ -52,7 +52,7 @@ impl TerminalOutput {
         self.status = status;
         match status {
             TaskStatus::Running(info) => {
-                if info.restart > 0 || info.run > 0 {
+                if info.restart > 0 || info.reload > 0 {
                     let msg = "Process restarted";
                     self.process(console::style(format!("\r\n{}\r\n", msg)).bold().to_string().as_bytes());
                 }
