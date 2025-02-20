@@ -25,6 +25,22 @@ pub struct Args {
     /// Watch mode
     #[arg(short, long, default_value = "false")]
     pub watch: bool,
+
+    /// Log file
+    #[arg(long)]
+    pub log_file: Option<String>,
+
+    /// Log level
+    #[arg(long)]
+    pub log_level: Option<String>,
+
+    /// UI
+    #[arg(long)]
+    pub ui: Option<UI>,
+
+    /// Enable instrumentation for tokio-console
+    #[arg(long, hide = true, default_value = "false")]
+    pub tokio_console: bool,
 }
 
 pub async fn run() -> anyhow::Result<()> {
@@ -36,11 +52,17 @@ pub async fn run() -> anyhow::Result<()> {
     info!("Tasks: {:?}", args.tasks);
 
     // Load config files
-    let (root, children) = ProjectConfig::new_multi(&dir)?;
+    let (mut root, children) = ProjectConfig::new_multi(&dir)?;
+
+    // Override config files with CLI options
+    root.log.file = args.log_file.or(root.log.file);
+    root.log.level = args.log_level.unwrap_or(root.log.level);
+    root.ui = args.ui.unwrap_or(root.ui);
 
     // Aggregate information in config files into more workable form
     let ws = Workspace::new(&root, &children)?;
-    init_logger(&root.log)?;
+
+    init_logger(&root.log, args.tokio_console)?;
 
     // Print workspace information if no task specified
     if args.tasks.is_empty() {

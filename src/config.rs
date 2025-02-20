@@ -439,7 +439,8 @@ pub fn default_service_restart() -> Restart {
     Restart::Never
 }
 
-#[derive(Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[derive(Deserialize, Clone, Debug, PartialEq, JsonSchema, strum::EnumString)]
+#[strum(serialize_all = "lowercase")]
 pub enum UI {
     #[serde(rename = "cui")]
     Cui,
