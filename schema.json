@@ -200,7 +200,10 @@
           ],
           "properties": {
             "Always": {
-              "type": "integer",
+              "type": [
+                "integer",
+                "null"
+              ],
               "format": "uint64",
               "minimum": 0.0
             }
@@ -214,7 +217,10 @@
           ],
           "properties": {
             "OnFailure": {
-              "type": "integer",
+              "type": [
+                "integer",
+                "null"
+              ],
               "format": "uint64",
               "minimum": 0.0
             }
