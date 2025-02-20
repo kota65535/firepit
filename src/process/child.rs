@@ -673,12 +673,6 @@ impl Child {
                 status = self.wait(), if !is_exited => {
                     trace!("child process exited: {}", self.label());
                     is_exited = true;
-                    // We don't abort in the cases of a zero exit code as we could be
-                    // caching this task and should read all the logs it produces.
-                    if status != Some(ChildExit::Finished(Some(0))) {
-                        debug!("child process failed, skipping reading stdout/stderr");
-                        return Ok(status);
-                    }
                 }
                 else => {
                     trace!("flushing child stdout/stderr buffers");
