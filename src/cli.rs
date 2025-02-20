@@ -9,7 +9,7 @@ use crate::watcher::FileWatcher;
 use clap::Parser;
 use std::path;
 use std::time::Duration;
-use tracing::{debug, info};
+use tracing::info;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
