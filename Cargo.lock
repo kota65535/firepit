@@ -542,7 +542,7 @@ dependencies = [
 
 [[package]]
 name = "firepit"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "assertables",
