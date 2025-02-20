@@ -11,10 +11,11 @@ use std::path;
 use std::time::Duration;
 use tracing::info;
 
+/// Firepit: Simple task & service runner with comfortable TUI
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Args {
-    /// Task names to run
+    /// Names of tasks to run
     #[arg(required = false)]
     pub tasks: Vec<String>,
 

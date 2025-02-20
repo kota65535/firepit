@@ -1,0 +1,14 @@
+$schema: https://raw.githubusercontent.com/kota65535/firepit/refs/heads/main/schema.json
+
+tasks:
+  install:
+    command: bun install
+
+  dev:
+    command: bun run dev
+    depends_on:
+      - install
+      - server#dev
+    service:
+      healthcheck:
+        log: VITE.*ready

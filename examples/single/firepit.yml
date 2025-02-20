@@ -1,0 +1,21 @@
+$schema: https://raw.githubusercontent.com/kota65535/firepit/refs/heads/main/schema.json
+
+tasks:
+  # Install dependencies
+  install:
+    command: bun install
+
+  # Run Hono server
+  server:
+    command: bun run dev
+    depends_on:
+      - install
+      - db
+
+  # Run Redis server
+  db:
+    command: redis-server
+    service:
+      healthcheck:
+        command: nc -z localhost 6379
+        start_period: 1

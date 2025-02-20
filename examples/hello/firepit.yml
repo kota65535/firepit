@@ -1,0 +1,8 @@
+# Enable input completion
+$schema: https://raw.githubusercontent.com/kota65535/firepit/refs/heads/main/schema.json
+
+tasks:
+  # Task name
+  hello:
+    # The command content is executed in shell
+    command: npx cowsay "hello,firepit"
