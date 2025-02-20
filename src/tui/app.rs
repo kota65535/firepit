@@ -11,6 +11,7 @@ use crate::tui::task::TaskDetail;
 use crate::tui::term_output::TerminalOutput;
 use anyhow::Context;
 use indexmap::IndexMap;
+use ratatui::widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState};
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Layout},
@@ -25,7 +26,7 @@ use tokio::{
     sync::{mpsc, oneshot},
     time::Instant,
 };
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 
 pub const FRAME_RATE: Duration = Duration::from_millis(3);
 pub const EXIT_DELAY: Duration = Duration::from_secs(3);
@@ -51,7 +52,8 @@ pub struct TuiAppState {
     task_outputs: IndexMap<String, TerminalOutput>,
     task_details: IndexMap<String, TaskDetail>,
     focus: LayoutSections,
-    scroll: TableState,
+    table: TableState,
+    scrollbar: ScrollbarState,
     selected_task_index: usize,
     has_sidebar: bool,
     done: bool,
@@ -105,7 +107,8 @@ impl TuiApp {
                 task_outputs,
                 task_details,
                 focus: LayoutSections::TaskList(None),
-                scroll: TableState::default().with_selected(selected_task_index),
+                table: TableState::default().with_selected(selected_task_index),
+                scrollbar: ScrollbarState::default(),
                 selected_task_index,
                 has_sidebar: true,
                 done: false,
@@ -279,7 +282,7 @@ impl TuiAppState {
         let num_rows = self.task_outputs.len();
         let next_index = (self.selected_task_index + 1).clamp(0, num_rows - 1);
         self.selected_task_index = next_index;
-        self.scroll.select(Some(next_index));
+        self.table.select(Some(next_index));
     }
 
     pub fn previous(&mut self) {
@@ -288,11 +291,12 @@ impl TuiAppState {
             i => i - 1,
         };
         self.selected_task_index = i;
-        self.scroll.select(Some(i));
+        self.table.select(Some(i));
     }
 
     pub fn scroll_terminal_output(&mut self, direction: Direction, stride: usize) -> anyhow::Result<()> {
-        self.active_task_mut()?.scroll(direction, stride)?;
+        let (scroll_current, scroll_len) = self.active_task_mut()?.scroll(direction, stride)?;
+        self.scrollbar = self.scrollbar.position(scroll_len.saturating_sub(scroll_current));
         Ok(())
     }
 
@@ -377,7 +381,7 @@ impl TuiAppState {
             .with_context(|| format!("{} not found", task_name))?;
 
         self.selected_task_index = new_index_to_highlight;
-        self.scroll.select(Some(new_index_to_highlight));
+        self.table.select(Some(new_index_to_highlight));
 
         Ok(())
     }
@@ -401,7 +405,16 @@ impl TuiAppState {
         };
         let [table, pane] = horizontal.areas(f.size());
 
-        let active_task = self.active_task().unwrap();
+        let active_task = match self.active_task() {
+            Ok(task) => task,
+            Err(e) => {
+                error!("Error on rendering: {}", e);
+                return;
+            }
+        };
+        let content_length = active_task.parser.screen().current_scrollback_len();
+
+        // Render pane
         let pane_to_render = TerminalPane::new(
             active_task,
             &active_task.name,
@@ -409,10 +422,21 @@ impl TuiAppState {
             self.has_sidebar,
             self.done.then(|| self.exit_delay_left.as_secs()),
         );
-        let table_to_render = TaskTable::new(&self.task_details);
-
         f.render_widget(&pane_to_render, pane);
-        f.render_stateful_widget(&table_to_render, table, &mut self.scroll);
+
+        // Render table
+        let table_to_render = TaskTable::new(&self.task_details);
+        f.render_stateful_widget(&table_to_render, table, &mut self.table);
+
+        // Render scrollbar
+        self.scrollbar = self.scrollbar.content_length(content_length);
+        f.render_stateful_widget(
+            Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                .begin_symbol(Some("↑"))
+                .end_symbol(Some("↓")),
+            pane,
+            &mut self.scrollbar,
+        );
     }
 
     /// Insert a stdin to be associated with a task

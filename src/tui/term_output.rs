@@ -83,8 +83,9 @@ impl TerminalOutput {
         }
     }
 
-    pub fn scroll(&mut self, direction: Direction, stride: usize) -> anyhow::Result<()> {
-        let scrollback = self.parser.screen().scrollback();
+    pub fn scroll(&mut self, direction: Direction, stride: usize) -> anyhow::Result<(usize, usize)> {
+        let screen = self.parser.screen_mut();
+        let scrollback = screen.scrollback();
         let new_scrollback = match direction {
             Direction::Up => {
                 if stride == 0 {
@@ -101,19 +102,16 @@ impl TerminalOutput {
                 }
             }
         };
-        self.parser.screen_mut().set_scrollback(new_scrollback);
-        Ok(())
+        screen.set_scrollback(new_scrollback);
+        let scrollback_len = screen.current_scrollback_len();
+        Ok((new_scrollback, scrollback_len))
     }
 
     pub fn scroll_to(&mut self, row: u16) {
         let screen = self.parser.screen_mut();
         let scrollback_len = screen.current_scrollback_len();
         let row = row as usize;
-        if scrollback_len > row {
-            screen.set_scrollback(scrollback_len - row);
-        } else {
-            screen.set_scrollback(0);
-        }
+        screen.set_scrollback(scrollback_len.saturating_sub(row));
     }
 
     pub fn persist_screen(&self) -> anyhow::Result<()> {
