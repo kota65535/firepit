@@ -278,20 +278,25 @@ impl TuiAppState {
             .with_context(|| anyhow::anyhow!("{}th task not found", num))
     }
 
-    pub fn next(&mut self) {
+    pub fn select_next_task(&mut self) {
         let num_rows = self.task_outputs.len();
         let next_index = (self.selected_task_index + 1).clamp(0, num_rows - 1);
         self.selected_task_index = next_index;
         self.table.select(Some(next_index));
     }
 
-    pub fn previous(&mut self) {
+    pub fn select_previous_task(&mut self) {
         let i = match self.selected_task_index {
             0 => 0,
             i => i - 1,
         };
         self.selected_task_index = i;
         self.table.select(Some(i));
+    }
+
+    pub fn select_task(&mut self, index: usize) {
+        self.selected_task_index = index;
+        self.table.select(Some(index));
     }
 
     pub fn scroll_terminal_output(&mut self, direction: Direction, stride: usize) -> anyhow::Result<()> {
@@ -370,19 +375,6 @@ impl TuiAppState {
         {
             o.persist_screen()?
         }
-        Ok(())
-    }
-
-    fn select_task(&mut self, task_name: &str) -> anyhow::Result<()> {
-        let new_index_to_highlight = self
-            .task_outputs
-            .iter()
-            .position(|task| task.0 == task_name)
-            .with_context(|| format!("{} not found", task_name))?;
-
-        self.selected_task_index = new_index_to_highlight;
-        self.table.select(Some(new_index_to_highlight));
-
         Ok(())
     }
 
@@ -487,11 +479,20 @@ impl TuiAppState {
         if event.row >= 2 {
             event.row -= 2;
         }
-        // Subtract the width of the table if we have sidebar
-        if self.has_sidebar && event.column >= table_width {
-            event.column -= table_width;
+
+        if self.has_sidebar {
+            if event.column < table_width {
+                // Task table clicked
+                self.select_task(event.row as usize);
+            } else {
+                // Terminal pane clicked
+                // So subtract the width of the table if we have sidebar
+                if self.has_sidebar && event.column >= table_width {
+                    event.column -= table_width;
+                }
+                debug!("Translated mouse event: {event:?}");
+            }
         }
-        debug!("Translated mouse event: {event:?}");
 
         let task = self.active_task_mut()?;
         task.handle_mouse(event, clicks)?;
@@ -729,11 +730,11 @@ impl TuiAppState {
             }
             Event::Up => {
                 self.exit_search()?;
-                self.previous();
+                self.select_previous_task();
             }
             Event::Down => {
                 self.exit_search()?;
-                self.next();
+                self.select_next_task();
             }
             Event::ScrollUp(size) => {
                 self.scroll_terminal_output(Direction::Up, self.scroll_size(size))?;
