@@ -394,9 +394,19 @@ pub struct ServiceConfigStruct {
 
 #[derive(Debug, Clone, JsonSchema)]
 pub enum Restart {
-    Always(u64),
-    OnFailure(u64),
+    Always(Option<u64>),
+    OnFailure(Option<u64>),
     Never,
+}
+
+impl Restart {
+    pub fn max_restart(&self) -> Option<u64> {
+        match self {
+            Restart::Always(n) => *n,
+            Restart::OnFailure(n) => *n,
+            Restart::Never => Some(0),
+        }
+    }
 }
 
 lazy_static! {
@@ -416,16 +426,14 @@ impl<'de> Deserialize<'de> for Restart {
                 let num = ALWAYS
                     .captures(s.as_str())
                     .and_then(|c| c.get(2))
-                    .and_then(|m| m.as_str().parse::<u64>().ok())
-                    .unwrap_or(0);
+                    .and_then(|m| m.as_str().parse::<u64>().ok());
                 Restart::Always(num)
             }
             s if ON_FAILURE.is_match(&s) => {
                 let num = ON_FAILURE
                     .captures(s.as_str())
                     .and_then(|c| c.get(2))
-                    .and_then(|m| m.as_str().parse::<u64>().ok())
-                    .unwrap_or(0);
+                    .and_then(|m| m.as_str().parse::<u64>().ok());
                 Restart::Always(num)
             }
             s if s == "never" => Restart::Never,

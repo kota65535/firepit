@@ -20,7 +20,8 @@ pub enum Event {
         task: String,
         pid: u32,
         restart: u64,
-        run: u64,
+        max_restart: Option<u64>,
+        reload: u64,
     },
     TaskOutput {
         task: String,
@@ -155,12 +156,13 @@ impl EventSender {
         self.send(Event::PlanTask { task: task.to_string() })
     }
 
-    pub fn start_task(&self, task: String, pid: u32, restart: u64, run: u64) {
+    pub fn start_task(&self, task: String, pid: u32, restart: u64, max_restart: Option<u64>, reload: u64) {
         self.send(Event::StartTask {
             task,
             pid,
             restart,
-            run,
+            max_restart,
+            reload,
         })
     }
 
@@ -247,24 +249,35 @@ impl Write for EventSender {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TaskStatus {
     Planned,
-    Running(TaskRunning),
+    Running(TaskRunDetail),
     Ready,
     Finished(TaskResult),
     Unknown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TaskRunning {
+pub struct TaskRunDetail {
     pub pid: u32,
     pub restart: u64,
-    pub run: u64,
+    pub max_restart: Option<u64>,
+    pub reload: u64,
 }
 
 impl Display for TaskStatus {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             TaskStatus::Planned => write!(f, "Waiting"),
-            TaskStatus::Running(r) => write!(f, "Running (PID: {}, Restart: {})", r.pid, r.restart),
+            TaskStatus::Running(r) => {
+                let max_restart = match r.max_restart {
+                    Some(max_restart) => format!("{}", max_restart),
+                    None => "∞".to_string(),
+                };
+                write!(
+                    f,
+                    "Running, PID: {}, Restart: {}/{}, Reload: {}",
+                    r.pid, r.restart, max_restart, r.reload
+                )
+            }
             TaskStatus::Ready => write!(f, "Ready"),
             TaskStatus::Finished(result) => write!(f, "Finished: {}", result),
             TaskStatus::Unknown => write!(f, "Unknown"),
@@ -291,6 +304,9 @@ pub enum TaskResult {
     /// Stopped because it does not become ready
     NotReady,
 
+    /// Task is restarting due to the change of input
+    Reloading,
+
     /// Any other reason
     Unknown,
 }
@@ -304,6 +320,7 @@ impl Display for TaskResult {
             TaskResult::BadDeps => write!(f, "Dependency task failed"),
             TaskResult::Stopped => write!(f, "Stopped"),
             TaskResult::NotReady => write!(f, "Service not ready"),
+            TaskResult::Reloading => write!(f, "Service is reloading..."),
             TaskResult::Unknown => write!(f, "Unknown"),
         }
     }

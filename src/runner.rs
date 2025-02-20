@@ -262,7 +262,7 @@ impl TaskRunner {
                 let pid = process.pid().unwrap_or(0);
 
                 // Notify the app the task started
-                app_tx.start_task(task.name.clone(), pid, num_restart, num_runs);
+                app_tx.start_task(task.name.clone(), pid, num_restart, task.restart.max_restart(), num_runs);
 
                 let mut node_result = false;
                 if task.is_service {
@@ -293,7 +293,7 @@ impl TaskRunner {
                                 if let Err(e) = cancel_visitor_cloned.send(()) {
                                     warn!("Failed to send cancel visitor: {:?}", e)
                                 }
-                                app_tx.finish_task(TaskResult::Stopped);
+                                app_tx.finish_task(TaskResult::Reloading);
                                 return Ok(());
                             }
                             // Process branch, waits its completion
@@ -317,9 +317,15 @@ impl TaskRunner {
                                                     Restart::Never => false,
                                                     Restart::OnFailure(max) => match result {
                                                         TaskResult::Success => false,
-                                                        _ => max == 0 || num_restart < max,
+                                                        _ => match max {
+                                                            Some(max) => num_restart < max,
+                                                            None => true
+                                                        },
                                                     },
-                                                    Restart::Always(max) => max == 0 || num_restart < max,
+                                                    Restart::Always(max) => match max {
+                                                        Some(max) => num_restart < max,
+                                                        None => true
+                                                    },
                                                 }
                                             }
                                             None => true

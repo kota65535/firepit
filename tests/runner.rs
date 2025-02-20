@@ -380,9 +380,9 @@ fn handle_events(
                 }
                 Some(event) = rx.recv() => {
                     match event {
-                        Event::StartTask { task, pid, restart, run } => {
+                        Event::StartTask { task, pid: _, restart, max_restart: _, reload } => {
                             restarts.insert(task.clone(), restart);
-                            runs.insert(task.clone(), run);
+                            runs.insert(task.clone(), reload);
                         }
                         Event::ReadyTask { task } => {
                             statuses.insert(task, String::from("Ready"));

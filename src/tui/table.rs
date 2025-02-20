@@ -72,13 +72,16 @@ impl TaskTable<'_> {
                                     "\u{274C}\u{200D}", // ❌
                                 )),
                                 TaskResult::UpToDate => Cell::new(Text::raw(
-                                    "\u{1F333}", // 🌳
+                                    "\u{1F966}", // 🥬
                                 )),
                                 TaskResult::BadDeps | TaskResult::NotReady | TaskResult::Stopped => {
                                     Cell::new(Text::raw(
                                         "\u{1F6AB}", // 🚫
                                     ))
                                 }
+                                TaskResult::Reloading => Cell::new(Text::raw(
+                                    "\u{267B}\u{FE0F}", // ♻️
+                                )),
                                 TaskResult::Unknown => Cell::new(Text::raw(
                                     "\u{2753}\u{200D}", // ❓
                                 )),
