@@ -29,7 +29,7 @@ pub struct SignalSubscriber(oneshot::Receiver<oneshot::Sender<()>>);
 /// signal
 pub struct SubscriberGuard(oneshot::Sender<()>);
 
-pub fn get_signal() -> anyhow::Result<impl Future<Output = Option<i32>>> {
+fn get_signal() -> anyhow::Result<impl Future<Output = Option<i32>>> {
     use tokio::signal::unix;
     let mut sigint = unix::signal(unix::SignalKind::interrupt())?;
     let mut sigterm = unix::signal(unix::SignalKind::terminate())?;
@@ -47,6 +47,10 @@ pub fn get_signal() -> anyhow::Result<impl Future<Output = Option<i32>>> {
 }
 
 impl SignalHandler {
+    pub fn infer() -> anyhow::Result<SignalHandler> {
+        Ok(SignalHandler::new(get_signal()?))
+    }
+
     /// Construct a new SignalHandler that will alert any subscribers when
     /// `signal_source` completes or `close` is called on it.
     pub fn new(signal_source: impl Future<Output = Option<i32>> + Send + 'static) -> Self {

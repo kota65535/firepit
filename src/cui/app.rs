@@ -4,6 +4,8 @@ use crate::cui::output::{OutputClient, OutputClientBehavior, OutputSink};
 use crate::cui::prefixed::PrefixedWriter;
 use crate::event::EventSender;
 use crate::event::{Event, EventReceiver};
+use crate::signal::SignalHandler;
+use crate::tokio_spawn;
 use anyhow::Context;
 use std::collections::HashMap;
 use std::io::{stdout, Stdout, Write};
@@ -16,17 +18,19 @@ pub struct CuiApp {
     output_clients: Arc<RwLock<HashMap<String, OutputClient<PrefixedWriter<Stdout>>>>>,
     sender: EventSender,
     receiver: EventReceiver,
+    signal_handler: SignalHandler,
 }
 
 impl CuiApp {
-    pub fn new() -> Self {
+    pub fn new() -> anyhow::Result<Self> {
         let (tx, rx) = mpsc::unbounded_channel();
-        Self {
+        Ok(Self {
             color_selector: ColorSelector::default(),
             output_clients: Arc::new(RwLock::new(HashMap::new())),
             sender: EventSender::new(tx),
             receiver: EventReceiver::new(rx),
-        }
+            signal_handler: SignalHandler::infer()?,
+        })
     }
 
     fn register_output_client(&mut self, prefix: &str) {
@@ -48,6 +52,15 @@ impl CuiApp {
     }
 
     pub async fn run(&mut self) -> anyhow::Result<()> {
+        let signal_handler = self.signal_handler.clone();
+        let sender = self.sender.clone();
+        tokio_spawn!("cui-canceller", async move {
+            let subscriber = signal_handler.subscribe();
+            if let Some(subscriber) = subscriber {
+                let _guard = subscriber.listen().await;
+                sender.stop().await;
+            }
+        });
         while let Some(event) = self.receiver.recv().await {
             match event {
                 Event::StartTask { task, .. } => self.register_output_client(&task),

@@ -1,4 +1,4 @@
-use crate::signal::{get_signal, SignalHandler};
+use crate::signal::SignalHandler;
 use crate::tokio_spawn;
 use notify::Watcher;
 use std::collections::HashSet;
@@ -30,7 +30,7 @@ impl FileWatcher {
     pub fn new() -> anyhow::Result<FileWatcher> {
         Ok(FileWatcher {
             inner: Arc::new(Mutex::new(FileWatcherState { is_closing: false })),
-            signal_handler: SignalHandler::new(get_signal()?),
+            signal_handler: SignalHandler::infer()?,
         })
     }
 
