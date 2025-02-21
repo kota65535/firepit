@@ -15,7 +15,7 @@ use tracing::info;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Args {
-    /// Names of tasks to run
+    /// Task names
     #[arg(required = false)]
     pub tasks: Vec<String>,
 
