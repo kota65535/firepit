@@ -295,6 +295,10 @@ impl TuiAppState {
     }
 
     pub fn select_task(&mut self, index: usize) {
+        let num_rows = self.task_outputs.len();
+        if index >= num_rows {
+            return;
+        }
         self.selected_task_index = index;
         self.table.select(Some(index));
     }
@@ -475,13 +479,16 @@ impl TuiAppState {
         let table_width = self.size.task_list_width();
         debug!("Original mouse event: {event:?}, table_width: {table_width}");
 
-        // Subtract 1 from the y-axis due to the title of the pane
-        if event.row >= 2 {
-            event.row -= 2;
+        // Do nothing in table & pane header
+        if event.row < 2 {
+            return Ok(());
         }
 
+        // Subtract header height
+        event.row -= 2;
+
         if self.has_sidebar {
-            if event.column < table_width {
+            if event.column < table_width - 1 {
                 // Task table clicked
                 self.select_task(event.row as usize);
             } else {
