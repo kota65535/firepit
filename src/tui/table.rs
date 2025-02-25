@@ -1,5 +1,5 @@
 use crate::event::{TaskResult, TaskStatus};
-use crate::tui::task::TaskDetail;
+use crate::tui::task::Task;
 use indexmap::IndexMap;
 use ratatui::{
     layout::{Constraint, Rect},
@@ -13,14 +13,14 @@ use ratatui::{
 /// The table contains finished tasks, running tasks, and planned tasks rendered
 /// in that order.
 pub struct TaskTable<'b> {
-    tasks: &'b IndexMap<String, TaskDetail>,
+    tasks: &'b IndexMap<String, Task>,
 }
 
 const TASK_NAVIGATE_INSTRUCTIONS: &str = "↑ ↓ to navigate";
 const HIDE_INSTRUCTIONS: &str = "h to hide";
 
 impl<'b> TaskTable<'b> {
-    pub fn new(tasks: &'b IndexMap<String, TaskDetail>) -> Self {
+    pub fn new(tasks: &'b IndexMap<String, Task>) -> Self {
         Self { tasks }
     }
 }
@@ -48,7 +48,7 @@ impl TaskTable<'_> {
                 } else {
                     Cell::new(Text::styled(n.clone(), Style::default()))
                 };
-                match r.status {
+                match r.status() {
                     TaskStatus::Planned => {
                         Row::new(vec![name_cell, Cell::new(Text::raw("\u{1FAB5}"))])
                         // 🪵
@@ -88,7 +88,6 @@ impl TaskTable<'_> {
                             },
                         ])
                     }
-                    TaskStatus::Unknown => Row::new(vec![name_cell, Cell::new(Text::raw(" "))]),
                 }
             })
             .collect()

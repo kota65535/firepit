@@ -59,9 +59,9 @@ async fn test_basic_failure() {
     let tasks = vec![String::from("foo")];
 
     let mut statuses = HashMap::new();
-    statuses.insert(String::from("#foo"), String::from("Finished: Dependency task failed"));
-    statuses.insert(String::from("#bar"), String::from("Finished: Dependency task failed"));
-    statuses.insert(String::from("#baz"), String::from("Finished: Failure with exit code 1"));
+    statuses.insert(String::from("#foo"), String::from("Finished: BadDeps"));
+    statuses.insert(String::from("#bar"), String::from("Finished: BadDeps"));
+    statuses.insert(String::from("#baz"), String::from("Finished: Failure(1)"));
 
     let mut outputs = HashMap::new();
     outputs.insert(String::from("#baz"), String::from("baz"));
@@ -148,9 +148,9 @@ async fn test_service_failure() {
     let tasks = vec![String::from("foo")];
 
     let mut expected = HashMap::new();
-    expected.insert(String::from("#foo"), String::from("Finished: Dependency task failed"));
-    expected.insert(String::from("#bar"), String::from("Finished: Service not ready"));
-    expected.insert(String::from("#baz"), String::from("Finished: Service not ready"));
+    expected.insert(String::from("#foo"), String::from("Finished: BadDeps"));
+    expected.insert(String::from("#bar"), String::from("Finished: NotReady"));
+    expected.insert(String::from("#baz"), String::from("Finished: NotReady"));
 
     run_task(&path, tasks, expected, None, None, None, Some(20))
         .await
@@ -239,7 +239,7 @@ async fn test_up_to_date() {
     File::create(path.join("foo.out")).ok();
 
     let mut expected = HashMap::new();
-    expected.insert(String::from("#foo"), String::from("Finished: Up-to-date"));
+    expected.insert(String::from("#foo"), String::from("Finished: UpToDate"));
     expected.insert(String::from("#bar"), String::from("Finished: Success"));
     expected.insert(String::from("#baz"), String::from("Finished: Success"));
 
@@ -388,7 +388,7 @@ fn handle_events(
                             statuses.insert(task, String::from("Ready"));
                         }
                         Event::FinishTask { task, result } => {
-                            statuses.insert(task, format!("Finished: {}", result));
+                            statuses.insert(task, format!("Finished: {:?}", result));
                         }
                         Event::Stop(callback) => {
                             callback.send(()).ok();

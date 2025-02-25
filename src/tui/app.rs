@@ -1,4 +1,4 @@
-use crate::event::{Direction, PaneSize, ScrollSize, TaskRunDetail, TaskStatus};
+use crate::event::{Direction, PaneSize, ScrollSize, TaskRun, TaskStatus};
 use crate::event::{Event, TaskResult};
 use crate::event::{EventReceiver, EventSender};
 use crate::tui::clipboard::copy_to_clipboard;
@@ -7,7 +7,7 @@ use crate::tui::pane::TerminalPane;
 use crate::tui::search::{Match, SearchResults};
 use crate::tui::size::SizeInfo;
 use crate::tui::table::TaskTable;
-use crate::tui::task::TaskDetail;
+use crate::tui::task::Task;
 use crate::tui::term_output::TerminalOutput;
 use anyhow::Context;
 use indexmap::IndexMap;
@@ -49,8 +49,7 @@ pub struct TuiApp {
 
 pub struct TuiAppState {
     size: SizeInfo,
-    task_outputs: IndexMap<String, TerminalOutput>,
-    task_details: IndexMap<String, TaskDetail>,
+    tasks: IndexMap<String, Task>,
     focus: LayoutSections,
     table: TableState,
     scrollbar: ScrollbarState,
@@ -79,20 +78,23 @@ impl TuiApp {
         let pane_rows = size.pane_rows();
         let pane_cols = size.pane_cols();
 
-        let task_outputs = target_tasks
+        let tasks = target_tasks
             .iter()
-            .chain(dep_tasks.iter())
-            .map(|t| (t.clone(), TerminalOutput::new(t, pane_rows, pane_cols, None)))
-            .collect::<IndexMap<_, _>>();
-
-        let task_details = target_tasks
-            .iter()
-            .map(|t| (t.clone(), TaskDetail::new(t, true)))
-            .chain(dep_tasks.iter().map(|t| (t.clone(), TaskDetail::new(t, false))))
+            .map(|t| {
+                (
+                    t.clone(),
+                    Task::new(t, true, TerminalOutput::new(pane_rows, pane_cols, None)),
+                )
+            })
+            .chain(dep_tasks.iter().map(|t| {
+                (
+                    t.clone(),
+                    Task::new(t, false, TerminalOutput::new(pane_rows, pane_cols, None)),
+                )
+            }))
             .collect::<IndexMap<_, _>>();
 
         let selected_task_index = 0;
-
         let input_handler = InputHandler::new();
         let crossterm_rx = input_handler.start();
 
@@ -104,8 +106,7 @@ impl TuiApp {
             input_handler,
             state: TuiAppState {
                 size,
-                task_outputs,
-                task_details,
+                tasks,
                 focus: LayoutSections::TaskList(None),
                 table: TableState::default().with_selected(selected_task_index),
                 scrollbar: ScrollbarState::default(),
@@ -234,44 +235,42 @@ impl TuiApp {
 }
 
 impl TuiAppState {
-    pub fn active_task(&self) -> anyhow::Result<&TerminalOutput> {
+    pub fn active_task(&self) -> anyhow::Result<&Task> {
         self.nth_task(self.selected_task_index)
     }
 
-    pub fn active_task_mut(&mut self) -> anyhow::Result<&mut TerminalOutput> {
+    pub fn active_task_mut(&mut self) -> anyhow::Result<&mut Task> {
         self.nth_task_mut(self.selected_task_index)
     }
 
-    pub fn task(&self, name: &str) -> anyhow::Result<&TerminalOutput> {
-        self.task_outputs
-            .get(name)
-            .with_context(|| format!("task {} not found", name))
+    pub fn task(&self, name: &str) -> anyhow::Result<&Task> {
+        self.tasks.get(name).with_context(|| format!("task {} not found", name))
     }
 
-    pub fn task_mut(&mut self, name: &str) -> anyhow::Result<&mut TerminalOutput> {
-        self.task_outputs
+    pub fn task_mut(&mut self, name: &str) -> anyhow::Result<&mut Task> {
+        self.tasks
             .get_mut(name)
             .with_context(|| format!("task {} not found", name))
     }
 
     fn input_options(&self) -> anyhow::Result<InputOptions> {
-        let has_selection = self.active_task()?.has_selection();
+        let has_selection = self.active_task()?.output.has_selection();
         Ok(InputOptions {
             focus: &self.focus,
             has_selection,
         })
     }
 
-    pub fn nth_task(&self, num: usize) -> anyhow::Result<&TerminalOutput> {
-        self.task_outputs
+    pub fn nth_task(&self, num: usize) -> anyhow::Result<&Task> {
+        self.tasks
             .iter()
             .nth(num)
             .map(|e| e.1)
             .with_context(|| anyhow::anyhow!("{}th task not found", num))
     }
 
-    pub fn nth_task_mut(&mut self, num: usize) -> anyhow::Result<&mut TerminalOutput> {
-        self.task_outputs
+    pub fn nth_task_mut(&mut self, num: usize) -> anyhow::Result<&mut Task> {
+        self.tasks
             .iter_mut()
             .nth(num)
             .map(|e| e.1)
@@ -279,7 +278,7 @@ impl TuiAppState {
     }
 
     pub fn select_next_task(&mut self) {
-        let num_rows = self.task_outputs.len();
+        let num_rows = self.tasks.len();
         let next_index = (self.selected_task_index + 1).clamp(0, num_rows - 1);
         self.selected_task_index = next_index;
         self.table.select(Some(next_index));
@@ -295,7 +294,7 @@ impl TuiAppState {
     }
 
     pub fn select_task(&mut self, index: usize) {
-        let num_rows = self.task_outputs.len();
+        let num_rows = self.tasks.len();
         if index >= num_rows {
             return;
         }
@@ -304,56 +303,59 @@ impl TuiAppState {
     }
 
     pub fn scroll_terminal_output(&mut self, direction: Direction, stride: usize) -> anyhow::Result<()> {
-        let (scroll_current, scroll_len) = self.active_task_mut()?.scroll(direction, stride)?;
+        let (scroll_current, scroll_len) = self.active_task_mut()?.output.scroll(direction, stride)?;
         self.scrollbar = self.scrollbar.position(scroll_len.saturating_sub(scroll_current));
         Ok(())
     }
 
     pub fn scroll_to_row(&mut self, row: u16) -> anyhow::Result<()> {
-        self.active_task_mut()?.scroll_to(row);
+        self.active_task_mut()?.output.scroll_to(row);
         Ok(())
     }
 
     pub fn task_names(&self) -> Vec<String> {
-        self.task_outputs.iter().map(|t| t.0.clone()).collect()
+        self.tasks.iter().map(|t| t.0.clone()).collect()
     }
 
-    fn set_status(&mut self, task: &str, status: TaskStatus) {
-        if let Some(task) = self.task_details.get_mut(task) {
-            task.status = status;
-        }
-        if let Some(output) = self.task_outputs.get_mut(task) {
-            output.set_status(status)
-        }
+    fn set_status(&mut self, task: &str, status: TaskStatus) -> anyhow::Result<()> {
+        self.task_mut(task)?.set_status(status);
+        Ok(())
     }
 
-    pub fn plan_task(&mut self, task: &str) {
-        self.set_status(task, TaskStatus::Planned);
+    pub fn plan_task(&mut self, task: &str) -> anyhow::Result<()> {
+        self.set_status(task, TaskStatus::Planned)
     }
 
-    pub fn start_task(&mut self, task: &str, pid: u32, restart: u64, max_restart: Option<u64>, reload: u64) {
+    pub fn start_task(
+        &mut self,
+        task: &str,
+        pid: u32,
+        restart: u64,
+        max_restart: Option<u64>,
+        reload: u64,
+    ) -> anyhow::Result<()> {
         self.set_status(
             task,
-            TaskStatus::Running(TaskRunDetail {
+            TaskStatus::Running(TaskRun {
                 pid,
                 restart,
                 max_restart,
                 reload,
             }),
-        );
+        )
     }
 
-    pub fn ready_task(&mut self, task: &str) {
-        self.set_status(task, TaskStatus::Ready);
+    pub fn ready_task(&mut self, task: &str) -> anyhow::Result<()> {
+        self.set_status(task, TaskStatus::Ready)
     }
 
-    pub fn finish_task(&mut self, task: &str, result: TaskResult) {
-        self.set_status(task, TaskStatus::Finished(result));
+    pub fn finish_task(&mut self, task: &str, result: TaskResult) -> anyhow::Result<()> {
+        self.set_status(task, TaskStatus::Finished(result))
     }
 
     pub fn has_stdin(&self) -> anyhow::Result<bool> {
         let task = self.active_task()?;
-        Ok(task.stdin().is_some())
+        Ok(task.output.stdin().is_some())
     }
 
     pub fn interact(&mut self) -> anyhow::Result<()> {
@@ -366,17 +368,12 @@ impl TuiAppState {
     }
 
     pub fn persist_tasks(&mut self) -> anyhow::Result<()> {
-        for (_, o) in self
-            .task_details
-            .values()
-            .zip(self.task_outputs.values())
-            .filter(|(s, _)| {
-                matches!(
-                    s.status,
-                    TaskStatus::Running(_) | TaskStatus::Ready | TaskStatus::Finished(_)
-                )
-            })
-        {
+        for (d, o) in self.tasks.values().zip(self.tasks.values()).filter(|(s, _)| {
+            matches!(
+                s.status(),
+                TaskStatus::Running(_) | TaskStatus::Ready | TaskStatus::Finished(_)
+            )
+        }) {
             o.persist_screen()?
         }
         Ok(())
@@ -387,8 +384,8 @@ impl TuiAppState {
         self.size.resize(rows, cols);
         let pane_rows = self.size.pane_rows();
         let pane_cols = self.size.pane_cols();
-        self.task_outputs.values_mut().for_each(|task| {
-            task.resize(pane_rows, pane_cols);
+        self.tasks.values_mut().for_each(|task| {
+            task.output.resize(pane_rows, pane_cols);
         })
     }
 
@@ -408,12 +405,11 @@ impl TuiAppState {
                 return;
             }
         };
-        let content_length = active_task.parser.screen().current_scrollback_len();
+        let content_length = active_task.output.screen().current_scrollback_len();
 
         // Render pane
         let pane_to_render = TerminalPane::new(
-            active_task,
-            &active_task.name,
+            &active_task,
             &self.focus,
             self.has_sidebar,
             self.done.then(|| self.exit_delay_left.as_secs()),
@@ -421,7 +417,7 @@ impl TuiAppState {
         f.render_widget(&pane_to_render, pane);
 
         // Render table
-        let table_to_render = TaskTable::new(&self.task_details);
+        let table_to_render = TaskTable::new(&self.tasks);
         f.render_stateful_widget(&table_to_render, table, &mut self.table);
 
         // Render scrollbar
@@ -438,17 +434,17 @@ impl TuiAppState {
     /// Insert a stdin to be associated with a task
     pub fn insert_stdin(&mut self, task: &str, stdin: Option<Box<dyn Write + Send>>) -> anyhow::Result<()> {
         let task = self
-            .task_outputs
+            .tasks
             .get_mut(task)
             .with_context(|| format!("{} not found", task))?;
-        task.set_stdin(stdin);
+        task.output.set_stdin(stdin);
         Ok(())
     }
 
     pub fn forward_input(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
         if matches!(self.focus, LayoutSections::Pane) {
             let task = self.active_task_mut()?;
-            if let Some(stdin) = task.stdin_mut() {
+            if let Some(stdin) = task.output.stdin_mut() {
                 stdin
                     .write_all(bytes)
                     .with_context(|| format!("task {} failed to forward input", task.name))?;
@@ -461,7 +457,7 @@ impl TuiAppState {
 
     pub fn process_output(&mut self, task: &str, output: &[u8]) -> anyhow::Result<()> {
         let task = self.task_mut(task)?;
-        task.process(output);
+        task.output.process(output);
         Ok(())
     }
 
@@ -502,14 +498,14 @@ impl TuiAppState {
         }
 
         let task = self.active_task_mut()?;
-        task.handle_mouse(event, clicks)?;
+        task.output.handle_mouse(event, clicks)?;
 
         Ok(())
     }
 
     pub fn copy_selection(&self) -> anyhow::Result<()> {
         let task = self.active_task()?;
-        let Some(text) = task.copy_selection() else {
+        let Some(text) = task.output.copy_selection() else {
             return Ok(());
         };
         copy_to_clipboard(&text);
@@ -518,7 +514,7 @@ impl TuiAppState {
 
     pub fn clear_selection(&mut self) -> anyhow::Result<()> {
         let task = self.active_task_mut()?;
-        task.clear_selection();
+        task.output.clear_selection();
         Ok(())
     }
 
@@ -549,7 +545,7 @@ impl TuiAppState {
         };
         let query = query.clone();
         let task = self.active_task_mut()?;
-        let screen = task.parser.screen_mut();
+        let screen = task.output.screen_mut();
         let size = screen.size();
 
         let mut matches = Vec::new();
@@ -595,7 +591,7 @@ impl TuiAppState {
 
     fn highlight_cell(&mut self, row: u16, col: u16, highlight: bool) -> anyhow::Result<()> {
         let task = self.active_task_mut()?;
-        let screen = task.parser.screen_mut();
+        let screen = task.output.screen_mut();
         let cell = screen
             .grid_mut()
             .all_rows_mut()

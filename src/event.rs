@@ -249,41 +249,19 @@ impl Write for EventSender {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TaskStatus {
     Planned,
-    Running(TaskRunDetail),
+    Running(TaskRun),
     Ready,
     Finished(TaskResult),
-    Unknown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TaskRunDetail {
+pub struct TaskRun {
     pub pid: u32,
     pub restart: u64,
     pub max_restart: Option<u64>,
     pub reload: u64,
 }
 
-impl Display for TaskStatus {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TaskStatus::Planned => write!(f, "Waiting"),
-            TaskStatus::Running(r) => {
-                let max_restart = match r.max_restart {
-                    Some(max_restart) => format!("{}", max_restart),
-                    None => "∞".to_string(),
-                };
-                write!(
-                    f,
-                    "Running, PID: {}, Restart: {}/{}, Reload: {}",
-                    r.pid, r.restart, max_restart, r.reload
-                )
-            }
-            TaskStatus::Ready => write!(f, "Ready"),
-            TaskStatus::Finished(result) => write!(f, "Finished: {}", result),
-            TaskStatus::Unknown => write!(f, "Unknown"),
-        }
-    }
-}
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum TaskResult {
     /// Finished successfully
@@ -307,21 +285,6 @@ pub enum TaskResult {
     /// Task is restarting due to the change of input
     Reloading,
 
-    /// Any other reason
+    /// Unknown status
     Unknown,
-}
-
-impl Display for TaskResult {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TaskResult::Success => write!(f, "Success"),
-            TaskResult::Failure(code) => write!(f, "Failure with exit code {code}"),
-            TaskResult::UpToDate => write!(f, "Up-to-date"),
-            TaskResult::BadDeps => write!(f, "Dependency task failed"),
-            TaskResult::Stopped => write!(f, "Stopped"),
-            TaskResult::NotReady => write!(f, "Service not ready"),
-            TaskResult::Reloading => write!(f, "Service is reloading..."),
-            TaskResult::Unknown => write!(f, "Unknown"),
-        }
-    }
 }
