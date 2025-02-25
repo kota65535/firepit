@@ -1,25 +1,20 @@
-use crate::cui::lib::BOLD;
-use crate::event::{Direction, TaskResult, TaskStatus};
+use crate::event::Direction;
 use std::{io::Write, mem};
 
 const SCROLLBACK_LEN: usize = 4096;
 
 pub struct TerminalOutput {
-    pub name: String,
     output: Vec<u8>,
-    pub parser: vt100::Parser,
+    parser: vt100::Parser,
     stdin: Option<Box<dyn Write + Send>>,
-    status: TaskStatus,
 }
 
 impl TerminalOutput {
-    pub fn new(name: &str, rows: u16, cols: u16, stdin: Option<Box<dyn Write + Send>>) -> Self {
+    pub fn new(rows: u16, cols: u16, stdin: Option<Box<dyn Write + Send>>) -> Self {
         Self {
-            name: name.to_string(),
             output: Vec::new(),
             parser: vt100::Parser::new(rows, cols - 1, SCROLLBACK_LEN),
             stdin,
-            status: TaskStatus::Planned,
         }
     }
 
@@ -35,8 +30,16 @@ impl TerminalOutput {
         self.stdin = stdin
     }
 
-    pub fn title(&self, task_name: &str) -> String {
-        format!("% {task_name} ({}) ", self.status)
+    pub fn screen(&self) -> &vt100::Screen {
+        self.parser.screen()
+    }
+
+    pub fn screen_mut(&mut self) -> &mut vt100::Screen {
+        self.parser.screen_mut()
+    }
+
+    pub fn entire_screen(&self) -> vt100::EntireScreen {
+        self.parser.entire_screen()
     }
 
     pub fn size(&self) -> (u16, u16) {
@@ -46,30 +49,6 @@ impl TerminalOutput {
     pub fn process(&mut self, bytes: &[u8]) {
         self.parser.process(bytes);
         self.output.extend_from_slice(bytes);
-    }
-
-    pub fn set_status(&mut self, status: TaskStatus) {
-        self.status = status;
-        match status {
-            TaskStatus::Running(info) => {
-                if info.restart > 0 || info.reload > 0 {
-                    let msg = "Process restarted";
-                    self.process(console::style(format!("\r\n{}\r\n", msg)).bold().to_string().as_bytes());
-                }
-            }
-            TaskStatus::Finished(result) => {
-                let msg = match result {
-                    TaskResult::Success => Some("Process finished with exit code 0".to_string()),
-                    TaskResult::Failure(code) => Some(format!("Process finished with exit code {code}")),
-                    TaskResult::Stopped => Some("Process is terminated".to_string()),
-                    _ => None,
-                };
-                if let Some(msg) = msg {
-                    self.process(console::style(format!("\r\n{}\r\n", msg)).bold().to_string().as_bytes());
-                }
-            }
-            _ => {}
-        }
     }
 
     pub fn resize(&mut self, rows: u16, cols: u16) {
@@ -112,21 +91,6 @@ impl TerminalOutput {
         let scrollback_len = screen.current_scrollback_len();
         let row = row as usize;
         screen.set_scrollback(scrollback_len.saturating_sub(row));
-    }
-
-    pub fn persist_screen(&self) -> anyhow::Result<()> {
-        let mut stdout = std::io::stdout().lock();
-        let title = self.title(&self.name);
-        let screen = self.parser.entire_screen();
-        let (_, cols) = screen.size();
-        stdout.write_all(BOLD.apply_to(title).to_string().as_bytes())?;
-        stdout.write_all(b"\r\n")?;
-        for row in screen.rows_formatted(0, cols) {
-            stdout.write_all(&row)?;
-            stdout.write_all(b"\r\n")?;
-        }
-        stdout.write_all("\r\n".as_bytes())?;
-        Ok(())
     }
 
     pub fn has_selection(&self) -> bool {
