@@ -1,5 +1,7 @@
 # Single project example
 
+Run `fire dev` to run server with dependencies.
+
 Created by:
 
 ```

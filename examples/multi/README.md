@@ -1,5 +1,7 @@
 # Single project example
 
+Run `fire dev` to run backend/frontend dev servers.
+
 Created by:
 
 ```

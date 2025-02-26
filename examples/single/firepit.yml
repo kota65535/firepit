@@ -6,11 +6,15 @@ tasks:
     command: bun install
 
   # Run Hono server
-  server:
+  dev:
     command: bun run dev
     depends_on:
       - install
       - db
+    service:
+      healthcheck:
+        command: nc -z localhost 3000
+        start_period: 1
 
   # Run Redis server
   db:
