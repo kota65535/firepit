@@ -1,6 +1,6 @@
-# Single project example
+# Multi project example
 
-Run `fire dev` to run backend/frontend dev servers.
+Run `fire dev` here to run all dev servers.
 
 Created by:
 
