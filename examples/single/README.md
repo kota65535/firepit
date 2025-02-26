@@ -1,11 +1,7 @@
-To install dependencies:
-```sh
-bun install
-```
+# Single project example
 
-To run:
-```sh
-bun run dev
-```
+Created by:
 
-open http://localhost:3000
+```
+bun create hono@latest single
+```
