@@ -19,7 +19,7 @@ pub struct TaskTable<'b> {
 }
 
 static NAVIGATE_TASKS: &'static (&str, &str) = &("[↑↓]", "Navigate");
-static HIDE_TASKS: &'static (&str, &str) = &("[H]", "Hide");
+static HIDE_TASKS: &'static (&str, &str) = &("[H] ", "Hide");
 
 static MAX_WIDTH: usize = 40;
 static STATUS_COLUMN_WIDTH: u16 = 3;
@@ -43,7 +43,7 @@ impl TaskTable<'_> {
             .unwrap_or_default()
             .clamp(min_width, MAX_WIDTH) as u16;
         // Additional spaces before and after status emoji
-        task_name_width + 2
+        task_name_width + STATUS_COLUMN_WIDTH + 1
     }
 
     fn rows(&self) -> Vec<Row> {
@@ -85,11 +85,11 @@ impl<'a> StatefulWidget for &'a TaskTable<'a> {
         let width = area.width;
         // Task name column & status column
         let widths = [
-            Constraint::Min(width - STATUS_COLUMN_WIDTH - 1),
+            Constraint::Min(width.saturating_sub(STATUS_COLUMN_WIDTH + 1)),
             Constraint::Length(1),
             Constraint::Length(STATUS_COLUMN_WIDTH),
         ];
-        let name_col_bar = "─".repeat(usize::from(width - STATUS_COLUMN_WIDTH));
+        let name_col_bar = "─".repeat(usize::from(width.saturating_sub(STATUS_COLUMN_WIDTH + 1)));
         let status_col_bar = "─".repeat(usize::from(STATUS_COLUMN_WIDTH));
         let table = Table::new(self.rows(), widths)
             .highlight_style(Style::default().fg(Color::Yellow))
