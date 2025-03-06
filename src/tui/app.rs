@@ -3,7 +3,7 @@ use crate::event::{Event, TaskResult};
 use crate::event::{EventReceiver, EventSender};
 use crate::tui::clipboard::copy_to_clipboard;
 use crate::tui::input::{InputHandler, InputOptions};
-use crate::tui::pane::TerminalPane;
+use crate::tui::pane::{TerminalPane, TerminalScroll};
 use crate::tui::search::{Match, SearchResults};
 use crate::tui::size::SizeInfo;
 use crate::tui::table::TaskTable;
@@ -11,7 +11,7 @@ use crate::tui::task::Task;
 use crate::tui::term_output::TerminalOutput;
 use anyhow::Context;
 use indexmap::IndexMap;
-use ratatui::widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState};
+use ratatui::widgets::ScrollbarState;
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Layout},
@@ -406,6 +406,7 @@ impl TuiAppState {
             }
         };
         let content_length = active_task.output.screen().current_scrollback_len();
+        let scrollback = active_task.output.screen().scrollback();
 
         // Render pane
         let pane_to_render = TerminalPane::new(
@@ -416,19 +417,15 @@ impl TuiAppState {
         );
         f.render_widget(&pane_to_render, pane);
 
+        // Render pane scrollbar
+        self.scrollbar = self.scrollbar.content_length(content_length);
+        self.scrollbar = self.scrollbar.position(content_length.saturating_sub(scrollback));
+        let scrollbar_to_render = TerminalScroll::new(&self.focus);
+        f.render_stateful_widget(scrollbar_to_render, pane, &mut self.scrollbar);
+
         // Render table
         let table_to_render = TaskTable::new(&self.tasks);
         f.render_stateful_widget(&table_to_render, table, &mut self.table);
-
-        // Render scrollbar
-        self.scrollbar = self.scrollbar.content_length(content_length);
-        f.render_stateful_widget(
-            Scrollbar::new(ScrollbarOrientation::VerticalRight)
-                .begin_symbol(Some("↑"))
-                .end_symbol(Some("↓")),
-            pane,
-            &mut self.scrollbar,
-        );
     }
 
     /// Insert a stdin to be associated with a task

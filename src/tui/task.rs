@@ -1,7 +1,6 @@
 use crate::cui::lib::BOLD;
 use crate::event::{TaskResult, TaskStatus};
 use crate::tui::term_output::TerminalOutput;
-use std::fmt::Display;
 use std::io::Write;
 
 pub struct Task {
