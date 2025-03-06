@@ -1,0 +1,14 @@
+tasks:
+  mysql:
+    command: |
+      trap "kill -QUIT -- -$$" SIGINT
+      docker run \
+        -p 3306:3306 \
+        -e MYSQL_ALLOW_EMPTY_PASSWORD=yes \
+        mysql:8.0 &
+      pid=$!
+      while kill -0 $pid &> /dev/null; do wait; done
+    service:
+      healthcheck:
+        command: nc -z localhost 3306
+        start_period: 5
