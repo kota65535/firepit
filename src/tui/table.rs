@@ -19,6 +19,9 @@ pub struct TaskTable<'b> {
 const TASK_NAVIGATE_INSTRUCTIONS: &str = "↑ ↓ to navigate";
 const HIDE_INSTRUCTIONS: &str = "h to hide";
 
+static MAX_WIDTH: usize = 40;
+static STATUS_COLUMN_WIDTH: u16 = 3;
+
 impl<'b> TaskTable<'b> {
     pub fn new(tasks: &'b IndexMap<String, Task>) -> Self {
         Self { tasks }
@@ -34,7 +37,7 @@ impl TaskTable<'_> {
             .unwrap_or_default()
             // Task column width should be large enough to fit "↑ ↓ to navigate instructions
             // and truncate tasks with more than 40 chars.
-            .clamp(TASK_NAVIGATE_INSTRUCTIONS.len(), 40) as u16;
+            .clamp(TASK_NAVIGATE_INSTRUCTIONS.len(), MAX_WIDTH) as u16;
         // Add space for column divider and status emoji
         task_name_width + 1
     }
@@ -100,12 +103,18 @@ impl<'a> StatefulWidget for &'a TaskTable<'a> {
     fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer, state: &mut Self::State) {
         let width = area.width;
         let bar = "─".repeat(usize::from(width));
-        let table = Table::new(self.rows(), [Constraint::Min(12), Constraint::Length(3)])
+        // Task name column & status column
+        let widths = [
+            Constraint::Min(width.saturating_sub(STATUS_COLUMN_WIDTH + 1)),
+            Constraint::Length(1),
+            Constraint::Length(STATUS_COLUMN_WIDTH),
+        ];
+        let table = Table::new(self.rows(), widths)
             .highlight_style(Style::default().fg(Color::Yellow))
             .column_spacing(0)
             .block(Block::new())
             .header(
-                vec![format!("\u{1f3d5}  Tasks\n{bar}"), " \n───".to_owned()]
+                vec![format!("\u{1f3d5}  Tasks\n{bar}"), "\n─".to_owned(), "\n───".to_owned()]
                     .into_iter()
                     .map(Cell::from)
                     .collect::<Row>()
@@ -114,7 +123,8 @@ impl<'a> StatefulWidget for &'a TaskTable<'a> {
             .footer(
                 vec![
                     format!("{bar}\n{TASK_NAVIGATE_INSTRUCTIONS}\n{HIDE_INSTRUCTIONS}"),
-                    format!("───\n "),
+                    format!("─"),
+                    format!("───\n"),
                 ]
                 .into_iter()
                 .map(Cell::from)
