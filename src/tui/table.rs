@@ -22,7 +22,7 @@ static NAVIGATE_TASKS: &'static (&str, &str) = &("[↑↓]", "Navigate");
 static HIDE_TASKS: &'static (&str, &str) = &("[H]", "Hide");
 
 static MAX_WIDTH: usize = 40;
-static MIN_WIDTH: usize = 40;
+static STATUS_COLUMN_WIDTH: u16 = 3;
 
 static MAX_WIDTH: usize = 40;
 static STATUS_COLUMN_WIDTH: u16 = 3;
@@ -42,8 +42,8 @@ impl TaskTable<'_> {
             .max()
             .unwrap_or_default()
             .clamp(min_width, MAX_WIDTH) as u16;
-        // Add space for column divider and status emoji
-        task_name_width + 1
+        // Additional spaces before and after status emoji
+        task_name_width + 2
     }
 
     fn rows(&self) -> Vec<Row> {
@@ -55,47 +55,24 @@ impl TaskTable<'_> {
                 } else {
                     Cell::new(Text::styled(n.clone(), Style::default()))
                 };
-                match r.status() {
-                    TaskStatus::Planned => {
-                        Row::new(vec![name_cell, Cell::new(Text::raw("\u{1FAB5}"))])
-                        // 🪵
-                    }
-                    TaskStatus::Running(_) => Row::new(vec![
-                        name_cell,
-                        Cell::new(Text::raw("\u{1F525}")), // 🔥
-                    ]),
-                    TaskStatus::Ready => Row::new(vec![
-                        name_cell,
-                        Cell::new(Text::raw("\u{1F356}")), // 🍖
-                    ]),
+                let status_cell = match r.status() {
+                    TaskStatus::Planned => Cell::new(Text::raw("\u{1FAB5}")), // 🪵
+                    TaskStatus::Running(_) => Cell::new(Text::raw("\u{1F525}")), // 🔥
+                    TaskStatus::Ready => Cell::new(Text::raw("\u{1F356}")),   // 🍖
                     TaskStatus::Finished(r) => {
-                        Row::new(vec![
-                            name_cell,
-                            match r {
-                                TaskResult::Success => Cell::new(Text::raw(
-                                    "\u{2705}\u{200D}", // ✅
-                                )),
-                                TaskResult::Failure(_) => Cell::new(Text::raw(
-                                    "\u{274C}\u{200D}", // ❌
-                                )),
-                                TaskResult::UpToDate => Cell::new(Text::raw(
-                                    "\u{1F966}", // 🥬
-                                )),
-                                TaskResult::BadDeps | TaskResult::NotReady | TaskResult::Stopped => {
-                                    Cell::new(Text::raw(
-                                        "\u{1F6AB}", // 🚫
-                                    ))
-                                }
-                                TaskResult::Reloading => Cell::new(Text::raw(
-                                    "\u{267B}\u{FE0F}", // ♻️
-                                )),
-                                TaskResult::Unknown => Cell::new(Text::raw(
-                                    "\u{2753}\u{200D}", // ❓
-                                )),
-                            },
-                        ])
+                        match r {
+                            TaskResult::Success => Cell::new(Text::raw("\u{2705}\u{200D}")), // ✅
+                            TaskResult::Failure(_) => Cell::new(Text::raw("\u{274C}\u{200D}")), // ❌
+                            TaskResult::UpToDate => Cell::new(Text::raw("\u{1F966}")),       // 🥬
+                            TaskResult::BadDeps | TaskResult::NotReady | TaskResult::Stopped => {
+                                Cell::new(Text::raw("\u{1F6AB}")) // 🚫
+                            }
+                            TaskResult::Reloading => Cell::new(Text::raw("\u{267B}\u{FE0F}")), // ♻️
+                            TaskResult::Unknown => Cell::new(Text::raw("\u{2753}\u{200D}")),   // ❓
+                        }
                     }
-                }
+                };
+                Row::new(vec![name_cell, Cell::new(" "), status_cell])
             })
             .collect()
     }
@@ -106,32 +83,38 @@ impl<'a> StatefulWidget for &'a TaskTable<'a> {
 
     fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer, state: &mut Self::State) {
         let width = area.width;
-        let bar = "─".repeat(usize::from(width));
         // Task name column & status column
         let widths = [
-            Constraint::Min(width.saturating_sub(STATUS_COLUMN_WIDTH + 1)),
+            Constraint::Min(width - STATUS_COLUMN_WIDTH - 1),
             Constraint::Length(1),
             Constraint::Length(STATUS_COLUMN_WIDTH),
         ];
+        let name_col_bar = "─".repeat(usize::from(width - STATUS_COLUMN_WIDTH));
+        let status_col_bar = "─".repeat(usize::from(STATUS_COLUMN_WIDTH));
         let table = Table::new(self.rows(), widths)
             .highlight_style(Style::default().fg(Color::Yellow))
             .column_spacing(0)
             .block(Block::new())
             .header(
-                vec![format!("\u{1f3d5}  Tasks\n{bar}"), "\n─".to_owned(), "\n───".to_owned()]
-                    .into_iter()
-                    .map(Cell::from)
-                    .collect::<Row>()
-                    .height(2),
+                vec![
+                    format!("\u{1f3d5}  Tasks\n{name_col_bar}"),
+                    "\n─".to_owned(),
+                    format!("\n{status_col_bar}"),
+                ]
+                .into_iter()
+                .map(Cell::from)
+                .collect::<Row>()
+                .height(2),
             )
             .footer(
                 Row::new(vec![
                     Cell::new(Text::from(vec![
-                        Line::from(format!("{bar}\n")),
+                        Line::from(format!("{name_col_bar}\n")),
                         Line::from(key_help_spans(*NAVIGATE_TASKS)),
                         Line::from(key_help_spans(*HIDE_TASKS)),
                     ])),
-                    Cell::new("───\n "),
+                    Cell::new("─"),
+                    Cell::new(status_col_bar),
                 ])
                 .height(3),
             );
