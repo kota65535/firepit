@@ -1,3 +1,5 @@
+use ratatui::prelude::{Color, Span, Style};
+use ratatui::style::Stylize;
 use std::collections::VecDeque;
 use std::fmt::{Display, Formatter};
 use std::ops::Deref;
@@ -51,4 +53,12 @@ impl<T> Deref for RingBuffer<T> {
     fn deref(&self) -> &VecDeque<T> {
         &self.inner
     }
+}
+
+pub fn key_help_spans<'a>(strs: (&'a str, &'a str)) -> Vec<Span<'a>> {
+    vec![
+        Span::styled(strs.0, Style::default().bold().fg(Color::Yellow)),
+        Span::raw(" "),
+        Span::raw(strs.1),
+    ]
 }

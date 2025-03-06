@@ -1,6 +1,8 @@
 use crate::event::{TaskResult, TaskStatus};
+use crate::tui::lib::key_help_spans;
 use crate::tui::task::Task;
 use indexmap::IndexMap;
+use ratatui::text::Line;
 use ratatui::{
     layout::{Constraint, Rect},
     style::{Color, Style, Stylize},
@@ -16,8 +18,11 @@ pub struct TaskTable<'b> {
     tasks: &'b IndexMap<String, Task>,
 }
 
-const TASK_NAVIGATE_INSTRUCTIONS: &str = "↑ ↓ to navigate";
-const HIDE_INSTRUCTIONS: &str = "h to hide";
+static NAVIGATE_TASKS: &'static (&str, &str) = &("[↑↓]", "Navigate");
+static HIDE_TASKS: &'static (&str, &str) = &("[H]", "Hide");
+
+static MAX_WIDTH: usize = 40;
+static MIN_WIDTH: usize = 40;
 
 static MAX_WIDTH: usize = 40;
 static STATUS_COLUMN_WIDTH: u16 = 3;
@@ -31,13 +36,12 @@ impl<'b> TaskTable<'b> {
 impl TaskTable<'_> {
     /// Provides a suggested width for the task table
     pub fn width_hint<'a>(tasks: impl Iterator<Item = &'a str>) -> u16 {
+        let min_width = NAVIGATE_TASKS.0.len() + NAVIGATE_TASKS.1.len();
         let task_name_width = tasks
             .map(|task| task.len())
             .max()
             .unwrap_or_default()
-            // Task column width should be large enough to fit "↑ ↓ to navigate instructions
-            // and truncate tasks with more than 40 chars.
-            .clamp(TASK_NAVIGATE_INSTRUCTIONS.len(), MAX_WIDTH) as u16;
+            .clamp(min_width, MAX_WIDTH) as u16;
         // Add space for column divider and status emoji
         task_name_width + 1
     }
@@ -121,14 +125,14 @@ impl<'a> StatefulWidget for &'a TaskTable<'a> {
                     .height(2),
             )
             .footer(
-                vec![
-                    format!("{bar}\n{TASK_NAVIGATE_INSTRUCTIONS}\n{HIDE_INSTRUCTIONS}"),
-                    format!("─"),
-                    format!("───\n"),
-                ]
-                .into_iter()
-                .map(Cell::from)
-                .collect::<Row>()
+                Row::new(vec![
+                    Cell::new(Text::from(vec![
+                        Line::from(format!("{bar}\n")),
+                        Line::from(key_help_spans(*NAVIGATE_TASKS)),
+                        Line::from(key_help_spans(*HIDE_TASKS)),
+                    ])),
+                    Cell::new("───\n "),
+                ])
                 .height(3),
             );
         StatefulWidget::render(table, area, buf, state);

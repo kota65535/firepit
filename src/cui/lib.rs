@@ -1,7 +1,7 @@
 use std::{borrow::Cow, env, f64::consts::PI};
 
 use console::{Style, StyledObject};
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ColorConfig {
@@ -69,19 +69,17 @@ impl ColorConfig {
     }
 }
 
-lazy_static! {
-    pub static ref GREY: Style = Style::new().dim();
-    pub static ref CYAN: Style = Style::new().cyan();
-    pub static ref BOLD: Style = Style::new().bold();
-    pub static ref MAGENTA: Style = Style::new().magenta();
-    pub static ref YELLOW: Style = Style::new().yellow();
-    pub static ref BOLD_YELLOW_REVERSE: Style = Style::new().yellow().bold().reverse();
-    pub static ref UNDERLINE: Style = Style::new().underlined();
-    pub static ref BOLD_CYAN: Style = Style::new().cyan().bold();
-    pub static ref BOLD_GREY: Style = Style::new().dim().bold();
-    pub static ref BOLD_GREEN: Style = Style::new().green().bold();
-    pub static ref BOLD_RED: Style = Style::new().red().bold();
-}
+pub static GREY: Lazy<Style> = Lazy::new(|| Style::new().dim());
+pub static CYAN: Lazy<Style> = Lazy::new(|| Style::new().cyan());
+pub static BOLD: Lazy<Style> = Lazy::new(|| Style::new().bold());
+pub static MAGENTA: Lazy<Style> = Lazy::new(|| Style::new().magenta());
+pub static YELLOW: Lazy<Style> = Lazy::new(|| Style::new().yellow());
+pub static BOLD_YELLOW_REVERSE: Lazy<Style> = Lazy::new(|| Style::new().yellow().bold().reverse());
+pub static UNDERLINE: Lazy<Style> = Lazy::new(|| Style::new().underlined());
+pub static BOLD_CYAN: Lazy<Style> = Lazy::new(|| Style::new().cyan().bold());
+pub static BOLD_GREY: Lazy<Style> = Lazy::new(|| Style::new().dim().bold());
+pub static BOLD_GREEN: Lazy<Style> = Lazy::new(|| Style::new().green().bold());
+pub static BOLD_RED: Lazy<Style> = Lazy::new(|| Style::new().red().bold());
 
 pub const RESET: &str = "\x1b[0m";
 
