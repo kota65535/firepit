@@ -1,5 +1,5 @@
 use anyhow::Context;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer};
@@ -409,10 +409,8 @@ impl Restart {
     }
 }
 
-lazy_static! {
-    pub static ref ALWAYS: Regex = Regex::new(r"^always(:(\d+))?$").unwrap();
-    pub static ref ON_FAILURE: Regex = Regex::new(r"^on-failure(:(\d+))?$").unwrap();
-}
+pub static ALWAYS: Lazy<Regex> = Lazy::new(|| Regex::new(r"^always(:(\d+))?$").unwrap());
+pub static ON_FAILURE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^on-failure(:(\d+))?$").unwrap());
 
 impl<'de> Deserialize<'de> for Restart {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>

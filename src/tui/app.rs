@@ -486,6 +486,8 @@ impl TuiAppState {
             if event.column < table_width - 1 {
                 // Task table clicked
                 self.select_task(event.row as usize);
+                // Set mouse event column to 0 for ease of selection
+                event.column = 0;
             } else {
                 // Terminal pane clicked
                 // So subtract the width of the table if we have sidebar

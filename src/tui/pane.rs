@@ -1,8 +1,11 @@
 use crate::tui::app::LayoutSections;
+use crate::tui::lib::key_help_spans;
 use crate::tui::task::Task;
-use ratatui::layout::Rect;
+use itertools::Itertools;
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Stylize};
-use ratatui::widgets::{Borders, Padding, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget};
+use ratatui::text::{Span, Text};
+use ratatui::widgets::{Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget};
 use ratatui::{
     style::Style,
     text::Line,
@@ -10,10 +13,14 @@ use ratatui::{
 };
 use tui_term::widget::PseudoTerminal;
 
-const FOOTER_TEXT_ACTIVE: &str = "Press`Ctrl-Z` to stop interacting.";
-const FOOTER_TEXT_INACTIVE: &str = "Press `Enter` to interact.";
-const HAS_SELECTION: &str = "Press `c` to copy selection";
-const TASK_LIST_HIDDEN: &str = "Press `h` to show task list.";
+static START_INTERACTION: &'static (&str, &str) = &("[Enter]", "Interact");
+static EXIT_INTERACTION: &'static (&str, &str) = &("[Ctrl-z]", "Exit Interaction");
+static START_SEARCH: &'static (&str, &str) = &("[/]", "Search");
+static EXIT_SEARCH: &'static (&str, &str) = &("[Esc]", "Exit Search");
+static COPY_SELECTION: &'static (&str, &str) = &("[c]", "Copy Selection");
+static SHOW_TASKS: &'static (&str, &str) = &("[h]", "Show Tasks");
+static NEXT_SEARCH_RESULT: &'static (&str, &str) = &("[n]", "Next Hit");
+static PREV_SEARCH_RESULT: &'static (&str, &str) = &("[N]", "Prev Hit");
 
 pub struct TerminalPane<'a> {
     task: &'a Task,
@@ -36,38 +43,78 @@ impl<'a> TerminalPane<'a> {
         matches!(self.section, LayoutSections::Pane)
     }
 
-    fn footer(&self) -> Line {
-        let task_list_message = if !self.has_sidebar { TASK_LIST_HIDDEN } else { "" };
-
+    fn footer(&self) -> Text {
         if let Some(time) = self.remaining_time {
-            Line::from(format!("Shutting down... ({} sec)", time))
-                .centered()
-                .style(Style::default().bg(Color::LightRed).fg(Color::White))
+            Text::from(
+                Line::from(format!("Shutting down... ({} sec)", time))
+                    .centered()
+                    .style(Style::default().bg(Color::LightRed).fg(Color::White)),
+            )
         } else {
+            let mut help_spans = Vec::new();
+            let mut search_spans = Vec::new();
             match self.section {
-                LayoutSections::Pane if self.task.output.has_selection() => {
-                    Line::from(format!("{FOOTER_TEXT_ACTIVE} {task_list_message} {HAS_SELECTION}")).centered()
+                LayoutSections::Pane => {
+                    if self.task.output.has_selection() {
+                        help_spans.push(key_help_spans(*COPY_SELECTION));
+                    }
+                    help_spans.push(key_help_spans(*EXIT_INTERACTION));
                 }
-                LayoutSections::Pane => Line::from(FOOTER_TEXT_ACTIVE.to_owned()).centered(),
-                LayoutSections::TaskList(_) if self.task.output.has_selection() => {
-                    Line::from(format!("{FOOTER_TEXT_INACTIVE} {task_list_message} {HAS_SELECTION}")).centered()
+                LayoutSections::TaskList(s) => {
+                    if self.task.output.has_selection() {
+                        help_spans.push(key_help_spans(*COPY_SELECTION));
+                    }
+                    if !self.has_sidebar {
+                        help_spans.push(key_help_spans(*SHOW_TASKS));
+                    }
+                    if self.task.output.stdin().is_some() {
+                        help_spans.push(key_help_spans(*START_INTERACTION));
+                    }
+                    if let Some(search) = s {
+                        if search.matches.len() > 0 {
+                            help_spans.push(key_help_spans(*NEXT_SEARCH_RESULT));
+                            help_spans.push(key_help_spans(*PREV_SEARCH_RESULT));
+                        }
+                    }
+                    help_spans.push(key_help_spans(*START_SEARCH));
                 }
-                LayoutSections::TaskList(_) => {
-                    Line::from(format!("{FOOTER_TEXT_INACTIVE} {task_list_message}")).centered()
+                LayoutSections::Search { query } => {
+                    if self.task.output.has_selection() {
+                        help_spans.push(key_help_spans(*COPY_SELECTION));
+                    }
+                    if !self.has_sidebar {
+                        help_spans.push(key_help_spans(*SHOW_TASKS));
+                    }
+                    help_spans.push(key_help_spans(*EXIT_SEARCH));
+                    search_spans.push(Span::styled(format!("/ {}\n", query), Style::default().bold()));
                 }
-                LayoutSections::Search { query } => Line::from(format!("/ {}", query)).left_aligned(),
             }
+            Text::from(vec![
+                Line::from(search_spans).left_aligned(),
+                Line::from(
+                    help_spans
+                        .into_iter()
+                        .intersperse_with(|| vec![Span::raw("  ")])
+                        .flatten()
+                        .collect::<Vec<_>>(),
+                )
+                .centered(),
+            ])
         }
     }
 }
 
 impl<'a> Widget for &TerminalPane<'a> {
-    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
+    fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer)
     where
         Self: Sized,
     {
+        // Create vertical layout with terminal and fixed height block
+        let layout = Layout::vertical([Constraint::Fill(1), Constraint::Length(2)]);
+        let [terminal_area, block_area] = layout.areas(area);
+
         let screen = self.task.output.screen();
-        let block = Block::default()
+        let terminal_block = Block::default()
             .padding(Padding::top(1))
             .borders(if self.has_sidebar { Borders::LEFT } else { Borders::NONE })
             .border_style(if self.highlight() {
@@ -75,16 +122,26 @@ impl<'a> Widget for &TerminalPane<'a> {
             } else {
                 Style::new()
             })
-            .title(self.task.title_line())
-            .title_bottom(self.footer())
-            .title_style(if self.highlight() {
-                Style::new().fg(Color::Yellow).bold()
+            .title(if self.highlight() {
+                Line::styled(self.task.title_line(), Style::new().fg(Color::Yellow).bold())
             } else {
-                Style::new().bold()
+                Line::styled(self.task.title_line(), Style::new().bold())
             });
 
-        let term = PseudoTerminal::new(screen).block(block);
-        term.render(area, buf)
+        // Terminal widget
+        let term = PseudoTerminal::new(screen).block(terminal_block);
+        term.render(terminal_area, buf);
+
+        // Footer widget
+        let footer_block = Block::default()
+            .borders(if self.has_sidebar { Borders::LEFT } else { Borders::NONE })
+            .border_style(if self.highlight() {
+                Style::new().fg(Color::Yellow)
+            } else {
+                Style::new()
+            });
+        let footer_widget = Paragraph::new(self.footer()).block(footer_block);
+        footer_widget.render(block_area, buf);
     }
 }
 

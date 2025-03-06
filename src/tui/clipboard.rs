@@ -2,6 +2,7 @@
 use std::process::Stdio;
 
 use base64::Engine;
+use once_cell::sync::Lazy;
 use which::which;
 
 pub fn copy_to_clipboard(s: &str) {
@@ -96,6 +97,4 @@ fn copy_impl(s: &str, provider: &Provider) -> std::io::Result<()> {
     Ok(())
 }
 
-lazy_static::lazy_static! {
-  static ref PROVIDER: Provider = detect_copy_provider();
-}
+pub static PROVIDER: Lazy<Provider> = Lazy::new(|| detect_copy_provider());
