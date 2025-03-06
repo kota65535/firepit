@@ -96,7 +96,7 @@ impl Task {
             }
         };
 
-        format!("% {} {}", self.name, status)
+        format!("% {} ({})", self.name, status)
     }
 
     pub fn finish_line(&self) -> Option<String> {

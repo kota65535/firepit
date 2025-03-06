@@ -131,7 +131,7 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<Eve
         // On search
         KeyCode::Char(c) if options.on_search() => Some(Event::SearchInputChar(c)),
         KeyCode::Backspace if options.on_search() => Some(Event::SearchBackspace),
-        KeyCode::Esc if options.on_search() => Some(Event::ExitSearch),
+        KeyCode::Esc if options.on_search() || options.on_task_list() => Some(Event::ExitSearch),
         KeyCode::Enter if options.on_search() => Some(Event::SearchRun),
 
         // Global

@@ -2,11 +2,10 @@ use crate::tui::app::LayoutSections;
 use crate::tui::lib::key_help_spans;
 use crate::tui::task::Task;
 use itertools::Itertools;
-use ratatui::layout::{Constraint, Layout};
-use ratatui::layout::Rect;
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Stylize};
 use ratatui::text::{Span, Text};
-use ratatui::widgets::{Borders, Padding, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget};
+use ratatui::widgets::{Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget};
 use ratatui::{
     style::Style,
     text::Line,
@@ -57,9 +56,6 @@ impl<'a> TerminalPane<'a> {
                     if self.task.output.has_selection() {
                         help_spans.push(key_help_spans(*COPY_SELECTION));
                     }
-                    if !self.has_sidebar {
-                        help_spans.push(key_help_spans(*SHOW_TASKS));
-                    }
                     help_spans.push(key_help_spans(*EXIT_INTERACTION));
                 }
                 LayoutSections::TaskList(_) => {
@@ -69,7 +65,9 @@ impl<'a> TerminalPane<'a> {
                     if !self.has_sidebar {
                         help_spans.push(key_help_spans(*SHOW_TASKS));
                     }
-                    help_spans.push(key_help_spans(*START_INTERACTION));
+                    if self.task.output.stdin().is_some() {
+                        help_spans.push(key_help_spans(*START_INTERACTION));
+                    }
                     help_spans.push(key_help_spans(*START_SEARCH));
                 }
                 LayoutSections::Search { query } => {
@@ -127,7 +125,13 @@ impl<'a> Widget for &TerminalPane<'a> {
         term.render(terminal_area, buf);
 
         // Footer widget
-        let footer_block = Block::default().borders(Borders::LEFT);
+        let footer_block = Block::default()
+            .borders(if self.has_sidebar { Borders::LEFT } else { Borders::NONE })
+            .border_style(if self.highlight() {
+                Style::new().fg(Color::Yellow)
+            } else {
+                Style::new()
+            });
         let footer_widget = Paragraph::new(self.footer()).block(footer_block);
         footer_widget.render(block_area, buf);
     }
