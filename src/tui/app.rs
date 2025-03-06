@@ -75,21 +75,23 @@ impl TuiApp {
 
         debug!("Terminal size: height={} width={}", rect.height, rect.width);
 
-        let pane_rows = size.pane_rows();
-        let pane_cols = size.pane_cols();
+        let has_sidebar = true;
+
+        let output_raws = size.pane_rows();
+        let output_cols = size.output_cols(has_sidebar);
 
         let tasks = target_tasks
             .iter()
             .map(|t| {
                 (
                     t.clone(),
-                    Task::new(t, true, TerminalOutput::new(pane_rows, pane_cols, None)),
+                    Task::new(t, true, TerminalOutput::new(output_raws, output_cols, None)),
                 )
             })
             .chain(dep_tasks.iter().map(|t| {
                 (
                     t.clone(),
-                    Task::new(t, false, TerminalOutput::new(pane_rows, pane_cols, None)),
+                    Task::new(t, false, TerminalOutput::new(output_raws, output_cols, None)),
                 )
             }))
             .collect::<IndexMap<_, _>>();
@@ -111,7 +113,7 @@ impl TuiApp {
                 table: TableState::default().with_selected(selected_task_index),
                 scrollbar: ScrollbarState::default(),
                 selected_task_index,
-                has_sidebar: true,
+                has_sidebar,
                 done: false,
                 exit_delay: EXIT_DELAY,
                 exit_delay_left: EXIT_DELAY,
@@ -382,15 +384,15 @@ impl TuiAppState {
     pub fn resize(&mut self, rows: u16, cols: u16) {
         debug!("Terminal size: height={} width={}", rows, cols);
         self.size.resize(rows, cols);
-        let pane_rows = self.size.pane_rows();
-        let pane_cols = self.size.pane_cols();
+        let output_rows = self.size.pane_rows();
+        let output_cols = self.size.output_cols(self.has_sidebar);
         self.tasks.values_mut().for_each(|task| {
-            task.output.resize(pane_rows, pane_cols);
+            task.output.resize(output_rows, output_cols);
         })
     }
 
     pub fn view(&mut self, f: &mut Frame) {
-        let cols = self.size.pane_cols();
+        let cols = self.size.pane_cols(self.has_sidebar);
         let horizontal = if self.has_sidebar {
             Layout::horizontal([Constraint::Fill(1), Constraint::Length(cols)])
         } else {
@@ -711,7 +713,7 @@ impl TuiAppState {
                 callback
                     .send(PaneSize {
                         rows: self.size.pane_rows(),
-                        cols: self.size.pane_cols(),
+                        cols: self.size.output_cols(self.has_sidebar),
                     })
                     .ok();
             }
@@ -744,6 +746,7 @@ impl TuiAppState {
             }
             Event::ToggleSidebar => {
                 self.has_sidebar = !self.has_sidebar;
+                self.resize(self.size.rows(), self.size.cols());
             }
             Event::EnterInteractive => {
                 self.interact()?;

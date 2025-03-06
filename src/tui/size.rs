@@ -19,6 +19,14 @@ impl SizeInfo {
         }
     }
 
+    pub fn rows(&self) -> u16 {
+        self.rows
+    }
+
+    pub fn cols(&self) -> u16 {
+        self.cols
+    }
+
     pub fn resize(&mut self, rows: u16, cols: u16) {
         self.rows = rows;
         self.cols = cols;
@@ -32,17 +40,25 @@ impl SizeInfo {
             .max(1)
     }
 
-    pub fn pane_cols(&self) -> u16 {
+    pub fn pane_cols(&self, has_sidebar: bool) -> u16 {
         // Want to maximize pane width
         let ratio_pane_width = (f32::from(self.cols) * PANE_SIZE_RATIO) as u16;
-        let full_task_width = self.cols.saturating_sub(self.task_width_hint);
-        full_task_width
-            .max(ratio_pane_width)
+        let full_task_width = if has_sidebar {
             // We need to account for the left border of the pane
-            .saturating_sub(1)
+            self.cols.saturating_sub(self.task_width_hint + 1)
+        } else {
+            self.cols
+        };
+        full_task_width.max(ratio_pane_width)
     }
 
+    pub fn output_cols(&self, has_sidebar: bool) -> u16 {
+        // Account for the pane scrollbar and ...what?
+        self.pane_cols(has_sidebar) - 2
+    }
+
+    /// Return the actual task table width.
     pub fn task_list_width(&self) -> u16 {
-        self.cols - self.pane_cols() + 1
+        self.cols - self.pane_cols(true) + 1
     }
 }

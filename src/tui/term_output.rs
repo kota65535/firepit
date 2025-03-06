@@ -13,7 +13,7 @@ impl TerminalOutput {
     pub fn new(rows: u16, cols: u16, stdin: Option<Box<dyn Write + Send>>) -> Self {
         Self {
             output: Vec::new(),
-            parser: vt100::Parser::new(rows, cols - 1, SCROLLBACK_LEN),
+            parser: vt100::Parser::new(rows, cols, SCROLLBACK_LEN),
             stdin,
         }
     }
