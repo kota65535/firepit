@@ -11,8 +11,7 @@ use crate::tui::task::Task;
 use crate::tui::term_output::TerminalOutput;
 use anyhow::Context;
 use indexmap::IndexMap;
-use ratatui::prelude::{Color, Style};
-use ratatui::widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState};
+use ratatui::widgets::ScrollbarState;
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Layout},
