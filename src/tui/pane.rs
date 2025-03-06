@@ -1,7 +1,8 @@
 use crate::tui::app::LayoutSections;
 use crate::tui::task::Task;
+use ratatui::layout::Rect;
 use ratatui::style::{Color, Stylize};
-use ratatui::widgets::{Borders, Padding};
+use ratatui::widgets::{Borders, Padding, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget};
 use ratatui::{
     style::Style,
     text::Line,
@@ -84,5 +85,30 @@ impl<'a> Widget for &TerminalPane<'a> {
 
         let term = PseudoTerminal::new(screen).block(block);
         term.render(area, buf)
+    }
+}
+
+pub struct TerminalScroll<'a> {
+    section: &'a LayoutSections,
+}
+
+impl<'a> TerminalScroll<'a> {
+    pub fn new(section: &'a LayoutSections) -> Self {
+        Self { section }
+    }
+}
+
+impl<'a> StatefulWidget for TerminalScroll<'a> {
+    type State = ScrollbarState;
+    fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer, state: &mut Self::State) {
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("↑"))
+            .end_symbol(Some("↓"))
+            .style(if matches!(self.section, LayoutSections::Pane) {
+                Style::new().fg(Color::Yellow)
+            } else {
+                Style::new()
+            });
+        StatefulWidget::render(scrollbar, area, buf, state);
     }
 }

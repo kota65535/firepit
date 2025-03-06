@@ -1,6 +1,5 @@
 use crate::tokio_spawn;
 use crate::tui::app::FRAME_RATE;
-use std::fmt::{Display, Formatter};
 use std::io;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
