@@ -4,9 +4,9 @@ const PANE_SIZE_RATIO: f32 = 3.0 / 4.0;
 
 #[derive(Debug, Clone, Copy)]
 pub struct SizeInfo {
-    pub task_width_hint: u16,
-    pub rows: u16,
-    pub cols: u16,
+    task_width_hint: u16,
+    rows: u16,
+    cols: u16,
 }
 
 impl SizeInfo {
