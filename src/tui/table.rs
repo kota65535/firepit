@@ -24,9 +24,6 @@ static HIDE_TASKS: &'static (&str, &str) = &("[H] ", "Hide");
 static MAX_WIDTH: usize = 40;
 static STATUS_COLUMN_WIDTH: u16 = 3;
 
-static MAX_WIDTH: usize = 40;
-static STATUS_COLUMN_WIDTH: u16 = 3;
-
 impl<'b> TaskTable<'b> {
     pub fn new(tasks: &'b IndexMap<String, Task>) -> Self {
         Self { tasks }
