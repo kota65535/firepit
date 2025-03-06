@@ -14,11 +14,13 @@ use ratatui::{
 use tui_term::widget::PseudoTerminal;
 
 static START_INTERACTION: &'static (&str, &str) = &("[Enter]", "Interact");
-static EXIT_INTERACTION: &'static (&str, &str) = &("[Ctrl-Z]", "Exit Interaction");
+static EXIT_INTERACTION: &'static (&str, &str) = &("[Ctrl-z]", "Exit Interaction");
 static START_SEARCH: &'static (&str, &str) = &("[/]", "Search");
-static EXIT_SEARCH: &'static (&str, &str) = &("[ESC]", "Exit Search");
-static COPY_SELECTION: &'static (&str, &str) = &("[C]", "Copy Selection");
-static SHOW_TASKS: &'static (&str, &str) = &("[H]", "Show Tasks");
+static EXIT_SEARCH: &'static (&str, &str) = &("[Esc]", "Exit Search");
+static COPY_SELECTION: &'static (&str, &str) = &("[c]", "Copy Selection");
+static SHOW_TASKS: &'static (&str, &str) = &("[h]", "Show Tasks");
+static NEXT_SEARCH_RESULT: &'static (&str, &str) = &("[n]", "Next Hit");
+static PREV_SEARCH_RESULT: &'static (&str, &str) = &("[N]", "Prev Hit");
 
 pub struct TerminalPane<'a> {
     task: &'a Task,
@@ -58,7 +60,7 @@ impl<'a> TerminalPane<'a> {
                     }
                     help_spans.push(key_help_spans(*EXIT_INTERACTION));
                 }
-                LayoutSections::TaskList(_) => {
+                LayoutSections::TaskList(s) => {
                     if self.task.output.has_selection() {
                         help_spans.push(key_help_spans(*COPY_SELECTION));
                     }
@@ -67,6 +69,12 @@ impl<'a> TerminalPane<'a> {
                     }
                     if self.task.output.stdin().is_some() {
                         help_spans.push(key_help_spans(*START_INTERACTION));
+                    }
+                    if let Some(search) = s {
+                        if search.matches.len() > 0 {
+                            help_spans.push(key_help_spans(*NEXT_SEARCH_RESULT));
+                            help_spans.push(key_help_spans(*PREV_SEARCH_RESULT));
+                        }
                     }
                     help_spans.push(key_help_spans(*START_SEARCH));
                 }

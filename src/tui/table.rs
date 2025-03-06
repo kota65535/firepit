@@ -19,7 +19,7 @@ pub struct TaskTable<'b> {
 }
 
 static NAVIGATE_TASKS: &'static (&str, &str) = &("[↑↓]", "Navigate");
-static HIDE_TASKS: &'static (&str, &str) = &("[H] ", "Hide");
+static HIDE_TASKS: &'static (&str, &str) = &("[h] ", "Hide");
 
 static MAX_WIDTH: usize = 40;
 static STATUS_COLUMN_WIDTH: u16 = 3;
