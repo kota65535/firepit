@@ -19,8 +19,8 @@ static START_SEARCH: &'static (&str, &str) = &("[/]", "Search");
 static EXIT_SEARCH: &'static (&str, &str) = &("[Esc]", "Exit Search");
 static COPY_SELECTION: &'static (&str, &str) = &("[c]", "Copy Selection");
 static SHOW_TASKS: &'static (&str, &str) = &("[h]", "Show Tasks");
-static NEXT_SEARCH_RESULT: &'static (&str, &str) = &("[n]", "Next Hit");
-static PREV_SEARCH_RESULT: &'static (&str, &str) = &("[N]", "Prev Hit");
+static NAVIGATE_SEARCH_RESULT: &'static (&str, &str) = &("[n\u{FF65}N]", "Next/Prev Match");
+static CLEAR_SEARCH_RESULT: &'static (&str, &str) = &("[Esc]", "Clear");
 
 pub struct TerminalPane<'a> {
     task: &'a Task,
@@ -70,13 +70,13 @@ impl<'a> TerminalPane<'a> {
                     if self.task.output.stdin().is_some() {
                         help_spans.push(key_help_spans(*START_INTERACTION));
                     }
+                    help_spans.push(key_help_spans(*START_SEARCH));
                     if let Some(search) = s {
                         if search.matches.len() > 0 {
-                            help_spans.push(key_help_spans(*NEXT_SEARCH_RESULT));
-                            help_spans.push(key_help_spans(*PREV_SEARCH_RESULT));
+                            help_spans.push(key_help_spans(*NAVIGATE_SEARCH_RESULT));
+                            help_spans.push(key_help_spans(*CLEAR_SEARCH_RESULT));
                         }
                     }
-                    help_spans.push(key_help_spans(*START_SEARCH));
                 }
                 LayoutSections::Search { query } => {
                     if self.task.output.has_selection() {
