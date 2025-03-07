@@ -57,15 +57,16 @@ impl TaskTable<'_> {
                     TaskStatus::Running(_) => Cell::new(Text::raw("\u{1F525}")), // 🔥
                     TaskStatus::Ready => Cell::new(Text::raw("\u{1F356}")),   // 🍖
                     TaskStatus::Finished(r) => {
+                        // Append `\u{FE0F}` (Variation Selector-16) so that the terminal treat the emoji as full-width
                         match r {
-                            TaskResult::Success => Cell::new(Text::raw("\u{2705}\u{200D}")), // ✅
-                            TaskResult::Failure(_) => Cell::new(Text::raw("\u{274C}\u{200D}")), // ❌
+                            TaskResult::Success => Cell::new(Text::raw("\u{2705}\u{FE0F}")), // ✅
+                            TaskResult::Failure(_) => Cell::new(Text::raw("\u{274C}\u{FE0F}")), // ❌
                             TaskResult::UpToDate => Cell::new(Text::raw("\u{1F966}")),       // 🥬
                             TaskResult::BadDeps | TaskResult::NotReady | TaskResult::Stopped => {
                                 Cell::new(Text::raw("\u{1F6AB}")) // 🚫
                             }
                             TaskResult::Reloading => Cell::new(Text::raw("\u{267B}\u{FE0F}")), // ♻️
-                            TaskResult::Unknown => Cell::new(Text::raw("\u{2753}\u{200D}")),   // ❓
+                            TaskResult::Unknown => Cell::new(Text::raw("\u{2753}\u{FE0F}")),   // ❓
                         }
                     }
                 };
