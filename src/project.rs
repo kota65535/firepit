@@ -5,6 +5,7 @@ use anyhow::Context;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use tera::Tera;
 use tracing::warn;
 
 #[derive(Debug, Clone)]
@@ -232,15 +233,43 @@ impl Task {
 
     pub fn from_project_config(project_name: &str, config: &ProjectConfig) -> anyhow::Result<HashMap<String, Task>> {
         let mut ret = HashMap::new();
+        let mut tera = Tera::default();
+        let mut base_context = tera::Context::new();
+        for (k, v) in config.vars.iter() {
+            base_context.insert(k.clone(), v);
+        }
         for (task_name, task_config) in config.tasks.iter() {
             if task_name.contains("#") {
                 anyhow::bail!("Task name must not contain '#'. Found: {:?}", task_name)
             }
-            let task_config = task_config.clone();
+
+            let mut context = base_context.clone();
+            for (k, v) in task_config.vars.iter() {
+                context.insert(k.clone(), v);
+            }
+
+            let mut task_config = task_config.clone();
             let task_name = Task::qualified_name(project_name, task_name);
 
             // Shell
             let task_shell = task_config.shell.clone().unwrap_or(config.shell.clone());
+
+            // Render template for command, working_dir, env and env_files
+            task_config.command = tera.render_str(&task_config.command, &context)?;
+            task_config.working_dir = match task_config.working_dir {
+                Some(w) => Some(tera.render_str(&w, &context)?),
+                None => None,
+            };
+            let mut rendered_env = HashMap::new();
+            for (k, v) in task_config.env.iter() {
+                rendered_env.insert(tera.render_str(k, &context)?, tera.render_str(v, &context)?);
+            }
+            task_config.env = rendered_env;
+            let mut rendered_env_files = Vec::new();
+            for f in task_config.env_files.iter() {
+                rendered_env_files.push(tera.render_str(f, &context)?);
+            }
+            task_config.env_files = rendered_env_files;
 
             // Working directory
             let task_working_dir = task_config
@@ -284,14 +313,36 @@ impl Task {
                         let probe = match st.healthcheck {
                             Some(healthcheck) => match healthcheck {
                                 // Log Probe
-                                HealthCheckConfig::Log(c) => Probe::LogLine(LogLineProbe::new(
-                                    &task_name,
-                                    Regex::new(&c.log).with_context(|| format!("invalid regex pattern {:?}", c.log))?,
-                                    c.timeout,
-                                    c.start_period,
-                                )),
+                                HealthCheckConfig::Log(c) => {
+                                    let log = tera.render_str(&c.log, &context)?;
+                                    Probe::LogLine(LogLineProbe::new(
+                                        &task_name,
+                                        Regex::new(&log)
+                                            .with_context(|| format!("invalid regex pattern {:?}", c.log))?,
+                                        c.timeout,
+                                        c.start_period,
+                                    ))
+                                }
                                 // Exec Probe
-                                HealthCheckConfig::Exec(c) => {
+                                HealthCheckConfig::Exec(mut c) => {
+                                    // Render template for command, working_dir, env and env_files
+                                    c.command = tera.render_str(&c.command, &context)?;
+                                    c.working_dir = match c.working_dir {
+                                        Some(w) => Some(tera.render_str(&w, &context)?),
+                                        None => None,
+                                    };
+                                    let mut rendered_env = HashMap::new();
+                                    for (k, v) in c.env.iter() {
+                                        rendered_env
+                                            .insert(tera.render_str(k, &context)?, tera.render_str(v, &context)?);
+                                    }
+                                    c.env = rendered_env;
+                                    let mut rendered_env_files = Vec::new();
+                                    for f in c.env_files.iter() {
+                                        rendered_env_files.push(tera.render_str(f, &context)?);
+                                    }
+                                    c.env_files = rendered_env_files;
+
                                     // Shell
                                     let hc_shell = c.shell.clone().unwrap_or(task_shell.clone());
                                     // Working directory

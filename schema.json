@@ -65,8 +65,16 @@
         }
       ]
     },
+    "vars": {
+      "description": "Template variables. Merged with those of child projects. Can be used at `working_dir`, `env`, `env_files`.",
+      "default": {},
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
     "working_dir": {
-      "description": "Working directory for all tasks",
+      "description": "Working directory for all tasks.",
       "default": ".",
       "type": "string"
     }
@@ -79,9 +87,11 @@
       ],
       "properties": {
         "command": {
+          "description": "Command to run",
           "type": "string"
         },
         "env": {
+          "description": "Environment variables. Merged with the task's env.",
           "default": {},
           "type": "object",
           "additionalProperties": {
@@ -89,6 +99,7 @@
           }
         },
         "env_files": {
+          "description": "Dotenv files Merged with the task's env.",
           "default": [],
           "type": "array",
           "items": {
@@ -108,6 +119,7 @@
           "minimum": 0.0
         },
         "shell": {
+          "description": "Shell configuration",
           "anyOf": [
             {
               "$ref": "#/definitions/ShellConfig"
@@ -130,6 +142,7 @@
           "minimum": 0.0
         },
         "working_dir": {
+          "description": "Working directory",
           "type": [
             "string",
             "null"
@@ -169,6 +182,7 @@
       ],
       "properties": {
         "log": {
+          "description": "Log regex pattern to determine the task service is ready",
           "type": "string"
         },
         "start_period": {
@@ -348,6 +362,14 @@
               "type": "null"
             }
           ]
+        },
+        "vars": {
+          "description": "Template variables. Can be used at `command`, `working_dir`, `env`, `env_files`, [`LogProbeConfig::log`](LogProbeConfig::log).",
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
         },
         "working_dir": {
           "description": "Working directory",
