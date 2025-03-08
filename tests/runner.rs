@@ -113,6 +113,51 @@ async fn test_basic_multi(#[case] dir: &str) {
 }
 
 #[tokio::test]
+async fn test_vars() {
+    setup();
+
+    let path = BASE_PATH.join("vars");
+    let tasks = vec![String::from("foo")];
+
+    let mut expected = HashMap::new();
+    expected.insert(String::from("#foo"), String::from("Finished: Success"));
+    expected.insert(String::from("#bar"), String::from("Finished: Success"));
+    expected.insert(String::from("#baz"), String::from("Finished: Success"));
+    expected.insert(String::from("#qux"), String::from("Ready"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#foo"), String::from("foo 1"));
+    outputs.insert(String::from("#bar"), String::from("bar 2"));
+    outputs.insert(String::from("#baz"), String::from("baz 3"));
+    outputs.insert(String::from("#qux"), String::from("qux 12001"));
+
+    run_task(&path, tasks, expected, Some(outputs), None, None, Some(20))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn test_vars_multi() {
+    setup();
+    let path = BASE_PATH.join("vars_multi");
+    let tasks = vec![String::from("#baz")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("foo#foo"), String::from("Finished: Success"));
+    statuses.insert(String::from("bar#bar"), String::from("Finished: Success"));
+    statuses.insert(String::from("#baz"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("foo#foo"), String::from("foo 1"));
+    outputs.insert(String::from("bar#bar"), String::from("bar 2"));
+    outputs.insert(String::from("#baz"), String::from("baz 3"));
+
+    run_task(&path, tasks, statuses, Some(outputs), None, None, None)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
 async fn test_cyclic() {
     setup();
     let path = BASE_PATH.join("cyclic");

@@ -1,0 +1,9 @@
+vars:
+  B: 2
+
+env:
+  C: "{{ B }}"
+
+tasks:
+  bar:
+    command: echo "bar ${C}"

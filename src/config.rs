@@ -9,6 +9,7 @@ use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::thread::available_parallelism;
 use std::{io, path};
+use tera::Tera;
 
 const CONFIG_FILE: [&str; 2] = ["firepit.yml", "firepit.yaml"];
 
@@ -23,9 +24,15 @@ pub struct ProjectConfig {
     #[serde(default = "default_shell")]
     pub shell: ShellConfig,
 
-    /// Working directory for all tasks
+    /// Working directory for all tasks.
     #[serde(default = "default_working_dir")]
     pub working_dir: String,
+
+    /// Template variables.
+    /// Merged with those of child projects.
+    /// Can be used at `working_dir`, `env`, `env_files`.
+    #[serde(default)]
+    pub vars: HashMap<String, String>,
 
     /// Environment variables of all tasks.
     /// Merged with those of child projects.
@@ -108,9 +115,9 @@ impl ProjectConfig {
                     anyhow::bail!("Project name must not contain '#'. Found: {:?}", name)
                 }
                 let mut child_config = ProjectConfig::new(root_config.dir.join(path).as_path())?;
-                root_config.env.iter().for_each(|(k, v)| {
+                for (k, v) in root_config.env.iter() {
                     child_config.env.entry(k.clone()).or_insert(v.clone());
-                });
+                }
                 child_config.env_files = root_config
                     .env_files
                     .clone()
@@ -118,6 +125,9 @@ impl ProjectConfig {
                     .map(|f| root_config.dir.join(f).to_str().unwrap().to_string())
                     .chain(child_config.env_files)
                     .collect();
+                for (k, v) in root_config.vars.iter() {
+                    child_config.vars.entry(k.clone()).or_insert(v.clone());
+                }
                 children.insert(name.clone(), child_config);
             }
             Ok((root_config, children))
@@ -146,6 +156,24 @@ impl ProjectConfig {
             .parent()
             .map(|p| p.to_path_buf())
             .with_context(|| format!("cannot read the parent directory of {:?}", path))?;
+
+        // Render template for working_dir, env and env_files
+        let mut tera = Tera::default();
+        let mut context = tera::Context::new();
+        for (k, v) in data.vars.iter() {
+            context.insert(k, v)
+        }
+        data.working_dir = tera.render_str(&data.working_dir, &context)?;
+        let mut rendered_env = HashMap::new();
+        for (k, v) in data.env.iter() {
+            rendered_env.insert(tera.render_str(k, &context)?, tera.render_str(v, &context)?);
+        }
+        data.env = rendered_env;
+        let mut rendered_env_files = Vec::new();
+        for f in data.env_files.iter() {
+            rendered_env_files.push(tera.render_str(f, &context)?);
+        }
+        data.env_files = rendered_env_files;
 
         Ok(data)
     }
@@ -213,6 +241,11 @@ pub struct TaskConfig {
 
     /// Working directory
     pub working_dir: Option<String>,
+
+    /// Template variables.
+    /// Can be used at `command`, `working_dir`, `env`, `env_files`.
+    #[serde(default)]
+    pub vars: HashMap<String, String>,
 
     /// Environment variables.
     /// Merged with the project's env.
@@ -309,17 +342,24 @@ pub fn default_log_healthcheck_timeout() -> u64 {
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct ExecProbeConfig {
+    /// Command to run
     pub command: String,
 
+    /// Shell configuration
+    pub shell: Option<ShellConfig>,
+
+    /// Working directory
     pub working_dir: Option<String>,
 
+    /// Environment variables.
+    /// Merged with the task's env.
     #[serde(default)]
     pub env: HashMap<String, String>,
 
+    /// Dotenv files
+    /// Merged with the task's env.
     #[serde(default)]
     pub env_files: Vec<String>,
-
-    pub shell: Option<ShellConfig>,
 
     #[serde(default = "default_healthcheck_interval")]
     pub interval: u64,

@@ -1,0 +1,34 @@
+vars:
+  A: 1
+  B: 2
+
+tasks:
+  foo:
+    command: echo "foo {{ A }}"
+    depends_on:
+      - bar
+      - baz
+      - qux
+
+  bar:
+    env:
+      B: "{{ B }}"
+    command: echo "bar ${B}"
+
+  baz:
+    vars:
+      C: baz
+    env_files:
+      - .env.{{ C }}
+    command: echo "baz ${C}"
+
+  qux:
+    vars:
+      D: 12001
+    command: |
+      echo "qux {{ D }}"
+      nc -kl 12001
+    service:
+      healthcheck:
+        command: "nc -z localhost {{ D }}"
+        start_period: 1

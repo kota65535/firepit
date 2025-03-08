@@ -1,0 +1,8 @@
+vars:
+  A: 10
+
+tasks:
+  foo:
+    command: echo "foo ${A}"
+    depends_on:
+      - bar#bar

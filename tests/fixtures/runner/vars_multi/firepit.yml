@@ -1,0 +1,17 @@
+projects:
+  foo: foo
+  bar: bar
+
+vars:
+  A: 1
+  C: 2
+
+env:
+  A: "{{ A }}"
+  C: "{{ C | int + 1 }}"
+
+tasks:
+  baz:
+    command: echo "baz ${C}"
+    depends_on:
+      - foo#foo
