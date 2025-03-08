@@ -32,4 +32,3 @@ tasks:
       D: 4
     command: |
       echo "qux {{ D }}"
-      cat {{ project_dir }}
