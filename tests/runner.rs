@@ -119,11 +119,11 @@ async fn test_vars() {
     let path = BASE_PATH.join("vars");
     let tasks = vec![String::from("foo")];
 
-    let mut expected = HashMap::new();
-    expected.insert(String::from("#foo"), String::from("Finished: Success"));
-    expected.insert(String::from("#bar"), String::from("Finished: Success"));
-    expected.insert(String::from("#baz"), String::from("Finished: Success"));
-    expected.insert(String::from("#qux"), String::from("Ready"));
+    let mut stats = HashMap::new();
+    stats.insert(String::from("#foo"), String::from("Finished: Success"));
+    stats.insert(String::from("#bar"), String::from("Finished: Success"));
+    stats.insert(String::from("#baz"), String::from("Finished: Success"));
+    stats.insert(String::from("#qux"), String::from("Ready"));
 
     let mut outputs = HashMap::new();
     outputs.insert(String::from("#foo"), String::from("foo 1"));
@@ -131,7 +131,7 @@ async fn test_vars() {
     outputs.insert(String::from("#baz"), String::from("baz 3"));
     outputs.insert(String::from("#qux"), String::from("qux 12001"));
 
-    run_task(&path, tasks, expected, Some(outputs), None, None, Some(20))
+    run_task(&path, tasks, stats, Some(outputs), None, None, Some(20))
         .await
         .unwrap();
 }
@@ -142,17 +142,17 @@ async fn test_vars_multi() {
     let path = BASE_PATH.join("vars_multi");
     let tasks = vec![String::from("#baz")];
 
-    let mut statuses = HashMap::new();
-    statuses.insert(String::from("foo#foo"), String::from("Finished: Success"));
-    statuses.insert(String::from("bar#bar"), String::from("Finished: Success"));
-    statuses.insert(String::from("#baz"), String::from("Finished: Success"));
+    let mut stats = HashMap::new();
+    stats.insert(String::from("foo#foo"), String::from("Finished: Success"));
+    stats.insert(String::from("bar#bar"), String::from("Finished: Success"));
+    stats.insert(String::from("#baz"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
     outputs.insert(String::from("foo#foo"), String::from("foo 1"));
     outputs.insert(String::from("bar#bar"), String::from("bar 2"));
     outputs.insert(String::from("#baz"), String::from("baz 3"));
 
-    run_task(&path, tasks, statuses, Some(outputs), None, None, None)
+    run_task(&path, tasks, stats, Some(outputs), None, None, None)
         .await
         .unwrap();
 }
@@ -175,15 +175,13 @@ async fn test_service() {
     let path = BASE_PATH.join("service");
     let tasks = vec![String::from("foo")];
 
-    let mut expected = HashMap::new();
-    expected.insert(String::from("#foo"), String::from("Finished: Success"));
-    expected.insert(String::from("#bar"), String::from("Finished: Success"));
-    expected.insert(String::from("#baz"), String::from("Ready"));
-    expected.insert(String::from("#qux"), String::from("Ready"));
+    let mut stats = HashMap::new();
+    stats.insert(String::from("#foo"), String::from("Finished: Success"));
+    stats.insert(String::from("#bar"), String::from("Finished: Success"));
+    stats.insert(String::from("#baz"), String::from("Ready"));
+    stats.insert(String::from("#qux"), String::from("Ready"));
 
-    run_task(&path, tasks, expected, None, None, None, Some(20))
-        .await
-        .unwrap();
+    run_task(&path, tasks, stats, None, None, None, Some(20)).await.unwrap();
 }
 
 #[tokio::test]
@@ -192,14 +190,12 @@ async fn test_service_failure() {
     let path = BASE_PATH.join("service_failure");
     let tasks = vec![String::from("foo")];
 
-    let mut expected = HashMap::new();
-    expected.insert(String::from("#foo"), String::from("Finished: BadDeps"));
-    expected.insert(String::from("#bar"), String::from("Finished: NotReady"));
-    expected.insert(String::from("#baz"), String::from("Finished: NotReady"));
+    let mut stats = HashMap::new();
+    stats.insert(String::from("#foo"), String::from("Finished: BadDeps"));
+    stats.insert(String::from("#bar"), String::from("Finished: NotReady"));
+    stats.insert(String::from("#baz"), String::from("Finished: NotReady"));
 
-    run_task(&path, tasks, expected, None, None, None, Some(20))
-        .await
-        .unwrap();
+    run_task(&path, tasks, stats, None, None, None, Some(20)).await.unwrap();
 }
 
 #[tokio::test]
@@ -208,33 +204,24 @@ async fn test_watch() {
     let path = BASE_PATH.join("watch");
     let tasks = vec![String::from("foo")];
 
-    let mut status_expected = HashMap::new();
-    status_expected.insert(String::from("#foo"), String::from("Finished: Success"));
-    status_expected.insert(String::from("#bar"), String::from("Finished: Success"));
-    status_expected.insert(String::from("#baz"), String::from("Finished: Success"));
+    let mut stats = HashMap::new();
+    stats.insert(String::from("#foo"), String::from("Finished: Success"));
+    stats.insert(String::from("#bar"), String::from("Finished: Success"));
+    stats.insert(String::from("#baz"), String::from("Finished: Success"));
 
-    let mut outputs_expected = HashMap::new();
-    outputs_expected.insert(String::from("#foo"), String::from("foofoo"));
-    outputs_expected.insert(String::from("#bar"), String::from("barbar"));
-    outputs_expected.insert(String::from("#baz"), String::from("baz"));
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#foo"), String::from("foofoo"));
+    outputs.insert(String::from("#bar"), String::from("barbar"));
+    outputs.insert(String::from("#baz"), String::from("baz"));
 
-    let mut runs_expected = HashMap::new();
-    runs_expected.insert(String::from("#foo"), 1);
-    runs_expected.insert(String::from("#bar"), 1);
-    runs_expected.insert(String::from("#baz"), 0);
+    let mut runs = HashMap::new();
+    runs.insert(String::from("#foo"), 1);
+    runs.insert(String::from("#bar"), 1);
+    runs.insert(String::from("#baz"), 0);
 
-    run_task_with_watch(
-        &path,
-        tasks,
-        status_expected,
-        Some(outputs_expected),
-        None,
-        Some(runs_expected),
-        None,
-        async {
-            File::create(BASE_PATH.join("watch").join("bar.txt")).ok();
-        },
-    )
+    run_task_with_watch(&path, tasks, stats, Some(outputs), None, Some(runs), None, async {
+        File::create(BASE_PATH.join("watch").join("bar.txt")).ok();
+    })
     .await;
 }
 
@@ -244,13 +231,13 @@ async fn test_watch_service() {
     let path = BASE_PATH.join("watch_service");
     let tasks = vec![String::from("foo")];
 
-    let mut status_expected = HashMap::new();
-    status_expected.insert(String::from("#foo"), String::from("Finished: Success"));
-    status_expected.insert(String::from("#bar"), String::from("Ready"));
+    let mut stats = HashMap::new();
+    stats.insert(String::from("#foo"), String::from("Finished: Success"));
+    stats.insert(String::from("#bar"), String::from("Ready"));
 
-    let mut runs_expected = HashMap::new();
-    runs_expected.insert(String::from("#foo"), 1);
-    runs_expected.insert(String::from("#bar"), 1);
+    let mut runs = HashMap::new();
+    runs.insert(String::from("#foo"), 1);
+    runs.insert(String::from("#bar"), 1);
 
     {
         let mut f = File::create(path.join("bar.txt")).unwrap();
@@ -258,20 +245,11 @@ async fn test_watch_service() {
     }
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    run_task_with_watch(
-        &path,
-        tasks,
-        status_expected,
-        None,
-        None,
-        Some(runs_expected),
-        Some(20),
-        async {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            let mut f = File::create(BASE_PATH.join("watch_service").join("bar.txt")).unwrap();
-            f.write_all(b"12000").unwrap();
-        },
-    )
+    run_task_with_watch(&path, tasks, stats, None, None, Some(runs), Some(20), async {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let mut f = File::create(BASE_PATH.join("watch_service").join("bar.txt")).unwrap();
+        f.write_all(b"12000").unwrap();
+    })
     .await;
 }
 
@@ -283,12 +261,12 @@ async fn test_up_to_date() {
 
     File::create(path.join("foo.out")).ok();
 
-    let mut expected = HashMap::new();
-    expected.insert(String::from("#foo"), String::from("Finished: UpToDate"));
-    expected.insert(String::from("#bar"), String::from("Finished: Success"));
-    expected.insert(String::from("#baz"), String::from("Finished: Success"));
+    let mut stats = HashMap::new();
+    stats.insert(String::from("#foo"), String::from("Finished: UpToDate"));
+    stats.insert(String::from("#bar"), String::from("Finished: Success"));
+    stats.insert(String::from("#baz"), String::from("Finished: Success"));
 
-    run_task(&path, tasks, expected, None, None, None, None).await.unwrap();
+    run_task(&path, tasks, stats, None, None, None, None).await.unwrap();
 }
 
 async fn run_task(
