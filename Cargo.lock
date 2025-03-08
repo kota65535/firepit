@@ -697,6 +697,7 @@ dependencies = [
  "once_cell",
  "petgraph",
  "portable-pty",
+ "rand",
  "ratatui",
  "regex",
  "rstest",

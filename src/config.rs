@@ -233,6 +233,9 @@ impl ProjectConfig {
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct TaskConfig {
+    /// Label
+    pub label: Option<String>,
+
     /// Command to run
     pub command: String,
 
@@ -243,7 +246,7 @@ pub struct TaskConfig {
     pub working_dir: Option<String>,
 
     /// Template variables.
-    /// Can be used at `command`, `working_dir`, `env`, `env_files`, [`LogProbeConfig::log`](LogProbeConfig::log).
+    /// Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, [`LogProbeConfig::log`](LogProbeConfig::log).
     #[serde(default)]
     pub vars: HashMap<String, String>,
 
@@ -259,7 +262,7 @@ pub struct TaskConfig {
 
     /// Dependency task names
     #[serde(default)]
-    pub depends_on: Vec<String>,
+    pub depends_on: Vec<DependsOnConfig>,
 
     /// Service configuration
     pub service: Option<ServiceConfig>,
@@ -318,6 +321,21 @@ pub struct LogConfig {
     #[serde(default = "default_log_level")]
     pub level: String,
     pub file: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum DependsOnConfig {
+    String(String),
+    Struct(DependsOnConfigStruct),
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct DependsOnConfigStruct {
+    pub task: String,
+
+    #[serde(default)]
+    pub vars: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]

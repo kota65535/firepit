@@ -131,7 +131,7 @@ async fn test_vars() {
     outputs.insert(String::from("#baz"), String::from("baz 3"));
     outputs.insert(String::from("#qux"), String::from("qux 12001"));
 
-    run_task(&path, tasks, stats, Some(outputs), None, None, Some(20))
+    run_task(&path, tasks, stats, Some(outputs), None, None, None)
         .await
         .unwrap();
 }
@@ -151,6 +151,32 @@ async fn test_vars_multi() {
     outputs.insert(String::from("foo#foo"), String::from("foo 1"));
     outputs.insert(String::from("bar#bar"), String::from("bar 2"));
     outputs.insert(String::from("#baz"), String::from("baz 3"));
+
+    run_task(&path, tasks, stats, Some(outputs), None, None, None)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn test_vars_dep() {
+    setup();
+
+    let path = BASE_PATH.join("vars_dep");
+    let tasks = vec![String::from("foo")];
+
+    let mut stats = HashMap::new();
+    stats.insert(String::from("#foo"), String::from("Finished: Success"));
+    stats.insert(String::from("#bar"), String::from("Finished: Success"));
+    stats.insert(String::from("#baz"), String::from("Finished: Success"));
+    stats.insert(String::from("#baz-1"), String::from("Finished: Success"));
+    stats.insert(String::from("#qux"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#foo"), String::from("foo 1"));
+    outputs.insert(String::from("#bar"), String::from("bar 2"));
+    outputs.insert(String::from("#baz"), String::from("baz 3"));
+    outputs.insert(String::from("#baz-1"), String::from("baz 4"));
+    outputs.insert(String::from("#qux"), String::from("qux 4"));
 
     run_task(&path, tasks, stats, Some(outputs), None, None, None)
         .await
@@ -372,7 +398,7 @@ async fn run_task_with_watch<F>(
     watcher_fut.await.ok();
 }
 
-const DEFAULT_TEST_TIMEOUT_SECONDS: u64 = 20;
+const DEFAULT_TEST_TIMEOUT_SECONDS: u64 = 10;
 
 fn handle_events(
     mut rx: UnboundedReceiver<Event>,

@@ -1,0 +1,32 @@
+vars:
+  A: 1
+  B: 2
+
+tasks:
+  foo:
+    command: echo "foo {{ A }}"
+    depends_on:
+      - bar
+      - task: baz
+        vars:
+          C: "4"
+      - task: qux
+        vars:
+          D: "4"
+
+  bar:
+    env:
+      B: "{{ B }}"
+    command: echo "bar ${B}"
+    depends_on:
+      - baz
+
+  baz:
+    vars:
+      C: 3
+    command: echo "baz {{ C }}"
+
+  qux:
+    vars:
+      D: 4
+    command: echo "qux {{ D }}"
