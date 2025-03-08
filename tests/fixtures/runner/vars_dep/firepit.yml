@@ -22,6 +22,7 @@ tasks:
       - baz
 
   baz:
+    label: "{{ task }} {{ C }}"
     vars:
       C: 3
     command: echo "baz {{ C }}"
@@ -29,4 +30,6 @@ tasks:
   qux:
     vars:
       D: 4
-    command: echo "qux {{ D }}"
+    command: |
+      echo "qux {{ D }}"
+      cat {{ project_dir }}

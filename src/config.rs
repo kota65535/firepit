@@ -157,6 +157,11 @@ impl ProjectConfig {
             .map(|p| p.to_path_buf())
             .with_context(|| format!("cannot read the parent directory of {:?}", path))?;
 
+        // Task name
+        for (k, v) in data.tasks.iter_mut() {
+            v.name = k.clone();
+        }
+
         // Render template for working_dir, env and env_files
         let mut tera = Tera::default();
         let mut context = tera::Context::new();
@@ -233,6 +238,10 @@ impl ProjectConfig {
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct TaskConfig {
+    /// Name
+    #[serde(skip)]
+    pub name: String,
+
     /// Label
     pub label: Option<String>,
 

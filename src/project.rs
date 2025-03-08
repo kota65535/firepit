@@ -15,15 +15,20 @@ pub struct Workspace {
     pub concurrency: usize,
 }
 
+const ROOT_CONTEXT_KEY: &str = "root_dir";
+const PROJECT_CONTEXT_KEY: &str = "project_dir";
+const TASK_CONTEXT_KEY: &str = "task";
+
 impl Workspace {
     pub fn new(
         root_config: &ProjectConfig,
         child_config: &HashMap<String, ProjectConfig>,
     ) -> anyhow::Result<Workspace> {
-        let root = Project::new("", root_config)?;
+        let context = Self::tera_context(root_config, child_config);
+        let root = Project::new("", root_config, &context)?;
         let mut children = HashMap::new();
         for (k, v) in child_config.iter() {
-            children.insert(k.clone(), Project::new(k, v)?);
+            children.insert(k.clone(), Project::new(k, v, &context)?);
         }
 
         Self::validate_projects(&root, &children)?;
@@ -33,6 +38,22 @@ impl Workspace {
             children,
             concurrency: root_config.concurrency,
         })
+    }
+
+    fn tera_context(root_config: &ProjectConfig, child_config: &HashMap<String, ProjectConfig>) -> tera::Context {
+        let mut context = tera::Context::new();
+        let root_dir = root_config.dir.as_os_str().to_str().unwrap_or("");
+        context.insert(ROOT_CONTEXT_KEY, root_dir);
+        if child_config.is_empty() {
+            context.insert(PROJECT_CONTEXT_KEY, root_dir);
+        } else {
+            let project_dir = child_config
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.dir.as_os_str().to_str().unwrap_or("")))
+                .collect::<HashMap<_, _>>();
+            context.insert(PROJECT_CONTEXT_KEY, &project_dir);
+        }
+        context
     }
 
     fn validate_projects(root: &Project, children: &HashMap<String, Project>) -> anyhow::Result<()> {
@@ -174,10 +195,10 @@ pub struct Project {
 }
 
 impl Project {
-    pub fn new(name: &str, root: &ProjectConfig) -> anyhow::Result<Project> {
+    pub fn new(name: &str, root: &ProjectConfig, context: &tera::Context) -> anyhow::Result<Project> {
         Ok(Project {
             name: name.to_owned(),
-            tasks: Task::new_multi(name, &root)?,
+            tasks: Task::new_multi(name, &root, context)?,
             dir: root.dir.clone(),
         })
     }
@@ -230,7 +251,11 @@ pub struct Task {
 }
 
 impl Task {
-    pub fn new_multi(project_name: &str, config: &ProjectConfig) -> anyhow::Result<HashMap<String, Task>> {
+    pub fn new_multi(
+        project_name: &str,
+        config: &ProjectConfig,
+        context: &tera::Context,
+    ) -> anyhow::Result<HashMap<String, Task>> {
         let mut tasks = HashMap::new();
         let mut suffixes = HashMap::new();
 
@@ -267,12 +292,12 @@ impl Task {
         }
 
         let mut ret = HashMap::new();
-        let mut context = tera::Context::new();
+        let mut context = context.clone();
         for (k, v) in config.vars.iter() {
             context.insert(k.clone(), v);
         }
         for (task_name, task_config) in tasks.iter() {
-            let task = Self::new(project_name, &config, task_name, task_config.clone(), context.clone())?;
+            let task = Self::new(project_name, &config, task_name, task_config, &context)?;
             ret.insert(task.name.clone(), task);
         }
 
@@ -283,8 +308,8 @@ impl Task {
         project_name: &str,
         config: &ProjectConfig,
         task_name: &str,
-        task_config: TaskConfig,
-        context: tera::Context,
+        task_config: &TaskConfig,
+        context: &tera::Context,
     ) -> anyhow::Result<Task> {
         if task_name.contains("#") {
             anyhow::bail!("Task name must not contain '#'. Found: {:?}", task_name)
@@ -295,14 +320,19 @@ impl Task {
         for (k, v) in task_config.vars.iter() {
             context.insert(k.clone(), v);
         }
+        let orig_name = task_config.name.clone();
+        context.insert(TASK_CONTEXT_KEY, &Task::qualified_name(project_name, &orig_name));
+        let task_name = Task::qualified_name(project_name, &task_name);
 
         let mut task_config = task_config.clone();
-        let task_name = Task::qualified_name(project_name, task_name);
 
         // Shell
         let task_shell = task_config.shell.clone().unwrap_or(config.shell.clone());
 
-        // Render template for command, working_dir, env and env_files
+        // Render template for label, command, working_dir, env and env_files
+        if let Some(l) = task_config.label {
+            task_config.label = Some(tera.render_str(&l, &context)?);
+        }
         task_config.command = tera.render_str(&task_config.command, &context)?;
         task_config.working_dir = match task_config.working_dir {
             Some(w) => Some(tera.render_str(&w, &context)?),
