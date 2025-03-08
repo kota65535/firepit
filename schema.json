@@ -80,6 +80,34 @@
     }
   },
   "definitions": {
+    "DependsOnConfig": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/definitions/DependsOnConfigStruct"
+        }
+      ]
+    },
+    "DependsOnConfigStruct": {
+      "type": "object",
+      "required": [
+        "task"
+      ],
+      "properties": {
+        "task": {
+          "type": "string"
+        },
+        "vars": {
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
     "ExecProbeConfig": {
       "type": "object",
       "required": [
@@ -303,10 +331,9 @@
         },
         "depends_on": {
           "description": "Dependency task names",
-          "default": [],
           "type": "array",
           "items": {
-            "type": "string"
+            "$ref": "#/definitions/DependsOnConfig"
           }
         },
         "env": {
@@ -332,6 +359,13 @@
           "items": {
             "type": "string"
           }
+        },
+        "label": {
+          "description": "Label",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "outputs": {
           "description": "Output file glob patterns",
@@ -364,7 +398,7 @@
           ]
         },
         "vars": {
-          "description": "Template variables. Can be used at `command`, `working_dir`, `env`, `env_files`, [`LogProbeConfig::log`](LogProbeConfig::log).",
+          "description": "Template variables. Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, [`LogProbeConfig::log`](LogProbeConfig::log).",
           "default": {},
           "type": "object",
           "additionalProperties": {
