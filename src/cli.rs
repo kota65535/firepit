@@ -7,6 +7,7 @@ use crate::tokio_spawn;
 use crate::tui::app::TuiApp;
 use crate::watcher::FileWatcher;
 use clap::Parser;
+use std::collections::HashMap;
 use std::path;
 use std::time::Duration;
 use tracing::info;
@@ -63,6 +64,12 @@ pub async fn run() -> anyhow::Result<()> {
     // Aggregate information in config files into more workable form
     let ws = Workspace::new(&root, &children)?;
 
+    let labels = ws
+        .tasks()
+        .iter()
+        .map(|t| (t.name.clone(), t.label.clone()))
+        .collect::<HashMap<_, _>>();
+
     init_logger(&root.log, args.tokio_console)?;
 
     // Print workspace information if no task specified
@@ -92,7 +99,7 @@ pub async fn run() -> anyhow::Result<()> {
             (sender, fut)
         }
         UI::Tui => {
-            let mut app = TuiApp::new(&runner.target_tasks, &dep_tasks)?;
+            let mut app = TuiApp::new(&runner.target_tasks, &dep_tasks, &labels)?;
             let sender = app.sender();
             let fut = tokio_spawn!("app", async move { app.run().await });
             (sender, fut)

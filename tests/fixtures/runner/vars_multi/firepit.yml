@@ -12,6 +12,8 @@ env:
 
 tasks:
   baz:
-    command: echo "baz ${C}"
+    command: |
+      echo "baz ${C}"
+      cat {{ project_dir["bar"] }}/bar.txt
     depends_on:
       - foo#foo

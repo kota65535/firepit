@@ -157,6 +157,11 @@ impl ProjectConfig {
             .map(|p| p.to_path_buf())
             .with_context(|| format!("cannot read the parent directory of {:?}", path))?;
 
+        // Task name
+        for (k, v) in data.tasks.iter_mut() {
+            v.name = k.clone();
+        }
+
         // Render template for working_dir, env and env_files
         let mut tera = Tera::default();
         let mut context = tera::Context::new();
@@ -233,6 +238,13 @@ impl ProjectConfig {
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct TaskConfig {
+    /// Name
+    #[serde(skip)]
+    pub name: String,
+
+    /// Label
+    pub label: Option<String>,
+
     /// Command to run
     pub command: String,
 
@@ -243,7 +255,7 @@ pub struct TaskConfig {
     pub working_dir: Option<String>,
 
     /// Template variables.
-    /// Can be used at `command`, `working_dir`, `env`, `env_files`, [`LogProbeConfig::log`](LogProbeConfig::log).
+    /// Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, [`LogProbeConfig::log`](LogProbeConfig::log).
     #[serde(default)]
     pub vars: HashMap<String, String>,
 
@@ -259,7 +271,7 @@ pub struct TaskConfig {
 
     /// Dependency task names
     #[serde(default)]
-    pub depends_on: Vec<String>,
+    pub depends_on: Vec<DependsOnConfig>,
 
     /// Service configuration
     pub service: Option<ServiceConfig>,
@@ -318,6 +330,21 @@ pub struct LogConfig {
     #[serde(default = "default_log_level")]
     pub level: String,
     pub file: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum DependsOnConfig {
+    String(String),
+    Struct(DependsOnConfigStruct),
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct DependsOnConfigStruct {
+    pub task: String,
+
+    #[serde(default)]
+    pub vars: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]

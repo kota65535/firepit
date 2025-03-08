@@ -6,4 +6,6 @@ env:
 
 tasks:
   bar:
-    command: echo "bar ${C}"
+    command: |
+      echo "bar ${C}"
+      cat {{ project_dir["foo"] }}/foo.txt
