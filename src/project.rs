@@ -15,8 +15,9 @@ pub struct Workspace {
     pub concurrency: usize,
 }
 
-const ROOT_CONTEXT_KEY: &str = "root_dir";
-const PROJECT_CONTEXT_KEY: &str = "project_dir";
+const ROOT_DIR_CONTEXT_KEY: &str = "root_dir";
+const PROJECT_DIR_CONTEXT_KEY: &str = "project_dir";
+const PROJECT_CONTEXT_KEY: &str = "project";
 const TASK_CONTEXT_KEY: &str = "task";
 
 impl Workspace {
@@ -43,15 +44,15 @@ impl Workspace {
     fn tera_context(root_config: &ProjectConfig, child_config: &HashMap<String, ProjectConfig>) -> tera::Context {
         let mut context = tera::Context::new();
         let root_dir = root_config.dir.as_os_str().to_str().unwrap_or("");
-        context.insert(ROOT_CONTEXT_KEY, root_dir);
+        context.insert(ROOT_DIR_CONTEXT_KEY, root_dir);
         if child_config.is_empty() {
-            context.insert(PROJECT_CONTEXT_KEY, root_dir);
+            context.insert(PROJECT_DIR_CONTEXT_KEY, root_dir);
         } else {
             let project_dir = child_config
                 .iter()
                 .map(|(k, v)| (k.as_str(), v.dir.as_os_str().to_str().unwrap_or("")))
                 .collect::<HashMap<_, _>>();
-            context.insert(PROJECT_CONTEXT_KEY, &project_dir);
+            context.insert(PROJECT_DIR_CONTEXT_KEY, &project_dir);
         }
         context
     }
@@ -296,6 +297,8 @@ impl Task {
         for (k, v) in config.vars.iter() {
             context.insert(k.clone(), v);
         }
+        context.insert(PROJECT_CONTEXT_KEY, project_name);
+
         for (task_name, task_config) in tasks.iter() {
             let task = Self::new(project_name, &config, task_name, task_config, &context)?;
             ret.insert(task.name.clone(), task);
