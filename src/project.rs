@@ -2,7 +2,6 @@ use crate::config::{DependsOnConfig, HealthCheckConfig, ProjectConfig, Restart, 
 use crate::cui::lib::BOLD;
 use crate::probe::{ExecProbe, LogLineProbe, Probe};
 use anyhow::Context;
-use rand::distributions::{Alphanumeric, DistString};
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
