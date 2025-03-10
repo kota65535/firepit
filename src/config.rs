@@ -1,4 +1,4 @@
-use crate::project::{Project, Task};
+use crate::project::Task;
 use anyhow::Context;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -10,7 +10,6 @@ use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::thread::available_parallelism;
 use std::{io, path};
-use tera::Tera;
 
 const CONFIG_FILE: [&str; 2] = ["firepit.yml", "firepit.yaml"];
 

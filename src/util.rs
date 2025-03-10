@@ -1,4 +1,3 @@
-use std::hash::Hash;
 
 #[macro_export]
 macro_rules! tokio_spawn {

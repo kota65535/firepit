@@ -3,13 +3,11 @@ use crate::cui::lib::BOLD;
 use crate::probe::{ExecProbe, LogLineProbe, Probe};
 use crate::template::ConfigRenderer;
 use anyhow::Context;
-use console::Style;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use tera::Tera;
-use tracing::{info, warn};
+use tracing::warn;
 
 #[derive(Debug, Clone)]
 pub struct Workspace {
@@ -280,7 +278,7 @@ impl Task {
                                 c.start_period,
                             )),
                             // Exec Probe
-                            HealthCheckConfig::Exec(mut c) => {
+                            HealthCheckConfig::Exec(c) => {
                                 // Shell
                                 let hc_shell = c.shell.clone().unwrap_or(task_shell.clone());
                                 // Working directory
