@@ -1,12 +1,15 @@
 use crate::config::{DependsOnConfig, HealthCheckConfig, ProjectConfig, Restart, ServiceConfig, TaskConfig};
 use crate::cui::lib::BOLD;
 use crate::probe::{ExecProbe, LogLineProbe, Probe};
+use crate::template::ConfigRenderer;
 use anyhow::Context;
+use console::Style;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use tera::Tera;
-use tracing::warn;
+use tracing::{info, warn};
 
 #[derive(Debug, Clone)]
 pub struct Workspace {
@@ -15,75 +18,24 @@ pub struct Workspace {
     pub concurrency: usize,
 }
 
-const ROOT_DIR_CONTEXT_KEY: &str = "root_dir";
-const PROJECT_DIR_CONTEXT_KEY: &str = "project_dir";
-const PROJECT_CONTEXT_KEY: &str = "project";
-const TASK_CONTEXT_KEY: &str = "task";
-
 impl Workspace {
     pub fn new(
         root_config: &ProjectConfig,
         child_config: &HashMap<String, ProjectConfig>,
     ) -> anyhow::Result<Workspace> {
-        let context = Self::tera_context(root_config, child_config);
-        let root = Project::new("", root_config, &context)?;
+        let mut renderer = ConfigRenderer::new(root_config, child_config);
+        let (root_config, child_config) = renderer.render()?;
+        let root = Project::new("", &root_config)?;
         let mut children = HashMap::new();
         for (k, v) in child_config.iter() {
-            children.insert(k.clone(), Project::new(k, v, &context)?);
+            children.insert(k.clone(), Project::new(k, v)?);
         }
-
-        Self::validate_projects(&root, &children)?;
 
         Ok(Self {
             root,
             children,
             concurrency: root_config.concurrency,
         })
-    }
-
-    fn tera_context(root_config: &ProjectConfig, child_config: &HashMap<String, ProjectConfig>) -> tera::Context {
-        let mut context = tera::Context::new();
-        let root_dir = root_config.dir.as_os_str().to_str().unwrap_or("");
-        context.insert(ROOT_DIR_CONTEXT_KEY, root_dir);
-        if child_config.is_empty() {
-            context.insert(PROJECT_DIR_CONTEXT_KEY, root_dir);
-        } else {
-            let project_dir = child_config
-                .iter()
-                .map(|(k, v)| (k.as_str(), v.dir.as_os_str().to_str().unwrap_or("")))
-                .collect::<HashMap<_, _>>();
-            context.insert(PROJECT_DIR_CONTEXT_KEY, &project_dir);
-        }
-        context
-    }
-
-    fn validate_projects(root: &Project, children: &HashMap<String, Project>) -> anyhow::Result<()> {
-        let mut tasks = root.tasks.values().map(|t| t.name.clone()).collect::<HashSet<_>>();
-        for p in children.values() {
-            tasks.extend(p.tasks.values().map(|t| t.name.clone()));
-        }
-
-        let mut deps = root
-            .tasks
-            .values()
-            .flat_map(|t| t.depends_on.iter())
-            .collect::<HashSet<_>>();
-        for p in children.values() {
-            deps.extend(
-                p.tasks
-                    .values()
-                    .flat_map(|t| t.depends_on.iter())
-                    .collect::<HashSet<_>>(),
-            );
-        }
-
-        for d in deps.iter() {
-            if !tasks.contains(*d) {
-                anyhow::bail!("task {:?} is not defined.", d);
-            }
-        }
-
-        Ok(())
     }
 
     pub fn tasks(&self) -> Vec<Task> {
@@ -196,10 +148,10 @@ pub struct Project {
 }
 
 impl Project {
-    pub fn new(name: &str, root: &ProjectConfig, context: &tera::Context) -> anyhow::Result<Project> {
+    pub fn new(name: &str, root: &ProjectConfig) -> anyhow::Result<Project> {
         Ok(Project {
             name: name.to_owned(),
-            tasks: Task::new_multi(name, &root, context)?,
+            tasks: Task::new_multi(name, &root)?,
             dir: root.dir.clone(),
         })
     }
@@ -251,56 +203,13 @@ pub struct Task {
     pub outputs: Vec<PathBuf>,
 }
 
+pub static TASK_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(?:(\w+)#)?(\w+)(?:-(\d+))?$").unwrap());
+
 impl Task {
-    pub fn new_multi(
-        project_name: &str,
-        config: &ProjectConfig,
-        context: &tera::Context,
-    ) -> anyhow::Result<HashMap<String, Task>> {
-        let mut tasks = HashMap::new();
-        let mut suffixes = HashMap::new();
-
-        // Tasks specified with `vars` in `depends_on` are considered as a different task.
-        // Such tasks are managed internally with sequentially numbered suffixes, ex: {name}-1, {name}-2.
-        for (task_name, task_config) in config.tasks.iter() {
-            let mut task_config = task_config.clone();
-            for d in task_config.depends_on.iter_mut() {
-                let DependsOnConfig::Struct(s) = d else {
-                    continue;
-                };
-                if s.vars.is_empty() {
-                    continue;
-                };
-                let Some(t) = config.tasks.get(&s.task) else {
-                    continue;
-                };
-                // If there is no change after merging vars, it is considered as the same task.
-                let mut dep_cloned = t.clone();
-                let mut vars = dep_cloned.vars.clone();
-                vars.extend(s.vars.clone());
-                if vars == dep_cloned.vars {
-                    continue;
-                }
-                dep_cloned.vars = vars;
-                let num = suffixes.entry(task_name).and_modify(|d| *d += 1).or_insert(1);
-                let new_dep_name = format!("{}-{}", s.task, num);
-                // Replace the dep task name to the suffixed one
-                s.task = new_dep_name.clone();
-                // Add as a different task
-                tasks.insert(new_dep_name, dep_cloned);
-            }
-            tasks.insert(task_name.clone(), task_config.clone());
-        }
-
+    pub fn new_multi(project_name: &str, config: &ProjectConfig) -> anyhow::Result<HashMap<String, Task>> {
         let mut ret = HashMap::new();
-        let mut context = context.clone();
-        for (k, v) in config.vars.iter() {
-            context.insert(k.clone(), v);
-        }
-        context.insert(PROJECT_CONTEXT_KEY, project_name);
-
-        for (task_name, task_config) in tasks.iter() {
-            let task = Self::new(project_name, &config, task_name, task_config, &context)?;
+        for (task_name, task_config) in config.tasks.iter() {
+            let task = Self::new(project_name, &config, task_name, task_config)?;
             ret.insert(task.name.clone(), task);
         }
 
@@ -312,45 +221,15 @@ impl Task {
         config: &ProjectConfig,
         task_name: &str,
         task_config: &TaskConfig,
-        context: &tera::Context,
     ) -> anyhow::Result<Task> {
         if task_name.contains("#") {
             anyhow::bail!("Task name must not contain '#'. Found: {:?}", task_name)
         }
 
-        let mut tera = Tera::default();
-        let mut context = context.clone();
-        for (k, v) in task_config.vars.iter() {
-            context.insert(k.clone(), v);
-        }
-        let orig_name = task_config.name.clone();
-        context.insert(TASK_CONTEXT_KEY, &Task::qualified_name(project_name, &orig_name));
-        let task_name = Task::qualified_name(project_name, &task_name);
-
-        let mut task_config = task_config.clone();
+        let task_name = Task::qualified_name(project_name, task_name);
 
         // Shell
         let task_shell = task_config.shell.clone().unwrap_or(config.shell.clone());
-
-        // Render template for label, command, working_dir, env and env_files
-        if let Some(l) = task_config.label {
-            task_config.label = Some(tera.render_str(&l, &context)?);
-        }
-        task_config.command = tera.render_str(&task_config.command, &context)?;
-        task_config.working_dir = match task_config.working_dir {
-            Some(w) => Some(tera.render_str(&w, &context)?),
-            None => None,
-        };
-        let mut rendered_env = HashMap::new();
-        for (k, v) in task_config.env.iter() {
-            rendered_env.insert(tera.render_str(k, &context)?, tera.render_str(v, &context)?);
-        }
-        task_config.env = rendered_env;
-        let mut rendered_env_files = Vec::new();
-        for f in task_config.env_files.iter() {
-            rendered_env_files.push(tera.render_str(f, &context)?);
-        }
-        task_config.env_files = rendered_env_files;
 
         // Working directory
         let task_working_dir = task_config
@@ -387,41 +266,21 @@ impl Task {
             .collect::<Vec<_>>();
 
         // Probes
-        let (is_service, probe, restart) = match task_config.service {
+        let (is_service, probe, restart) = match task_config.service.clone() {
             Some(service) => match service {
                 ServiceConfig::Bool(bool) => (bool, Probe::None, Restart::Never),
                 ServiceConfig::Struct(st) => {
                     let probe = match st.healthcheck {
                         Some(healthcheck) => match healthcheck {
                             // Log Probe
-                            HealthCheckConfig::Log(c) => {
-                                let log = tera.render_str(&c.log, &context)?;
-                                Probe::LogLine(LogLineProbe::new(
-                                    &task_name,
-                                    Regex::new(&log).with_context(|| format!("invalid regex pattern {:?}", c.log))?,
-                                    c.timeout,
-                                    c.start_period,
-                                ))
-                            }
+                            HealthCheckConfig::Log(c) => Probe::LogLine(LogLineProbe::new(
+                                &task_name,
+                                Regex::new(&c.log).with_context(|| format!("invalid regex pattern {:?}", c.log))?,
+                                c.timeout,
+                                c.start_period,
+                            )),
                             // Exec Probe
                             HealthCheckConfig::Exec(mut c) => {
-                                // Render template for command, working_dir, env and env_files
-                                c.command = tera.render_str(&c.command, &context)?;
-                                c.working_dir = match c.working_dir {
-                                    Some(w) => Some(tera.render_str(&w, &context)?),
-                                    None => None,
-                                };
-                                let mut rendered_env = HashMap::new();
-                                for (k, v) in c.env.iter() {
-                                    rendered_env.insert(tera.render_str(k, &context)?, tera.render_str(v, &context)?);
-                                }
-                                c.env = rendered_env;
-                                let mut rendered_env_files = Vec::new();
-                                for f in c.env_files.iter() {
-                                    rendered_env_files.push(tera.render_str(f, &context)?);
-                                }
-                                c.env_files = rendered_env_files;
-
                                 // Shell
                                 let hc_shell = c.shell.clone().unwrap_or(task_shell.clone());
                                 // Working directory
@@ -457,8 +316,8 @@ impl Task {
         };
 
         Ok(Self {
-            name: task_name.clone(),
-            label: task_config.label.unwrap_or(task_name.clone()),
+            name: Task::qualified_name(project_name, &task_name),
+            label: task_config.label.clone().unwrap_or(task_name),
             command: task_config.command.clone(),
             shell: task_shell.command,
             shell_args: task_shell.args,
@@ -493,6 +352,27 @@ impl Task {
             }
         }
         Ok(ret)
+    }
+
+    pub fn original_name(task_name: &str) -> (Option<String>, String, Option<String>) {
+        if let Some(caps) = TASK_REGEX.captures(task_name) {
+            let part1 = caps.get(1).map(|m| m.as_str().to_string());
+            let part2 = caps.get(2).map(|m| m.as_str().to_string());
+            let part3 = caps.get(3).map(|m| m.as_str().to_string());
+
+            return (part1, part2.unwrap(), part3);
+        }
+
+        (None, task_name.to_string(), None)
+    }
+
+    pub fn simple_name(task_name: &str) -> String {
+        if task_name.contains('#') {
+            if let Some((_, t)) = task_name.split_once('#') {
+                return t.to_string();
+            }
+        }
+        task_name.to_string()
     }
 
     pub fn qualified_name(project_name: &str, task_name: &str) -> String {

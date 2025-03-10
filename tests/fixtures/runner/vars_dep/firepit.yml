@@ -26,9 +26,21 @@ tasks:
     vars:
       C: 3
     command: echo "baz {{ C }}"
+    depends_on:
+      - task: quux
+        vars:
+          E: "{{ C }}"
 
   qux:
     vars:
       D: 4
     command: |
       echo "qux {{ D }}"
+
+  quux:
+    vars:
+      E: 5
+    command: echo "quux {{ E }}"
+
+log:
+  file: a.log

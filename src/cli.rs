@@ -61,6 +61,8 @@ pub async fn run() -> anyhow::Result<()> {
     root.log.level = args.log_level.unwrap_or(root.log.level);
     root.ui = args.ui.unwrap_or(root.ui);
 
+    init_logger(&root.log, args.tokio_console)?;
+
     // Aggregate information in config files into more workable form
     let ws = Workspace::new(&root, &children)?;
 
@@ -69,8 +71,6 @@ pub async fn run() -> anyhow::Result<()> {
         .iter()
         .map(|t| (t.name.clone(), t.label.clone()))
         .collect::<HashMap<_, _>>();
-
-    init_logger(&root.log, args.tokio_console)?;
 
     // Print workspace information if no task specified
     if args.tasks.is_empty() {
