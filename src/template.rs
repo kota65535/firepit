@@ -366,12 +366,13 @@ impl ConfigRenderer {
             variant_task_vars.extend(depends_on.vars.clone());
             variant_task.vars = variant_task_vars.clone();
 
+            // If two variants' original name and vars are equal, they are equal
             if Self::get_variant_tasks(&dep_task.full_name(), root_config, child_configs)
                 .iter()
                 .any(|t| t.same_variant(&variant_task))
             {
                 info!(
-                    "{} -> {} ({}) same variant found. vars: {:?}",
+                    "{} -> {} ({}) same variant found, skipping. vars: {:?}",
                     task_name,
                     dep_task.full_name(),
                     variant_task_name,
@@ -416,6 +417,7 @@ impl ConfigRenderer {
             // Replace the dep task name to the suffixed one
             depends_on.task = variant_task_name.clone();
 
+            // Render dependency tasks recursively
             Self::render_tasks(
                 &variant_task_name,
                 root_config,
