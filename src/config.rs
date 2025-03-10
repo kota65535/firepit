@@ -121,6 +121,10 @@ impl ProjectConfig {
                 let mut child_config = ProjectConfig::new(root_config.dir.join(path).as_path())?;
                 child_config.name = name.clone();
 
+                for t in child_config.tasks.values_mut() {
+                    t.project = name.clone();
+                }
+
                 // Merge vars
                 for (k, v) in root_config.vars.iter() {
                     child_config.vars.entry(k.clone()).or_insert(v.clone());

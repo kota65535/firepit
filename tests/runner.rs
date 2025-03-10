@@ -148,7 +148,7 @@ async fn test_vars_multi() {
     stats.insert(String::from("#baz"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("foo#foo"), String::from("foo 1root"));
+    outputs.insert(String::from("foo#foo"), String::from("foo 10root"));
     outputs.insert(String::from("bar#bar"), String::from("bar 2foo"));
     outputs.insert(String::from("#baz"), String::from("baz 3bar"));
 
