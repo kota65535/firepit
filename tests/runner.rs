@@ -188,6 +188,34 @@ async fn test_vars_dep() {
 }
 
 #[tokio::test]
+async fn test_vars_dep_multi() {
+    setup();
+
+    let path = BASE_PATH.join("vars_dep_multi");
+    let tasks = vec![String::from("foo")];
+
+    let mut stats = HashMap::new();
+    stats.insert(String::from("p1#foo"), String::from("Finished: Success"));
+    stats.insert(String::from("p1#bar-1"), String::from("Finished: Success"));
+    stats.insert(String::from("p2#baz"), String::from("Finished: Success"));
+    stats.insert(String::from("p2#baz-1"), String::from("Finished: Success"));
+    stats.insert(String::from("p2#qux-1"), String::from("Finished: Success"));
+    stats.insert(String::from("p2#qux-2"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("p1#foo"), String::from("foo 1"));
+    outputs.insert(String::from("p1#bar-1"), String::from("bar 3"));
+    outputs.insert(String::from("p2#baz"), String::from("baz 3"));
+    outputs.insert(String::from("p2#baz-1"), String::from("baz 4"));
+    outputs.insert(String::from("p2#qux-1"), String::from("qux 4"));
+    outputs.insert(String::from("p2#qux-2"), String::from("qux 3"));
+
+    run_task(&path, tasks, stats, Some(outputs), None, None, None)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
 async fn test_cyclic() {
     setup();
     let path = BASE_PATH.join("cyclic");
@@ -356,7 +384,7 @@ async fn run_task_with_watch<F>(
     F: Future<Output = ()> + Send + 'static,
 {
     let path = path::absolute(path).unwrap();
-    let ws = Workspace::new(&ProjectConfig::new(&path).unwrap(), &HashMap::new()).unwrap();
+    let ws = Workspace::new(&ProjectConfig::new("", &path).unwrap(), &HashMap::new()).unwrap();
 
     // Create file watcher
     let mut file_watcher = FileWatcher::new().unwrap();

@@ -118,8 +118,7 @@ impl ProjectConfig {
                 if name.contains("#") {
                     anyhow::bail!("Project name must not contain '#'. Found: {:?}", name)
                 }
-                let mut child_config = ProjectConfig::new(root_config.dir.join(path).as_path())?;
-                child_config.name = name.clone();
+                let mut child_config = ProjectConfig::new(name, root_config.dir.join(path).as_path())?;
 
                 for t in child_config.tasks.values_mut() {
                     t.project = name.clone();
@@ -181,7 +180,7 @@ impl ProjectConfig {
         Ok(())
     }
 
-    pub fn new(path: &Path) -> anyhow::Result<ProjectConfig> {
+    pub fn new(name: &str, path: &Path) -> anyhow::Result<ProjectConfig> {
         let (file, path) = Self::open_file(&path.join(CONFIG_FILE[0]))
             .or_else(|_| Self::open_file(&path.join(CONFIG_FILE[1])))
             .with_context(|| {
@@ -200,17 +199,19 @@ impl ProjectConfig {
             .parent()
             .map(|p| p.to_path_buf())
             .with_context(|| format!("cannot read the parent directory of {:?}", path))?;
+        // Name
+        data.name = name.to_string();
 
         // Task name & dependency task name
         for (k, v) in data.tasks.iter_mut() {
             v.name = k.clone();
             v.orig_name = k.clone();
-            v.project = data.name.clone();
+            v.project = name.to_string();
             v.depends_on = v
                 .depends_on
                 .iter()
                 .map(|d| match d {
-                    DependsOnConfig::String(s) => DependsOnConfig::String(Task::qualified_name(&data.name, s)),
+                    DependsOnConfig::String(s) => DependsOnConfig::String(Task::qualified_name(&name, s)),
                     DependsOnConfig::Struct(s) => DependsOnConfig::Struct(DependsOnConfigStruct {
                         task: Task::qualified_name(&data.name, &s.task),
                         vars: s.vars.clone(),
@@ -230,12 +231,12 @@ impl ProjectConfig {
     }
 
     fn find_root(cwd: &Path) -> anyhow::Result<ProjectConfig> {
-        let config = ProjectConfig::new(cwd)?;
+        let config = ProjectConfig::new("", cwd)?;
         if config.is_root() {
             return Ok(config);
         }
         for current_dir in cwd.ancestors() {
-            match ProjectConfig::new(current_dir) {
+            match ProjectConfig::new("", current_dir) {
                 Ok(root_candidate) => {
                     if root_candidate.is_root() && config.is_child(&root_candidate) {
                         return Ok(root_candidate);

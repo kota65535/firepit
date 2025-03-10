@@ -187,13 +187,11 @@ impl TaskConfig {
             }
         }
 
-        debug!("Task {:?} context: {:?}", self.name, context);
-
         Ok(config)
     }
 
     pub fn same_variant(&self, other: &TaskConfig) -> bool {
-        self.orig_name == other.orig_name && self.vars == other.vars
+        self.project == other.project && self.orig_name == other.orig_name && self.vars == other.vars
     }
 }
 
@@ -270,7 +268,7 @@ impl ConfigRenderer {
     ) {
         if task_config.project.is_empty() {
             root_config.tasks.insert(task_config.name.clone(), task_config);
-        } else if let Some(c) = child_configs.get_mut(&task_config.name) {
+        } else if let Some(c) = child_configs.get_mut(&task_config.project) {
             c.tasks.insert(task_config.name.clone(), task_config);
         }
     }
@@ -352,14 +350,7 @@ impl ConfigRenderer {
             let dep_task = Self::get_task_mut(&depends_on.task, raw_root_config, raw_child_configs)
                 .context(format!("Unknown task {:?}", task_name))?;
 
-            // Name
             let mut variant_task = dep_task.clone();
-            let suffix = num_variants
-                .entry(dep_task.full_orig_name())
-                .and_modify(|v| *v += 1)
-                .or_insert(1);
-            let variant_task_name = format!("{}-{}", dep_task.full_name(), suffix);
-            variant_task.name = Task::simple_name(&variant_task_name);
 
             // Vars
             let mut variant_task_vars = dep_task.vars.clone();
@@ -372,17 +363,24 @@ impl ConfigRenderer {
                 .any(|t| t.same_variant(&variant_task))
             {
                 info!(
-                    "{} -> {} ({}) same variant found, skipping. vars: {:?}",
+                    "{} -> {}\tSame variant found, skipping. vars: {:?}",
                     task_name,
                     dep_task.full_name(),
-                    variant_task_name,
                     variant_task_vars
                 );
                 continue;
             }
 
+            // Name
+            let suffix = num_variants
+                .entry(dep_task.full_orig_name())
+                .and_modify(|v| *v += 1)
+                .or_insert(1);
+            let variant_task_name = format!("{}-{}", dep_task.full_name(), suffix);
+            variant_task.name = Task::simple_name(&variant_task_name);
+
             info!(
-                "{} -> {} ({}) vars: {:?} + {:?} = {:?}",
+                "{} -> {} ({})\tvars: {:?} + {:?} = {:?}",
                 task_name,
                 dep_task.full_name(),
                 variant_task_name,
@@ -398,7 +396,7 @@ impl ConfigRenderer {
             let variant_context = variant_task.context(dep_context)?;
 
             info!(
-                "{} -> {} ({}) context: {:?}",
+                "{} -> {} ({})\tcontext: {:?}",
                 task_name,
                 dep_task.full_name(),
                 variant_task_name,
