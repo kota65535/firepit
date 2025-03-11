@@ -46,4 +46,4 @@ lto = "thin"
 
 [dev-dependencies]
 assertables = "9.5.0"
-rstest = "0.24.0"
+rstest = "0.25.0"
