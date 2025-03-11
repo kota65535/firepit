@@ -39,7 +39,6 @@ pub enum Event {
     },
     PaneSizeQuery(oneshot::Sender<PaneSize>),
     Done,
-    Stop,
 
     ///
     /// UI Events
@@ -49,6 +48,7 @@ pub enum Event {
     ScrollUp(ScrollSize),
     ScrollDown(ScrollSize),
     ToggleSidebar,
+    Stop,
     Tick,
 
     ///
@@ -189,7 +189,7 @@ impl EventSender {
         self.send(Event::Done);
     }
 
-    pub async fn internal_stop(&self) {
+    pub async fn stop(&self) {
         self.send(Event::Stop);
     }
 

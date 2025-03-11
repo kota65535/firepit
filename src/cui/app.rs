@@ -11,7 +11,6 @@ use std::collections::HashMap;
 use std::io::{stdout, Stdout, Write};
 use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc;
-use tracing::warn;
 
 pub struct CuiApp {
     color_selector: ColorSelector,
@@ -64,7 +63,7 @@ impl CuiApp {
             let subscriber = signal_handler.subscribe();
             if let Some(subscriber) = subscriber {
                 let _guard = subscriber.listen().await;
-                sender.done().await;
+                sender.stop().await;
             }
         });
         while let Some(event) = self.receiver.recv().await {
