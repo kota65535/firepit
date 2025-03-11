@@ -6,7 +6,7 @@ use futures::stream::FuturesUnordered;
 use petgraph::algo::toposort;
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{DiGraph, NodeIndex};
-use petgraph::visit::{depth_first_search, IntoNodeIdentifiers, Reversed};
+use petgraph::visit::{depth_first_search, Control, IntoNodeIdentifiers, Reversed};
 use petgraph::Direction;
 use std::cmp::max;
 use std::collections::HashMap;
@@ -17,7 +17,7 @@ use tracing::{debug, error, info, warn};
 
 #[derive(Clone)]
 pub struct TaskGraph {
-    graph: DiGraph<Task, ()>,
+    graph: DiGraph<Task, bool>,
 }
 
 pub struct VisitorMessage {
@@ -38,7 +38,7 @@ pub struct CallbackMessage(pub Option<bool>);
 
 impl TaskGraph {
     pub fn new(tasks: &Vec<Task>) -> anyhow::Result<TaskGraph> {
-        let mut graph = DiGraph::<Task, ()>::new();
+        let mut graph = DiGraph::<Task, bool>::new();
         let mut nodes = HashMap::new();
 
         for t in tasks {
@@ -51,13 +51,13 @@ impl TaskGraph {
         for t in tasks {
             for d in &t.depends_on {
                 let from = nodes.get(&t.name);
-                let to = nodes.get(d);
+                let to = nodes.get(&d.task);
                 match (from, to) {
                     (Some(from), Some(to)) => {
-                        graph.add_edge(*from, *to, ());
+                        graph.add_edge(*from, *to, d.cascade);
                     }
                     _ => {
-                        warn!("Cannot find node for task {} and dependency {}", t.name, d);
+                        warn!("Cannot find node for task {} and dependency {}", t.name, d.task);
                     }
                 }
             }
@@ -230,10 +230,11 @@ impl TaskGraph {
 
     pub fn transitive_closure(&self, names: &Vec<String>, direction: Direction) -> anyhow::Result<TaskGraph> {
         let mut visited = Vec::<NodeIndex>::new();
-        let visitor = |idx| {
+        let mut visitor = |idx| {
             if let petgraph::visit::DfsEvent::Discover(n, _) = idx {
-                visited.push(n)
+                visited.push(n);
             }
+            Control::<()>::Continue
         };
 
         let indices = names
@@ -243,8 +244,24 @@ impl TaskGraph {
             .collect::<Vec<_>>();
 
         match direction {
-            Direction::Outgoing => depth_first_search(&self.graph, indices, visitor),
-            Direction::Incoming => depth_first_search(Reversed(&self.graph), indices, visitor),
+            Direction::Outgoing => {
+                depth_first_search(&self.graph, indices, visitor);
+            }
+            Direction::Incoming => {
+                depth_first_search(Reversed(&self.graph), indices, |event| {
+                    if let petgraph::visit::DfsEvent::TreeEdge(u, v) = event {
+                        if let Ok(edge_idx) = self.graph.find_edge(v, u).context("edge not found") {
+                            if let Some(cascade) = self.graph.edge_weight(edge_idx) {
+                                if !cascade {
+                                    return Control::Prune;
+                                }
+                            }
+                        }
+                        return Control::Continue;
+                    }
+                    visitor(event)
+                });
+            }
         };
 
         let tasks = visited

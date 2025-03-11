@@ -10,6 +10,8 @@ tasks:
     command: echo "bar"
     depends_on:
       - baz
+      - task: qux
+        cascade: false
     inputs:
       - "bar.txt"
 
@@ -17,5 +19,10 @@ tasks:
     command: echo "baz"
     inputs:
       - "baz.txt"
+
+  qux:
+    command: echo "qux"
+    inputs:
+      - "qux.txt"
 
 ui: tui

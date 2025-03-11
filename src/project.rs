@@ -3,7 +3,6 @@ use crate::cui::lib::BOLD;
 use crate::probe::{ExecProbe, LogLineProbe, Probe};
 use crate::template::ConfigRenderer;
 use anyhow::Context;
-use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -187,7 +186,7 @@ pub struct Task {
     pub env: HashMap<String, String>,
 
     /// Dependency task names
-    pub depends_on: Vec<String>,
+    pub depends_on: Vec<DependsOn>,
 
     /// Task working directory path (absolute).
     pub working_dir: PathBuf,
@@ -208,7 +207,12 @@ pub struct Task {
     pub outputs: Vec<PathBuf>,
 }
 
-pub static TASK_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(?:(\w+)#)?(\w+)(?:-(\d+))?$").unwrap());
+#[derive(Debug, Clone)]
+pub struct DependsOn {
+    pub task: String,
+
+    pub cascade: bool,
+}
 
 impl Task {
     pub fn new_multi(project_name: &str, config: &ProjectConfig) -> anyhow::Result<HashMap<String, Task>> {
@@ -332,8 +336,14 @@ impl Task {
                 .depends_on
                 .iter()
                 .map(|s| match s {
-                    DependsOnConfig::String(s) => Task::qualified_name(project_name, s),
-                    DependsOnConfig::Struct(s) => Task::qualified_name(project_name, &s.task),
+                    DependsOnConfig::String(s) => DependsOn {
+                        task: Task::qualified_name(project_name, s),
+                        cascade: true,
+                    },
+                    DependsOnConfig::Struct(s) => DependsOn {
+                        task: Task::qualified_name(project_name, &s.task),
+                        cascade: s.cascade,
+                    },
                 })
                 .collect(),
             is_service,
@@ -357,18 +367,6 @@ impl Task {
             }
         }
         Ok(ret)
-    }
-
-    pub fn original_name(task_name: &str) -> (Option<String>, String, Option<String>) {
-        if let Some(caps) = TASK_REGEX.captures(task_name) {
-            let part1 = caps.get(1).map(|m| m.as_str().to_string());
-            let part2 = caps.get(2).map(|m| m.as_str().to_string());
-            let part3 = caps.get(3).map(|m| m.as_str().to_string());
-
-            return (part1, part2.unwrap(), part3);
-        }
-
-        (None, task_name.to_string(), None)
     }
 
     pub fn simple_name(task_name: &str) -> String {

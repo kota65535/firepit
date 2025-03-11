@@ -324,10 +324,10 @@ impl ConfigRenderer {
     ) -> anyhow::Result<()> {
         // Get task config
         let task_config = Self::get_task_mut(task_name, raw_root_config, raw_child_configs)
-            .context(format!("Unknown task {:?}", task_name))?;
+            .context(format!("unknown task {:?}", task_name))?;
         let context = contexts
             .get(task_name)
-            .context(format!("Unknown task {:?}", task_name))?;
+            .context(format!("unknown task {:?}", task_name))?;
         debug!("Task: {}, context: {:?}", task_name, context);
 
         // Render task config
@@ -348,7 +348,7 @@ impl ConfigRenderer {
 
             // Get dependency task config
             let dep_task = Self::get_task_mut(&depends_on.task, raw_root_config, raw_child_configs)
-                .context(format!("Unknown task {:?}", task_name))?;
+                .context(format!("unknown task {:?}", task_name))?;
 
             let mut variant_task = dep_task.clone();
 
@@ -392,7 +392,7 @@ impl ConfigRenderer {
             // Create context from dependency task
             let dep_context = contexts
                 .get(&dep_task.full_name())
-                .context(format!("Unknown task {:?}", dep_task.full_name()))?;
+                .context(format!("unknown task {:?}", dep_task.full_name()))?;
             let variant_context = variant_task.context(dep_context)?;
 
             info!(

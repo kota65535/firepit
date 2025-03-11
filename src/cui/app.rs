@@ -71,7 +71,7 @@ impl CuiApp {
                 Event::StartTask { task, .. } => self.register_output_client(&task),
                 Event::TaskOutput { task, output } => {
                     let output_clients = self.output_clients.read().expect("lock poisoned");
-                    let output_client = output_clients.get(&task).with_context(|| "Output client not found")?;
+                    let output_client = output_clients.get(&task).context("output client not found")?;
                     output_client
                         .stdout()
                         .write_all(output.as_slice())
