@@ -524,12 +524,13 @@ impl TuiAppState {
             return Ok(());
         };
         let results = results.clone();
+        let query_len = results.query.len();
         let task = self.active_task_mut()?;
         if task.name != results.task {
             return Ok(());
         }
         if let Some(Match(row, col)) = results.current() {
-            self.highlight_cell(row, col, false)?;
+            self.highlight_cell(row, col, query_len as u16, false)?;
         }
         Ok(())
     }
@@ -573,10 +574,11 @@ impl TuiAppState {
             buf.clear();
         }
 
+        let query_len = query.len();
         let search_results = SearchResults::new(&task.name, query, matches)?;
 
         if let Some(Match(row, col)) = search_results.current() {
-            self.highlight_cell(row, col, true)?;
+            self.highlight_cell(row, col, query_len as u16, true)?;
             self.scroll_to_row(row)?;
         }
 
@@ -584,21 +586,38 @@ impl TuiAppState {
         Ok(())
     }
 
-    fn highlight_cell(&mut self, row: u16, col: u16, highlight: bool) -> anyhow::Result<()> {
+    fn highlight_cell(
+        &mut self,
+        mut num_row: u16,
+        mut num_col: u16,
+        length: u16,
+        highlight: bool,
+    ) -> anyhow::Result<()> {
         let task = self.active_task_mut()?;
         let screen = task.output.screen_mut();
-        let cell = screen
-            .grid_mut()
-            .all_rows_mut()
-            .nth(row as usize)
-            .map(|r| r.get_mut(col))
-            .flatten();
-        if let Some(cell) = cell {
-            if highlight {
-                cell.attrs.bgcolor = vt100::Color::Rgb(150, 30, 30)
-            } else {
-                cell.attrs.bgcolor = vt100::Color::Default;
+        // Rest of chars to highlight
+        let mut rest = length;
+        while rest > 0 {
+            // Stop if no rows left
+            let Some(row) = screen.grid_mut().all_rows_mut().nth(num_row as usize) else {
+                break;
+            };
+            for idx in num_col..num_col + length {
+                if rest == 0 {
+                    break;
+                }
+                // If no column left, go to next line
+                let Some(c) = row.get_mut(idx) else { break };
+
+                c.attrs.bgcolor = if highlight {
+                    vt100::Color::Idx(3) // Yellow
+                } else {
+                    vt100::Color::Default
+                };
+                rest -= 1;
             }
+            num_row += 1;
+            num_col = 0;
         }
         Ok(())
     }
@@ -608,11 +627,12 @@ impl TuiAppState {
             return Ok(());
         };
         let mut results = results.clone();
+        let query_len = results.query.len();
 
         self.remove_search_highlight()?;
 
         if let Some(Match(row, col)) = results.next() {
-            self.highlight_cell(row, col, true)?;
+            self.highlight_cell(row, col, query_len as u16, true)?;
             self.scroll_to_row(row)?;
         }
 
@@ -626,11 +646,12 @@ impl TuiAppState {
             return Ok(());
         };
         let mut results = results.clone();
+        let query_len = results.query.len();
 
         self.remove_search_highlight()?;
 
         if let Some(Match(row, col)) = results.previous() {
-            self.highlight_cell(row, col, true)?;
+            self.highlight_cell(row, col, query_len as u16, true)?;
             self.scroll_to_row(row)?;
         }
 
