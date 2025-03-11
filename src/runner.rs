@@ -70,7 +70,7 @@ impl TaskRunner {
         debug!("Task graph:\n{:?}", task_graph);
 
         let signal_handler = SignalHandler::infer()?;
-        let manager = ProcessManager::infer();
+        let manager = ProcessManager::new(ws.use_pty);
 
         let mut task_cancel_txs = HashMap::new();
         let mut task_cancel_rxs = HashMap::new();

@@ -1,4 +1,4 @@
-use crate::config::{DependsOnConfig, HealthCheckConfig, ProjectConfig, Restart, ServiceConfig, TaskConfig};
+use crate::config::{DependsOnConfig, HealthCheckConfig, ProjectConfig, Restart, ServiceConfig, TaskConfig, UI};
 use crate::cui::lib::BOLD;
 use crate::probe::{ExecProbe, LogLineProbe, Probe};
 use crate::template::ConfigRenderer;
@@ -13,6 +13,7 @@ pub struct Workspace {
     pub root: Project,
     pub children: HashMap<String, Project>,
     pub concurrency: usize,
+    pub use_pty: bool,
 }
 
 impl Workspace {
@@ -28,10 +29,15 @@ impl Workspace {
             children.insert(k.clone(), Project::new(k, v)?);
         }
 
+        let use_pty = match root_config.ui {
+            UI::Tui => true,
+            UI::Cui => false,
+        };
         Ok(Self {
             root,
             children,
             concurrency: root_config.concurrency,
+            use_pty,
         })
     }
 

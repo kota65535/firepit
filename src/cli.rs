@@ -35,9 +35,13 @@ pub struct Args {
     #[arg(long)]
     pub log_level: Option<String>,
 
-    /// UI
-    #[arg(long)]
-    pub ui: Option<UI>,
+    /// Force TUI
+    #[arg(long, conflicts_with = "cui")]
+    pub tui: bool,
+
+    /// Force CUI
+    #[arg(long, conflicts_with = "tui")]
+    pub cui: bool,
 
     /// Enable instrumentation for tokio-console
     #[arg(long, hide = true, default_value = "false")]
@@ -58,7 +62,13 @@ pub async fn run() -> anyhow::Result<()> {
     // Override config files with CLI options
     root.log.file = args.log_file.or(root.log.file);
     root.log.level = args.log_level.unwrap_or(root.log.level);
-    root.ui = args.ui.unwrap_or(root.ui);
+    root.ui = if args.tui {
+        UI::Tui
+    } else if args.cui {
+        UI::Cui
+    } else {
+        root.ui
+    };
 
     init_logger(&root.log, args.tokio_console)?;
 
