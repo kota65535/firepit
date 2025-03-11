@@ -7,7 +7,6 @@ use crate::tokio_spawn;
 use crate::tui::app::TuiApp;
 use crate::watcher::FileWatcher;
 use clap::Parser;
-use std::collections::HashMap;
 use std::path;
 use std::time::Duration;
 use tracing::info;
@@ -87,7 +86,7 @@ pub async fn run() -> anyhow::Result<()> {
     // Create & start UI
     let (app_tx, app_fut) = match root.ui {
         UI::Cui => {
-            let mut app = CuiApp::new(ws.labels())?;
+            let mut app = CuiApp::new(ws.labels(), !args.watch)?;
             let sender = app.sender();
             let fut = tokio_spawn!("app", async move { app.run().await });
             (sender, fut)
