@@ -266,19 +266,23 @@ async fn test_watch() {
     stats.insert(String::from("#foo"), String::from("Finished: Success"));
     stats.insert(String::from("#bar"), String::from("Finished: Success"));
     stats.insert(String::from("#baz"), String::from("Finished: Success"));
+    stats.insert(String::from("#qux"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
     outputs.insert(String::from("#foo"), String::from("foofoo"));
     outputs.insert(String::from("#bar"), String::from("barbar"));
     outputs.insert(String::from("#baz"), String::from("baz"));
+    outputs.insert(String::from("#qux"), String::from("quxqux"));
 
     let mut runs = HashMap::new();
     runs.insert(String::from("#foo"), 1);
     runs.insert(String::from("#bar"), 1);
     runs.insert(String::from("#baz"), 0);
+    runs.insert(String::from("#qux"), 1);
 
     run_task_with_watch(&path, tasks, stats, Some(outputs), None, Some(runs), None, async {
         File::create(BASE_PATH.join("watch").join("bar.txt")).ok();
+        File::create(BASE_PATH.join("watch").join("qux.txt")).ok();
     })
     .await;
 }

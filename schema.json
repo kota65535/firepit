@@ -96,6 +96,10 @@
         "task"
       ],
       "properties": {
+        "cascade": {
+          "default": true,
+          "type": "boolean"
+        },
         "task": {
           "type": "string"
         },

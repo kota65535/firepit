@@ -215,6 +215,7 @@ impl ProjectConfig {
                     DependsOnConfig::Struct(s) => DependsOnConfig::Struct(DependsOnConfigStruct {
                         task: Task::qualified_name(&data.name, &s.task),
                         vars: s.vars.clone(),
+                        cascade: s.cascade,
                     }),
                 })
                 .collect();
@@ -402,6 +403,13 @@ pub struct DependsOnConfigStruct {
 
     #[serde(default)]
     pub vars: HashMap<String, String>,
+
+    #[serde(default = "default_cascade")]
+    pub cascade: bool,
+}
+
+fn default_cascade() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
