@@ -431,12 +431,12 @@ impl TaskRunner {
         Self::join(&mut task_fut).await?;
         debug!("Tasks finished");
 
-        // Notify app the runner finished
-        // app_tx.stop().await;
-
         if let Err(err) = cancel_visitor.send(()) {
             warn!("Failed to send cancel visitor: {:?}", err);
         }
+
+        // Notify app the runner finished
+        app_tx.stop().await;
 
         info!("Run finished");
         Ok(())
