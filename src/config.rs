@@ -282,15 +282,16 @@ pub struct TaskConfig {
     #[serde(skip)]
     pub name: String,
 
-    /// Original name
+    /// Original name.
+    /// Used for tracking the original of the task variant.
     #[serde(skip)]
     pub orig_name: String,
 
-    /// Project
+    /// Project name
     #[serde(skip)]
     pub project: String,
 
-    /// Label
+    /// Label for display
     pub label: Option<String>,
 
     /// Command to run

@@ -77,7 +77,7 @@ impl TaskConfig {
     pub fn context(&self, context: &tera::Context) -> anyhow::Result<tera::Context> {
         let mut tera = Tera::default();
         let mut context = context.clone();
-        context.insert(TASK_CONTEXT_KEY, &self.name);
+        context.insert(TASK_CONTEXT_KEY, &self.full_orig_name());
 
         // Render vars
         let mut rendered_vars = HashMap::new();

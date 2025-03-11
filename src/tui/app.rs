@@ -75,7 +75,10 @@ impl TuiApp {
         let size = SizeInfo::new(
             rect.height,
             rect.width,
-            target_tasks.iter().chain(dep_tasks.iter()).map(|s| s.as_str()),
+            target_tasks
+                .iter()
+                .chain(dep_tasks.iter())
+                .map(|s| labels.get(s).unwrap_or(s).as_str()),
         );
 
         debug!("Terminal size: height={} width={}", rect.height, rect.width);
