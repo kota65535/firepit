@@ -361,7 +361,7 @@
           }
         },
         "label": {
-          "description": "Label",
+          "description": "Label for display",
           "type": [
             "string",
             "null"
