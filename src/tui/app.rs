@@ -545,33 +545,35 @@ impl TuiAppState {
         let size = screen.size();
 
         let mut matches = Vec::new();
-        let mut buf = String::new();
+        let mut line_buf = String::new();
         let mut previous_rows = Vec::new();
         for (row_idx, row) in screen.grid_mut().all_rows_mut().enumerate() {
             let mut s = String::new();
             row.write_contents(&mut s, 0, size.1, true);
-            buf.push_str(&s);
+            line_buf.push_str(&s);
             if row.wrapped() {
                 previous_rows.push((row, s.len()));
                 continue;
             }
-            for (mut col_idx, _) in buf.match_indices(&query) {
+            for (offset, _) in line_buf.match_indices(&query) {
+                // Convert byte offset to char index
+                let mut col_idx = line_buf[..offset].chars().count();
                 if previous_rows.is_empty() {
                     matches.push(Match(row_idx as u16, col_idx as u16));
                 } else {
                     let mut row_idx = row_idx - previous_rows.len();
-                    for (pr, l) in previous_rows.iter() {
+                    for (_, len) in previous_rows.iter() {
                         if col_idx <= size.1 as usize {
                             matches.push(Match(row_idx as u16, col_idx as u16));
                         } else {
-                            col_idx -= l;
+                            col_idx -= len;
                         }
                         row_idx += 1;
                     }
                 }
             }
             previous_rows.clear();
-            buf.clear();
+            line_buf.clear();
         }
 
         let query_len = query.len();
