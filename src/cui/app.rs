@@ -10,7 +10,7 @@ use anyhow::Context;
 use std::collections::HashMap;
 use std::io::{stdout, Stdout, Write};
 use std::sync::{Arc, RwLock};
-use tokio::sync::{mpsc, watch};
+use tokio::sync::mpsc;
 use tracing::warn;
 
 pub struct CuiApp {
@@ -20,17 +20,12 @@ pub struct CuiApp {
     receiver: EventReceiver,
     signal_handler: SignalHandler,
     labels: HashMap<String, String>,
-    quit: bool,
-
-    // Sender/Receiver to cancel this runner
-    pub cancel_tx: watch::Sender<()>,
-    pub cancel_rx: watch::Receiver<()>,
+    auto_quit: bool,
 }
 
 impl CuiApp {
-    pub fn new(labels: HashMap<String, String>, quit: bool) -> anyhow::Result<Self> {
+    pub fn new(labels: HashMap<String, String>, auto_quit: bool) -> anyhow::Result<Self> {
         let (tx, rx) = mpsc::unbounded_channel();
-        let (cancel_tx, cancel_rx) = watch::channel(());
         Ok(Self {
             color_selector: ColorSelector::default(),
             output_clients: Arc::new(RwLock::new(HashMap::new())),
@@ -38,9 +33,7 @@ impl CuiApp {
             receiver: EventReceiver::new(rx),
             signal_handler: SignalHandler::infer()?,
             labels,
-            quit,
-            cancel_tx,
-            cancel_rx,
+            auto_quit,
         })
     }
 
@@ -67,44 +60,31 @@ impl CuiApp {
     pub async fn run(&mut self) -> anyhow::Result<()> {
         let signal_handler = self.signal_handler.clone();
         let sender = self.sender.clone();
-        let cancel_tx = self.cancel_tx.clone();
         tokio_spawn!("cui-canceller", async move {
             let subscriber = signal_handler.subscribe();
             if let Some(subscriber) = subscriber {
                 let _guard = subscriber.listen().await;
-                cancel_tx.send(()).ok();
-                sender.stop().await;
+                sender.done().await;
             }
         });
-        loop {
-            tokio::select! {
-                // Cancelling branch, quits immediately
-                _ = self.cancel_rx.changed() => {
-                    break;
+        while let Some(event) = self.receiver.recv().await {
+            match event {
+                Event::StartTask { task, .. } => self.register_output_client(&task),
+                Event::TaskOutput { task, output } => {
+                    let output_clients = self.output_clients.read().expect("lock poisoned");
+                    let output_client = output_clients.get(&task).with_context(|| "Output client not found")?;
+                    output_client
+                        .stdout()
+                        .write_all(output.as_slice())
+                        .context("failed to write to stdout")?;
                 }
-                // Normal branch
-                Some(event) = self.receiver.recv() => {
-                    match event {
-                        Event::StartTask { task, .. } => self.register_output_client(&task),
-                        Event::TaskOutput { task, output } => {
-                            let output_clients = self.output_clients.read().expect("lock poisoned");
-                            let output_client = output_clients.get(&task).with_context(|| "Output client not found")?;
-                            output_client
-                                .stdout()
-                                .write_all(output.as_slice())
-                                .context("failed to write to stdout")?;
-                        }
-                        Event::Stop(callback) => {
-                            if let Err(e) = callback.send(()) {
-                                warn!("Failed to send callback event: {:?}", e)
-                            }
-                            if self.quit {
-                                return Ok(());
-                            }
-                        }
-                        _ => {}
+                Event::Stop => return Ok(()),
+                Event::Done => {
+                    if self.auto_quit {
+                        return Ok(());
                     }
                 }
+                _ => {}
             }
         }
         Ok(())

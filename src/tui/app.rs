@@ -713,13 +713,10 @@ impl TuiAppState {
                     })
                     .ok();
             }
-            Event::Stop(callback) => {
-                debug!("Shutting down initiated by runner");
+            Event::Done => {
                 self.runner_done = true;
-                callback.send(()).ok();
             }
-            Event::InternalStop => {
-                debug!("Shutting down initiated by TUI");
+            Event::Stop => {
                 self.done = true;
             }
             Event::Tick => {

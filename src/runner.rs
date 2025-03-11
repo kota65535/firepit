@@ -436,7 +436,7 @@ impl TaskRunner {
         }
 
         // Notify app the runner finished
-        app_tx.stop().await;
+        app_tx.done().await;
 
         info!("Run finished");
         Ok(())

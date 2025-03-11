@@ -137,7 +137,7 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<Eve
         // Global
         KeyCode::Char('c') if key_event.modifiers == KeyModifiers::CONTROL => {
             ctrl_c();
-            Some(Event::InternalStop)
+            Some(Event::Stop)
         }
         _ => None,
     }
@@ -150,7 +150,7 @@ fn ctrl_c() -> Option<Event> {
         // We're unable to send the signal, stop rendering to force shutdown
         Err(_) => {
             debug!("unable to send sigint, shutting down");
-            Some(Event::InternalStop)
+            Some(Event::Stop)
         }
     }
 }
