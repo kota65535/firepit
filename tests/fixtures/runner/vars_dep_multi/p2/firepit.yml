@@ -1,0 +1,20 @@
+vars:
+  B: 3
+
+tasks:
+  baz:
+    label: "{{ task }} {{ C }}"
+    vars:
+      C: 3
+    command: echo "baz {{ C }}"
+    depends_on:
+      - task: qux
+        vars:
+          E: "{{ C }}"
+
+  qux:
+    label: "{{ project }} {{ E }}"
+    vars:
+      E: 5
+    command: |
+      echo "qux {{ E }}"

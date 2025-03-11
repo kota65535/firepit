@@ -18,6 +18,7 @@ use ratatui::{
     widgets::TableState,
     Frame, Terminal,
 };
+use std::collections::HashMap;
 use std::{
     io::{self, Stdout, Write},
     time::Duration,
@@ -61,7 +62,11 @@ pub struct TuiAppState {
 }
 
 impl TuiApp {
-    pub fn new(target_tasks: &Vec<String>, dep_tasks: &Vec<String>) -> anyhow::Result<Self> {
+    pub fn new(
+        target_tasks: &Vec<String>,
+        dep_tasks: &Vec<String>,
+        labels: &HashMap<String, String>,
+    ) -> anyhow::Result<Self> {
         let (tx, rx) = mpsc::unbounded_channel();
 
         let terminal = Self::setup_terminal()?;
@@ -70,7 +75,10 @@ impl TuiApp {
         let size = SizeInfo::new(
             rect.height,
             rect.width,
-            target_tasks.iter().chain(dep_tasks.iter()).map(|s| s.as_str()),
+            target_tasks
+                .iter()
+                .chain(dep_tasks.iter())
+                .map(|s| labels.get(s).unwrap_or(s).as_str()),
         );
 
         debug!("Terminal size: height={} width={}", rect.height, rect.width);
@@ -82,18 +90,19 @@ impl TuiApp {
 
         let tasks = target_tasks
             .iter()
-            .map(|t| {
+            .map(|t| (t, true))
+            .chain(dep_tasks.iter().map(|t| (t, false)))
+            .map(|(t, b)| {
                 (
                     t.clone(),
-                    Task::new(t, true, TerminalOutput::new(output_raws, output_cols, None)),
+                    Task::new(
+                        t,
+                        b,
+                        TerminalOutput::new(output_raws, output_cols, None),
+                        labels.get(t).map(|t| t.as_str()),
+                    ),
                 )
             })
-            .chain(dep_tasks.iter().map(|t| {
-                (
-                    t.clone(),
-                    Task::new(t, false, TerminalOutput::new(output_raws, output_cols, None)),
-                )
-            }))
             .collect::<IndexMap<_, _>>();
 
         let selected_task_index = 0;

@@ -19,10 +19,11 @@ pub struct CuiApp {
     sender: EventSender,
     receiver: EventReceiver,
     signal_handler: SignalHandler,
+    labels: HashMap<String, String>,
 }
 
 impl CuiApp {
-    pub fn new() -> anyhow::Result<Self> {
+    pub fn new(labels: HashMap<String, String>) -> anyhow::Result<Self> {
         let (tx, rx) = mpsc::unbounded_channel();
         Ok(Self {
             color_selector: ColorSelector::default(),
@@ -30,10 +31,13 @@ impl CuiApp {
             sender: EventSender::new(tx),
             receiver: EventReceiver::new(rx),
             signal_handler: SignalHandler::infer()?,
+            labels,
         })
     }
 
-    fn register_output_client(&mut self, prefix: &str) {
+    fn register_output_client(&mut self, task: &str) {
+        let task = task.to_string();
+        let prefix = self.labels.get(&task).unwrap_or(&task);
         let out = PrefixedWriter::new(
             ColorConfig::infer(),
             self.color_selector.string_with_color(prefix, prefix),
@@ -48,7 +52,7 @@ impl CuiApp {
         self.output_clients
             .write()
             .expect("lock poisoned")
-            .insert(prefix.to_string(), output_client);
+            .insert(task, output_client);
     }
 
     pub async fn run(&mut self) -> anyhow::Result<()> {

@@ -7,14 +7,12 @@ mod log;
 mod panic;
 mod probe;
 mod process;
+mod project;
 mod runner;
 mod signal;
+pub mod template;
 mod tui;
-
-mod project;
-
 mod util;
-
 mod watcher;
 
 #[tokio::main]

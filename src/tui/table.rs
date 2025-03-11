@@ -46,12 +46,13 @@ impl TaskTable<'_> {
     fn rows(&self) -> Vec<Row> {
         self.tasks
             .iter()
-            .map(|(n, r)| {
-                let name_cell = if r.is_target {
-                    Cell::new(Text::styled(n.clone(), Style::default().bold()))
+            .map(|(_, r)| {
+                let style = if r.is_target {
+                    Style::default().bold()
                 } else {
-                    Cell::new(Text::styled(n.clone(), Style::default()))
+                    Style::default()
                 };
+                let name_cell = Cell::new(Text::styled(r.label.clone(), style));
                 let status_cell = match r.status() {
                     TaskStatus::Planned => Cell::new(Text::raw("\u{1FAB5}")), // 🪵
                     TaskStatus::Running(_) => Cell::new(Text::raw("\u{1F525}")), // 🔥

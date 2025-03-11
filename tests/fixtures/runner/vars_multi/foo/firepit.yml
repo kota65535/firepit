@@ -3,6 +3,9 @@ vars:
 
 tasks:
   foo:
-    command: echo "foo ${A}"
+    label: "{{ project }}/{{ task }}"
+    command: |
+      echo "foo ${A}"
+      cat {{ root_dir }}/root.txt
     depends_on:
       - bar#bar

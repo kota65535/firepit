@@ -1,20 +1,24 @@
+use crate::project::Task;
 use anyhow::Context;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::thread::available_parallelism;
 use std::{io, path};
-use tera::Tera;
 
 const CONFIG_FILE: [&str; 2] = ["firepit.yml", "firepit.yaml"];
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct ProjectConfig {
+    /// Project name
+    #[serde(skip)]
+    pub name: String,
+
     /// Child projects.
     /// Valid only in root project config.
     #[serde(default)]
@@ -106,7 +110,7 @@ pub fn default_ui() -> UI {
 impl ProjectConfig {
     pub fn new_multi(dir: &Path) -> anyhow::Result<(ProjectConfig, HashMap<String, ProjectConfig>)> {
         let dir = path::absolute(dir)?;
-        let root_config = ProjectConfig::find_root(&dir)?;
+        let mut root_config = ProjectConfig::find_root(&dir)?;
         let mut children = HashMap::new();
         if root_config.is_root() {
             // Multi project
@@ -114,10 +118,23 @@ impl ProjectConfig {
                 if name.contains("#") {
                     anyhow::bail!("Project name must not contain '#'. Found: {:?}", name)
                 }
-                let mut child_config = ProjectConfig::new(root_config.dir.join(path).as_path())?;
+                let mut child_config = ProjectConfig::new(name, root_config.dir.join(path).as_path())?;
+
+                for t in child_config.tasks.values_mut() {
+                    t.project = name.clone();
+                }
+
+                // Merge vars
+                for (k, v) in root_config.vars.iter() {
+                    child_config.vars.entry(k.clone()).or_insert(v.clone());
+                }
+
+                // Merge env
                 for (k, v) in root_config.env.iter() {
                     child_config.env.entry(k.clone()).or_insert(v.clone());
                 }
+
+                // Merge env_files
                 child_config.env_files = root_config
                     .env_files
                     .clone()
@@ -125,19 +142,45 @@ impl ProjectConfig {
                     .map(|f| root_config.dir.join(f).to_str().unwrap().to_string())
                     .chain(child_config.env_files)
                     .collect();
-                for (k, v) in root_config.vars.iter() {
-                    child_config.vars.entry(k.clone()).or_insert(v.clone());
-                }
+
                 children.insert(name.clone(), child_config);
             }
-            Ok((root_config, children))
         } else {
             // Single project
-            Ok((root_config, children))
+            root_config.name = "".to_string();
         }
+
+        Self::validate(&root_config, &children)?;
+        Ok((root_config, children))
     }
 
-    pub fn new(path: &Path) -> anyhow::Result<ProjectConfig> {
+    fn validate(root: &ProjectConfig, children: &HashMap<String, ProjectConfig>) -> anyhow::Result<()> {
+        let mut tasks = root.tasks.values().map(|t| t.full_name()).collect::<HashSet<_>>();
+        for p in children.values() {
+            tasks.extend(p.tasks.values().map(|t| t.full_name()).collect::<HashSet<_>>());
+        }
+
+        let deps = root
+            .tasks
+            .values()
+            .chain(children.values().flat_map(|p| p.tasks.values()))
+            .flat_map(|t| t.depends_on.iter())
+            .map(|d| match d {
+                DependsOnConfig::String(s) => s.clone(),
+                DependsOnConfig::Struct(s) => s.task.clone(),
+            })
+            .collect::<HashSet<_>>();
+
+        for d in deps.iter() {
+            if !tasks.contains(d) {
+                anyhow::bail!("task {:?} is not defined.", d);
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn new(name: &str, path: &Path) -> anyhow::Result<ProjectConfig> {
         let (file, path) = Self::open_file(&path.join(CONFIG_FILE[0]))
             .or_else(|_| Self::open_file(&path.join(CONFIG_FILE[1])))
             .with_context(|| {
@@ -156,24 +199,26 @@ impl ProjectConfig {
             .parent()
             .map(|p| p.to_path_buf())
             .with_context(|| format!("cannot read the parent directory of {:?}", path))?;
+        // Name
+        data.name = name.to_string();
 
-        // Render template for working_dir, env and env_files
-        let mut tera = Tera::default();
-        let mut context = tera::Context::new();
-        for (k, v) in data.vars.iter() {
-            context.insert(k, v)
+        // Task name & dependency task name
+        for (k, v) in data.tasks.iter_mut() {
+            v.name = k.clone();
+            v.orig_name = k.clone();
+            v.project = name.to_string();
+            v.depends_on = v
+                .depends_on
+                .iter()
+                .map(|d| match d {
+                    DependsOnConfig::String(s) => DependsOnConfig::String(Task::qualified_name(&name, s)),
+                    DependsOnConfig::Struct(s) => DependsOnConfig::Struct(DependsOnConfigStruct {
+                        task: Task::qualified_name(&data.name, &s.task),
+                        vars: s.vars.clone(),
+                    }),
+                })
+                .collect();
         }
-        data.working_dir = tera.render_str(&data.working_dir, &context)?;
-        let mut rendered_env = HashMap::new();
-        for (k, v) in data.env.iter() {
-            rendered_env.insert(tera.render_str(k, &context)?, tera.render_str(v, &context)?);
-        }
-        data.env = rendered_env;
-        let mut rendered_env_files = Vec::new();
-        for f in data.env_files.iter() {
-            rendered_env_files.push(tera.render_str(f, &context)?);
-        }
-        data.env_files = rendered_env_files;
 
         Ok(data)
     }
@@ -186,12 +231,12 @@ impl ProjectConfig {
     }
 
     fn find_root(cwd: &Path) -> anyhow::Result<ProjectConfig> {
-        let config = ProjectConfig::new(cwd)?;
+        let config = ProjectConfig::new("", cwd)?;
         if config.is_root() {
             return Ok(config);
         }
         for current_dir in cwd.ancestors() {
-            match ProjectConfig::new(current_dir) {
+            match ProjectConfig::new("", current_dir) {
                 Ok(root_candidate) => {
                     if root_candidate.is_root() && config.is_child(&root_candidate) {
                         return Ok(root_candidate);
@@ -233,6 +278,22 @@ impl ProjectConfig {
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct TaskConfig {
+    /// Name
+    #[serde(skip)]
+    pub name: String,
+
+    /// Original name.
+    /// Used for tracking the original of the task variant.
+    #[serde(skip)]
+    pub orig_name: String,
+
+    /// Project name
+    #[serde(skip)]
+    pub project: String,
+
+    /// Label for display
+    pub label: Option<String>,
+
     /// Command to run
     pub command: String,
 
@@ -243,7 +304,7 @@ pub struct TaskConfig {
     pub working_dir: Option<String>,
 
     /// Template variables.
-    /// Can be used at `command`, `working_dir`, `env`, `env_files`, [`LogProbeConfig::log`](LogProbeConfig::log).
+    /// Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, [`LogProbeConfig::log`](LogProbeConfig::log).
     #[serde(default)]
     pub vars: HashMap<String, String>,
 
@@ -259,7 +320,7 @@ pub struct TaskConfig {
 
     /// Dependency task names
     #[serde(default)]
-    pub depends_on: Vec<String>,
+    pub depends_on: Vec<DependsOnConfig>,
 
     /// Service configuration
     pub service: Option<ServiceConfig>,
@@ -274,6 +335,14 @@ pub struct TaskConfig {
 }
 
 impl TaskConfig {
+    pub fn full_name(&self) -> String {
+        format!("{}#{}", self.project, self.name)
+    }
+
+    pub fn full_orig_name(&self) -> String {
+        format!("{}#{}", self.project, self.orig_name)
+    }
+
     pub fn working_dir_path(&self, dir: &PathBuf) -> Option<PathBuf> {
         match self.working_dir.clone() {
             Some(wd) => Some(absolute_or_join(&wd, dir)),
@@ -318,6 +387,21 @@ pub struct LogConfig {
     #[serde(default = "default_log_level")]
     pub level: String,
     pub file: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum DependsOnConfig {
+    String(String),
+    Struct(DependsOnConfigStruct),
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct DependsOnConfigStruct {
+    pub task: String,
+
+    #[serde(default)]
+    pub vars: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]

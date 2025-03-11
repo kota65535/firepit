@@ -1,11 +1,12 @@
-use crate::config::{HealthCheckConfig, ProjectConfig, Restart, ServiceConfig};
+use crate::config::{DependsOnConfig, HealthCheckConfig, ProjectConfig, Restart, ServiceConfig, TaskConfig};
 use crate::cui::lib::BOLD;
 use crate::probe::{ExecProbe, LogLineProbe, Probe};
+use crate::template::ConfigRenderer;
 use anyhow::Context;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use tera::Tera;
 use tracing::warn;
 
 #[derive(Debug, Clone)]
@@ -20,48 +21,19 @@ impl Workspace {
         root_config: &ProjectConfig,
         child_config: &HashMap<String, ProjectConfig>,
     ) -> anyhow::Result<Workspace> {
-        let root = Project::new("", root_config)?;
+        let mut renderer = ConfigRenderer::new(root_config, child_config);
+        let (root_config, child_config) = renderer.render()?;
+        let root = Project::new("", &root_config)?;
         let mut children = HashMap::new();
         for (k, v) in child_config.iter() {
             children.insert(k.clone(), Project::new(k, v)?);
         }
-
-        Self::validate_projects(&root, &children)?;
 
         Ok(Self {
             root,
             children,
             concurrency: root_config.concurrency,
         })
-    }
-
-    fn validate_projects(root: &Project, children: &HashMap<String, Project>) -> anyhow::Result<()> {
-        let mut tasks = root.tasks.values().map(|t| t.name.clone()).collect::<HashSet<_>>();
-        for p in children.values() {
-            tasks.extend(p.tasks.values().map(|t| t.name.clone()));
-        }
-
-        let mut deps = root
-            .tasks
-            .values()
-            .flat_map(|t| t.depends_on.iter())
-            .collect::<HashSet<_>>();
-        for p in children.values() {
-            deps.extend(
-                p.tasks
-                    .values()
-                    .flat_map(|t| t.depends_on.iter())
-                    .collect::<HashSet<_>>(),
-            );
-        }
-
-        for d in deps.iter() {
-            if !tasks.contains(*d) {
-                anyhow::bail!("task {:?} is not defined.", d);
-            }
-        }
-
-        Ok(())
     }
 
     pub fn tasks(&self) -> Vec<Task> {
@@ -141,6 +113,13 @@ impl Workspace {
         Ok(target_tasks)
     }
 
+    pub fn labels(&self) -> HashMap<String, String> {
+        self.tasks()
+            .into_iter()
+            .map(|t| (t.name, t.label))
+            .collect::<HashMap<_, _>>()
+    }
+
     pub fn print_info(&self) {
         let mut lines = Vec::new();
         lines.push(format!(
@@ -177,7 +156,7 @@ impl Project {
     pub fn new(name: &str, root: &ProjectConfig) -> anyhow::Result<Project> {
         Ok(Project {
             name: name.to_owned(),
-            tasks: Task::from_project_config(name, &root)?,
+            tasks: Task::new_multi(name, &root)?,
             dir: root.dir.clone(),
         })
     }
@@ -191,6 +170,9 @@ impl Project {
 pub struct Task {
     /// Unique task name
     pub name: String,
+
+    /// Label
+    pub label: String,
 
     /// Command to run
     pub command: String,
@@ -226,183 +208,147 @@ pub struct Task {
     pub outputs: Vec<PathBuf>,
 }
 
+pub static TASK_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(?:(\w+)#)?(\w+)(?:-(\d+))?$").unwrap());
+
 impl Task {
+    pub fn new_multi(project_name: &str, config: &ProjectConfig) -> anyhow::Result<HashMap<String, Task>> {
+        let mut ret = HashMap::new();
+        for (task_name, task_config) in config.tasks.iter() {
+            let task = Self::new(project_name, &config, task_name, task_config)?;
+            ret.insert(task.name.clone(), task);
+        }
+
+        Ok(ret)
+    }
+
+    pub fn new(
+        project_name: &str,
+        config: &ProjectConfig,
+        task_name: &str,
+        task_config: &TaskConfig,
+    ) -> anyhow::Result<Task> {
+        if task_name.contains("#") {
+            anyhow::bail!("Task name must not contain '#'. Found: {:?}", task_name)
+        }
+
+        let task_name = Task::qualified_name(project_name, task_name);
+
+        // Shell
+        let task_shell = task_config.shell.clone().unwrap_or(config.shell.clone());
+
+        // Working directory
+        let task_working_dir = task_config
+            .working_dir_path(&config.dir)
+            .unwrap_or(config.working_dir_path());
+
+        // Environment variables
+        // Priority:
+        // 1. Root project env file
+        // 2. Root project env
+        // 3. Project env file
+        // 4. Project env
+        // 5. Task env file
+        // 6. Task env
+        let project_env = Self::merge_env(Self::load_env_files(&config.env_files_paths())?, config.env.clone())?;
+        let task_env = Self::merge_env(
+            Self::load_env_files(&task_config.env_file_paths(&config.dir))?,
+            task_config.env.clone(),
+        )?;
+        let merged_task_env = Self::merge_env(project_env, task_env)?;
+
+        // Input files
+        let inputs = task_config
+            .input_paths(&config.dir)
+            .into_iter()
+            .chain(task_config.env_file_paths(&config.dir).into_iter())
+            .collect::<Vec<_>>();
+
+        // Output files
+        let outputs = task_config
+            .output_paths(&config.dir)
+            .into_iter()
+            .chain(task_config.env_file_paths(&config.dir).into_iter())
+            .collect::<Vec<_>>();
+
+        // Probes
+        let (is_service, probe, restart) = match task_config.service.clone() {
+            Some(service) => match service {
+                ServiceConfig::Bool(bool) => (bool, Probe::None, Restart::Never),
+                ServiceConfig::Struct(st) => {
+                    let probe = match st.healthcheck {
+                        Some(healthcheck) => match healthcheck {
+                            // Log Probe
+                            HealthCheckConfig::Log(c) => Probe::LogLine(LogLineProbe::new(
+                                &task_name,
+                                Regex::new(&c.log).with_context(|| format!("invalid regex pattern {:?}", c.log))?,
+                                c.timeout,
+                                c.start_period,
+                            )),
+                            // Exec Probe
+                            HealthCheckConfig::Exec(c) => {
+                                // Shell
+                                let hc_shell = c.shell.clone().unwrap_or(task_shell.clone());
+                                // Working directory
+                                let hc_working_dir =
+                                    c.working_dir_path(&config.dir).unwrap_or(task_working_dir.clone());
+                                // Environment variables
+                                let hc_env = Self::merge_env(
+                                    Self::load_env_files(&c.env_files_paths(&config.dir))?,
+                                    c.env.clone(),
+                                )?;
+                                let merged_hc_env = Self::merge_env(merged_task_env.clone(), hc_env)?;
+
+                                Probe::Exec(ExecProbe::new(
+                                    &task_name,
+                                    &c.command,
+                                    &hc_shell.command,
+                                    hc_shell.args,
+                                    hc_working_dir,
+                                    merged_hc_env,
+                                    c.interval,
+                                    c.timeout,
+                                    c.retries,
+                                    c.start_period,
+                                ))
+                            }
+                        },
+                        None => Probe::None,
+                    };
+                    (true, probe, st.restart)
+                }
+            },
+            _ => (false, Probe::None, Restart::Never),
+        };
+
+        Ok(Self {
+            name: Task::qualified_name(project_name, &task_name),
+            label: task_config.label.clone().unwrap_or(task_name),
+            command: task_config.command.clone(),
+            shell: task_shell.command,
+            shell_args: task_shell.args,
+            working_dir: task_working_dir,
+            env: merged_task_env,
+            depends_on: task_config
+                .depends_on
+                .iter()
+                .map(|s| match s {
+                    DependsOnConfig::String(s) => Task::qualified_name(project_name, s),
+                    DependsOnConfig::Struct(s) => Task::qualified_name(project_name, &s.task),
+                })
+                .collect(),
+            is_service,
+            probe,
+            restart,
+            inputs,
+            outputs,
+        })
+    }
+
     fn merge_env(a: HashMap<String, String>, b: HashMap<String, String>) -> anyhow::Result<HashMap<String, String>> {
         Ok(a.into_iter().chain(b.into_iter()).collect::<HashMap<_, _>>())
     }
 
-    pub fn from_project_config(project_name: &str, config: &ProjectConfig) -> anyhow::Result<HashMap<String, Task>> {
-        let mut ret = HashMap::new();
-        let mut tera = Tera::default();
-        let mut base_context = tera::Context::new();
-        for (k, v) in config.vars.iter() {
-            base_context.insert(k.clone(), v);
-        }
-        for (task_name, task_config) in config.tasks.iter() {
-            if task_name.contains("#") {
-                anyhow::bail!("Task name must not contain '#'. Found: {:?}", task_name)
-            }
-
-            let mut context = base_context.clone();
-            for (k, v) in task_config.vars.iter() {
-                context.insert(k.clone(), v);
-            }
-
-            let mut task_config = task_config.clone();
-            let task_name = Task::qualified_name(project_name, task_name);
-
-            // Shell
-            let task_shell = task_config.shell.clone().unwrap_or(config.shell.clone());
-
-            // Render template for command, working_dir, env and env_files
-            task_config.command = tera.render_str(&task_config.command, &context)?;
-            task_config.working_dir = match task_config.working_dir {
-                Some(w) => Some(tera.render_str(&w, &context)?),
-                None => None,
-            };
-            let mut rendered_env = HashMap::new();
-            for (k, v) in task_config.env.iter() {
-                rendered_env.insert(tera.render_str(k, &context)?, tera.render_str(v, &context)?);
-            }
-            task_config.env = rendered_env;
-            let mut rendered_env_files = Vec::new();
-            for f in task_config.env_files.iter() {
-                rendered_env_files.push(tera.render_str(f, &context)?);
-            }
-            task_config.env_files = rendered_env_files;
-
-            // Working directory
-            let task_working_dir = task_config
-                .working_dir_path(&config.dir)
-                .unwrap_or(config.working_dir_path());
-
-            // Environment variables
-            // Priority:
-            // 1. Root project env file
-            // 2. Root project env
-            // 3. Project env file
-            // 4. Project env
-            // 5. Task env file
-            // 6. Task env
-            let project_env = Self::merge_env(Self::load_env_files(&config.env_files_paths())?, config.env.clone())?;
-            let task_env = Self::merge_env(
-                Self::load_env_files(&task_config.env_file_paths(&config.dir))?,
-                task_config.env.clone(),
-            )?;
-            let merged_task_env = Self::merge_env(project_env, task_env)?;
-
-            // Input files
-            let inputs = task_config
-                .input_paths(&config.dir)
-                .into_iter()
-                .chain(task_config.env_file_paths(&config.dir).into_iter())
-                .collect::<Vec<_>>();
-
-            // Output files
-            let outputs = task_config
-                .output_paths(&config.dir)
-                .into_iter()
-                .chain(task_config.env_file_paths(&config.dir).into_iter())
-                .collect::<Vec<_>>();
-
-            // Probes
-            let (is_service, probe, restart) = match task_config.service {
-                Some(service) => match service {
-                    ServiceConfig::Bool(bool) => (bool, Probe::None, Restart::Never),
-                    ServiceConfig::Struct(st) => {
-                        let probe = match st.healthcheck {
-                            Some(healthcheck) => match healthcheck {
-                                // Log Probe
-                                HealthCheckConfig::Log(c) => {
-                                    let log = tera.render_str(&c.log, &context)?;
-                                    Probe::LogLine(LogLineProbe::new(
-                                        &task_name,
-                                        Regex::new(&log)
-                                            .with_context(|| format!("invalid regex pattern {:?}", c.log))?,
-                                        c.timeout,
-                                        c.start_period,
-                                    ))
-                                }
-                                // Exec Probe
-                                HealthCheckConfig::Exec(mut c) => {
-                                    // Render template for command, working_dir, env and env_files
-                                    c.command = tera.render_str(&c.command, &context)?;
-                                    c.working_dir = match c.working_dir {
-                                        Some(w) => Some(tera.render_str(&w, &context)?),
-                                        None => None,
-                                    };
-                                    let mut rendered_env = HashMap::new();
-                                    for (k, v) in c.env.iter() {
-                                        rendered_env
-                                            .insert(tera.render_str(k, &context)?, tera.render_str(v, &context)?);
-                                    }
-                                    c.env = rendered_env;
-                                    let mut rendered_env_files = Vec::new();
-                                    for f in c.env_files.iter() {
-                                        rendered_env_files.push(tera.render_str(f, &context)?);
-                                    }
-                                    c.env_files = rendered_env_files;
-
-                                    // Shell
-                                    let hc_shell = c.shell.clone().unwrap_or(task_shell.clone());
-                                    // Working directory
-                                    let hc_working_dir =
-                                        c.working_dir_path(&config.dir).unwrap_or(task_working_dir.clone());
-                                    // Environment variables
-                                    let hc_env = Self::merge_env(
-                                        Self::load_env_files(&c.env_files_paths(&config.dir))?,
-                                        c.env.clone(),
-                                    )?;
-                                    let merged_hc_env = Self::merge_env(merged_task_env.clone(), hc_env)?;
-
-                                    Probe::Exec(ExecProbe::new(
-                                        &task_name,
-                                        &c.command,
-                                        &hc_shell.command,
-                                        hc_shell.args,
-                                        hc_working_dir,
-                                        merged_hc_env,
-                                        c.interval,
-                                        c.timeout,
-                                        c.retries,
-                                        c.start_period,
-                                    ))
-                                }
-                            },
-                            None => Probe::None,
-                        };
-                        (true, probe, st.restart)
-                    }
-                },
-                _ => (false, Probe::None, Restart::Never),
-            };
-
-            ret.insert(
-                task_name.clone(),
-                Task {
-                    name: task_name.clone(),
-                    command: task_config.command.clone(),
-                    shell: task_shell.command,
-                    shell_args: task_shell.args,
-                    working_dir: task_working_dir,
-                    env: merged_task_env,
-                    depends_on: task_config
-                        .depends_on
-                        .iter()
-                        .map(|s| Task::qualified_name(project_name, s))
-                        .collect(),
-                    is_service,
-                    probe,
-                    restart,
-                    inputs,
-                    outputs,
-                },
-            );
-        }
-        Ok(ret)
-    }
-
-    pub fn load_env_files(files: &Vec<PathBuf>) -> anyhow::Result<HashMap<String, String>> {
+    fn load_env_files(files: &Vec<PathBuf>) -> anyhow::Result<HashMap<String, String>> {
         let mut ret = HashMap::new();
         for f in files.iter() {
             for item in dotenvy::from_path_iter(f).with_context(|| format!("cannot read env file {:?}", f))? {
@@ -411,6 +357,27 @@ impl Task {
             }
         }
         Ok(ret)
+    }
+
+    pub fn original_name(task_name: &str) -> (Option<String>, String, Option<String>) {
+        if let Some(caps) = TASK_REGEX.captures(task_name) {
+            let part1 = caps.get(1).map(|m| m.as_str().to_string());
+            let part2 = caps.get(2).map(|m| m.as_str().to_string());
+            let part3 = caps.get(3).map(|m| m.as_str().to_string());
+
+            return (part1, part2.unwrap(), part3);
+        }
+
+        (None, task_name.to_string(), None)
+    }
+
+    pub fn simple_name(task_name: &str) -> String {
+        if task_name.contains('#') {
+            if let Some((_, t)) = task_name.split_once('#') {
+                return t.to_string();
+            }
+        }
+        task_name.to_string()
     }
 
     pub fn qualified_name(project_name: &str, task_name: &str) -> String {

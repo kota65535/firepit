@@ -10,6 +10,7 @@ pub mod process;
 pub mod project;
 pub mod runner;
 pub mod signal;
+pub mod template;
 pub mod tui;
 pub mod util;
 pub mod watcher;

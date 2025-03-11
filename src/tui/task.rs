@@ -5,6 +5,7 @@ use std::io::Write;
 
 pub struct Task {
     pub name: String,
+    pub label: String,
     pub is_target: bool,
     pub pid: Option<u32>,
     pub restart: u64,
@@ -15,9 +16,10 @@ pub struct Task {
 }
 
 impl Task {
-    pub fn new(name: &str, is_target: bool, output: TerminalOutput) -> Self {
+    pub fn new(name: &str, is_target: bool, output: TerminalOutput, label: Option<&str>) -> Self {
         Self {
             name: name.to_string(),
+            label: label.unwrap_or(name).to_string(),
             is_target,
             pid: None,
             restart: 0,
@@ -96,7 +98,7 @@ impl Task {
             }
         };
 
-        format!("% {} ({})", self.name, status)
+        format!("% {} ({})", self.label, status)
     }
 
     pub fn finish_line(&self) -> Option<String> {
