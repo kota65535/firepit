@@ -66,12 +66,6 @@ pub async fn run() -> anyhow::Result<()> {
     // Aggregate information in config files into more workable form
     let ws = Workspace::new(&root, &children)?;
 
-    let labels = ws
-        .tasks()
-        .iter()
-        .map(|t| (t.name.clone(), t.label.clone()))
-        .collect::<HashMap<_, _>>();
-
     // Print workspace information if no task specified
     if args.tasks.is_empty() {
         ws.print_info();
@@ -93,13 +87,13 @@ pub async fn run() -> anyhow::Result<()> {
     // Create & start UI
     let (app_tx, app_fut) = match root.ui {
         UI::Cui => {
-            let mut app = CuiApp::new()?;
+            let mut app = CuiApp::new(ws.labels())?;
             let sender = app.sender();
             let fut = tokio_spawn!("app", async move { app.run().await });
             (sender, fut)
         }
         UI::Tui => {
-            let mut app = TuiApp::new(&runner.target_tasks, &dep_tasks, &labels)?;
+            let mut app = TuiApp::new(&runner.target_tasks, &dep_tasks, &ws.labels())?;
             let sender = app.sender();
             let fut = tokio_spawn!("app", async move { app.run().await });
             (sender, fut)

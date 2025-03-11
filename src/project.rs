@@ -113,6 +113,13 @@ impl Workspace {
         Ok(target_tasks)
     }
 
+    pub fn labels(&self) -> HashMap<String, String> {
+        self.tasks()
+            .into_iter()
+            .map(|t| (t.name, t.label))
+            .collect::<HashMap<_, _>>()
+    }
+
     pub fn print_info(&self) {
         let mut lines = Vec::new();
         lines.push(format!(
