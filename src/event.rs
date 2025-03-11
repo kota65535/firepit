@@ -38,9 +38,7 @@ pub enum Event {
         stdin: Box<dyn Write + Send>,
     },
     PaneSizeQuery(oneshot::Sender<PaneSize>),
-    Stop(oneshot::Sender<()>),
-    // Stop initiated by the TUI itself
-    InternalStop,
+    Done,
 
     ///
     /// UI Events
@@ -50,6 +48,7 @@ pub enum Event {
     ScrollUp(ScrollSize),
     ScrollDown(ScrollSize),
     ToggleSidebar,
+    Stop,
     Tick,
 
     ///
@@ -186,12 +185,12 @@ impl EventSender {
         self.send(Event::SetStdin { task, stdin })
     }
 
+    pub async fn done(&self) {
+        self.send(Event::Done);
+    }
+
     pub async fn stop(&self) {
-        let (callback_tx, callback_rx) = oneshot::channel();
-        self.send(Event::Stop(callback_tx));
-        if let Err(e) = callback_rx.await {
-            warn!("Failed to receive callback of Stop event: {:?}", e)
-        }
+        self.send(Event::Stop);
     }
 
     pub async fn pane_size(&self) -> Option<PaneSize> {

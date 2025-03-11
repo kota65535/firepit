@@ -471,8 +471,7 @@ fn handle_events(
                         Event::FinishTask { task, result } => {
                             statuses.insert(task, format!("Finished: {:?}", result));
                         }
-                        Event::Stop(callback) => {
-                            callback.send(()).ok();
+                        Event::Stop => {
                             break;
                         }
                         Event::TaskOutput { task, output } => {

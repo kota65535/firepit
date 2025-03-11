@@ -11,7 +11,6 @@ use std::collections::HashMap;
 use std::io::{stdout, Stdout, Write};
 use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc;
-use tracing::warn;
 
 pub struct CuiApp {
     color_selector: ColorSelector,
@@ -20,10 +19,11 @@ pub struct CuiApp {
     receiver: EventReceiver,
     signal_handler: SignalHandler,
     labels: HashMap<String, String>,
+    auto_quit: bool,
 }
 
 impl CuiApp {
-    pub fn new(labels: HashMap<String, String>) -> anyhow::Result<Self> {
+    pub fn new(labels: HashMap<String, String>, auto_quit: bool) -> anyhow::Result<Self> {
         let (tx, rx) = mpsc::unbounded_channel();
         Ok(Self {
             color_selector: ColorSelector::default(),
@@ -32,6 +32,7 @@ impl CuiApp {
             receiver: EventReceiver::new(rx),
             signal_handler: SignalHandler::infer()?,
             labels,
+            auto_quit,
         })
     }
 
@@ -76,11 +77,11 @@ impl CuiApp {
                         .write_all(output.as_slice())
                         .context("failed to write to stdout")?;
                 }
-                Event::Stop(callback) => {
-                    if let Err(e) = callback.send(()) {
-                        warn!("Failed to send callback event: {:?}", e)
+                Event::Stop => return Ok(()),
+                Event::Done => {
+                    if self.auto_quit {
+                        return Ok(());
                     }
-                    return Ok(());
                 }
                 _ => {}
             }

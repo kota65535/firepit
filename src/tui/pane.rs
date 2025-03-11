@@ -21,21 +21,22 @@ static COPY_SELECTION: &'static (&str, &str) = &("[c]", "Copy Selection");
 static SHOW_TASKS: &'static (&str, &str) = &("[h]", "Show Tasks");
 static NAVIGATE_SEARCH_RESULT: &'static (&str, &str) = &("[n\u{FF65}N]", "Next/Prev Match");
 static CLEAR_SEARCH_RESULT: &'static (&str, &str) = &("[Esc]", "Clear");
+static QUIT: &'static (&str, &str) = &("[Ctrl-c]", "Quit");
 
 pub struct TerminalPane<'a> {
     task: &'a Task,
     section: &'a LayoutSections,
     has_sidebar: bool,
-    remaining_time: Option<u64>,
+    done: bool,
 }
 
 impl<'a> TerminalPane<'a> {
-    pub fn new(task: &'a Task, section: &'a LayoutSections, has_sidebar: bool, remaining_time: Option<u64>) -> Self {
+    pub fn new(task: &'a Task, section: &'a LayoutSections, has_sidebar: bool, done: bool) -> Self {
         Self {
             task,
             section,
             has_sidebar,
-            remaining_time,
+            done,
         }
     }
 
@@ -44,63 +45,59 @@ impl<'a> TerminalPane<'a> {
     }
 
     fn footer(&self) -> Text {
-        if let Some(time) = self.remaining_time {
-            Text::from(
-                Line::from(format!("Shutting down... ({} sec)", time))
-                    .centered()
-                    .style(Style::default().bg(Color::LightRed).fg(Color::White)),
-            )
-        } else {
-            let mut help_spans = Vec::new();
-            let mut search_spans = Vec::new();
-            match self.section {
-                LayoutSections::Pane => {
-                    if self.task.output.has_selection() {
-                        help_spans.push(key_help_spans(*COPY_SELECTION));
-                    }
-                    help_spans.push(key_help_spans(*EXIT_INTERACTION));
+        let mut help_spans = Vec::new();
+        let mut search_spans = Vec::new();
+        match self.section {
+            LayoutSections::Pane => {
+                if self.task.output.has_selection() {
+                    help_spans.push(key_help_spans(*COPY_SELECTION));
                 }
-                LayoutSections::TaskList(s) => {
-                    if self.task.output.has_selection() {
-                        help_spans.push(key_help_spans(*COPY_SELECTION));
-                    }
-                    if !self.has_sidebar {
-                        help_spans.push(key_help_spans(*SHOW_TASKS));
-                    }
-                    if self.task.output.stdin().is_some() {
-                        help_spans.push(key_help_spans(*START_INTERACTION));
-                    }
-                    help_spans.push(key_help_spans(*START_SEARCH));
-                    if let Some(search) = s {
-                        if search.matches.len() > 0 {
-                            help_spans.push(key_help_spans(*NAVIGATE_SEARCH_RESULT));
-                            help_spans.push(key_help_spans(*CLEAR_SEARCH_RESULT));
-                        }
-                    }
+                help_spans.push(key_help_spans(*EXIT_INTERACTION));
+            }
+            LayoutSections::TaskList(s) => {
+                if self.task.output.has_selection() {
+                    help_spans.push(key_help_spans(*COPY_SELECTION));
                 }
-                LayoutSections::Search { query } => {
-                    if self.task.output.has_selection() {
-                        help_spans.push(key_help_spans(*COPY_SELECTION));
+                if !self.has_sidebar {
+                    help_spans.push(key_help_spans(*SHOW_TASKS));
+                }
+                if self.task.output.stdin().is_some() {
+                    help_spans.push(key_help_spans(*START_INTERACTION));
+                }
+                help_spans.push(key_help_spans(*START_SEARCH));
+                if let Some(search) = s {
+                    if search.matches.len() > 0 {
+                        help_spans.push(key_help_spans(*NAVIGATE_SEARCH_RESULT));
+                        help_spans.push(key_help_spans(*CLEAR_SEARCH_RESULT));
                     }
-                    if !self.has_sidebar {
-                        help_spans.push(key_help_spans(*SHOW_TASKS));
-                    }
-                    help_spans.push(key_help_spans(*EXIT_SEARCH));
-                    search_spans.push(Span::styled(format!("/ {}\n", query), Style::default().bold()));
                 }
             }
-            Text::from(vec![
-                Line::from(search_spans).left_aligned(),
-                Line::from(
-                    help_spans
-                        .into_iter()
-                        .intersperse_with(|| vec![Span::raw("  ")])
-                        .flatten()
-                        .collect::<Vec<_>>(),
-                )
-                .centered(),
-            ])
+            LayoutSections::Search { query } => {
+                if self.task.output.has_selection() {
+                    help_spans.push(key_help_spans(*COPY_SELECTION));
+                }
+                if !self.has_sidebar {
+                    help_spans.push(key_help_spans(*SHOW_TASKS));
+                }
+                help_spans.push(key_help_spans(*EXIT_SEARCH));
+                search_spans.push(Span::styled(format!("/ {}\n", query), Style::default().bold()));
+            }
         }
+        if self.done {
+            help_spans.push(key_help_spans(*QUIT));
+        }
+
+        Text::from(vec![
+            Line::from(search_spans).left_aligned(),
+            Line::from(
+                help_spans
+                    .into_iter()
+                    .intersperse_with(|| vec![Span::raw("  ")])
+                    .flatten()
+                    .collect::<Vec<_>>(),
+            )
+            .centered(),
+        ])
     }
 }
 
