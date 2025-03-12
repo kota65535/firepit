@@ -611,7 +611,7 @@ impl TuiAppState {
                 // If no column left, go to next line
                 let Some(c) = row.get_mut(idx) else { break };
 
-                c.attrs.bgcolor = if highlight {
+                c.attrs_mut().bgcolor = if highlight {
                     vt100::Color::Idx(3) // Yellow
                 } else {
                     vt100::Color::Default
