@@ -25,7 +25,7 @@ jobs:
         run: cargo run --bin firepit-schema
 
       - name: Configure git
-        uses: kota65535/github-git-config-action@v1
+        uses: kota65535/github-git-config-action@v2
         with:
           user.name: github-actions[bot]
           user.email: 41898282+github-actions[bot]@users.noreply.github.com
