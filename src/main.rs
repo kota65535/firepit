@@ -10,7 +10,7 @@ mod process;
 mod project;
 mod runner;
 mod signal;
-pub mod template;
+mod template;
 mod tui;
 mod util;
 mod watcher;
