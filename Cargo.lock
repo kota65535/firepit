@@ -2748,7 +2748,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 [[package]]
 name = "vt100"
 version = "0.15.2"
-source = "git+https://github.com/kota65535/vt100-rust?branch=main#634715a38366ed9248ee9025eb32c1c89e91abd9"
+source = "git+https://github.com/kota65535/vt100-rust?rev=cc4bd1eb6f1e302eaa5a5f24d5bed02a4244d0c6#cc4bd1eb6f1e302eaa5a5f24d5bed02a4244d0c6"
 dependencies = [
  "itoa",
  "log",
