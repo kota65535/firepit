@@ -3,7 +3,8 @@ use anyhow::Context;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use schemars::JsonSchema;
-use serde::{Deserialize, Deserializer};
+use serde::{de, Deserialize, Deserializer};
+use serde_yaml::Value;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::BufReader;
@@ -401,7 +402,7 @@ pub enum DependsOnConfig {
 pub struct DependsOnConfigStruct {
     pub task: String,
 
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_hash_map")]
     pub vars: HashMap<String, String>,
 
     #[serde(default = "default_cascade")]
@@ -448,7 +449,7 @@ pub struct ExecProbeConfig {
 
     /// Environment variables.
     /// Merged with the task's env.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_hash_map")]
     pub env: HashMap<String, String>,
 
     /// Dotenv files
@@ -587,4 +588,44 @@ pub enum UI {
     Cui,
     #[serde(rename = "tui")]
     Tui,
+}
+
+/// Deserializes hash map while converting number to string, which is the default behavior.
+/// This is necessary when using serde(untagged), as it strictly checks types.
+fn deserialize_hash_map<'de, D>(deserializer: D) -> Result<HashMap<String, String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let map: HashMap<String, Value> = HashMap::deserialize(deserializer)?;
+    let mut new_map = HashMap::new();
+
+    for (key, value) in map {
+        let value_str = match value {
+            Value::Null => "null".to_string(),
+            Value::Bool(b) => b.to_string(),
+            Value::Number(n) => n.to_string(),
+            Value::String(s) => s,
+            Value::Sequence(_) => {
+                return Err(de::Error::invalid_type(
+                    de::Unexpected::Seq,
+                    &"a string, number, or boolean",
+                ))
+            }
+            Value::Mapping(_) => {
+                return Err(de::Error::invalid_type(
+                    de::Unexpected::Map,
+                    &"a string, number, or boolean",
+                ))
+            }
+            Value::Tagged(t) => {
+                return Err(de::Error::invalid_type(
+                    de::Unexpected::Other(t.value.as_str().unwrap_or("unknown")),
+                    &"a string, number, or boolean",
+                ))
+            }
+        };
+        new_map.insert(key, value_str);
+    }
+
+    Ok(new_map)
 }
