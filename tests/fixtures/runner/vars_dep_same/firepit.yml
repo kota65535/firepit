@@ -1,0 +1,35 @@
+tasks:
+  foo:
+    command: echo "foo"
+    depends_on:
+      - task: bar
+        vars:
+          A: 1
+      - task: baz
+        vars:
+          C: 4
+      - task: qux
+        vars:
+          D: 5
+
+  bar:
+    vars:
+      B: 2
+    command: echo "bar {{ B }}"
+    depends_on:
+      - task: baz
+        vars:
+          C: 4
+      - task: qux
+        vars:
+          D: 6
+
+  baz:
+    vars:
+      C: 3
+    command: echo "baz {{ C }}"
+
+  qux:
+    vars:
+      D: 4
+    command: echo "qux {{ D }}"
