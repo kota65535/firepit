@@ -139,7 +139,7 @@
           }
         },
         "interval": {
-          "default": 30,
+          "default": 5,
           "type": "integer",
           "format": "uint64",
           "minimum": 0.0
@@ -168,7 +168,7 @@
           "minimum": 0.0
         },
         "timeout": {
-          "default": 30,
+          "default": 5,
           "type": "integer",
           "format": "uint64",
           "minimum": 0.0
@@ -224,7 +224,7 @@
           "minimum": 0.0
         },
         "timeout": {
-          "default": 120,
+          "default": 20,
           "type": "integer",
           "format": "uint64",
           "minimum": 0.0
