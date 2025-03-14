@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.1] - 2025-03-14
+
+### 🐛 Bug Fixes
+
+- *(deps)* Update rust crate indexmap to v2.8.0 (#33)
+- *(deps)* Update rust crate tokio to v1.44.0 (#44)
+- *(deps)* Update rust crate once_cell to v1.21.0 (#38)
+- Treat number as string (#53)
+- Handle deps with same vars (#54)
+- *(deps)* Update rust crate portable-pty to 0.9.0 (#40)
+
 ## [0.2.0] - 2025-03-12
 
 ### 🚀 Features
