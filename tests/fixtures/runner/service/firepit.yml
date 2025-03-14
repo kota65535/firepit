@@ -23,7 +23,9 @@ tasks:
       nc -kl 11001
     service:
       healthcheck:
-        command: nc -z localhost 11001
+        command: nc -z localhost ${PORT}
+        env:
+          PORT: 11001
         start_period: 1
 
 log:
