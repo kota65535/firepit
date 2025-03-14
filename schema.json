@@ -217,12 +217,6 @@
           "description": "Log regex pattern to determine the task service is ready",
           "type": "string"
         },
-        "start_period": {
-          "default": 0,
-          "type": "integer",
-          "format": "uint64",
-          "minimum": 0.0
-        },
         "timeout": {
           "default": 20,
           "type": "integer",

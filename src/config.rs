@@ -427,9 +427,6 @@ pub struct LogProbeConfig {
 
     #[serde(default = "default_log_healthcheck_timeout")]
     pub timeout: u64,
-
-    #[serde(default = "default_healthcheck_start_period")]
-    pub start_period: u64,
 }
 
 pub fn default_log_healthcheck_timeout() -> u64 {

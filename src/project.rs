@@ -292,7 +292,6 @@ impl Task {
                                 &task_name,
                                 Regex::new(&c.log).with_context(|| format!("invalid regex pattern {:?}", c.log))?,
                                 c.timeout,
-                                c.start_period,
                             )),
                             // Exec Probe
                             HealthCheckConfig::Exec(c) => {

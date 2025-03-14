@@ -3,7 +3,7 @@ use anyhow::Context;
 use regex::Regex;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};
 use tracing::{debug, warn};
 
@@ -19,16 +19,14 @@ pub struct LogLineProbe {
     name: String,
     regex: Regex,
     timeout: u64,
-    start_period: u64,
 }
 
 impl LogLineProbe {
-    pub fn new(name: &str, regex: Regex, timeout: u64, start_period: u64) -> Self {
+    pub fn new(name: &str, regex: Regex, timeout: u64) -> Self {
         Self {
             name: name.to_string(),
             regex,
             timeout,
-            start_period,
         }
     }
 
@@ -38,10 +36,9 @@ impl LogLineProbe {
         mut cancel: watch::Receiver<()>,
     ) -> anyhow::Result<bool> {
         debug!(
-            "Probe started (LogLineProbe).\nregex: {:?}\ntimeout: {:?}\nstart_period: {:?}",
-            self.regex, self.timeout, self.start_period
+            "Probe started (LogLineProbe).\nregex: {:?}\ntimeout: {:?}",
+            self.regex, self.timeout
         );
-        tokio::time::sleep(Duration::from_secs(self.start_period)).await;
 
         loop {
             tokio::select! {
@@ -118,7 +115,10 @@ impl ExecProbe {
             "Probe started (ExecProbe).\ncommand: {:?}\nshell: {:?}\nenv: {:?}\n\nworking_dir: {:?}\ninterval: {:?}\ntimeout: {:?}\nretries: {:?}\nstart_period: {:?}",
             self.command, self.shell, self.env, self.working_dir, self.interval, self.timeout, self.retries, self.start_period
         );
-        tokio::time::sleep(Duration::from_secs(self.start_period)).await;
+        let start = Instant::now();
+
+        // Wait `interval` seconds before the first health check
+        tokio::time::sleep(Duration::from_secs(self.interval)).await;
 
         let mut retries = 0;
         loop {
@@ -159,12 +159,16 @@ impl ExecProbe {
                 }
             }
 
-            // Retry for `self.retries` times when timeout or finished with non-zero code
+            // Retry up to `self.retries` times when timeout or finished with non-zero code
             if retries >= self.retries {
                 debug!("Probe failed");
                 return Ok(false);
             }
-            retries += 1;
+
+            // Retry count does not increase until `start_period` seconds elapsed
+            if start.elapsed().as_secs() >= self.start_period {
+                retries += 1;
+            }
 
             debug!(
                 "Probe next retry {}/{} after {} sec",
@@ -210,7 +214,7 @@ mod test {
     #[tokio::test]
     async fn test_log_line_probe_succeeds() {
         setup();
-        let probe = LogLineProbe::new("test", Regex::new("test").unwrap(), 1, 0);
+        let probe = LogLineProbe::new("test", Regex::new("test").unwrap(), 1);
         let (log_tx, log_rx) = mpsc::unbounded_channel();
         let (cancel_tx, cancel_rx) = watch::channel(());
 
@@ -226,7 +230,7 @@ mod test {
     #[tokio::test]
     async fn test_log_line_probe_timeout() {
         setup();
-        let probe = LogLineProbe::new("test", Regex::new("test").unwrap(), 1, 0);
+        let probe = LogLineProbe::new("test", Regex::new("test").unwrap(), 1);
         let (log_tx, log_rx) = mpsc::unbounded_channel();
         let (cancel_tx, cancel_rx) = watch::channel(());
 
@@ -240,7 +244,7 @@ mod test {
     #[tokio::test]
     async fn test_log_line_probe_canceled() {
         setup();
-        let probe = LogLineProbe::new("test", Regex::new("test").unwrap(), 1, 0);
+        let probe = LogLineProbe::new("test", Regex::new("test").unwrap(), 1);
         let (log_tx, log_rx) = mpsc::unbounded_channel();
         let (cancel_tx, cancel_rx) = watch::channel(());
 
