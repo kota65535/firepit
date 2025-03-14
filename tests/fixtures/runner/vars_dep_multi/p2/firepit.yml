@@ -13,7 +13,7 @@ tasks:
           E: "{{ C }}"
 
   qux:
-    label: "{{ project }} {{ E }}"
+    label: "{{ project }} {{ task }} {{ E }}"
     vars:
       E: 5
     command: |
