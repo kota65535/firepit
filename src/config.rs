@@ -433,7 +433,7 @@ pub struct LogProbeConfig {
 }
 
 pub fn default_log_healthcheck_timeout() -> u64 {
-    120
+    20
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -501,10 +501,10 @@ impl ExecProbeConfig {
 }
 
 pub fn default_healthcheck_interval() -> u64 {
-    30
+    5
 }
 pub fn default_healthcheck_timeout() -> u64 {
-    30
+    5
 }
 pub fn default_healthcheck_retries() -> u64 {
     3
