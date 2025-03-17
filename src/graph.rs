@@ -9,8 +9,9 @@ use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::visit::{depth_first_search, Control, IntoNodeIdentifiers, Reversed};
 use petgraph::Direction;
 use std::cmp::max;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::sync::{Arc, Mutex};
 use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
@@ -18,6 +19,7 @@ use tracing::{debug, error, info, warn};
 #[derive(Clone)]
 pub struct TaskGraph {
     graph: DiGraph<Task, bool>,
+    targets: Vec<String>,
 }
 
 pub struct VisitorMessage {
@@ -37,7 +39,7 @@ pub struct Visitor {
 pub struct CallbackMessage(pub Option<bool>);
 
 impl TaskGraph {
-    pub fn new(tasks: &Vec<Task>) -> anyhow::Result<TaskGraph> {
+    pub fn new(tasks: &Vec<Task>, targets: Option<&Vec<String>>) -> anyhow::Result<TaskGraph> {
         let mut graph = DiGraph::<Task, bool>::new();
         let mut nodes = HashMap::new();
 
@@ -63,7 +65,12 @@ impl TaskGraph {
             }
         }
 
-        let ret = TaskGraph { graph };
+        // If targets are not given, consider all tasks as target.
+        let targets = targets
+            .map(|t| t.clone())
+            .unwrap_or_else(|| tasks.iter().map(|t| t.name.clone()).collect());
+
+        let ret = TaskGraph { graph, targets };
 
         ret.sort()?;
 
@@ -83,7 +90,7 @@ impl TaskGraph {
         }
     }
 
-    pub fn visit(&self, concurrency: usize) -> anyhow::Result<Visitor> {
+    pub fn visit(&self, concurrency: usize, no_quit: bool) -> anyhow::Result<Visitor> {
         // Channel for each node to notify all dependent nodes when it finishes
         let mut txs = HashMap::new();
         let mut rxs = HashMap::new();
@@ -97,6 +104,9 @@ impl TaskGraph {
         let (node_tx, node_rx) = mpsc::channel(max(concurrency, 1));
         // Channel to stop visitor
         let (cancel_tx, cancel_rx) = broadcast::channel(1);
+
+        let targets_remaining: HashSet<String> = self.targets.iter().map(|s| s.clone()).collect();
+        let targets_remaining = Arc::new(Mutex::new(targets_remaining));
 
         let nodes_fut = FuturesUnordered::new();
         for node_id in self.graph.node_identifiers() {
@@ -116,6 +126,8 @@ impl TaskGraph {
                 .collect::<anyhow::Result<Vec<_>>>()?;
 
             let task_name = task.name.clone();
+            let targets_remaining_cloned = targets_remaining.clone();
+            let cancel_tx_cloned = cancel_tx.clone();
             nodes_fut.push(tokio_spawn!("node", { name = task_name }, async move {
                 if dep_tasks.is_empty() {
                     info!("No dependency")
@@ -184,10 +196,12 @@ impl TaskGraph {
                                                             info!("Result: {:?}, still waiting callback", result);
                                                             continue 'recv;
                                                         }
+                                                        // Finish the visitor
                                                         info!("Result: {:?}", result);
                                                         break 'send;
                                                     }
                                                     None => {
+                                                        // No result means we should restart the task
                                                         info!("Result is empty, resending");
                                                         count += 1;
                                                         continue 'send;
@@ -218,9 +232,18 @@ impl TaskGraph {
                 }
 
                 info!("Visitor finished");
+                let targets_done = {
+                    let mut t = targets_remaining_cloned.lock().expect("not poisoned");
+                    t.remove(&task.name);
+                    t.is_empty()
+                };
+                if !no_quit && targets_done {
+                    cancel_tx_cloned.send(()).ok();
+                }
                 Ok(())
             }));
         }
+
         Ok(Visitor {
             node_rx,
             cancel: cancel_tx,
@@ -269,7 +292,7 @@ impl TaskGraph {
             .map(|&i| self.graph.node_weight(i).unwrap().clone())
             .collect::<Vec<_>>();
 
-        TaskGraph::new(&tasks)
+        TaskGraph::new(&tasks, Some(names))
     }
 
     #[allow(dead_code)]

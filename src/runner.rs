@@ -12,6 +12,7 @@ use futures::StreamExt;
 use petgraph::Direction;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::{broadcast, watch};
@@ -65,7 +66,8 @@ impl TaskRunner {
         let all_tasks = ws.tasks();
         let target_tasks = ws.target_tasks(target_tasks, dir)?;
 
-        let task_graph = TaskGraph::new(&all_tasks)?.transitive_closure(&target_tasks, Direction::Outgoing)?;
+        let task_graph =
+            TaskGraph::new(&all_tasks, Some(&target_tasks))?.transitive_closure(&target_tasks, Direction::Outgoing)?;
         let tasks = task_graph.sort()?;
         debug!("Task graph:\n{:?}", task_graph);
 
@@ -95,14 +97,14 @@ impl TaskRunner {
         })
     }
 
-    pub async fn start(&mut self, app_tx: EventSender) -> anyhow::Result<()> {
+    pub async fn start(&mut self, app_tx: EventSender, no_quit: bool) -> anyhow::Result<()> {
         // Set pty size if possible
         if let Some(pane_size) = app_tx.pane_size().await {
             self.manager.set_pty_size(pane_size.rows, pane_size.cols).await;
         }
 
         let task_graph = self.task_graph.clone();
-        self.run(task_graph, app_tx, 0).await
+        self.run(task_graph, app_tx, no_quit, 0).await
     }
 
     pub async fn watch(
@@ -151,8 +153,7 @@ impl TaskRunner {
                         let affected_tasks = task_graph.sort()?;
                         info!(
                         "Affected tasks: {:?}",
-                        affected_tasks.iter().map(|t| t.name.clone()).collect::<Vec<_>>()
-                    );
+                        affected_tasks.iter().map(|t| t.name.clone()).collect::<Vec<_>>());
                         for t in affected_tasks.iter() {
                             info!("Cancelling task: {}", t.name);
                             if let Err(err) = cancel_txs.get(&t.name).unwrap().send(()) {
@@ -164,7 +165,7 @@ impl TaskRunner {
                         }
                         info!("Cancelled all tasks");
                         tokio_spawn!("runner", { n = count }, async move {
-                            this.run(task_graph, app_tx, count).await
+                            this.run(task_graph, app_tx, true, count).await
                         });
                         count += 1;
                     }
@@ -175,7 +176,13 @@ impl TaskRunner {
         Ok(())
     }
 
-    pub async fn run(&mut self, task_graph: TaskGraph, mut app_tx: EventSender, num_runs: u64) -> anyhow::Result<()> {
+    async fn run(
+        &mut self,
+        task_graph: TaskGraph,
+        mut app_tx: EventSender,
+        no_quit: bool,
+        num_runs: u64,
+    ) -> anyhow::Result<()> {
         info!("Run started");
 
         for t in self.target_tasks.iter() {
@@ -188,7 +195,7 @@ impl TaskRunner {
             cancel: cancel_visitor,
             future: mut visitor_fut,
         } = task_graph
-            .visit(self.concurrency)
+            .visit(self.concurrency, no_quit)
             .with_context(|| "error while visiting task graph")?;
         debug!("Visitor started");
 
@@ -203,6 +210,7 @@ impl TaskRunner {
                 _ = cancel_rx.changed() => {}
                 _ = subscriber.unwrap().listen(), if subscriber.is_some() => {}
             }
+            info!("Cancelling runner");
             // Cancel visitor and stop all processes
             manager.stop().await;
             if let Err(err) = cancel_visitor_cloned.send(()) {
@@ -212,6 +220,8 @@ impl TaskRunner {
 
         // Task futures
         let mut task_fut = FuturesUnordered::new();
+        let targets_remaining: HashSet<String> = self.target_tasks.iter().map(|s| s.clone()).collect();
+        let targets_remaining = Arc::new(Mutex::new(targets_remaining));
 
         // Receive the next task when its dependencies finished
         while let Some(VisitorMessage {
@@ -226,6 +236,8 @@ impl TaskRunner {
             let mut cancel_rx = self.task_cancel_rxs.get(&task.name).unwrap().resubscribe();
             let task_name = task.name.clone();
             let cancel_visitor_cloned = cancel_visitor.clone();
+            let targets_remaining_cloned = targets_remaining.clone();
+            let runner_cancel_tx = self.cancel_tx.clone();
             task_fut.push(tokio_spawn!("task", { name = task_name }, async move {
                 // Skip the task if any dependency task didn't finish successfully
                 if !deps_ok {
@@ -419,6 +431,17 @@ impl TaskRunner {
                     warn!("Failed to send callback event: {:?}", e)
                 }
 
+                debug!("Removing task {}", task.name);
+                let targets_done = {
+                    let mut t = targets_remaining_cloned.lock().expect("not poisoned");
+                    t.remove(&task.name);
+                    t.is_empty()
+                };
+                if !no_quit && targets_done {
+                    runner_cancel_tx.send(()).ok();
+                }
+
+                debug!("Task has finished. {}", task.name);
                 Ok(())
             }));
         }
@@ -447,7 +470,9 @@ impl TaskRunner {
             match r {
                 Ok(_) => match r {
                     Err(e) => anyhow::bail!("error while waiting futures: {:?}", e),
-                    _ => {}
+                    _ => {
+                        debug!("Future finished");
+                    }
                 },
                 Err(e) => anyhow::bail!("error while waiting futures: {:?}", e),
             }
@@ -523,7 +548,7 @@ impl TaskRunner {
                     Err(e) => anyhow::bail!("error while waiting task {:?}: {:?}", task.name, e),
                     Ok(None) => anyhow::bail!("unable to determine why child exited"),
                 };
-                info!("Task has finished. PID={}", pid);
+                info!("Task process has finished. PID={}", pid);
                 Ok(Some(result))
             }
         }

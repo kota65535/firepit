@@ -286,3 +286,20 @@ pub enum TaskResult {
     /// Unknown status
     Unknown,
 }
+
+impl TaskResult {
+    pub fn is_success(&self) -> bool {
+        matches!(self, TaskResult::Success | TaskResult::UpToDate)
+    }
+
+    pub fn is_failure(&self) -> bool {
+        matches!(
+            self,
+            TaskResult::Failure(_)
+                | TaskResult::Stopped
+                | TaskResult::BadDeps
+                | TaskResult::NotReady
+                | TaskResult::Unknown
+        )
+    }
+}

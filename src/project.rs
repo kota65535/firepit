@@ -141,7 +141,7 @@ impl Workspace {
                 v.tasks.keys().collect::<Vec<_>>()
             ))
         }
-        println!("{}", lines.join("\n"));
+        eprintln!("{}", lines.join("\n"));
     }
 }
 

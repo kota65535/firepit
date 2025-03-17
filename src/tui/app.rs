@@ -154,14 +154,14 @@ impl TuiApp {
         self.sender.clone()
     }
 
-    pub async fn run(&mut self) -> anyhow::Result<()> {
+    pub async fn run(&mut self) -> anyhow::Result<i32> {
         let (result, callback) = match self.run_inner().await {
             Ok(callback) => (Ok(()), callback),
             Err(err) => (Err(err).with_context(|| "failed to run tui app"), None),
         };
         self.cleanup()?;
         info!("App is exiting");
-        Ok(())
+        Ok(0)
     }
 
     pub async fn run_inner(&mut self) -> anyhow::Result<Option<oneshot::Sender<()>>> {
