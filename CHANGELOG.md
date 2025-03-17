@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.2] - 2025-03-17
+
+### 🐛 Bug Fixes
+
+- Reduce timeout (#55)
+- Start period behavior (#56)
+- Exit if all target tasks completed (#57)
+
 ## [0.2.1] - 2025-03-14
 
 ### 🐛 Bug Fixes
