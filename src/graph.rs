@@ -9,8 +9,9 @@ use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::visit::{depth_first_search, Control, IntoNodeIdentifiers, Reversed};
 use petgraph::Direction;
 use std::cmp::max;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::sync::{Arc, Mutex};
 use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
@@ -18,6 +19,7 @@ use tracing::{debug, error, info, warn};
 #[derive(Clone)]
 pub struct TaskGraph {
     graph: DiGraph<Task, bool>,
+    targets: Vec<String>,
 }
 
 pub struct VisitorMessage {
@@ -27,17 +29,21 @@ pub struct VisitorMessage {
     pub callback: mpsc::Sender<CallbackMessage>,
 }
 
-pub struct Visitor {
+pub struct VisitorHandle {
     pub node_rx: mpsc::Receiver<VisitorMessage>,
     pub cancel: broadcast::Sender<()>,
     pub future: FuturesUnordered<JoinHandle<anyhow::Result<()>>>,
 }
 
+/// Callback message takes following values:
+/// Some(true): success
+/// Some(false): failure
+/// None: should restart
 #[derive(Debug, Clone)]
 pub struct CallbackMessage(pub Option<bool>);
 
 impl TaskGraph {
-    pub fn new(tasks: &Vec<Task>) -> anyhow::Result<TaskGraph> {
+    pub fn new(tasks: &Vec<Task>, targets: Option<&Vec<String>>) -> anyhow::Result<TaskGraph> {
         let mut graph = DiGraph::<Task, bool>::new();
         let mut nodes = HashMap::new();
 
@@ -63,7 +69,12 @@ impl TaskGraph {
             }
         }
 
-        let ret = TaskGraph { graph };
+        // If targets are not given, consider all tasks as target.
+        let targets = targets
+            .map(|t| t.clone())
+            .unwrap_or_else(|| tasks.iter().map(|t| t.name.clone()).collect());
+
+        let ret = TaskGraph { graph, targets };
 
         ret.sort()?;
 
@@ -83,8 +94,9 @@ impl TaskGraph {
         }
     }
 
-    pub fn visit(&self, concurrency: usize) -> anyhow::Result<Visitor> {
-        // Channel for each node to notify all dependent nodes when it finishes
+    pub fn visit(&self, concurrency: usize, no_quit: bool) -> anyhow::Result<VisitorHandle> {
+        debug!("Visitor started");
+        // Each node has a broadcast channel to notify all dependent nodes when it finishes
         let mut txs = HashMap::new();
         let mut rxs = HashMap::new();
         for node_id in self.graph.node_identifiers() {
@@ -98,6 +110,11 @@ impl TaskGraph {
         // Channel to stop visitor
         let (cancel_tx, cancel_rx) = broadcast::channel(1);
 
+        // Remaining target tasks
+        let targets_remaining: HashSet<String> = self.targets.iter().map(|s| s.clone()).collect();
+        let targets_remaining = Arc::new(Mutex::new(targets_remaining));
+
+        // Run visitor thread for all nodes
         let nodes_fut = FuturesUnordered::new();
         for node_id in self.graph.node_identifiers() {
             let tx = txs.remove(&node_id).context("sender not found")?;
@@ -116,6 +133,8 @@ impl TaskGraph {
                 .collect::<anyhow::Result<Vec<_>>>()?;
 
             let task_name = task.name.clone();
+            let targets_remaining_cloned = targets_remaining.clone();
+            let cancel_tx_cloned = cancel_tx.clone();
             nodes_fut.push(tokio_spawn!("node", { name = task_name }, async move {
                 if dep_tasks.is_empty() {
                     info!("No dependency")
@@ -123,7 +142,7 @@ impl TaskGraph {
                     info!(
                         "Waiting for {} deps: {:?}",
                         dep_tasks.len(),
-                        dep_tasks.iter().map(|t| t.name.clone()).collect::<Vec<String>>()
+                        dep_tasks.iter().map(|t| t.name.clone()).collect::<Vec<_>>()
                     );
                 }
 
@@ -150,6 +169,7 @@ impl TaskGraph {
                 };
 
                 let mut count = 0;
+                // Loop for restarting service tasks
                 'send: loop {
                     let (callback_tx, mut callback_rx) = mpsc::channel::<CallbackMessage>(1);
                     let message = VisitorMessage {
@@ -160,6 +180,7 @@ impl TaskGraph {
                     };
                     match node_tx.send(message).await {
                         Ok(_) => {
+                            // Loop for restarting service tasks
                             'recv: loop {
                                 tokio::select! {
                                     // Cancelling branch, quits immediately
@@ -172,22 +193,24 @@ impl TaskGraph {
                                         match result {
                                             Some(CallbackMessage(result)) => {
                                                 match result {
-                                                    Some(bool) => {
+                                                    Some(success) => {
                                                         // Send errors indicate that there are no receivers which
                                                         // happens when this node has no dependents
-                                                        if let Err(e) = tx.send(bool) {
+                                                        if let Err(e) = tx.send(success) {
                                                             debug!("Cannot send the result to the graph: {:?}", e);
                                                         };
                                                         // Service task should continue recv loop so that it can restart
-                                                        // after reaching the ready state
-                                                        if bool && task.is_service {
+                                                        // even after reaching ready state
+                                                        if success && task.is_service {
                                                             info!("Result: {:?}, still waiting callback", result);
                                                             continue 'recv;
                                                         }
+                                                        // Finish the visitor
                                                         info!("Result: {:?}", result);
                                                         break 'send;
                                                     }
                                                     None => {
+                                                        // No result means we should restart the task
                                                         info!("Result is empty, resending");
                                                         count += 1;
                                                         continue 'send;
@@ -218,10 +241,20 @@ impl TaskGraph {
                 }
 
                 info!("Visitor finished");
+                let targets_done = {
+                    let mut t = targets_remaining_cloned.lock().expect("not poisoned");
+                    t.remove(&task.name);
+                    t.is_empty()
+                };
+                if !no_quit && targets_done {
+                    info!("All target node done, cancelling visitors");
+                    cancel_tx_cloned.send(()).ok();
+                }
                 Ok(())
             }));
         }
-        Ok(Visitor {
+
+        Ok(VisitorHandle {
             node_rx,
             cancel: cancel_tx,
             future: nodes_fut,
@@ -269,7 +302,7 @@ impl TaskGraph {
             .map(|&i| self.graph.node_weight(i).unwrap().clone())
             .collect::<Vec<_>>();
 
-        TaskGraph::new(&tasks)
+        TaskGraph::new(&tasks, Some(names))
     }
 
     #[allow(dead_code)]

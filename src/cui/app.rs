@@ -2,15 +2,16 @@ use crate::cui::color::ColorSelector;
 use crate::cui::lib::ColorConfig;
 use crate::cui::output::{OutputClient, OutputClientBehavior, OutputSink};
 use crate::cui::prefixed::PrefixedWriter;
-use crate::event::EventSender;
 use crate::event::{Event, EventReceiver};
+use crate::event::{EventSender, TaskResult};
 use crate::signal::SignalHandler;
 use crate::tokio_spawn;
 use anyhow::Context;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{stdout, Stdout, Write};
 use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc;
+use tracing::debug;
 
 pub struct CuiApp {
     color_selector: ColorSelector,
@@ -18,12 +19,13 @@ pub struct CuiApp {
     sender: EventSender,
     receiver: EventReceiver,
     signal_handler: SignalHandler,
+    target_tasks: Vec<String>,
     labels: HashMap<String, String>,
-    auto_quit: bool,
+    no_quit: bool,
 }
 
 impl CuiApp {
-    pub fn new(labels: HashMap<String, String>, auto_quit: bool) -> anyhow::Result<Self> {
+    pub fn new(target_tasks: &Vec<String>, labels: &HashMap<String, String>, no_quit: bool) -> anyhow::Result<Self> {
         let (tx, rx) = mpsc::unbounded_channel();
         Ok(Self {
             color_selector: ColorSelector::default(),
@@ -31,8 +33,9 @@ impl CuiApp {
             sender: EventSender::new(tx),
             receiver: EventReceiver::new(rx),
             signal_handler: SignalHandler::infer()?,
-            labels,
-            auto_quit,
+            target_tasks: target_tasks.clone(),
+            labels: labels.clone(),
+            no_quit,
         })
     }
 
@@ -56,7 +59,7 @@ impl CuiApp {
             .insert(task, output_client);
     }
 
-    pub async fn run(&mut self) -> anyhow::Result<()> {
+    pub async fn run(&mut self) -> anyhow::Result<i32> {
         let signal_handler = self.signal_handler.clone();
         let sender = self.sender.clone();
         tokio_spawn!("cui-canceller", async move {
@@ -66,6 +69,8 @@ impl CuiApp {
                 sender.stop().await;
             }
         });
+        let mut failure = false;
+        let mut task_remaining: HashSet<String> = self.target_tasks.iter().cloned().collect();
         while let Some(event) = self.receiver.recv().await {
             match event {
                 Event::StartTask { task, .. } => self.register_output_client(&task),
@@ -77,16 +82,32 @@ impl CuiApp {
                         .write_all(output.as_slice())
                         .context("failed to write to stdout")?;
                 }
-                Event::Stop => return Ok(()),
-                Event::Done => {
-                    if self.auto_quit {
-                        return Ok(());
+                Event::FinishTask { task, result } => {
+                    debug!("Task {:?} finished", task);
+                    let message = match result {
+                        TaskResult::Success => Some("Process finished with exit code 0".to_string()),
+                        TaskResult::Failure(code) => Some(format!("Process finished with exit code {code}")),
+                        TaskResult::Stopped => Some("Process terminated".to_string()),
+                        _ => None,
+                    };
+                    failure |= result.is_failure();
+                    if let Some(message) = message {
+                        eprintln!("{}", message);
                     }
+                    task_remaining.remove(&task);
+                    debug!("Target tasks remaining: {:?}", task_remaining);
                 }
+                Event::Stop => break,
+                Event::Done if !self.no_quit => break,
                 _ => {}
             }
+            if !self.no_quit && task_remaining.is_empty() {
+                debug!("Target tasks all done");
+                break;
+            }
         }
-        Ok(())
+        let exit_code = if failure { 1 } else { 0 };
+        Ok(exit_code)
     }
 
     pub fn sender(&self) -> EventSender {

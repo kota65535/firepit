@@ -435,7 +435,7 @@ impl Child {
             // On Windows it is important that this gets dropped once the child process
             // exits
             let controller = controller;
-            debug!("Waiting for task");
+            debug!("Waiting for child command");
             let manager = ChildStateManager {
                 shutdown_style,
                 task_state,
@@ -756,7 +756,7 @@ impl ChildStateManager {
     }
 
     async fn handle_child_exit(&self, status: io::Result<Option<i32>>) {
-        debug!("child process exited normally");
+        debug!("Child process exited normally");
         // the child process exited
         let child_exit = match status {
             Ok(Some(c)) => ChildExit::Finished(Some(c)),

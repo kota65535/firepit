@@ -48,7 +48,7 @@ pub struct PtySize {
 
 impl ProcessManager {
     pub fn new(use_pty: bool) -> Self {
-        debug!("spawning children with pty: {use_pty}");
+        debug!("Spawning children with pty: {use_pty}");
         Self {
             state: Arc::new(Mutex::new(ProcessManagerInner {
                 is_closing: false,
