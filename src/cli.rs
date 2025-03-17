@@ -122,7 +122,7 @@ pub async fn run() -> anyhow::Result<()> {
         });
 
         // Start normal task runner
-        let runner_fut = tokio_spawn!("runner", { n = 0 }, async move { runner.start(app_tx, true).await });
+        let runner_fut = tokio_spawn!("runner", { n = 0 }, async move { runner.start(&app_tx, true).await });
 
         // Wait all
         runner_fut.await??;
@@ -136,7 +136,7 @@ pub async fn run() -> anyhow::Result<()> {
         // Start task runner
         let no_quit = root.ui == UI::Tui;
         let app_tx = app_tx.clone();
-        let runner_fut = tokio_spawn!("runner", { n = 0 }, async move { runner.start(app_tx, no_quit).await });
+        let runner_fut = tokio_spawn!("runner", { n = 0 }, async move { runner.start(&app_tx, no_quit).await });
 
         // Wait all
         runner_fut.await??;
