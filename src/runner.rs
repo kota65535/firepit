@@ -451,9 +451,7 @@ impl TaskRunner {
             match r {
                 Ok(_) => match r {
                     Err(e) => anyhow::bail!("error while waiting futures: {:?}", e),
-                    _ => {
-                        debug!("Future finished");
-                    }
+                    _ => {}
                 },
                 Err(e) => anyhow::bail!("error while waiting futures: {:?}", e),
             }
@@ -491,7 +489,7 @@ impl TaskRunner {
             _ => return Ok(None),
         };
 
-        info!("Task has started. PID={}", process.pid().unwrap_or(0));
+        info!("Task started. PID={}", process.pid().unwrap_or(0));
 
         Ok(Some(process))
     }
@@ -510,7 +508,7 @@ impl TaskRunner {
         }
 
         // Wait until complete
-        info!("Task is waiting for output. PID={}", pid);
+        info!("Process is waiting for output. PID={}", pid);
         tokio::select! {
             _ = cancel_rx.recv() => {
                 info!("Task is canceled, stopping...");
@@ -529,7 +527,7 @@ impl TaskRunner {
                     Err(e) => anyhow::bail!("error while waiting task {:?}: {:?}", task.name, e),
                     Ok(None) => anyhow::bail!("unable to determine why child exited"),
                 };
-                info!("Task process has finished. PID={}", pid);
+                info!("Process finished. PID={}", pid);
                 Ok(Some(result))
             }
         }

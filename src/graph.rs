@@ -152,7 +152,7 @@ impl TaskGraph {
                 let deps_ok = tokio::select! {
                     // Cancelling branch, quits immediately
                      _ = cancel_rx.recv() => {
-                        info!("Visitor is cancelled");
+                        info!("Visitor cancelled");
                         return Ok(())
                      }
                     // Normal branch, waiting for all dependency tasks
@@ -247,7 +247,7 @@ impl TaskGraph {
                     t.is_empty()
                 };
                 if !no_quit && targets_done {
-                    info!("All target node done, cancelling visitor.");
+                    info!("All target node done, cancelling visitors");
                     cancel_tx_cloned.send(()).ok();
                 }
                 Ok(())

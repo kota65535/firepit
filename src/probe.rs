@@ -49,7 +49,7 @@ impl LogLineProbe {
                 },
                 // Timeout branch
                 _ = tokio::time::sleep(Duration::from_secs(self.timeout)) => {
-                    debug!("Probe timeout");
+                    debug!("Probe timed-out");
                     return Ok(false);
                 },
                 // Normal branch, tries to match the pattern with the log event
@@ -141,7 +141,7 @@ impl ExecProbe {
                 },
                 // Timeout branch
                 _ = tokio::time::sleep(Duration::from_secs(self.timeout)) => {
-                    debug!("Probe timeout");
+                    debug!("Probe timed-out");
                 },
                 // Normal branch, success if finished with code 0
                 exit = process.wait() => {

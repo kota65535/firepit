@@ -83,7 +83,7 @@ impl CuiApp {
                         .context("failed to write to stdout")?;
                 }
                 Event::FinishTask { task, result } => {
-                    debug!("Task {:?} has finished", task);
+                    debug!("Task {:?} finished", task);
                     let message = match result {
                         TaskResult::Success => Some("Process finished with exit code 0".to_string()),
                         TaskResult::Failure(code) => Some(format!("Process finished with exit code {code}")),
