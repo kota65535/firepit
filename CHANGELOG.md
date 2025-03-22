@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2025-03-22
+
+### 🚀 Features
+
+- Add `var` and `env` option (#59)
+- Add `includes` field (#60)
+
+### 🐛 Bug Fixes
+
+- Exit with code 1 on error (#58)
+- *(deps)* Update all patch updates (#37)
+
 ## [0.2.2] - 2025-03-17
 
 ### 🐛 Bug Fixes
