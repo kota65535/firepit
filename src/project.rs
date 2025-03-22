@@ -327,7 +327,7 @@ impl Task {
         Ok(Self {
             name: Task::qualified_name(project_name, &task_name),
             label: task_config.label.clone().unwrap_or(task_name),
-            command: task_config.command.clone(),
+            command: task_config.command.clone().unwrap_or("".to_string()),
             shell: task_shell.command,
             shell_args: task_shell.args,
             working_dir: task_working_dir,

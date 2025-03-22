@@ -1,0 +1,11 @@
+tasks:
+  foo:
+    depends_on:
+      - bar
+      - baz
+
+  bar:
+    command: echo "bar"
+
+  baz:
+    command: echo "baz"
