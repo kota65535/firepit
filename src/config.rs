@@ -1,20 +1,22 @@
 use crate::project::Task;
+use crate::template::ROOT_DIR_CONTEXT_KEY;
+use crate::util::merge_yaml;
 use anyhow::Context;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use schemars::JsonSchema;
-use serde::{de, Deserialize, Deserializer};
+use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_yaml::Value;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::thread::available_parallelism;
 use std::{io, path};
 
 const CONFIG_FILE: [&str; 2] = ["firepit.yml", "firepit.yaml"];
 
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct ProjectConfig {
     /// Project name
     #[serde(skip)]
@@ -68,6 +70,10 @@ pub struct ProjectConfig {
     /// Valid only in root project config.
     #[serde(default = "default_ui")]
     pub ui: UI,
+
+    /// Additional config files to be included
+    #[serde(default)]
+    pub includes: Vec<String>,
 
     /// project directory path (absolute)
     #[serde(skip)]
@@ -144,12 +150,15 @@ impl ProjectConfig {
                     .chain(child_config.env_files)
                     .collect();
 
+                child_config = child_config.merge(&root_config.dir)?;
                 children.insert(name.clone(), child_config);
             }
         } else {
             // Single project
             root_config.name = "".to_string();
         }
+
+        root_config = root_config.merge(&root_config.dir)?;
 
         Self::validate(&root_config, &children)?;
         Ok((root_config, children))
@@ -181,25 +190,12 @@ impl ProjectConfig {
         Ok(())
     }
 
-    pub fn new(name: &str, path: &Path) -> anyhow::Result<ProjectConfig> {
-        let (file, path) = Self::open_file(&path.join(CONFIG_FILE[0]))
-            .or_else(|_| Self::open_file(&path.join(CONFIG_FILE[1])))
-            .with_context(|| {
-                format!(
-                    "cannot open config file ({} or {}) in directory {:?}",
-                    CONFIG_FILE[0], CONFIG_FILE[1], path
-                )
-            })?;
-        let reader = BufReader::new(file);
-        let mut data: ProjectConfig =
-            serde_yaml::from_reader(reader).with_context(|| format!("cannot parse config file {:?}.", path))?;
+    pub fn new_from_str(name: &str, str: &str, dir: &Path) -> anyhow::Result<ProjectConfig> {
+        let mut data: ProjectConfig = serde_yaml::from_str(str)?;
 
-        // Get project dir
-        data.dir = path
-            .to_path_buf()
-            .parent()
-            .map(|p| p.to_path_buf())
-            .with_context(|| format!("cannot read the parent directory of {:?}", path))?;
+        // Project dir
+        data.dir = dir.to_owned();
+
         // Name
         data.name = name.to_string();
 
@@ -221,8 +217,42 @@ impl ProjectConfig {
                 })
                 .collect();
         }
-
         Ok(data)
+    }
+
+    pub fn new(name: &str, dir: &Path) -> anyhow::Result<ProjectConfig> {
+        let (mut file, path) = Self::open_file(&dir.join(CONFIG_FILE[0]))
+            .or_else(|_| Self::open_file(&dir.join(CONFIG_FILE[1])))
+            .with_context(|| {
+                format!(
+                    "cannot open config file ({} or {}) in directory {:?}",
+                    CONFIG_FILE[0], CONFIG_FILE[1], dir
+                )
+            })?;
+        let mut buf = String::new();
+        file.read_to_string(&mut buf)?;
+        Self::new_from_str(name, &buf, dir).with_context(|| format!("cannot parse config file {:?}", path))
+    }
+
+    pub fn merge(&self, root_dir: &Path) -> anyhow::Result<Self> {
+        let mut context = tera::Context::new();
+        context.insert(ROOT_DIR_CONTEXT_KEY, &root_dir.as_os_str().to_str().unwrap_or(""));
+        let rendered = self.render(&self.context(&context)?, false)?;
+
+        let mut raw_data: Value = serde_yaml::to_value(rendered.clone())?;
+
+        for incl in rendered.includes.iter() {
+            let path = absolute_or_join(&incl, &rendered.dir);
+            let (file, _) = Self::open_file(&rendered.dir.join(&incl))
+                .with_context(|| format!("cannot open included file {:?}", path))?;
+            let reader = BufReader::new(file);
+            let raw_yaml: Value =
+                serde_yaml::from_reader(reader).with_context(|| format!("cannot read included file {:?}.", path))?;
+            merge_yaml(&mut raw_data, &raw_yaml)
+        }
+        let merged_str = serde_yaml::to_string(&raw_data)?;
+        let merged = Self::new_from_str(&self.name, &merged_str, &rendered.dir)?;
+        Ok(merged)
     }
 
     fn open_file(path: &Path) -> Result<(File, PathBuf), io::Error> {
@@ -290,7 +320,7 @@ impl ProjectConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct TaskConfig {
     /// Name
     #[serde(skip)]
@@ -377,7 +407,7 @@ impl TaskConfig {
     }
 }
 
-fn absolute_or_join(path: &str, dir: &PathBuf) -> PathBuf {
+fn absolute_or_join(path: &str, dir: &Path) -> PathBuf {
     let p = Path::new(path);
     if p.is_absolute() {
         p.to_path_buf()
@@ -386,7 +416,7 @@ fn absolute_or_join(path: &str, dir: &PathBuf) -> PathBuf {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct ShellConfig {
     /// Shell command.
     pub command: String,
@@ -396,21 +426,21 @@ pub struct ShellConfig {
     pub args: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct LogConfig {
     #[serde(default = "default_log_level")]
     pub level: String,
     pub file: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[serde(untagged)]
 pub enum DependsOnConfig {
     String(String),
     Struct(DependsOnConfigStruct),
 }
 
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct DependsOnConfigStruct {
     pub task: String,
 
@@ -425,14 +455,14 @@ fn default_cascade() -> bool {
     true
 }
 
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[serde(untagged)]
 pub enum HealthCheckConfig {
     Log(LogProbeConfig),
     Exec(ExecProbeConfig),
 }
 
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct LogProbeConfig {
     /// Log regex pattern to determine the task service is ready
     pub log: String,
@@ -445,7 +475,7 @@ pub fn default_log_healthcheck_timeout() -> u64 {
     20
 }
 
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct ExecProbeConfig {
     /// Command to run
     pub command: String,
@@ -522,14 +552,14 @@ pub fn default_healthcheck_start_period() -> u64 {
     0
 }
 
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[serde(untagged)]
 pub enum ServiceConfig {
     Bool(bool),
     Struct(ServiceConfigStruct),
 }
 
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct ServiceConfigStruct {
     pub healthcheck: Option<HealthCheckConfig>,
 
@@ -586,11 +616,26 @@ impl<'de> Deserialize<'de> for Restart {
     }
 }
 
+impl Serialize for Restart {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Restart::Always(Some(num)) => serializer.serialize_str(&format!("always:{}", num)),
+            Restart::Always(None) => serializer.serialize_str("always"),
+            Restart::OnFailure(Some(num)) => serializer.serialize_str(&format!("on-failure:{}", num)),
+            Restart::OnFailure(None) => serializer.serialize_str("on-failure"),
+            Restart::Never => serializer.serialize_str("never"),
+        }
+    }
+}
+
 pub fn default_service_restart() -> Restart {
     Restart::Never
 }
 
-#[derive(Deserialize, Clone, Debug, PartialEq, JsonSchema, strum::EnumString)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, strum::EnumString)]
 #[strum(serialize_all = "lowercase")]
 pub enum UI {
     #[serde(rename = "cui")]

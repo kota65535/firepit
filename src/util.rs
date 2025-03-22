@@ -1,3 +1,4 @@
+use serde_yaml::Value;
 
 #[macro_export]
 macro_rules! tokio_spawn {
@@ -48,4 +49,25 @@ macro_rules! tokio_spawn_blocking {
             })
             .unwrap()
    }};
+}
+
+pub fn merge_yaml(a: &mut Value, b: &Value) {
+    match (a, b) {
+        (Value::Mapping(map_a), Value::Mapping(map_b)) => {
+            for (k, v_b) in map_b {
+                match map_a.get_mut(k) {
+                    Some(v_a) => merge_yaml(v_a, v_b),
+                    None => {
+                        map_a.insert(k.clone(), v_b.clone());
+                    }
+                }
+            }
+        }
+        (Value::Sequence(seq_a), Value::Sequence(seq_b)) => {
+            seq_a.extend(seq_b.clone());
+        }
+        (a, b) => {
+            *a = b.clone();
+        }
+    }
 }

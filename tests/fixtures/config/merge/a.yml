@@ -1,0 +1,6 @@
+env_files:
+  - .env.a
+
+tasks:
+  a:
+    command: echo "a"

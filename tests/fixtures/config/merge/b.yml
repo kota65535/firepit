@@ -1,0 +1,6 @@
+env_files:
+  - .env.b
+
+tasks:
+  b:
+    command: echo "b"
