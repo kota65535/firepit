@@ -1,7 +1,6 @@
 use crate::config::{DependsOnConfig, HealthCheckConfig, ProjectConfig, ServiceConfig, TaskConfig};
 use crate::project::Task;
 use anyhow::Context;
-use nix::NixPath;
 use std::collections::HashMap;
 use tera::Tera;
 use tracing::{debug, info};
@@ -373,7 +372,8 @@ impl ConfigRenderer {
                 .and_modify(|v| *v += 1)
                 .or_insert(1);
             let variant_task_name = format!("{}-{}", dep_task.full_name(), suffix);
-            variant_task.name = Task::simple_name(&variant_task_name);
+            let (_, task_name) = Task::split_name(&variant_task_name);
+            variant_task.name = task_name.to_string();
 
             info!(
                 "{} -> {} ({})\tvars: {:?} + {:?} = {:?}",

@@ -11,7 +11,7 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use petgraph::Direction;
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -62,9 +62,9 @@ impl Clone for TaskRunner {
 }
 
 impl TaskRunner {
-    pub fn new(ws: &Workspace, target_tasks: &Vec<String>, dir: &Path) -> anyhow::Result<TaskRunner> {
+    pub fn new(ws: &Workspace) -> anyhow::Result<TaskRunner> {
         let all_tasks = ws.tasks();
-        let target_tasks = ws.target_tasks(target_tasks, dir)?;
+        let target_tasks = ws.target_tasks.clone();
 
         let task_graph_all = TaskGraph::new(&all_tasks, Some(&target_tasks))?;
         let task_graph = task_graph_all.transitive_closure(&target_tasks, Direction::Outgoing)?;

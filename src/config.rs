@@ -276,6 +276,18 @@ impl ProjectConfig {
         let schema = schemars::schema_for!(ProjectConfig);
         serde_json::to_string_pretty(&schema).context("cannot create config scehma")
     }
+
+    pub fn task(&self, name: &str) -> anyhow::Result<&TaskConfig> {
+        self.tasks
+            .get(name)
+            .with_context(|| anyhow::anyhow!("task {} is not defined.", name))
+    }
+
+    pub fn task_mut(&mut self, name: &str) -> anyhow::Result<&mut TaskConfig> {
+        self.tasks
+            .get_mut(name)
+            .with_context(|| anyhow::anyhow!("task {} is not defined.", name))
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]

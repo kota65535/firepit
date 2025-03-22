@@ -7,8 +7,9 @@ use crate::tokio_spawn;
 use crate::tui::app::TuiApp;
 use crate::watcher::FileWatcher;
 use clap::Parser;
-use std::path;
+use std::collections::HashMap;
 use std::time::Duration;
+use std::{env, path};
 use tracing::info;
 
 /// Firepit: Simple task & service runner with comfortable TUI
@@ -18,6 +19,14 @@ pub struct Args {
     /// Task names
     #[arg(required = false)]
     pub tasks: Vec<String>,
+
+    /// Variables in format: {Name}={Value}
+    #[arg(short, long)]
+    pub var: Vec<String>,
+
+    /// Environment variables in format: {Name}={Value}
+    #[arg(short, long)]
+    pub env: Vec<String>,
 
     /// Working directory
     #[arg(short, long, default_value = ".")]
@@ -48,10 +57,21 @@ pub struct Args {
     pub tokio_console: bool,
 }
 
+fn parse_var_and_env(env: &Vec<String>) -> anyhow::Result<HashMap<String, String>> {
+    env.iter()
+        .map(|pair| match pair.split_once('=') {
+            Some((k, v)) => Ok((k.to_string(), v.to_string())),
+            None => Ok((pair.to_string(), env::var(pair)?)),
+        })
+        .collect()
+}
+
 pub async fn run() -> anyhow::Result<()> {
     // Arguments
     let args = Args::parse();
     let dir = path::absolute(args.dir)?;
+    let var = parse_var_and_env(&args.var)?;
+    let env = parse_var_and_env(&args.env)?;
 
     info!("Working dir: {:?}", dir);
     info!("Tasks: {:?}", args.tasks);
@@ -73,7 +93,7 @@ pub async fn run() -> anyhow::Result<()> {
     init_logger(&root.log, args.tokio_console)?;
 
     // Aggregate information in config files into more workable form
-    let ws = Workspace::new(&root, &children)?;
+    let ws = Workspace::new(&root, &children, &args.tasks, dir.as_path(), &var, &env)?;
 
     // Print workspace information if no task specified
     if args.tasks.is_empty() {
@@ -82,7 +102,7 @@ pub async fn run() -> anyhow::Result<()> {
     }
 
     // Create runner
-    let mut runner = TaskRunner::new(&ws, &args.tasks, dir.as_path())?;
+    let mut runner = TaskRunner::new(&ws)?;
     info!("Target tasks: {:?}", runner.target_tasks);
 
     let dep_tasks = runner

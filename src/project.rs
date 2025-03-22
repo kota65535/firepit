@@ -12,6 +12,7 @@ use tracing::warn;
 pub struct Workspace {
     pub root: Project,
     pub children: HashMap<String, Project>,
+    pub target_tasks: Vec<String>,
     pub concurrency: usize,
     pub use_pty: bool,
 }
@@ -19,10 +20,75 @@ pub struct Workspace {
 impl Workspace {
     pub fn new(
         root_config: &ProjectConfig,
-        child_config: &HashMap<String, ProjectConfig>,
+        child_configs: &HashMap<String, ProjectConfig>,
+        tasks: &Vec<String>,
+        current_dir: &Path,
+        vars: &HashMap<String, String>,
+        env: &HashMap<String, String>,
     ) -> anyhow::Result<Workspace> {
-        let mut renderer = ConfigRenderer::new(root_config, child_config);
+        let mut target_tasks = Vec::new();
+        for task in tasks.iter() {
+            let (project_name, task_name) = Task::split_name(task);
+            match project_name {
+                // Full name
+                Some(project_name) => {
+                    let task = if project_name.is_empty() {
+                        root_config.task(task_name)?
+                    } else {
+                        child_configs
+                            .get(project_name)
+                            .with_context(|| format!("project {:?} is not defined", project_name))?
+                            .task(task_name)?
+                    };
+                    target_tasks.push(task.full_name());
+                }
+                // Simple name
+                None => {
+                    if current_dir == root_config.dir {
+                        // Select the task if exists in the root project.
+                        // If not, select all tasks with the name in the child projects.
+                        let tasks = match root_config.task(task_name) {
+                            Ok(task) => vec![task],
+                            Err(_) => child_configs.values().map(|c| c.task(task_name)).flatten().collect(),
+                        };
+                        if tasks.is_empty() {
+                            anyhow::bail!("task {:?} is not defined.", task)
+                        }
+                        target_tasks.extend(tasks.iter().map(|t| t.full_name()));
+                    } else {
+                        let task = child_configs
+                            .values()
+                            .find(|c| current_dir == c.dir)
+                            .with_context(|| format!("project {:?} is not defined", project_name))?
+                            .task(task_name)?;
+                        target_tasks.push(task.full_name());
+                    }
+                }
+            }
+        }
+
+        let mut root_config = root_config.clone();
+        let mut child_configs = child_configs.clone();
+
+        for t in target_tasks.iter() {
+            let (project_name, task_name) = Task::split_name(t);
+            if let Some(project_name) = project_name {
+                let task = if project_name.is_empty() {
+                    root_config.task_mut(task_name)?
+                } else {
+                    child_configs
+                        .get_mut(project_name)
+                        .with_context(|| format!("project {:?} is not defined", project_name))?
+                        .task_mut(task_name)?
+                };
+                task.vars.extend(vars.clone());
+                task.env.extend(env.clone());
+            }
+        }
+
+        let mut renderer = ConfigRenderer::new(&root_config, &child_configs);
         let (root_config, child_config) = renderer.render()?;
+
         let root = Project::new("", &root_config)?;
         let mut children = HashMap::new();
         for (k, v) in child_config.iter() {
@@ -33,9 +99,11 @@ impl Workspace {
             UI::Tui => true,
             UI::Cui => false,
         };
+
         Ok(Self {
             root,
             children,
+            target_tasks,
             concurrency: root_config.concurrency,
             use_pty,
         })
@@ -62,60 +130,6 @@ impl Workspace {
                     .find(|t| t.name == name)
             })
             .cloned()
-    }
-
-    pub fn target_tasks(&self, tasks: &Vec<String>, current_dir: &Path) -> anyhow::Result<Vec<String>> {
-        let mut target_tasks = Vec::new();
-        if self.root.dir == current_dir {
-            // In root directory...
-            for t in tasks.iter() {
-                // If the name is qualified, simply find it
-                if t.contains('#') {
-                    let found = self.task(t).with_context(|| format!("task {:?} is not defined", t))?;
-                    target_tasks.push(found.name);
-                } else {
-                    // If the name is not qualified, search first in root tasks
-                    // An if not found, search in child projects
-                    let target = match self.root.task(t) {
-                        Some(t) => vec![t.name],
-                        None => {
-                            let child_tasks = self
-                                .children
-                                .values()
-                                .filter_map(|p| p.task(t))
-                                .map(|t| t.name)
-                                .collect::<Vec<_>>();
-                            if child_tasks.is_empty() {
-                                anyhow::bail!("task {:?} is not defined in any project", t);
-                            }
-                            child_tasks
-                        }
-                    };
-                    target_tasks.extend(target);
-                }
-            }
-        } else {
-            // In child directory...
-            for t in tasks.iter() {
-                // If the name is qualified, simply find it
-                if t.contains('#') {
-                    let found = self.task(t).with_context(|| format!("task {:?} is not defined", t))?;
-                    target_tasks.push(found.name);
-                } else {
-                    // If the name is not qualified, search in the project of the current directory
-                    let child = self
-                        .children
-                        .values()
-                        .find(|c| c.dir == current_dir)
-                        .with_context(|| format!("directory {:?} is not part of any projects", current_dir))?;
-                    let found = child
-                        .task(t)
-                        .with_context(|| format!("task {:?} is not defined in project {:?}", t, child.name))?;
-                    target_tasks.push(found.name);
-                }
-            }
-        }
-        Ok(target_tasks)
     }
 
     pub fn labels(&self) -> HashMap<String, String> {
@@ -374,13 +388,13 @@ impl Task {
         Ok(ret)
     }
 
-    pub fn simple_name(task_name: &str) -> String {
+    pub fn split_name(task_name: &str) -> (Option<&str>, &str) {
         if task_name.contains('#') {
-            if let Some((_, t)) = task_name.split_once('#') {
-                return t.to_string();
+            if let Some((p, t)) = task_name.split_once('#') {
+                return (Some(p), t);
             }
         }
-        task_name.to_string()
+        (None, task_name)
     }
 
     pub fn qualified_name(project_name: &str, task_name: &str) -> String {
