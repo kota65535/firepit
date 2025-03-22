@@ -47,9 +47,7 @@ async fn test_basic_single() {
     outputs.insert(String::from("#bar"), String::from("bar"));
     outputs.insert(String::from("#baz"), String::from("baz"));
 
-    run_task(&path, tasks, statuses, Some(outputs), None, None, None)
-        .await
-        .unwrap();
+    run_task(&path, tasks, statuses, Some(outputs)).await.unwrap();
 }
 
 #[tokio::test]
@@ -66,9 +64,7 @@ async fn test_basic_failure() {
     let mut outputs = HashMap::new();
     outputs.insert(String::from("#baz"), String::from("baz"));
 
-    run_task(&path, tasks, statuses, Some(outputs), None, None, None)
-        .await
-        .unwrap();
+    run_task(&path, tasks, statuses, Some(outputs)).await.unwrap();
 }
 
 #[tokio::test]
@@ -92,9 +88,7 @@ async fn test_basic_multi(#[case] dir: &str) {
     outputs.insert(String::from("bar#bar"), String::from("bar"));
     outputs.insert(String::from("#baz"), String::from("baz"));
 
-    run_task(&path, tasks, statuses, Some(outputs), None, None, None)
-        .await
-        .unwrap();
+    run_task(&path, tasks, statuses, Some(outputs)).await.unwrap();
 
     // With unqualified task name
     let tasks = vec![String::from("foo")];
@@ -107,9 +101,7 @@ async fn test_basic_multi(#[case] dir: &str) {
     outputs.insert(String::from("foo#foo"), String::from("foo"));
     outputs.insert(String::from("bar#bar"), String::from("bar"));
 
-    run_task(&path, tasks, statuses, Some(outputs), None, None, None)
-        .await
-        .unwrap();
+    run_task(&path, tasks, statuses, Some(outputs)).await.unwrap();
 }
 
 #[tokio::test]
@@ -131,9 +123,7 @@ async fn test_vars() {
     outputs.insert(String::from("#baz"), String::from("baz 3"));
     outputs.insert(String::from("#qux"), String::from("qux 12001"));
 
-    run_task(&path, tasks, stats, Some(outputs), None, None, None)
-        .await
-        .unwrap();
+    run_task(&path, tasks, stats, Some(outputs)).await.unwrap();
 }
 
 #[tokio::test]
@@ -152,9 +142,7 @@ async fn test_vars_multi() {
     outputs.insert(String::from("bar#bar"), String::from("bar 2foo"));
     outputs.insert(String::from("#baz"), String::from("baz 3bar"));
 
-    run_task(&path, tasks, stats, Some(outputs), None, None, None)
-        .await
-        .unwrap();
+    run_task(&path, tasks, stats, Some(outputs)).await.unwrap();
 }
 
 #[tokio::test]
@@ -182,9 +170,7 @@ async fn test_vars_dep() {
     outputs.insert(String::from("#quux-1"), String::from("quux 3"));
     outputs.insert(String::from("#quux-2"), String::from("quux 4"));
 
-    run_task(&path, tasks, stats, Some(outputs), None, None, None)
-        .await
-        .unwrap();
+    run_task(&path, tasks, stats, Some(outputs)).await.unwrap();
 }
 
 #[tokio::test]
@@ -210,9 +196,7 @@ async fn test_vars_dep_multi() {
     outputs.insert(String::from("p2#qux"), String::from("qux 5"));
     outputs.insert(String::from("p2#qux-1"), String::from("qux 4"));
 
-    run_task(&path, tasks, stats, Some(outputs), None, None, None)
-        .await
-        .unwrap();
+    run_task(&path, tasks, stats, Some(outputs)).await.unwrap();
 }
 
 #[tokio::test]
@@ -236,7 +220,32 @@ async fn test_vars_dep_same() {
     outputs.insert(String::from("#qux-1"), String::from("qux 6"));
     outputs.insert(String::from("#qux-2"), String::from("qux 5"));
 
-    run_task(&path, tasks, stats, Some(outputs), None, None, None)
+    run_task(&path, tasks, stats, Some(outputs)).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_vars_and_env_from_cli() {
+    setup();
+
+    let path = BASE_PATH.join("vars_cli");
+    let tasks = vec![String::from("foo"), String::from("bar")];
+
+    let mut stats = HashMap::new();
+    stats.insert(String::from("#foo"), String::from("Finished: Success"));
+    stats.insert(String::from("#bar"), String::from("Finished: Success"));
+    stats.insert(String::from("#baz"), String::from("Finished: Success"));
+    stats.insert(String::from("#qux"), String::from("Ready"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#foo"), String::from("foo 11"));
+    outputs.insert(String::from("#bar"), String::from("bar 12"));
+    outputs.insert(String::from("#baz"), String::from("baz 3"));
+    outputs.insert(String::from("#qux"), String::from("qux 13001"));
+
+    let vars = HashMap::from([("A".to_string(), "11".to_string())]);
+    let env = HashMap::from([("B".to_string(), "12".to_string())]);
+
+    run_task_with_var_env(&path, tasks, stats, Some(outputs), vars, env)
         .await
         .unwrap();
 }
@@ -247,7 +256,7 @@ async fn test_cyclic() {
     let path = BASE_PATH.join("cyclic");
     let tasks = vec![String::from("foo")];
 
-    let err = run_task(&path, tasks, HashMap::new(), None, None, None, None)
+    let err = run_task(&path, tasks, HashMap::new(), None)
         .await
         .expect_err("should fail");
     assert!(err.to_string().contains("cyclic dependency"));
@@ -265,7 +274,7 @@ async fn test_service() {
     stats.insert(String::from("#baz"), String::from("Ready"));
     stats.insert(String::from("#qux"), String::from("Ready"));
 
-    run_task(&path, tasks, stats, None, None, None, Some(20)).await.unwrap();
+    run_task(&path, tasks, stats, None).await.unwrap();
 }
 
 #[tokio::test]
@@ -279,7 +288,7 @@ async fn test_service_failure() {
     stats.insert(String::from("#bar"), String::from("Finished: NotReady"));
     stats.insert(String::from("#baz"), String::from("Finished: NotReady"));
 
-    run_task(&path, tasks, stats, None, None, None, Some(20)).await.unwrap();
+    run_task(&path, tasks, stats, None).await.unwrap();
 }
 
 #[tokio::test]
@@ -354,7 +363,7 @@ async fn test_up_to_date() {
     stats.insert(String::from("#bar"), String::from("Finished: Success"));
     stats.insert(String::from("#baz"), String::from("Finished: Success"));
 
-    run_task(&path, tasks, stats, None, None, None, None).await.unwrap();
+    run_task(&path, tasks, stats, None).await.unwrap();
 }
 
 async fn run_task(
@@ -362,16 +371,59 @@ async fn run_task(
     tasks: Vec<String>,
     status_expected: HashMap<String, String>,
     outputs_expected: Option<HashMap<String, String>>,
+) -> anyhow::Result<()> {
+    run_task_inner(
+        path,
+        tasks,
+        status_expected,
+        outputs_expected,
+        None,
+        None,
+        None,
+        HashMap::new(),
+        HashMap::new(),
+    )
+    .await
+}
+
+async fn run_task_with_var_env(
+    path: &Path,
+    tasks: Vec<String>,
+    status_expected: HashMap<String, String>,
+    outputs_expected: Option<HashMap<String, String>>,
+    vars: HashMap<String, String>,
+    env: HashMap<String, String>,
+) -> anyhow::Result<()> {
+    run_task_inner(
+        path,
+        tasks,
+        status_expected,
+        outputs_expected,
+        None,
+        None,
+        None,
+        vars,
+        env,
+    )
+    .await
+}
+
+async fn run_task_inner(
+    path: &Path,
+    tasks: Vec<String>,
+    status_expected: HashMap<String, String>,
+    outputs_expected: Option<HashMap<String, String>>,
     restarts_expected: Option<HashMap<String, u64>>,
     runs_expected: Option<HashMap<String, u64>>,
     timeout_seconds: Option<u64>,
+    vars: HashMap<String, String>,
+    env: HashMap<String, String>,
 ) -> anyhow::Result<()> {
     let path = path::absolute(path)?;
     let (root, children) = ProjectConfig::new_multi(&path)?;
-    let ws = Workspace::new(&root, &children)?;
-
+    let ws = Workspace::new(&root, &children, &tasks, &path, &vars, &env)?;
     // Create runner
-    let mut runner = TaskRunner::new(&ws, &tasks, Path::new(&path))?;
+    let mut runner = TaskRunner::new(&ws)?;
     let (tx, rx) = mpsc::unbounded_channel();
     let sender = EventSender::new(tx);
 
@@ -380,7 +432,7 @@ async fn run_task(
 
     // Start runner
     let runner_fut = tokio::spawn(async move {
-        runner.start(&sender, false).await.ok();
+        runner.start(&sender, true).await.ok();
     });
 
     // Handle events and assert task statuses
@@ -414,14 +466,22 @@ async fn run_task_with_watch<F>(
     F: Future<Output = ()> + Send + 'static,
 {
     let path = path::absolute(path).unwrap();
-    let ws = Workspace::new(&ProjectConfig::new("", &path).unwrap(), &HashMap::new()).unwrap();
+    let ws = Workspace::new(
+        &ProjectConfig::new("", &path).unwrap(),
+        &HashMap::new(),
+        &tasks,
+        &path,
+        &HashMap::new(),
+        &HashMap::new(),
+    )
+    .unwrap();
 
     // Create file watcher
     let mut file_watcher = FileWatcher::new().unwrap();
     let fwh = file_watcher.run(&path, Duration::from_millis(500)).unwrap();
 
     // Create runner
-    let mut runner = TaskRunner::new(&ws, &tasks, Path::new(&path)).unwrap();
+    let mut runner = TaskRunner::new(&ws).unwrap();
     let (tx, rx) = mpsc::unbounded_channel();
     let runner_app_tx = EventSender::new(tx);
 
