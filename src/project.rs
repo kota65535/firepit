@@ -138,25 +138,6 @@ impl Workspace {
             .map(|t| (t.name, t.label))
             .collect::<HashMap<_, _>>()
     }
-
-    pub fn print_info(&self) {
-        let mut lines = Vec::new();
-        lines.push(format!(
-            "{}:\n  dir: {:?}\n  tasks: {:?}",
-            BOLD.apply_to("root").to_string(),
-            self.root.dir,
-            self.root.tasks.keys().collect::<Vec<_>>()
-        ));
-        for (k, v) in self.children.iter() {
-            lines.push(format!(
-                "{}:\n  dir: {:?}\n  tasks: {:?}",
-                BOLD.apply_to(k).to_string(),
-                v.dir,
-                v.tasks.keys().collect::<Vec<_>>()
-            ))
-        }
-        eprintln!("{}", lines.join("\n"));
-    }
 }
 
 #[derive(Debug, Clone)]

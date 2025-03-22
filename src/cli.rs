@@ -1,5 +1,6 @@
 use crate::config::{ProjectConfig, UI};
 use crate::cui::app::CuiApp;
+use crate::cui::lib::BOLD;
 use crate::log::init_logger;
 use crate::project::Workspace;
 use crate::runner::TaskRunner;
@@ -7,6 +8,7 @@ use crate::tokio_spawn;
 use crate::tui::app::TuiApp;
 use crate::watcher::FileWatcher;
 use clap::Parser;
+use itertools::Itertools;
 use std::collections::HashMap;
 use std::time::Duration;
 use std::{env, path};
@@ -57,15 +59,6 @@ pub struct Args {
     pub tokio_console: bool,
 }
 
-fn parse_var_and_env(env: &Vec<String>) -> anyhow::Result<HashMap<String, String>> {
-    env.iter()
-        .map(|pair| match pair.split_once('=') {
-            Some((k, v)) => Ok((k.to_string(), v.to_string())),
-            None => Ok((pair.to_string(), env::var(pair)?)),
-        })
-        .collect()
-}
-
 pub async fn run() -> anyhow::Result<()> {
     // Arguments
     let args = Args::parse();
@@ -92,14 +85,14 @@ pub async fn run() -> anyhow::Result<()> {
 
     init_logger(&root.log, args.tokio_console)?;
 
-    // Aggregate information in config files into more workable form
-    let ws = Workspace::new(&root, &children, &args.tasks, dir.as_path(), &var, &env)?;
-
     // Print workspace information if no task specified
     if args.tasks.is_empty() {
-        ws.print_info();
+        print_summary(&root, &children);
         return Ok(());
     }
+
+    // Aggregate information in config files into more workable form
+    let ws = Workspace::new(&root, &children, &args.tasks, dir.as_path(), &var, &env)?;
 
     // Create runner
     let mut runner = TaskRunner::new(&ws)?;
@@ -164,4 +157,32 @@ pub async fn run() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn parse_var_and_env(env: &Vec<String>) -> anyhow::Result<HashMap<String, String>> {
+    env.iter()
+        .map(|pair| match pair.split_once('=') {
+            Some((k, v)) => Ok((k.to_string(), v.to_string())),
+            None => Ok((pair.to_string(), env::var(pair)?)),
+        })
+        .collect()
+}
+
+fn print_summary(root: &ProjectConfig, children: &HashMap<String, ProjectConfig>) {
+    let mut lines = Vec::new();
+    lines.push(format!(
+        "{}:\n  dir: {:?}\n  tasks: {:?}",
+        BOLD.apply_to("root").to_string(),
+        root.dir,
+        root.tasks.keys().sorted().collect::<Vec<_>>()
+    ));
+    for (k, v) in children.iter() {
+        lines.push(format!(
+            "{}:\n  dir: {:?}\n  tasks: {:?}",
+            BOLD.apply_to(k).to_string(),
+            v.dir,
+            v.tasks.keys().sorted().collect::<Vec<_>>()
+        ))
+    }
+    eprintln!("{}", lines.join("\n"));
 }

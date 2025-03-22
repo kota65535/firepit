@@ -13,6 +13,7 @@ use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::thread::available_parallelism;
 use std::{io, path};
+use tracing::info;
 
 const CONFIG_FILE: [&str; 2] = ["firepit.yml", "firepit.yaml"];
 
@@ -242,6 +243,7 @@ impl ProjectConfig {
         let mut raw_data: Value = serde_yaml::to_value(rendered.clone())?;
 
         for incl in rendered.includes.iter() {
+            info!("Config file {:?} includes {:?}", self.dir, incl);
             let path = absolute_or_join(&incl, &rendered.dir);
             let (file, _) = Self::open_file(&rendered.dir.join(&incl))
                 .with_context(|| format!("cannot open included file {:?}", path))?;
