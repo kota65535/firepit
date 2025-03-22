@@ -51,6 +51,24 @@ async fn test_basic_single() {
 }
 
 #[tokio::test]
+async fn test_basic_empty() {
+    setup();
+    let path = BASE_PATH.join("basic_empty");
+    let tasks = vec![String::from("foo")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#foo"), String::from("Finished: Success"));
+    statuses.insert(String::from("#bar"), String::from("Finished: Success"));
+    statuses.insert(String::from("#baz"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#bar"), String::from("bar"));
+    outputs.insert(String::from("#baz"), String::from("baz"));
+
+    run_task(&path, tasks, statuses, Some(outputs)).await.unwrap();
+}
+
+#[tokio::test]
 async fn test_basic_failure() {
     setup();
     let path = BASE_PATH.join("basic_failure");

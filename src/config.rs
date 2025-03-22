@@ -341,7 +341,7 @@ pub struct TaskConfig {
     pub label: Option<String>,
 
     /// Command to run
-    pub command: String,
+    pub command: Option<String>,
 
     /// Shell configuration
     pub shell: Option<ShellConfig>,

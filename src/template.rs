@@ -115,7 +115,7 @@ impl TaskConfig {
         }
 
         // Render command
-        config.command = tera.render_str(&config.command, &context)?;
+        config.command = config.command.map(|c| tera.render_str(&c, &context)).transpose()?;
 
         // Render working_dir
         config.working_dir = match config.working_dir {
