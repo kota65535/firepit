@@ -10,13 +10,13 @@ pub struct ConfigRenderer {
     child_configs: HashMap<String, ProjectConfig>,
 }
 
-const ROOT_DIR_CONTEXT_KEY: &str = "root_dir";
-const PROJECT_DIR_CONTEXT_KEY: &str = "project_dir";
-const PROJECT_CONTEXT_KEY: &str = "project";
-const TASK_CONTEXT_KEY: &str = "task";
+pub const ROOT_DIR_CONTEXT_KEY: &str = "root_dir";
+pub const PROJECT_DIR_CONTEXT_KEY: &str = "project_dir";
+pub const PROJECT_CONTEXT_KEY: &str = "project";
+pub const TASK_CONTEXT_KEY: &str = "task";
 
 impl ProjectConfig {
-    pub fn context(&mut self, context: &tera::Context) -> anyhow::Result<tera::Context> {
+    pub fn context(&self, context: &tera::Context) -> anyhow::Result<tera::Context> {
         let mut tera = Tera::default();
         let mut context = context.clone();
         context.insert(PROJECT_CONTEXT_KEY, &self.name);
@@ -38,6 +38,13 @@ impl ProjectConfig {
         let mut tera = Tera::default();
 
         let mut config = self.clone();
+
+        // Render includes
+        let mut rendered_includes = Vec::new();
+        for f in config.includes.iter() {
+            rendered_includes.push(tera.render_str(f, &context)?);
+        }
+        config.includes = rendered_includes;
 
         // Render working_dir
         config.working_dir = tera.render_str(&config.working_dir, &context)?;
