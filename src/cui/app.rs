@@ -85,7 +85,6 @@ impl CuiApp {
                 Event::FinishTask { task, result } => {
                     debug!("Task {:?} finished", task);
                     let message = match result {
-                        TaskResult::Success => Some("Process finished with exit code 0".to_string()),
                         TaskResult::Failure(code) => Some(format!("Process finished with exit code {code}")),
                         TaskResult::Stopped => Some("Process terminated".to_string()),
                         _ => None,

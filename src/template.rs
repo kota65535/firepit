@@ -234,7 +234,10 @@ impl ConfigRenderer {
 
         // Root project task contexts
         let root_context = self.root_config.context(&context)?;
-        let mut root_config = self.root_config.render(&root_context, false)?;
+        let mut root_config = self
+            .root_config
+            .render(&root_context, false)
+            .with_context(|| "failed to render config of project root")?;
         for t in self.root_config.tasks.values() {
             tasks.push(t.full_name());
             task_contexts.insert(t.full_name(), t.context(&root_context)?);
@@ -244,7 +247,11 @@ impl ConfigRenderer {
         let mut child_configs = HashMap::new();
         for (k, c) in self.child_configs.iter_mut() {
             let project_context = c.context(&root_context)?;
-            child_configs.insert(k.clone(), c.render(&project_context, false)?);
+            child_configs.insert(
+                k.clone(),
+                c.render(&project_context, false)
+                    .with_context(|| format!("failed to render config of project {:?}", c.name))?,
+            );
             for t in c.tasks.values() {
                 tasks.push(t.full_name());
                 task_contexts.insert(t.full_name(), t.context(&project_context)?);
