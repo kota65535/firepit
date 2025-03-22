@@ -245,13 +245,15 @@ impl TuiAppState {
     }
 
     pub fn task(&self, name: &str) -> anyhow::Result<&Task> {
-        self.tasks.get(name).with_context(|| format!("task {} not found", name))
+        self.tasks
+            .get(name)
+            .with_context(|| format!("task {:?} not found", name))
     }
 
     pub fn task_mut(&mut self, name: &str) -> anyhow::Result<&mut Task> {
         self.tasks
             .get_mut(name)
-            .with_context(|| format!("task {} not found", name))
+            .with_context(|| format!("task {:?} not found", name))
     }
 
     fn input_options(&self) -> anyhow::Result<InputOptions> {
@@ -429,7 +431,7 @@ impl TuiAppState {
         let task = self
             .tasks
             .get_mut(task)
-            .with_context(|| format!("{} not found", task))?;
+            .with_context(|| format!("task {:?} not found", task))?;
         task.output.set_stdin(stdin);
         Ok(())
     }

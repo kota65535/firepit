@@ -59,7 +59,7 @@ pub struct Args {
     pub tokio_console: bool,
 }
 
-pub async fn run() -> anyhow::Result<()> {
+pub async fn run() -> anyhow::Result<i32> {
     // Arguments
     let args = Args::parse();
     let dir = path::absolute(args.dir)?;
@@ -88,7 +88,7 @@ pub async fn run() -> anyhow::Result<()> {
     // Print workspace information if no task specified
     if args.tasks.is_empty() {
         print_summary(&root, &children);
-        return Ok(());
+        return Ok(0);
     }
 
     // Aggregate information in config files into more workable form
@@ -122,7 +122,7 @@ pub async fn run() -> anyhow::Result<()> {
         }
     };
 
-    if args.watch {
+    let ret = if args.watch {
         // Run file watcher
         let mut file_watcher = FileWatcher::new()?;
         let watcher_handle = file_watcher.run(&dir, Duration::from_millis(500))?;
@@ -139,12 +139,12 @@ pub async fn run() -> anyhow::Result<()> {
 
         // Wait all
         runner_fut.await??;
-        app_fut.await??;
         watch_runner_fut.await??;
         watcher_handle
             .future
             .join()
             .map_err(|e| anyhow::anyhow!("failed to join; {:?}", e))?;
+        app_fut.await??
     } else {
         // Start task runner
         let no_quit = root.ui == UI::Tui;
@@ -153,10 +153,10 @@ pub async fn run() -> anyhow::Result<()> {
 
         // Wait all
         runner_fut.await??;
-        app_fut.await??;
-    }
+        app_fut.await??
+    };
 
-    Ok(())
+    Ok(ret)
 }
 
 fn parse_var_and_env(env: &Vec<String>) -> anyhow::Result<HashMap<String, String>> {

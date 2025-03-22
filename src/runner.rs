@@ -427,11 +427,11 @@ impl TaskRunner {
             }));
         }
 
-        debug!("Waiting for visitor...");
+        debug!("Waiting for visitor to finish...");
         Self::join(&mut visitor_fut).await?;
         debug!("Visitor finished");
 
-        debug!("Waiting for tasks...");
+        debug!("Waiting for tasks to finish...");
         Self::join(&mut task_fut).await?;
         debug!("Tasks finished");
 
