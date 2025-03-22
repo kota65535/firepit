@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1] - 2025-03-22
+
+### 🐛 Bug Fixes
+
+- Exit 1 if any process exits with non-zero code (#61)
+- Allow empty command (#62)
+
 ## [0.3.0] - 2025-03-22
 
 ### 🚀 Features
