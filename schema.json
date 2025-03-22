@@ -26,8 +26,20 @@
         "type": "string"
       }
     },
+    "includes": {
+      "description": "Additional config files to be included",
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "log": {
       "description": "Log configuration. Valid only in root project config.",
+      "default": {
+        "file": null,
+        "level": "info"
+      },
       "allOf": [
         {
           "$ref": "#/definitions/LogConfig"
@@ -44,6 +56,12 @@
     },
     "shell": {
       "description": "Shell configuration for all tasks",
+      "default": {
+        "args": [
+          "-c"
+        ],
+        "command": "bash"
+      },
       "allOf": [
         {
           "$ref": "#/definitions/ShellConfig"
@@ -52,6 +70,7 @@
     },
     "tasks": {
       "description": "Task definitions",
+      "default": {},
       "type": "object",
       "additionalProperties": {
         "$ref": "#/definitions/TaskConfig"
@@ -59,6 +78,7 @@
     },
     "ui": {
       "description": "UI configuration. Valid only in root project config.",
+      "default": "cui",
       "allOf": [
         {
           "$ref": "#/definitions/UI"
@@ -293,7 +313,12 @@
           ]
         },
         "restart": {
-          "$ref": "#/definitions/Restart"
+          "default": "never",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Restart"
+            }
+          ]
         }
       }
     },
@@ -329,6 +354,7 @@
         },
         "depends_on": {
           "description": "Dependency task names",
+          "default": [],
           "type": "array",
           "items": {
             "$ref": "#/definitions/DependsOnConfig"
