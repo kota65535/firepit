@@ -99,6 +99,11 @@ fn test_merge() {
     );
     assert_eq!(foo.shell.command, "shell-foo");
     assert_eq!(foo.shell.args, vec!["args-foo"]);
+    assert_eq!(foo.tasks.get("foo").unwrap().command, Some("echo \"foo\"".to_string()));
+    assert_eq!(
+        foo.tasks.get("foo-2").unwrap().command,
+        Some("echo \"foo-2\"".to_string())
+    );
 
     // bar
     assert_eq_env(
@@ -115,6 +120,11 @@ fn test_merge() {
     );
     assert_eq!(bar.shell.command, "shell-bar");
     assert_eq!(bar.shell.args, vec!["args-bar"]);
+    assert_eq!(bar.tasks.get("bar").unwrap().command, Some("echo \"bar\"".to_string()));
+    assert_eq!(
+        bar.tasks.get("bar-2").unwrap().command,
+        Some("echo \"bar-2\"".to_string())
+    );
 }
 
 #[test]

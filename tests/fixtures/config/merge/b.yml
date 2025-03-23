@@ -4,3 +4,6 @@ env_files:
 tasks:
   b:
     command: echo "b"
+
+  bar:
+    command: echo "overwritten"
