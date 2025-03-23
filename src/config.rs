@@ -250,7 +250,7 @@ impl ProjectConfig {
             let reader = BufReader::new(file);
             let raw_yaml: Value =
                 serde_yaml::from_reader(reader).with_context(|| format!("cannot read included file {:?}.", path))?;
-            merge_yaml(&mut raw_data, &raw_yaml)
+            merge_yaml(&mut raw_data, &raw_yaml, false)
         }
         let merged_str = serde_yaml::to_string(&raw_data)?;
         let merged = Self::new_from_str(&self.name, &merged_str, &rendered.dir)?;
