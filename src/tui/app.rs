@@ -584,7 +584,18 @@ impl TuiAppState {
         }
 
         let query_len = query.len();
-        let search_results = SearchResults::new(&task.name, query, matches)?;
+
+        // Find the initial search result index
+        let offset = screen.current_scrollback_len() - screen.scrollback();
+        let mut index = 0;
+        for (i, m) in matches.iter().enumerate() {
+            index = i;
+            if offset <= (m.0 as usize) {
+                break;
+            }
+        }
+
+        let search_results = SearchResults::new(&task.name, query, matches, index)?;
 
         if let Some(Match(row, col)) = search_results.current() {
             self.highlight_cell(row, col, query_len as u16, true)?;
