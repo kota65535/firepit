@@ -20,3 +20,6 @@ github-build-setup = "build-workaround"
 
 [dist.bin-aliases]
 firepit = ["fire"]
+
+[dist.github-custom-runners]
+global = "ubuntu-latest"
