@@ -1,7 +1,9 @@
 use crate::event::Direction;
 use std::{io::Write, mem};
 
-const SCROLLBACK_LEN: usize = 4096;
+// Ensure that the scrollback length is sufficient to hold the entire log.
+// If the number of rows exceeds this, search highlights may not work properly.
+const SCROLLBACK_LEN: usize = 1024 * 1024;
 
 pub struct TerminalOutput {
     output: Vec<u8>,
