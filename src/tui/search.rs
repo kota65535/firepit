@@ -10,12 +10,12 @@ pub struct SearchResults {
 pub struct Match(pub u16, pub u16);
 
 impl SearchResults {
-    pub fn new(task: &str, query: String, matches: Vec<Match>) -> anyhow::Result<Self> {
+    pub fn new(task: &str, query: String, matches: Vec<Match>, index: usize) -> anyhow::Result<Self> {
         Ok(Self {
             task: task.to_string(),
             query,
             matches,
-            index: 0,
+            index,
         })
     }
 
