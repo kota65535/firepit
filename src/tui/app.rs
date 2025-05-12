@@ -558,16 +558,21 @@ impl TuiAppState {
                 continue;
             }
             for (offset, _) in line_buf.match_indices(&query) {
-                // Convert byte offset to char index
+                // Convert byte offset to char index to handle multibyte chars properly
                 let mut col_idx = line_buf[..offset].chars().count();
                 if previous_rows.is_empty() {
                     matches.push(Match(row_idx as u16, col_idx as u16));
                 } else {
+                    // The line is wrapped
+                    // Reset the current row index to the first line
                     let mut row_idx = row_idx - previous_rows.len();
                     for (_, len) in previous_rows.iter() {
                         if col_idx <= size.1 as usize {
+                            // The match exists in this line
                             matches.push(Match(row_idx as u16, col_idx as u16));
+                            break;
                         } else {
+                            // The match may be in the next line
                             col_idx -= len;
                         }
                         row_idx += 1;
