@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.3] - 2025-05-13
+
+### 🐛 Bug Fixes
+
+- *(deps)* Update rust crate tokio to v1.44.2 [security] (#68)
+- *(deps)* Update rust crate petgraph to 0.8.0 (#67)
+- *(deps)* Update rust crate crossterm to 0.29.0 (#66)
+- Fix wrong search results of wrapped lines (#71)
+- The search results should  begin from the current scrollback (#77)
+- *(deps)* Update rust crate petgraph to v0.8.1 (#78)
+- *(deps)* Update rust crate clap to v4.5.38 (#73)
+- *(deps)* Update rust crate once_cell to v1.21.3 (#76)
+- *(deps)* Update rust crate anyhow to v1.0.98 (#72)
+- *(deps)* Update rust crate libc to v0.2.172 (#75)
+- Workaround release error
+
+### ⚙️ Miscellaneous Tasks
+
+- Update Renovate config
+- Run release workflow on ubuntu-latest (#74)
+- Update Renovate config
+
 ## [0.3.2] - 2025-03-23
 
 ### 🐛 Bug Fixes
