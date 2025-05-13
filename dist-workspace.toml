@@ -21,5 +21,17 @@ github-build-setup = "build-workaround"
 [dist.bin-aliases]
 firepit = ["fire"]
 
+# TODO: fix this
+# cf. https://github.com/axodotdev/cargo-dist/issues/1760
 [dist.github-custom-runners]
 global = "ubuntu-latest"
+
+# TODO: fix this
+# cf. https://github.com/axodotdev/cargo-dist/issues/1760
+[dist.github-custom-runners.x86_64-unknown-linux-gnu]
+runner = "ubuntu-latest"
+
+# TODO: fix this
+# cf. https://github.com/axodotdev/cargo-dist/issues/1760
+[dist.github-custom-runners.aarch64-unknown-linux-gnu]
+runner = "ubuntu-latest"
