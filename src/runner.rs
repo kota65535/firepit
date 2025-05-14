@@ -1,4 +1,4 @@
-use crate::app::event::{EventSender, TaskResult};
+use crate::app::command::{AppCommandChannel, TaskResult};
 use crate::config::Restart;
 use crate::graph::{CallbackMessage, TaskGraph, VisitorHandle, VisitorMessage};
 use crate::probe::Probe;
@@ -97,7 +97,7 @@ impl TaskRunner {
         })
     }
 
-    pub async fn start(&mut self, app_tx: &EventSender, no_quit: bool) -> anyhow::Result<()> {
+    pub async fn start(&mut self, app_tx: &AppCommandChannel, no_quit: bool) -> anyhow::Result<()> {
         // Set pty size if possible
         if let Some(pane_size) = app_tx.pane_size().await {
             self.manager.set_pty_size(pane_size.rows, pane_size.cols).await;
@@ -110,7 +110,7 @@ impl TaskRunner {
     pub async fn watch(
         &mut self,
         mut tokio_rx: UnboundedReceiver<HashSet<PathBuf>>,
-        app_tx: EventSender,
+        app_tx: AppCommandChannel,
     ) -> anyhow::Result<()> {
         let manager = self.manager.clone();
         let tasks = self.tasks.clone();
@@ -179,7 +179,7 @@ impl TaskRunner {
     async fn run(
         &mut self,
         task_graph: &TaskGraph,
-        app_tx: &EventSender,
+        app_tx: &AppCommandChannel,
         no_quit: bool,
         num_runs: u64,
     ) -> anyhow::Result<()> {
@@ -497,7 +497,7 @@ impl TaskRunner {
     async fn run_process(
         task: Task,
         mut process: Child,
-        app_tx: EventSender,
+        app_tx: AppCommandChannel,
         mut cancel_rx: broadcast::Receiver<()>,
     ) -> anyhow::Result<Option<TaskResult>> {
         let pid = process.pid().unwrap_or(0);

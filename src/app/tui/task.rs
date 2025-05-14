@@ -1,5 +1,5 @@
+use crate::app::command::{TaskResult, TaskStatus};
 use crate::app::cui::lib::BOLD;
-use crate::app::event::{TaskResult, TaskStatus};
 use crate::app::tui::term_output::TerminalOutput;
 use std::io::Write;
 

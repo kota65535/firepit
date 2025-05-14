@@ -1,4 +1,4 @@
-use crate::app::event::{Event, ScrollSize};
+use crate::app::command::{AppCommand, ScrollSize};
 use crate::app::tui::lib::RingBuffer;
 use crate::app::tui::LayoutSections;
 use crate::tokio_spawn;
@@ -68,89 +68,91 @@ impl InputHandler {
         count
     }
 
-    pub fn handle(&mut self, event: crossterm::event::Event, options: InputOptions) -> Option<Event> {
+    pub fn handle(&mut self, event: crossterm::event::Event, options: InputOptions) -> Option<AppCommand> {
         match event {
             crossterm::event::Event::Key(k) => translate_key_event(options, k),
             crossterm::event::Event::Mouse(m) => match m.kind {
-                crossterm::event::MouseEventKind::ScrollDown => Some(Event::ScrollDown(ScrollSize::One)),
-                crossterm::event::MouseEventKind::ScrollUp => Some(Event::ScrollUp(ScrollSize::One)),
+                crossterm::event::MouseEventKind::ScrollDown => Some(AppCommand::ScrollDown(ScrollSize::One)),
+                crossterm::event::MouseEventKind::ScrollUp => Some(AppCommand::ScrollUp(ScrollSize::One)),
                 crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
                     self.click_times.push(Instant::now());
                     let num_clicks = self.num_of_multiple_clicks();
                     if num_clicks == 1 {
-                        Some(Event::Mouse(m))
+                        Some(AppCommand::Mouse(m))
                     } else {
                         debug!("Clicked {} times", num_clicks);
-                        Some(Event::MouseMultiClick(m, num_clicks))
+                        Some(AppCommand::MouseMultiClick(m, num_clicks))
                     }
                 }
-                crossterm::event::MouseEventKind::Drag(crossterm::event::MouseButton::Left) => Some(Event::Mouse(m)),
+                crossterm::event::MouseEventKind::Drag(crossterm::event::MouseButton::Left) => {
+                    Some(AppCommand::Mouse(m))
+                }
                 _ => None,
             },
-            crossterm::event::Event::Resize(cols, rows) => Some(Event::Resize { rows, cols }),
+            crossterm::event::Event::Resize(cols, rows) => Some(AppCommand::Resize { rows, cols }),
             _ => None,
         }
     }
 }
 
 /// Converts a crossterm key event into a TUI interaction event
-fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<Event> {
+fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<AppCommand> {
     if key_event.kind == KeyEventKind::Release {
         return None;
     }
     match key_event.code {
         // On task list
-        KeyCode::Char('/') if options.on_task_list() => Some(Event::EnterSearch),
-        KeyCode::Char('h') if options.on_task_list() => Some(Event::ToggleSidebar),
-        KeyCode::Char('e') if options.on_task_list() => Some(Event::ScrollDown(ScrollSize::One)),
-        KeyCode::Char('y') if options.on_task_list() => Some(Event::ScrollUp(ScrollSize::One)),
-        KeyCode::Char('d') if options.on_task_list() => Some(Event::ScrollDown(ScrollSize::Half)),
-        KeyCode::Char('u') if options.on_task_list() => Some(Event::ScrollUp(ScrollSize::Half)),
-        KeyCode::Char('f') if options.on_task_list() => Some(Event::ScrollDown(ScrollSize::Full)),
-        KeyCode::Char('b') if options.on_task_list() => Some(Event::ScrollUp(ScrollSize::Full)),
-        KeyCode::Char('G') if options.on_task_list() => Some(Event::ScrollDown(ScrollSize::Edge)),
-        KeyCode::Char('g') if options.on_task_list() => Some(Event::ScrollUp(ScrollSize::Edge)),
-        KeyCode::Char('j') if options.on_task_list() => Some(Event::Down),
-        KeyCode::Char('k') if options.on_task_list() => Some(Event::Up),
-        KeyCode::Char('n') if options.on_task_list() => Some(Event::SearchNext),
-        KeyCode::Char('N') if options.on_task_list() => Some(Event::SearchPrevious),
-        KeyCode::Up if options.on_task_list() => Some(Event::Up),
-        KeyCode::Down if options.on_task_list() => Some(Event::Down),
-        KeyCode::Char('c') if options.has_selection => Some(Event::CopySelection),
-        KeyCode::Enter if options.on_task_list() => Some(Event::EnterInteractive),
+        KeyCode::Char('/') if options.on_task_list() => Some(AppCommand::EnterSearch),
+        KeyCode::Char('h') if options.on_task_list() => Some(AppCommand::ToggleSidebar),
+        KeyCode::Char('e') if options.on_task_list() => Some(AppCommand::ScrollDown(ScrollSize::One)),
+        KeyCode::Char('y') if options.on_task_list() => Some(AppCommand::ScrollUp(ScrollSize::One)),
+        KeyCode::Char('d') if options.on_task_list() => Some(AppCommand::ScrollDown(ScrollSize::Half)),
+        KeyCode::Char('u') if options.on_task_list() => Some(AppCommand::ScrollUp(ScrollSize::Half)),
+        KeyCode::Char('f') if options.on_task_list() => Some(AppCommand::ScrollDown(ScrollSize::Full)),
+        KeyCode::Char('b') if options.on_task_list() => Some(AppCommand::ScrollUp(ScrollSize::Full)),
+        KeyCode::Char('G') if options.on_task_list() => Some(AppCommand::ScrollDown(ScrollSize::Edge)),
+        KeyCode::Char('g') if options.on_task_list() => Some(AppCommand::ScrollUp(ScrollSize::Edge)),
+        KeyCode::Char('j') if options.on_task_list() => Some(AppCommand::Down),
+        KeyCode::Char('k') if options.on_task_list() => Some(AppCommand::Up),
+        KeyCode::Char('n') if options.on_task_list() => Some(AppCommand::SearchNext),
+        KeyCode::Char('N') if options.on_task_list() => Some(AppCommand::SearchPrevious),
+        KeyCode::Up if options.on_task_list() => Some(AppCommand::Up),
+        KeyCode::Down if options.on_task_list() => Some(AppCommand::Down),
+        KeyCode::Char('c') if options.has_selection => Some(AppCommand::CopySelection),
+        KeyCode::Enter if options.on_task_list() => Some(AppCommand::EnterInteractive),
 
         // On pane (interactive mode)
         KeyCode::Char('z') if options.on_pane() && key_event.modifiers == KeyModifiers::CONTROL => {
-            Some(Event::ExitInteractive)
+            Some(AppCommand::ExitInteractive)
         }
         // If we're in interactive mode, convert the key event to bytes to send to stdin
-        _ if options.on_pane() => Some(Event::Input {
+        _ if options.on_pane() => Some(AppCommand::Input {
             bytes: encode_key(key_event),
         }),
 
         // On search
-        KeyCode::Char(c) if options.on_search() => Some(Event::SearchInputChar(c)),
-        KeyCode::Backspace if options.on_search() => Some(Event::SearchBackspace),
-        KeyCode::Esc if options.on_search() || options.on_task_list() => Some(Event::ExitSearch),
-        KeyCode::Enter if options.on_search() => Some(Event::SearchRun),
+        KeyCode::Char(c) if options.on_search() => Some(AppCommand::SearchInputChar(c)),
+        KeyCode::Backspace if options.on_search() => Some(AppCommand::SearchBackspace),
+        KeyCode::Esc if options.on_search() || options.on_task_list() => Some(AppCommand::ExitSearch),
+        KeyCode::Enter if options.on_search() => Some(AppCommand::SearchRun),
 
         // Global
         KeyCode::Char('c') if key_event.modifiers == KeyModifiers::CONTROL => {
             ctrl_c();
-            Some(Event::Stop)
+            Some(AppCommand::Stop)
         }
         _ => None,
     }
 }
 
-fn ctrl_c() -> Option<Event> {
+fn ctrl_c() -> Option<AppCommand> {
     use nix::sys::signal;
     match signal::raise(signal::SIGINT) {
         Ok(_) => None,
         // We're unable to send the signal, stop rendering to force shutdown
         Err(_) => {
             debug!("unable to send sigint, shutting down");
-            Some(Event::Stop)
+            Some(AppCommand::Stop)
         }
     }
 }

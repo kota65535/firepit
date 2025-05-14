@@ -1,4 +1,4 @@
-use crate::app::event::Direction;
+use crate::app::command::Direction;
 use std::{io::Write, mem};
 
 // Ensure that the scrollback length is sufficient to hold the entire log.

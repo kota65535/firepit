@@ -1,3 +1,3 @@
+pub mod command;
 pub mod cui;
-pub mod event;
 pub mod tui;

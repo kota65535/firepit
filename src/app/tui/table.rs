@@ -1,4 +1,4 @@
-use crate::app::event::{TaskResult, TaskStatus};
+use crate::app::command::{TaskResult, TaskStatus};
 use crate::app::tui::lib::key_help_spans;
 use crate::app::tui::task::Task;
 use indexmap::IndexMap;
