@@ -5,10 +5,10 @@ pub mod logs;
 pub mod output;
 pub mod prefixed;
 
-use crate::cui::color::ColorSelector;
-use crate::cui::lib::ColorConfig;
-use crate::cui::output::{OutputClient, OutputClientBehavior, OutputSink};
-use crate::cui::prefixed::PrefixedWriter;
+use crate::app::cui::color::ColorSelector;
+use crate::app::cui::lib::ColorConfig;
+use crate::app::cui::output::{OutputClient, OutputClientBehavior, OutputSink};
+use crate::app::cui::prefixed::PrefixedWriter;
 use crate::event::{Event, EventReceiver};
 use crate::event::{EventSender, TaskResult};
 use crate::signal::SignalHandler;

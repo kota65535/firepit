@@ -1,6 +1,6 @@
+mod app;
 mod cli;
 mod config;
-mod cui;
 mod event;
 mod graph;
 mod log;
@@ -11,7 +11,6 @@ mod project;
 mod runner;
 mod signal;
 mod template;
-mod tui;
 mod util;
 mod watcher;
 

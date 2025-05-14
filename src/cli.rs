@@ -1,11 +1,11 @@
+use crate::app::cui::lib::BOLD;
+use crate::app::cui::CuiApp;
+use crate::app::tui::TuiApp;
 use crate::config::{ProjectConfig, UI};
-use crate::cui::lib::BOLD;
-use crate::cui::CuiApp;
 use crate::log::init_logger;
 use crate::project::Workspace;
 use crate::runner::TaskRunner;
 use crate::tokio_spawn;
-use crate::tui::TuiApp;
 use crate::watcher::FileWatcher;
 use clap::Parser;
 use itertools::Itertools;
