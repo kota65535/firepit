@@ -1,6 +1,6 @@
-use crate::tui::app::LayoutSections;
 use crate::tui::lib::key_help_spans;
 use crate::tui::task::Task;
+use crate::tui::LayoutSections;
 use itertools::Itertools;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Stylize};
