@@ -120,7 +120,7 @@ impl CuiApp {
         Ok(exit_code)
     }
 
-    pub fn sender(&self) -> AppCommandChannel {
+    pub fn command_tx(&self) -> AppCommandChannel {
         self.command_tx.clone()
     }
 }
