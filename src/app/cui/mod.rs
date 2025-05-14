@@ -11,7 +11,7 @@ use crate::app::cui::color::ColorSelector;
 use crate::app::cui::lib::ColorConfig;
 use crate::app::cui::output::{OutputClient, OutputClientBehavior, OutputSink};
 use crate::app::cui::prefixed::PrefixedWriter;
-use crate::signal::SignalHandler;
+use crate::app::signal::SignalHandler;
 use crate::tokio_spawn;
 use anyhow::Context;
 use std::collections::{HashMap, HashSet};

@@ -9,7 +9,7 @@ use std::path::Path;
 use firepit::app::command::{AppCommand, AppCommandChannel};
 use firepit::config::ProjectConfig;
 use firepit::project::Workspace;
-use firepit::watcher::FileWatcher;
+use firepit::runner::watcher::FileWatcher;
 use rstest::rstest;
 use std::sync::{LazyLock, Once};
 use std::time::Duration;

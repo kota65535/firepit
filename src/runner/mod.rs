@@ -1,10 +1,10 @@
 use crate::app::command::{AppCommandChannel, TaskResult};
+use crate::app::signal::SignalHandler;
 use crate::config::Restart;
-use crate::graph::{CallbackMessage, TaskGraph, VisitorHandle, VisitorMessage};
 use crate::probe::Probe;
 use crate::process::{Child, ChildExit, Command, ProcessManager};
 use crate::project::{Task, Workspace};
-use crate::signal::SignalHandler;
+use crate::runner::graph::{CallbackMessage, TaskGraph, VisitorHandle, VisitorMessage};
 use crate::tokio_spawn;
 use anyhow::Context;
 use futures::stream::FuturesUnordered;
@@ -18,6 +18,9 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::{broadcast, watch};
 use tokio::task::JoinHandle;
 use tracing::{debug, info, warn};
+
+pub mod graph;
+pub mod watcher;
 
 #[derive(Debug)]
 pub struct TaskRunner {
