@@ -1,6 +1,6 @@
+use crate::app::event::{TaskResult, TaskStatus};
 use crate::app::tui::lib::key_help_spans;
 use crate::app::tui::task::Task;
-use crate::event::{TaskResult, TaskStatus};
 use indexmap::IndexMap;
 use ratatui::text::Line;
 use ratatui::{

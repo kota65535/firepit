@@ -1,7 +1,6 @@
 pub mod app;
 pub mod cli;
 pub mod config;
-pub mod event;
 pub mod graph;
 pub mod log;
 pub mod panic;

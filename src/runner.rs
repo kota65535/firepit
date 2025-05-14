@@ -1,5 +1,5 @@
+use crate::app::event::{EventSender, TaskResult};
 use crate::config::Restart;
-use crate::event::{EventSender, TaskResult};
 use crate::graph::{CallbackMessage, TaskGraph, VisitorHandle, VisitorMessage};
 use crate::probe::Probe;
 use crate::process::{Child, ChildExit, Command, ProcessManager};

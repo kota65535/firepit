@@ -6,8 +6,8 @@ use std::io::Write;
 use std::path;
 use std::path::Path;
 
+use firepit::app::event::{Event, EventSender};
 use firepit::config::ProjectConfig;
-use firepit::event::{Event, EventSender};
 use firepit::project::Workspace;
 use firepit::watcher::FileWatcher;
 use rstest::rstest;

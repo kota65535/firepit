@@ -1,6 +1,6 @@
+use crate::app::event::{Event, ScrollSize};
 use crate::app::tui::lib::RingBuffer;
 use crate::app::tui::LayoutSections;
-use crate::event::{Event, ScrollSize};
 use crate::tokio_spawn;
 use crossterm::event::{EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use futures::StreamExt;
