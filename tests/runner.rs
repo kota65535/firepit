@@ -442,19 +442,19 @@ async fn run_task_inner(
     let ws = Workspace::new(&root, &children, &tasks, &path, &vars, &env)?;
     // Create runner
     let mut runner = TaskRunner::new(&ws)?;
-    let (command_tx, command_rx) = AppCommandChannel::new();
+    let (app_tx, app_rx) = AppCommandChannel::new();
 
     let manager = runner.manager.clone();
     let cancel_tx = runner.cancel_tx.clone();
 
     // Start runner
     let runner_fut = tokio::spawn(async move {
-        runner.start(&command_tx, true).await.ok();
+        runner.start(&app_tx, true).await.ok();
     });
 
     // Handle events and assert task statuses
     handle_events(
-        command_rx,
+        app_rx,
         cancel_tx,
         status_expected,
         outputs_expected,
@@ -499,27 +499,27 @@ async fn run_task_with_watch<F>(
 
     // Create runner
     let mut runner = TaskRunner::new(&ws).unwrap();
-    let (runner_command_tx, runner_command_rx) = AppCommandChannel::new();
+    let (app_tx, app_rx) = AppCommandChannel::new();
 
     // Create watch runner
     let mut watch_runner = runner.clone();
-    let watcher_command_tx = runner_command_tx.clone();
+    let watcher_tx = app_tx.clone();
 
     let manager = runner.manager.clone();
     let cancel_tx = runner.cancel_tx.clone();
 
     // Start runner
-    let runner_fut = tokio::spawn(async move { runner.start(&runner_command_tx, true).await.ok() });
+    let runner_fut = tokio::spawn(async move { runner.start(&app_tx, true).await.ok() });
 
     // Start watch runner
-    let watcher_fut = tokio::spawn(async move { watch_runner.watch(fwh.rx, watcher_command_tx).await.ok() });
+    let watcher_fut = tokio::spawn(async move { watch_runner.watch(fwh.rx, watcher_tx).await.ok() });
 
     // Do something in this closure, ex: create or update files
     tokio::spawn(async move { f.await });
 
     // Handle events and assert task statuses
     handle_events(
-        runner_command_rx,
+        app_rx,
         cancel_tx,
         status_expected,
         outputs_expected,
@@ -539,7 +539,7 @@ async fn run_task_with_watch<F>(
 const DEFAULT_TEST_TIMEOUT_SECONDS: u64 = 10;
 
 fn handle_events(
-    mut rx: UnboundedReceiver<AppCommand>,
+    mut app_rx: UnboundedReceiver<AppCommand>,
     cancel_tx: watch::Sender<()>,
     statuses_expected: HashMap<String, String>,
     outputs_expected: Option<HashMap<String, String>>,
@@ -565,7 +565,7 @@ fn handle_events(
                 _ = timeout_rx.changed() => {
                     break
                 }
-                Some(event) = rx.recv() => {
+                Some(event) = app_rx.recv() => {
                     match event {
                         AppCommand::StartTask { task, pid: _, restart, max_restart: _, reload } => {
                             restarts.insert(task.clone(), restart);
