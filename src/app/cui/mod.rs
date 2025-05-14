@@ -1,10 +1,17 @@
-use crate::cui::color::ColorSelector;
-use crate::cui::lib::ColorConfig;
-use crate::cui::output::{OutputClient, OutputClientBehavior, OutputSink};
-use crate::cui::prefixed::PrefixedWriter;
-use crate::event::{Event, EventReceiver};
-use crate::event::{EventSender, TaskResult};
-use crate::signal::SignalHandler;
+pub mod color;
+pub mod lib;
+pub mod line;
+pub mod logs;
+pub mod output;
+pub mod prefixed;
+
+use crate::app::command::AppCommand;
+use crate::app::command::{AppCommandChannel, TaskResult};
+use crate::app::cui::color::ColorSelector;
+use crate::app::cui::lib::ColorConfig;
+use crate::app::cui::output::{OutputClient, OutputClientBehavior, OutputSink};
+use crate::app::cui::prefixed::PrefixedWriter;
+use crate::app::signal::SignalHandler;
 use crate::tokio_spawn;
 use anyhow::Context;
 use std::collections::{HashMap, HashSet};
@@ -16,8 +23,8 @@ use tracing::debug;
 pub struct CuiApp {
     color_selector: ColorSelector,
     output_clients: Arc<RwLock<HashMap<String, OutputClient<PrefixedWriter<Stdout>>>>>,
-    sender: EventSender,
-    receiver: EventReceiver,
+    command_tx: AppCommandChannel,
+    command_rx: mpsc::UnboundedReceiver<AppCommand>,
     signal_handler: SignalHandler,
     target_tasks: Vec<String>,
     labels: HashMap<String, String>,
@@ -26,12 +33,12 @@ pub struct CuiApp {
 
 impl CuiApp {
     pub fn new(target_tasks: &Vec<String>, labels: &HashMap<String, String>, no_quit: bool) -> anyhow::Result<Self> {
-        let (tx, rx) = mpsc::unbounded_channel();
+        let (command_tx, command_rx) = AppCommandChannel::new();
         Ok(Self {
             color_selector: ColorSelector::default(),
             output_clients: Arc::new(RwLock::new(HashMap::new())),
-            sender: EventSender::new(tx),
-            receiver: EventReceiver::new(rx),
+            command_tx,
+            command_rx,
             signal_handler: SignalHandler::infer()?,
             target_tasks: target_tasks.clone(),
             labels: labels.clone(),
@@ -61,7 +68,7 @@ impl CuiApp {
 
     pub async fn run(&mut self) -> anyhow::Result<i32> {
         let signal_handler = self.signal_handler.clone();
-        let sender = self.sender.clone();
+        let sender = self.command_tx.clone();
         tokio_spawn!("cui-canceller", async move {
             let subscriber = signal_handler.subscribe();
             if let Some(subscriber) = subscriber {
@@ -71,10 +78,10 @@ impl CuiApp {
         });
         let mut failure = false;
         let mut task_remaining: HashSet<String> = self.target_tasks.iter().cloned().collect();
-        while let Some(event) = self.receiver.recv().await {
+        while let Some(event) = self.command_rx.recv().await {
             match event {
-                Event::StartTask { task, .. } => self.register_output_client(&task),
-                Event::TaskOutput { task, output } => {
+                AppCommand::StartTask { task, .. } => self.register_output_client(&task),
+                AppCommand::TaskOutput { task, output } => {
                     let output_clients = self.output_clients.read().expect("lock poisoned");
                     let output_client = output_clients.get(&task).context("output client not found")?;
                     output_client
@@ -82,7 +89,7 @@ impl CuiApp {
                         .write_all(output.as_slice())
                         .context("failed to write to stdout")?;
                 }
-                Event::FinishTask { task, result } => {
+                AppCommand::FinishTask { task, result } => {
                     debug!("Task {:?} finished", task);
                     let message = match result {
                         TaskResult::Failure(code) => Some(format!("Process finished with exit code {code}")),
@@ -96,8 +103,8 @@ impl CuiApp {
                     task_remaining.remove(&task);
                     debug!("Target tasks remaining: {:?}", task_remaining);
                 }
-                Event::Stop => break,
-                Event::Done if !self.no_quit => break,
+                AppCommand::Stop => break,
+                AppCommand::Done if !self.no_quit => break,
                 _ => {}
             }
             if !self.no_quit && task_remaining.is_empty() {
@@ -109,7 +116,7 @@ impl CuiApp {
         Ok(exit_code)
     }
 
-    pub fn sender(&self) -> EventSender {
-        self.sender.clone()
+    pub fn sender(&self) -> AppCommandChannel {
+        self.command_tx.clone()
     }
 }

@@ -1,5 +1,5 @@
+use crate::app::tui::FRAME_RATE;
 use crate::tokio_spawn;
-use crate::tui::app::FRAME_RATE;
 use std::io;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
@@ -7,10 +7,9 @@ use tokio::sync::{mpsc, oneshot};
 use tracing::warn;
 
 #[derive(strum::AsRefStr)]
-
-pub enum Event {
+pub enum AppCommand {
     ///
-    /// Task Events
+    /// Task Commands
     ///
     PlanTask {
         task: String,
@@ -41,7 +40,7 @@ pub enum Event {
     Done,
 
     ///
-    /// UI Events
+    /// UI Commands
     ///
     Up,
     Down,
@@ -52,7 +51,7 @@ pub enum Event {
     Tick,
 
     ///
-    /// Interaction Events
+    /// Interaction Commands
     ///
     EnterInteractive,
     ExitInteractive,
@@ -61,7 +60,7 @@ pub enum Event {
     },
 
     ///
-    /// Mouse Events
+    /// Mouse Commands
     ///
     Mouse(crossterm::event::MouseEvent),
     MouseMultiClick(crossterm::event::MouseEvent, usize),
@@ -72,7 +71,7 @@ pub enum Event {
     },
 
     ///
-    /// Search Events
+    /// Search Commands
     ///
     EnterSearch,
     SearchInputChar(char),
@@ -103,46 +102,36 @@ pub struct PaneSize {
     pub cols: u16,
 }
 
-pub struct EventReceiver {
-    rx: mpsc::UnboundedReceiver<Event>,
-}
-
-impl EventReceiver {
-    pub fn new(rx: mpsc::UnboundedReceiver<Event>) -> Self {
-        Self { rx }
-    }
-
-    pub async fn recv(&mut self) -> Option<Event> {
-        self.rx.recv().await
-    }
-}
-
 #[derive(Debug, Clone)]
-pub struct EventSender {
-    pub tx: mpsc::UnboundedSender<Event>,
+pub struct AppCommandChannel {
+    pub tx: mpsc::UnboundedSender<AppCommand>,
     name: String,
     logs: Arc<Mutex<Vec<u8>>>,
     log_subscribers: Vec<mpsc::UnboundedSender<Vec<u8>>>,
 }
 
-impl EventSender {
-    pub fn new(tx: mpsc::UnboundedSender<Event>) -> Self {
+impl AppCommandChannel {
+    pub fn new() -> (Self, mpsc::UnboundedReceiver<AppCommand>) {
+        let (tx, rx) = mpsc::unbounded_channel();
         let tick_sender = tx.clone();
         tokio_spawn!("tick", async move {
             let mut interval = tokio::time::interval(FRAME_RATE);
             loop {
                 interval.tick().await;
-                if tick_sender.send(Event::Tick).is_err() {
+                if tick_sender.send(AppCommand::Tick).is_err() {
                     break;
                 }
             }
         });
-        Self {
-            tx,
-            name: "".to_string(),
-            logs: Default::default(),
-            log_subscribers: Default::default(),
-        }
+        (
+            Self {
+                tx,
+                name: "".to_string(),
+                logs: Default::default(),
+                log_subscribers: Default::default(),
+            },
+            rx,
+        )
     }
 
     pub fn with_name(&mut self, name: &str) -> Self {
@@ -151,11 +140,11 @@ impl EventSender {
     }
 
     pub fn plan_task(&self, task: &str) {
-        self.send(Event::PlanTask { task: task.to_string() })
+        self.send(AppCommand::PlanTask { task: task.to_string() })
     }
 
     pub fn start_task(&self, task: String, pid: u32, restart: u64, max_restart: Option<u64>, reload: u64) {
-        self.send(Event::StartTask {
+        self.send(AppCommand::StartTask {
             task,
             pid,
             restart,
@@ -165,37 +154,37 @@ impl EventSender {
     }
 
     pub fn ready_task(&self) {
-        self.send(Event::ReadyTask {
+        self.send(AppCommand::ReadyTask {
             task: self.name.to_string(),
         })
     }
 
     pub fn finish_task(&self, result: TaskResult) {
-        self.send(Event::FinishTask {
+        self.send(AppCommand::FinishTask {
             task: self.name.clone(),
             result,
         })
     }
 
     pub fn output(&self, task: String, output: Vec<u8>) {
-        self.send(Event::TaskOutput { task, output })
+        self.send(AppCommand::TaskOutput { task, output })
     }
 
     pub fn set_stdin(&self, task: String, stdin: Box<dyn Write + Send>) {
-        self.send(Event::SetStdin { task, stdin })
+        self.send(AppCommand::SetStdin { task, stdin })
     }
 
     pub async fn done(&self) {
-        self.send(Event::Done);
+        self.send(AppCommand::Done);
     }
 
     pub async fn stop(&self) {
-        self.send(Event::Stop);
+        self.send(AppCommand::Stop);
     }
 
     pub async fn pane_size(&self) -> Option<PaneSize> {
         let (callback_tx, callback_rx) = oneshot::channel();
-        self.send(Event::PaneSizeQuery(callback_tx));
+        self.send(AppCommand::PaneSizeQuery(callback_tx));
         match callback_rx.await {
             Ok(size) => Some(size),
             Err(e) => {
@@ -211,7 +200,7 @@ impl EventSender {
         rx
     }
 
-    pub fn send(&self, event: Event) {
+    pub fn send(&self, event: AppCommand) {
         match self.tx.send(event) {
             Err(e) => {
                 warn!("Task {:?} failed to send {} event: {:?}", self.name, e.0.as_ref(), e);
@@ -225,7 +214,7 @@ impl EventSender {
     }
 }
 
-impl Write for EventSender {
+impl Write for AppCommandChannel {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let task = self.name.clone();
         {

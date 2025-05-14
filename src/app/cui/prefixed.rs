@@ -1,5 +1,5 @@
-use crate::cui::lib::ColorConfig;
-use crate::cui::line::LineWriter;
+use crate::app::cui::lib::ColorConfig;
+use crate::app::cui::line::LineWriter;
 use console::StyledObject;
 use std::{fmt::Display, io::Write};
 

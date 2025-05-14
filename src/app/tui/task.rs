@@ -1,6 +1,6 @@
-use crate::cui::lib::BOLD;
-use crate::event::{TaskResult, TaskStatus};
-use crate::tui::term_output::TerminalOutput;
+use crate::app::command::{TaskResult, TaskStatus};
+use crate::app::cui::lib::BOLD;
+use crate::app::tui::term_output::TerminalOutput;
 use std::io::Write;
 
 pub struct Task {

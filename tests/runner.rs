@@ -6,15 +6,15 @@ use std::io::Write;
 use std::path;
 use std::path::Path;
 
+use firepit::app::command::{AppCommand, AppCommandChannel};
 use firepit::config::ProjectConfig;
-use firepit::event::{Event, EventSender};
 use firepit::project::Workspace;
-use firepit::watcher::FileWatcher;
+use firepit::runner::watcher::FileWatcher;
 use rstest::rstest;
 use std::sync::{LazyLock, Once};
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tracing_subscriber::EnvFilter;
 
@@ -442,20 +442,19 @@ async fn run_task_inner(
     let ws = Workspace::new(&root, &children, &tasks, &path, &vars, &env)?;
     // Create runner
     let mut runner = TaskRunner::new(&ws)?;
-    let (tx, rx) = mpsc::unbounded_channel();
-    let sender = EventSender::new(tx);
+    let (app_tx, app_rx) = AppCommandChannel::new();
 
     let manager = runner.manager.clone();
     let cancel_tx = runner.cancel_tx.clone();
 
     // Start runner
     let runner_fut = tokio::spawn(async move {
-        runner.start(&sender, true).await.ok();
+        runner.start(&app_tx, true).await.ok();
     });
 
     // Handle events and assert task statuses
     handle_events(
-        rx,
+        app_rx,
         cancel_tx,
         status_expected,
         outputs_expected,
@@ -500,28 +499,27 @@ async fn run_task_with_watch<F>(
 
     // Create runner
     let mut runner = TaskRunner::new(&ws).unwrap();
-    let (tx, rx) = mpsc::unbounded_channel();
-    let runner_app_tx = EventSender::new(tx);
+    let (app_tx, app_rx) = AppCommandChannel::new();
 
     // Create watch runner
     let mut watch_runner = runner.clone();
-    let watch_app_tx = runner_app_tx.clone();
+    let watcher_tx = app_tx.clone();
 
     let manager = runner.manager.clone();
     let cancel_tx = runner.cancel_tx.clone();
 
     // Start runner
-    let runner_fut = tokio::spawn(async move { runner.start(&runner_app_tx, true).await.ok() });
+    let runner_fut = tokio::spawn(async move { runner.start(&app_tx, true).await.ok() });
 
     // Start watch runner
-    let watcher_fut = tokio::spawn(async move { watch_runner.watch(fwh.rx, watch_app_tx).await.ok() });
+    let watcher_fut = tokio::spawn(async move { watch_runner.watch(fwh.rx, watcher_tx).await.ok() });
 
     // Do something in this closure, ex: create or update files
     tokio::spawn(async move { f.await });
 
     // Handle events and assert task statuses
     handle_events(
-        rx,
+        app_rx,
         cancel_tx,
         status_expected,
         outputs_expected,
@@ -541,7 +539,7 @@ async fn run_task_with_watch<F>(
 const DEFAULT_TEST_TIMEOUT_SECONDS: u64 = 10;
 
 fn handle_events(
-    mut rx: UnboundedReceiver<Event>,
+    mut app_rx: UnboundedReceiver<AppCommand>,
     cancel_tx: watch::Sender<()>,
     statuses_expected: HashMap<String, String>,
     outputs_expected: Option<HashMap<String, String>>,
@@ -567,22 +565,22 @@ fn handle_events(
                 _ = timeout_rx.changed() => {
                     break
                 }
-                Some(event) = rx.recv() => {
+                Some(event) = app_rx.recv() => {
                     match event {
-                        Event::StartTask { task, pid: _, restart, max_restart: _, reload } => {
+                        AppCommand::StartTask { task, pid: _, restart, max_restart: _, reload } => {
                             restarts.insert(task.clone(), restart);
                             runs.insert(task.clone(), reload);
                         }
-                        Event::ReadyTask { task } => {
+                        AppCommand::ReadyTask { task } => {
                             statuses.insert(task, String::from("Ready"));
                         }
-                        Event::FinishTask { task, result } => {
+                        AppCommand::FinishTask { task, result } => {
                             statuses.insert(task, format!("Finished: {:?}", result));
                         }
-                        Event::Stop => {
+                        AppCommand::Stop => {
                             break;
                         }
-                        Event::TaskOutput { task, output } => {
+                        AppCommand::TaskOutput { task, output } => {
                             let str = String::from_utf8(output.clone()).unwrap();
                             match outputs.get(&task) {
                                 Some(t) => {

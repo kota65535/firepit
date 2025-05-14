@@ -1,15 +1,26 @@
-use crate::event::{Direction, PaneSize, ScrollSize, TaskRun, TaskStatus};
-use crate::event::{Event, TaskResult};
-use crate::event::{EventReceiver, EventSender};
-use crate::tui::clipboard::copy_to_clipboard;
-use crate::tui::input::{InputHandler, InputOptions};
-use crate::tui::pane::{TerminalPane, TerminalScroll};
-use crate::tui::search::{Match, SearchResults};
-use crate::tui::size::SizeInfo;
-use crate::tui::table::TaskTable;
-use crate::tui::task::Task;
-use crate::tui::term_output::TerminalOutput;
+mod clipboard;
+mod input;
+mod lib;
+mod pane;
+mod search;
+mod size;
+mod table;
+mod task;
+mod term_output;
+
+use crate::app::command::AppCommandChannel;
+use crate::app::command::{AppCommand, TaskResult};
+use crate::app::command::{Direction, PaneSize, ScrollSize, TaskRun, TaskStatus};
+use crate::app::tui::clipboard::copy_to_clipboard;
+use crate::app::tui::input::{InputHandler, InputOptions};
+use crate::app::tui::pane::{TerminalPane, TerminalScroll};
+use crate::app::tui::search::{Match, SearchResults};
+use crate::app::tui::size::SizeInfo;
+use crate::app::tui::table::TaskTable;
+use crate::app::tui::task::Task;
+use crate::app::tui::term_output::TerminalOutput;
 use anyhow::Context;
+use futures::channel::mpsc::UnboundedReceiver;
 use indexmap::IndexMap;
 use ratatui::widgets::ScrollbarState;
 use ratatui::{
@@ -41,10 +52,10 @@ pub enum LayoutSections {
 pub struct TuiApp {
     terminal: Terminal<CrosstermBackend<Stdout>>,
     crossterm_rx: mpsc::Receiver<crossterm::event::Event>,
-    sender: EventSender,
-    state: TuiAppState,
-    receiver: EventReceiver,
+    command_tx: AppCommandChannel,
+    command_rx: mpsc::UnboundedReceiver<AppCommand>,
     input_handler: InputHandler,
+    state: TuiAppState,
 }
 
 pub struct TuiAppState {
@@ -65,8 +76,6 @@ impl TuiApp {
         dep_tasks: &Vec<String>,
         labels: &HashMap<String, String>,
     ) -> anyhow::Result<Self> {
-        let (tx, rx) = mpsc::unbounded_channel();
-
         let terminal = Self::setup_terminal()?;
         let rect = terminal.size()?;
 
@@ -107,11 +116,13 @@ impl TuiApp {
         let input_handler = InputHandler::new();
         let crossterm_rx = input_handler.start();
 
+        let (command_tx, command_rx) = AppCommandChannel::new();
+
         Ok(Self {
             terminal,
             crossterm_rx,
-            sender: EventSender::new(tx),
-            receiver: EventReceiver::new(rx),
+            command_tx,
+            command_rx,
             input_handler,
             state: TuiAppState {
                 size,
@@ -150,8 +161,8 @@ impl TuiApp {
         Ok(terminal)
     }
 
-    pub fn sender(&self) -> EventSender {
-        self.sender.clone()
+    pub fn sender(&self) -> AppCommandChannel {
+        self.command_tx.clone()
     }
 
     pub async fn run(&mut self) -> anyhow::Result<i32> {
@@ -172,10 +183,10 @@ impl TuiApp {
         let mut needs_rerender = true;
         while let Some(event) = self.poll().await? {
             // If we only receive ticks, then there's been no state change so no update needed
-            if !matches!(event, Event::Tick) {
+            if !matches!(event, AppCommand::Tick) {
                 needs_rerender = true;
             }
-            if matches!(event, Event::Resize { .. }) {
+            if matches!(event, AppCommand::Resize { .. }) {
                 self.terminal.autoresize()?;
             }
             callback = self.state.update(event)?;
@@ -194,11 +205,11 @@ impl TuiApp {
 
     /// Blocking poll for events, will only return None if app handle has been
     /// dropped
-    async fn poll<'a>(&mut self) -> anyhow::Result<Option<Event>> {
+    async fn poll<'a>(&mut self) -> anyhow::Result<Option<AppCommand>> {
         let input_closed = self.crossterm_rx.is_closed();
 
         if input_closed {
-            Ok(self.receiver.recv().await)
+            Ok(self.command_rx.recv().await)
         } else {
             let mut event = None;
             loop {
@@ -209,7 +220,7 @@ impl TuiApp {
                             event = self.input_handler.handle(e, options);
                         }
                     }
-                    e = self.receiver.recv() => {
+                    e = self.command_rx.recv() => {
                         event = e;
                     }
                 }
@@ -718,12 +729,12 @@ impl TuiAppState {
         Ok(())
     }
 
-    fn update(&mut self, event: Event) -> anyhow::Result<Option<oneshot::Sender<()>>> {
+    fn update(&mut self, event: AppCommand) -> anyhow::Result<Option<oneshot::Sender<()>>> {
         match event {
-            Event::PlanTask { task } => {
+            AppCommand::PlanTask { task } => {
                 self.plan_task(&task);
             }
-            Event::StartTask {
+            AppCommand::StartTask {
                 task,
                 pid,
                 restart,
@@ -732,20 +743,20 @@ impl TuiAppState {
             } => {
                 self.start_task(&task, pid, restart, max_restart, reload);
             }
-            Event::TaskOutput { task, output } => {
+            AppCommand::TaskOutput { task, output } => {
                 self.process_output(&task, &output)?;
             }
-            Event::ReadyTask { task } => {
+            AppCommand::ReadyTask { task } => {
                 self.ready_task(&task);
             }
-            Event::FinishTask { task, result } => {
+            AppCommand::FinishTask { task, result } => {
                 self.finish_task(&task, result);
                 self.insert_stdin(&task, None)?;
             }
-            Event::SetStdin { task, stdin } => {
+            AppCommand::SetStdin { task, stdin } => {
                 self.insert_stdin(&task, Some(stdin))?;
             }
-            Event::PaneSizeQuery(callback) => {
+            AppCommand::PaneSizeQuery(callback) => {
                 // If caller has already hung up do nothing
                 callback
                     .send(PaneSize {
@@ -754,74 +765,74 @@ impl TuiAppState {
                     })
                     .ok();
             }
-            Event::Done => {
+            AppCommand::Done => {
                 self.runner_done = true;
             }
-            Event::Stop => {
+            AppCommand::Stop => {
                 self.done = true;
             }
-            Event::Tick => {
+            AppCommand::Tick => {
                 // self.table.tick();
             }
-            Event::Up => {
+            AppCommand::Up => {
                 self.exit_search()?;
                 self.select_previous_task();
             }
-            Event::Down => {
+            AppCommand::Down => {
                 self.exit_search()?;
                 self.select_next_task();
             }
-            Event::ScrollUp(size) => {
+            AppCommand::ScrollUp(size) => {
                 self.scroll_terminal_output(Direction::Up, self.scroll_size(size))?;
             }
-            Event::ScrollDown(size) => {
+            AppCommand::ScrollDown(size) => {
                 self.scroll_terminal_output(Direction::Down, self.scroll_size(size))?;
             }
-            Event::ToggleSidebar => {
+            AppCommand::ToggleSidebar => {
                 self.has_sidebar = !self.has_sidebar;
                 self.resize(self.size.rows(), self.size.cols());
             }
-            Event::EnterInteractive => {
+            AppCommand::EnterInteractive => {
                 self.interact()?;
             }
-            Event::ExitInteractive => {
+            AppCommand::ExitInteractive => {
                 self.interact()?;
             }
-            Event::Input { bytes } => {
+            AppCommand::Input { bytes } => {
                 self.forward_input(&bytes)?;
             }
-            Event::Mouse(m) => {
+            AppCommand::Mouse(m) => {
                 self.handle_mouse(m, 1)?;
             }
-            Event::MouseMultiClick(m, n) => {
+            AppCommand::MouseMultiClick(m, n) => {
                 self.handle_mouse(m, n)?;
             }
-            Event::CopySelection => {
+            AppCommand::CopySelection => {
                 self.copy_selection()?;
                 self.clear_selection()?;
             }
-            Event::Resize { rows, cols } => {
+            AppCommand::Resize { rows, cols } => {
                 self.resize(rows, cols);
             }
-            Event::EnterSearch => {
+            AppCommand::EnterSearch => {
                 self.enter_search()?;
             }
-            Event::SearchInputChar(c) => {
+            AppCommand::SearchInputChar(c) => {
                 self.search_input_char(c)?;
             }
-            Event::SearchBackspace => {
+            AppCommand::SearchBackspace => {
                 self.search_remove_char()?;
             }
-            Event::SearchRun => {
+            AppCommand::SearchRun => {
                 self.run_search()?;
             }
-            Event::SearchNext => {
+            AppCommand::SearchNext => {
                 self.next_search_result()?;
             }
-            Event::SearchPrevious => {
+            AppCommand::SearchPrevious => {
                 self.previous_search_result()?;
             }
-            Event::ExitSearch => {
+            AppCommand::ExitSearch => {
                 self.exit_search()?;
             }
         }

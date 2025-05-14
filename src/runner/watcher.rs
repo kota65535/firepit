@@ -1,4 +1,4 @@
-use crate::signal::SignalHandler;
+use crate::app::signal::SignalHandler;
 use crate::tokio_spawn;
 use notify::Watcher;
 use std::collections::HashSet;

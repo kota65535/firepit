@@ -1,19 +1,4 @@
-mod cli;
-mod config;
-mod cui;
-mod event;
-mod graph;
-mod log;
-mod panic;
-mod probe;
-mod process;
-mod project;
-mod runner;
-mod signal;
-mod template;
-mod tui;
-mod util;
-mod watcher;
+use firepit::{cli, panic};
 
 #[tokio::main]
 async fn main() {
