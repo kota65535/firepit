@@ -103,7 +103,7 @@ impl CuiApp {
                     task_remaining.remove(&task);
                     debug!("Target tasks remaining: {:?}", task_remaining);
                 }
-                AppCommand::Stop => break,
+                AppCommand::Abort => break,
                 AppCommand::Done if !self.no_quit => break,
                 _ => {}
             }
@@ -116,7 +116,7 @@ impl CuiApp {
         Ok(exit_code)
     }
 
-    pub fn sender(&self) -> AppCommandChannel {
+    pub fn command_tx(&self) -> AppCommandChannel {
         self.command_tx.clone()
     }
 }

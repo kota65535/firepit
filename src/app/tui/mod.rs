@@ -19,6 +19,7 @@ use crate::app::tui::size::SizeInfo;
 use crate::app::tui::table::TaskTable;
 use crate::app::tui::task::Task;
 use crate::app::tui::term_output::TerminalOutput;
+use crate::app::FRAME_RATE;
 use anyhow::Context;
 use futures::channel::mpsc::UnboundedReceiver;
 use indexmap::IndexMap;
@@ -39,8 +40,6 @@ use tokio::{
     time::Instant,
 };
 use tracing::{debug, error, info};
-
-pub const FRAME_RATE: Duration = Duration::from_millis(3);
 
 #[derive(Debug, Clone)]
 pub enum LayoutSections {
@@ -161,7 +160,7 @@ impl TuiApp {
         Ok(terminal)
     }
 
-    pub fn sender(&self) -> AppCommandChannel {
+    pub fn command_tx(&self) -> AppCommandChannel {
         self.command_tx.clone()
     }
 
@@ -768,8 +767,13 @@ impl TuiAppState {
             AppCommand::Done => {
                 self.runner_done = true;
             }
-            AppCommand::Stop => {
+            AppCommand::Abort => {
                 self.done = true;
+            }
+            AppCommand::Quit => {
+                if self.runner_done {
+                    self.done = true;
+                }
             }
             AppCommand::Tick => {
                 // self.table.tick();
