@@ -98,14 +98,69 @@ impl TaskRunner {
         })
     }
 
+    pub fn command_tx(&self) -> RunnerCommandChannel {
+        self.command_tx.clone()
+    }
+
     pub async fn start(&mut self, app_tx: &AppCommandChannel, no_quit: bool) -> anyhow::Result<()> {
         // Set pty size if possible
         if let Some(pane_size) = app_tx.pane_size().await {
             self.manager.set_pty_size(pane_size.rows, pane_size.cols).await;
         }
 
-        let task_graph = self.task_graph.clone();
-        self.run(&task_graph, &app_tx, no_quit, 0).await
+        // Run visitor
+        let visitor = self
+            .task_graph
+            .visit(self.concurrency, no_quit)
+            .context("error while visiting task graph")?;
+
+        let cancel_visitor = visitor.cancel.clone();
+        let mut command_rx = self.command_rx.resubscribe();
+        let mut this = self.clone();
+        let mut app_tx_cloned = app_tx.clone();
+        tokio_spawn!("command", async move {
+            while let Ok(command) = command_rx.recv().await {
+                match command {
+                    RunnerCommand::StopTask { task } => {
+                        info!("Cancelling task: {}", task);
+                        if let Err(err) = this.task_cancel_txs.get(&task).unwrap().send(()) {
+                            warn!("Failed to send cancel task {:?}: {:?}", &task, err);
+                        }
+                        if let Err(e) = this.manager.stop_by_label(&task).await {
+                            warn!("Failed to stop task {:?}: {:?}", &task, e);
+                        }
+                    }
+                    RunnerCommand::RestartTask { task } => {
+                        info!("Cancelling task: {}", task);
+                        if let Err(err) = this.task_cancel_txs.get(&task).unwrap().send(()) {
+                            warn!("Failed to send cancel task {:?}: {:?}", &task, err);
+                        }
+                        if let Err(e) = this.manager.stop_by_label(&task).await {
+                            warn!("Failed to stop task {:?}: {:?}", &task, e);
+                        }
+                        if let Some(task) = this.tasks.iter().find(|t| t.name == task) {
+                            let graph = TaskGraph::new(&vec![task.clone()], Some(&vec![task.name.clone()])).unwrap();
+                            let visitor = graph.visit(this.concurrency, no_quit).unwrap();
+                            let mut this = this.clone();
+                            let app_tx_cloned = app_tx_cloned.clone();
+                            tokio_spawn!("runner-a", { n = 0 }, async move {
+                                this.run(visitor, &app_tx_cloned, true, 0).await
+                            });
+                        }
+                    }
+                    RunnerCommand::Quit => {
+                        debug!("Received quit command, closing runner");
+                        // Cancel visitor and stop all processes
+                        this.manager.stop().await;
+                        if let Err(err) = cancel_visitor.send(()) {
+                            warn!("Failed to send cancel signal: {:?}", err);
+                        }
+                    }
+                }
+            }
+        });
+
+        self.run(visitor, &app_tx, no_quit, 0).await
     }
 
     pub async fn watch(
@@ -124,6 +179,7 @@ impl TaskRunner {
                 Ok(event) = self.command_rx.recv() => {
                     match event {
                         RunnerCommand::Quit => {
+                            debug!("received quit command, closing watcher");
                             tokio_rx.close()
                         }
                         _ => {}
@@ -160,7 +216,8 @@ impl TaskRunner {
                         }
                         info!("Cancelled all tasks");
                         tokio_spawn!("runner", { n = count }, async move {
-                            this.run(&task_graph, &app_tx, true, count).await
+                            let visitor = task_graph.visit(this.concurrency, true).unwrap();
+                            this.run(visitor, &app_tx, true, count).await
                         });
                         count += 1;
                     }
@@ -173,7 +230,7 @@ impl TaskRunner {
 
     async fn run(
         &mut self,
-        task_graph: &TaskGraph,
+        mut visitor_handle: VisitorHandle,
         app_tx: &AppCommandChannel,
         no_quit: bool,
         num_runs: u64,
@@ -184,14 +241,11 @@ impl TaskRunner {
             app_tx.plan_task(t)
         }
 
-        // Run visitor
         let VisitorHandle {
             mut node_rx,
             cancel: cancel_visitor,
             future: mut visitor_fut,
-        } = task_graph
-            .visit(self.concurrency, no_quit)
-            .context("error while visiting task graph")?;
+        } = visitor_handle;
 
         // Task futures
         let mut task_fut = FuturesUnordered::new();
@@ -202,26 +256,6 @@ impl TaskRunner {
             tokio::select! {
                 // Runner command branch
                 Ok(event) = self.command_rx.recv() => {
-                    match event {
-                        RunnerCommand::StopTask { task } => {
-                            info!("Cancelling task: {}", task);
-                            if let Err(err) = self.task_cancel_txs.get(&task).unwrap().send(()) {
-                                warn!("Failed to send cancel task {:?}: {:?}", &task, err);
-                            }
-                            if let Err(e) = self.manager.stop_by_label(&task).await {
-                                warn!("Failed to stop task {:?}: {:?}", &task, e);
-                            }
-                        }
-                        RunnerCommand::Quit => {
-                            info!("Cancelling runner");
-                            // Cancel visitor and stop all processes
-                            self.manager.stop().await;
-                            if let Err(err) = cancel_visitor.send(()) {
-                                warn!("Failed to send cancel signal: {:?}", err);
-                            }
-                            node_rx.close();
-                        }
-                    }
                 }
 
                 // Visitor message branch
