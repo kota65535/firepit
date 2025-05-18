@@ -8,7 +8,6 @@ use tracing::warn;
 
 #[derive(Debug, Clone, strum::AsRefStr)]
 pub enum RunnerCommand {
-    StopTask { task: String },
     Quit,
 }
 
@@ -21,10 +20,6 @@ impl RunnerCommandChannel {
     pub fn new() -> (Self, broadcast::Receiver<RunnerCommand>) {
         let (tx, rx) = broadcast::channel(10);
         (Self { tx }, rx)
-    }
-
-    pub fn stop_task(&self, task: &str) {
-        self.send(RunnerCommand::StopTask { task: task.to_string() })
     }
 
     pub fn quit(&self) {
