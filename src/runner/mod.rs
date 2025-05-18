@@ -5,7 +5,7 @@ use crate::probe::Probe;
 use crate::process::{Child, ChildExit, Command, ProcessManager};
 use crate::project::{Task, Workspace};
 use crate::runner::command::{RunnerCommand, RunnerCommandChannel};
-use crate::runner::graph::{CallbackMessage, TaskGraph, VisitorHandle, VisitorMessage};
+use crate::runner::graph::{CallbackMessage, TaskGraph, VisitorCommand, VisitorHandle, VisitorMessage};
 use crate::tokio_spawn;
 use anyhow::Context;
 use futures::stream::FuturesUnordered;
@@ -98,6 +98,10 @@ impl TaskRunner {
         })
     }
 
+    pub fn command_tx(&self) -> RunnerCommandChannel {
+        self.command_tx.clone()
+    }
+
     pub async fn start(&mut self, app_tx: &AppCommandChannel, no_quit: bool) -> anyhow::Result<()> {
         // Set pty size if possible
         if let Some(pane_size) = app_tx.pane_size().await {
@@ -105,6 +109,7 @@ impl TaskRunner {
         }
 
         let task_graph = self.task_graph.clone();
+
         self.run(&task_graph, &app_tx, no_quit, 0).await
     }
 
@@ -187,7 +192,7 @@ impl TaskRunner {
         // Run visitor
         let VisitorHandle {
             mut node_rx,
-            cancel: cancel_visitor,
+            visitor_tx,
             future: mut visitor_fut,
         } = task_graph
             .visit(self.concurrency, no_quit)
@@ -216,7 +221,7 @@ impl TaskRunner {
                             info!("Cancelling runner");
                             // Cancel visitor and stop all processes
                             self.manager.stop().await;
-                            if let Err(err) = cancel_visitor.send(()) {
+                            if let Err(err) = visitor_tx.send(VisitorCommand::Stop) {
                                 warn!("Failed to send cancel signal: {:?}", err);
                             }
                             node_rx.close();
@@ -237,7 +242,7 @@ impl TaskRunner {
                     let manager = self.manager.clone();
                     let mut cancel_rx = self.task_cancel_rxs.get(&task.name).unwrap().resubscribe();
                     let task_name = task.name.clone();
-                    let cancel_visitor_cloned = cancel_visitor.clone();
+                    let visitor_tx_cloned = visitor_tx.clone();
                     let targets_remaining_cloned = targets_remaining.clone();
                     task_fut.push(tokio_spawn!("task", { name = task_name }, async move {
                         // Skip the task if any dependency task didn't finish successfully
@@ -303,7 +308,7 @@ impl TaskRunner {
                                         if let Err(e) = cancel_probe_tx.send(()) {
                                             warn!("Failed to send cancel probe: {:?}", e)
                                         }
-                                        if let Err(e) = cancel_visitor_cloned.send(()) {
+                                        if let Err(e) = visitor_tx_cloned.send(VisitorCommand::Stop) {
                                             warn!("Failed to send cancel visitor: {:?}", e)
                                         }
                                         app_tx.finish_task(TaskResult::Reloading);
@@ -435,7 +440,7 @@ impl TaskRunner {
         Self::join(&mut task_fut).await?;
         debug!("Tasks finished");
 
-        if let Err(err) = cancel_visitor.send(()) {
+        if let Err(err) = visitor_tx.send(VisitorCommand::Stop) {
             warn!("Failed to send cancel visitor: {:?}", err);
         }
 

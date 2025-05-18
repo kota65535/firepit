@@ -29,9 +29,14 @@ pub struct VisitorMessage {
     pub callback: mpsc::Sender<CallbackMessage>,
 }
 
+#[derive(Debug, Clone)]
+pub enum VisitorCommand {
+    Stop,
+}
+
 pub struct VisitorHandle {
     pub node_rx: mpsc::Receiver<VisitorMessage>,
-    pub cancel: broadcast::Sender<()>,
+    pub visitor_tx: broadcast::Sender<VisitorCommand>,
     pub future: FuturesUnordered<JoinHandle<anyhow::Result<()>>>,
 }
 
@@ -108,7 +113,7 @@ impl TaskGraph {
         // Channel to notify when all its dependency nodes have finished
         let (node_tx, node_rx) = mpsc::channel(max(concurrency, 1));
         // Channel to stop visitor
-        let (cancel_tx, cancel_rx) = broadcast::channel(1);
+        let (visitor_tx, visitor_rx) = broadcast::channel(1);
 
         // Remaining target tasks
         let targets_remaining: HashSet<String> = self.targets.iter().map(|s| s.clone()).collect();
@@ -119,7 +124,7 @@ impl TaskGraph {
         for node_id in self.graph.node_identifiers() {
             let tx = txs.remove(&node_id).context("sender not found")?;
             let node_tx = node_tx.clone();
-            let mut cancel_rx = cancel_rx.resubscribe();
+            let mut visitor_rx = visitor_rx.resubscribe();
 
             let task = self.graph.node_weight(node_id).context("node not found")?.clone();
             let neighbors = self.graph.neighbors_directed(node_id, Direction::Outgoing);
@@ -134,7 +139,7 @@ impl TaskGraph {
 
             let task_name = task.name.clone();
             let targets_remaining_cloned = targets_remaining.clone();
-            let cancel_tx_cloned = cancel_tx.clone();
+            let visitor_tx_cloned = visitor_tx.clone();
             nodes_fut.push(tokio_spawn!("node", { name = task_name }, async move {
                 if dep_tasks.is_empty() {
                     info!("No dependency")
@@ -151,7 +156,7 @@ impl TaskGraph {
 
                 let deps_ok = tokio::select! {
                     // Cancelling branch, quits immediately
-                     _ = cancel_rx.recv() => {
+                     _ = visitor_rx.recv() => {
                         info!("Visitor cancelled");
                         return Ok(())
                      }
@@ -183,10 +188,14 @@ impl TaskGraph {
                             // Loop for restarting service tasks
                             'recv: loop {
                                 tokio::select! {
-                                    // Cancelling branch, quits immediately
-                                    _ = cancel_rx.recv() => {
-                                        info!("Visitor cancelled");
-                                        return Ok(())
+                                    // Visitor command branch
+                                    Ok(command) = visitor_rx.recv() => {
+                                        match command {
+                                            VisitorCommand::Stop => {
+                                                info!("Visitor cancelled");
+                                                return Ok(())
+                                            }
+                                        };
                                     }
                                     // Normal branch, waiting for the node result
                                     result = callback_rx.recv() => {
@@ -248,7 +257,7 @@ impl TaskGraph {
                 };
                 if !no_quit && targets_done {
                     info!("All target node done, cancelling visitors");
-                    cancel_tx_cloned.send(()).ok();
+                    visitor_tx_cloned.send(VisitorCommand::Stop).ok();
                 }
                 Ok(())
             }));
@@ -256,7 +265,7 @@ impl TaskGraph {
 
         Ok(VisitorHandle {
             node_rx,
-            cancel: cancel_tx,
+            visitor_tx,
             future: nodes_fut,
         })
     }
