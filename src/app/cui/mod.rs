@@ -28,11 +28,15 @@ pub struct CuiApp {
     signal_handler: SignalHandler,
     target_tasks: Vec<String>,
     labels: HashMap<String, String>,
-    no_quit: bool,
+    quit_on_done: bool,
 }
 
 impl CuiApp {
-    pub fn new(target_tasks: &Vec<String>, labels: &HashMap<String, String>, no_quit: bool) -> anyhow::Result<Self> {
+    pub fn new(
+        target_tasks: &Vec<String>,
+        labels: &HashMap<String, String>,
+        quit_on_done: bool,
+    ) -> anyhow::Result<Self> {
         let (command_tx, command_rx) = AppCommandChannel::new();
         Ok(Self {
             color_selector: ColorSelector::default(),
@@ -42,7 +46,7 @@ impl CuiApp {
             signal_handler: SignalHandler::infer()?,
             target_tasks: target_tasks.clone(),
             labels: labels.clone(),
-            no_quit,
+            quit_on_done,
         })
     }
 
@@ -104,10 +108,10 @@ impl CuiApp {
                     debug!("Target tasks remaining: {:?}", task_remaining);
                 }
                 AppCommand::Abort => break,
-                AppCommand::Done if !self.no_quit => break,
+                AppCommand::Done if self.quit_on_done => break,
                 _ => {}
             }
-            if !self.no_quit && task_remaining.is_empty() {
+            if self.quit_on_done && task_remaining.is_empty() {
                 debug!("Target tasks all done");
                 break;
             }

@@ -99,7 +99,7 @@ impl TaskGraph {
         }
     }
 
-    pub fn visit(&self, concurrency: usize, no_quit: bool) -> anyhow::Result<VisitorHandle> {
+    pub fn visit(&self, concurrency: usize, quit_on_done: bool) -> anyhow::Result<VisitorHandle> {
         debug!("Visitor started");
         // Each node has a broadcast channel to notify all dependent nodes when it finishes
         let mut txs = HashMap::new();
@@ -255,7 +255,7 @@ impl TaskGraph {
                     t.remove(&task.name);
                     t.is_empty()
                 };
-                if !no_quit && targets_done {
+                if quit_on_done && targets_done {
                     info!("All target node done, cancelling visitors");
                     visitor_tx_cloned.send(VisitorCommand::Stop).ok();
                 }

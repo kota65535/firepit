@@ -102,7 +102,7 @@ impl TaskRunner {
         self.command_tx.clone()
     }
 
-    pub async fn start(&mut self, app_tx: &AppCommandChannel, no_quit: bool) -> anyhow::Result<()> {
+    pub async fn start(&mut self, app_tx: &AppCommandChannel, quit_on_done: bool) -> anyhow::Result<()> {
         // Set pty size if possible
         if let Some(pane_size) = app_tx.pane_size().await {
             self.manager.set_pty_size(pane_size.rows, pane_size.cols).await;
@@ -110,7 +110,7 @@ impl TaskRunner {
 
         let task_graph = self.task_graph.clone();
 
-        self.run(&task_graph, &app_tx, no_quit, 0).await
+        self.run(&task_graph, &app_tx, quit_on_done, 0).await
     }
 
     pub async fn watch(
@@ -165,7 +165,7 @@ impl TaskRunner {
                         }
                         info!("Cancelled all tasks");
                         tokio_spawn!("runner", { n = count }, async move {
-                            this.run(&task_graph, &app_tx, true, count).await
+                            this.run(&task_graph, &app_tx, false, count).await
                         });
                         count += 1;
                     }
@@ -180,7 +180,7 @@ impl TaskRunner {
         &mut self,
         task_graph: &TaskGraph,
         app_tx: &AppCommandChannel,
-        no_quit: bool,
+        quit_on_done: bool,
         num_runs: u64,
     ) -> anyhow::Result<()> {
         info!("Runner started");
@@ -195,7 +195,7 @@ impl TaskRunner {
             visitor_tx,
             future: mut visitor_fut,
         } = task_graph
-            .visit(self.concurrency, no_quit)
+            .visit(self.concurrency, quit_on_done)
             .context("error while visiting task graph")?;
 
         // Task futures

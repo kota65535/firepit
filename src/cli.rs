@@ -109,7 +109,7 @@ pub async fn run() -> anyhow::Result<i32> {
     // Create & start UI
     let (app_tx, app_fut) = match root.ui {
         UI::Cui => {
-            let mut app = CuiApp::new(&runner.target_tasks, &ws.labels(), args.watch)?;
+            let mut app = CuiApp::new(&runner.target_tasks, &ws.labels(), !args.watch)?;
             let command_tx = app.command_tx();
             let fut = tokio_spawn!("app", async move { app.run().await });
             (command_tx, fut)
@@ -135,7 +135,7 @@ pub async fn run() -> anyhow::Result<i32> {
         });
 
         // Start normal task runner
-        let runner_fut = tokio_spawn!("runner", { n = 0 }, async move { runner.start(&app_tx, true).await });
+        let runner_fut = tokio_spawn!("runner", { n = 0 }, async move { runner.start(&app_tx, false).await });
 
         // Wait all
         runner_fut.await??;
@@ -147,9 +147,13 @@ pub async fn run() -> anyhow::Result<i32> {
         app_fut.await??
     } else {
         // Start task runner
-        let no_quit = root.ui == UI::Tui;
+        let quit_on_done = root.ui != UI::Tui;
         let app_tx = app_tx.clone();
-        let runner_fut = tokio_spawn!("runner", { n = 0 }, async move { runner.start(&app_tx, no_quit).await });
+        let runner_fut = tokio_spawn!(
+            "runner",
+            { n = 0 },
+            async move { runner.start(&app_tx, quit_on_done).await }
+        );
 
         // Wait all
         runner_fut.await??;
