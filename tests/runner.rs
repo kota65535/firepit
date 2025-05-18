@@ -578,7 +578,7 @@ fn handle_events(
                         AppCommand::FinishTask { task, result } => {
                             statuses.insert(task, format!("Finished: {:?}", result));
                         }
-                        AppCommand::Abort => {
+                        AppCommand::Quit => {
                             break;
                         }
                         AppCommand::TaskOutput { task, output } => {

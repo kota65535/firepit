@@ -77,7 +77,7 @@ impl CuiApp {
             let subscriber = signal_handler.subscribe();
             if let Some(subscriber) = subscriber {
                 let _guard = subscriber.listen().await;
-                sender.stop().await;
+                sender.quit().await;
             }
         });
         let mut failure = false;
@@ -107,7 +107,7 @@ impl CuiApp {
                     task_remaining.remove(&task);
                     debug!("Target tasks remaining: {:?}", task_remaining);
                 }
-                AppCommand::Abort => break,
+                AppCommand::Quit => break,
                 AppCommand::Done if self.quit_on_done => break,
                 _ => {}
             }

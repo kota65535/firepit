@@ -20,6 +20,8 @@ pub struct TaskTable<'b> {
 
 static NAVIGATE_TASKS: &'static (&str, &str) = &("[↑↓]", "Navigate");
 static HIDE_TASKS: &'static (&str, &str) = &("[h] ", "Hide");
+static STOP_TASK: &'static (&str, &str) = &("[s] ", "Stop");
+static RESTART_TASK: &'static (&str, &str) = &("[r] ", "Restart");
 
 static MAX_WIDTH: usize = 40;
 static STATUS_COLUMN_WIDTH: u16 = 3;
@@ -111,11 +113,13 @@ impl<'a> StatefulWidget for &'a TaskTable<'a> {
                         Line::from(format!("{name_col_bar}\n")),
                         Line::from(key_help_spans(*NAVIGATE_TASKS)),
                         Line::from(key_help_spans(*HIDE_TASKS)),
+                        Line::from(key_help_spans(*STOP_TASK)),
+                        Line::from(key_help_spans(*RESTART_TASK)),
                     ])),
                     Cell::new("─"),
                     Cell::new(status_col_bar),
                 ])
-                .height(3),
+                .height(5),
             );
         StatefulWidget::render(table, area, buf, state);
     }

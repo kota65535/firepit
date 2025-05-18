@@ -17,6 +17,7 @@ pub struct InputHandler {
 pub struct InputOptions<'a> {
     pub focus: &'a LayoutSections,
     pub has_selection: bool,
+    pub task: String,
 }
 
 impl InputOptions<'_> {
@@ -121,6 +122,8 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<App
         KeyCode::Char('c') if options.has_selection => Some(AppCommand::CopySelection),
         KeyCode::Enter if options.on_task_list() => Some(AppCommand::EnterInteractive),
         KeyCode::Char('q') if options.on_task_list() => Some(AppCommand::Quit),
+        KeyCode::Char('s') if options.on_task_list() => Some(AppCommand::StopTask { task: options.task }),
+        KeyCode::Char('r') if options.on_task_list() => Some(AppCommand::RestartTask { task: options.task }),
 
         // On pane (interactive mode)
         KeyCode::Char('z') if options.on_pane() && key_event.modifiers == KeyModifiers::CONTROL => {
@@ -140,7 +143,7 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<App
         // Global
         KeyCode::Char('c') if key_event.modifiers == KeyModifiers::CONTROL => {
             ctrl_c();
-            Some(AppCommand::Abort)
+            Some(AppCommand::Quit)
         }
         _ => None,
     }
@@ -153,7 +156,7 @@ fn ctrl_c() -> Option<AppCommand> {
         // We're unable to send the signal, stop rendering to force shutdown
         Err(_) => {
             debug!("unable to send sigint, shutting down");
-            Some(AppCommand::Abort)
+            Some(AppCommand::Quit)
         }
     }
 }

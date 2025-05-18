@@ -9,7 +9,7 @@ use tracing::warn;
 #[derive(Debug, Clone, strum::AsRefStr)]
 pub enum RunnerCommand {
     StopTask { task: String },
-    // RestartTask { task: String },
+    RestartTask { task: String },
     Quit,
 }
 
@@ -28,9 +28,9 @@ impl RunnerCommandChannel {
         self.send(RunnerCommand::StopTask { task: task.to_string() })
     }
 
-    // pub fn restart_task(&self, task: &str) {
-    //     self.send(RunnerCommand::RestartTask { task: task.to_string() })
-    // }
+    pub fn restart_task(&self, task: &str) {
+        self.send(RunnerCommand::RestartTask { task: task.to_string() })
+    }
 
     pub fn quit(&self) {
         self.send(RunnerCommand::Quit);
