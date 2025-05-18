@@ -138,23 +138,8 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<App
         KeyCode::Enter if options.on_search() => Some(AppCommand::SearchRun),
 
         // Global
-        KeyCode::Char('c') if key_event.modifiers == KeyModifiers::CONTROL => {
-            ctrl_c();
-            Some(AppCommand::Quit)
-        }
+        KeyCode::Char('c') if key_event.modifiers == KeyModifiers::CONTROL => Some(AppCommand::Quit),
         _ => None,
-    }
-}
-
-fn ctrl_c() -> Option<AppCommand> {
-    use nix::sys::signal;
-    match signal::raise(signal::SIGINT) {
-        Ok(_) => None,
-        // We're unable to send the signal, stop rendering to force shutdown
-        Err(_) => {
-            debug!("unable to send sigint, shutting down");
-            Some(AppCommand::Quit)
-        }
     }
 }
 

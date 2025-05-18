@@ -207,15 +207,6 @@ impl TaskRunner {
                 // Runner command branch
                 Ok(event) = self.command_rx.recv() => {
                     match event {
-                        RunnerCommand::StopTask { task } => {
-                            info!("Cancelling task: {}", task);
-                            if let Err(err) = self.task_cancel_txs.get(&task).unwrap().send(()) {
-                                warn!("Failed to send cancel task {:?}: {:?}", &task, err);
-                            }
-                            if let Err(e) = self.manager.stop_by_label(&task).await {
-                                warn!("Failed to stop task {:?}: {:?}", &task, e);
-                            }
-                        }
                         RunnerCommand::Quit => {
                             info!("Cancelling runner");
                             // Cancel visitor and stop all processes
