@@ -130,7 +130,6 @@ impl TaskRunner {
                         RunnerCommand::Quit => {
                             tokio_rx.close()
                         }
-                        _ => {}
                     }
                 }
                 // Normal branch, calculates affected tasks from the changed files
@@ -407,16 +406,16 @@ impl TaskRunner {
                             warn!("Failed to send callback event: {:?}", e)
                         }
 
-                debug!("Task finished");
-                let targets_done = {
-                    let mut t = targets_remaining_cloned.lock().expect("not poisoned");
-                    t.remove(&task.name);
-                    t.is_empty()
-                };
-                if quit_on_done && targets_done {
-                    info!("All target tasks done, cancelling runner");
-                    runner_cancel_tx.send(()).ok();
-                }
+                        debug!("Task finished");
+                        let targets_done = {
+                            let mut t = targets_remaining_cloned.lock().expect("not poisoned");
+                            t.remove(&task.name);
+                            t.is_empty()
+                        };
+                        if quit_on_done && targets_done {
+                            info!("All target tasks done, cancelling runner");
+                            visitor_tx_cloned.send(VisitorCommand::Stop).ok();
+                        }
 
                         Ok(())
                     }));

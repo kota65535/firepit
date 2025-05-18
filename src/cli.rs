@@ -116,8 +116,9 @@ pub async fn run() -> anyhow::Result<i32> {
         }
         UI::Tui => {
             let mut app = TuiApp::new(&runner.target_tasks, &dep_tasks, &ws.labels())?;
+            let runner_tx = runner.command_tx();
             let command_tx = app.command_tx();
-            let fut = tokio_spawn!("app", async move { app.run().await });
+            let fut = tokio_spawn!("app", async move { app.run(&runner_tx).await });
             (command_tx, fut)
         }
     };

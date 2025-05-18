@@ -11,6 +11,7 @@ mod term_output;
 use crate::app::command::AppCommandChannel;
 use crate::app::command::{AppCommand, TaskResult};
 use crate::app::command::{Direction, PaneSize, ScrollSize, TaskRun, TaskStatus};
+use crate::app::signal::SignalHandler;
 use crate::app::tui::clipboard::copy_to_clipboard;
 use crate::app::tui::input::{InputHandler, InputOptions};
 use crate::app::tui::pane::{TerminalPane, TerminalScroll};
@@ -20,6 +21,8 @@ use crate::app::tui::table::TaskTable;
 use crate::app::tui::task::Task;
 use crate::app::tui::term_output::TerminalOutput;
 use crate::app::FRAME_RATE;
+use crate::runner::command::RunnerCommandChannel;
+use crate::tokio_spawn;
 use anyhow::Context;
 use futures::channel::mpsc::UnboundedReceiver;
 use indexmap::IndexMap;
@@ -54,6 +57,7 @@ pub struct TuiApp {
     command_tx: AppCommandChannel,
     command_rx: mpsc::UnboundedReceiver<AppCommand>,
     input_handler: InputHandler,
+    signal_handler: SignalHandler,
     state: TuiAppState,
 }
 
@@ -65,8 +69,8 @@ pub struct TuiAppState {
     scrollbar: ScrollbarState,
     selected_task_index: usize,
     has_sidebar: bool,
-    done: bool,
-    runner_done: bool,
+    should_quit: bool,
+    tasks_done: bool,
 }
 
 impl TuiApp {
@@ -76,8 +80,12 @@ impl TuiApp {
         labels: &HashMap<String, String>,
     ) -> anyhow::Result<Self> {
         let terminal = Self::setup_terminal()?;
-        let rect = terminal.size()?;
+        let input_handler = InputHandler::new();
+        let crossterm_rx = input_handler.start();
+        let (command_tx, command_rx) = AppCommandChannel::new();
+        let signal_handler = SignalHandler::infer()?;
 
+        let rect = terminal.size()?;
         let size = SizeInfo::new(
             rect.height,
             rect.width,
@@ -90,10 +98,8 @@ impl TuiApp {
         debug!("Terminal size: height={} width={}", rect.height, rect.width);
 
         let has_sidebar = true;
-
         let output_raws = size.pane_rows();
         let output_cols = size.output_cols(has_sidebar);
-
         let tasks = target_tasks
             .iter()
             .map(|t| (t, true))
@@ -112,10 +118,6 @@ impl TuiApp {
             .collect::<IndexMap<_, _>>();
 
         let selected_task_index = 0;
-        let input_handler = InputHandler::new();
-        let crossterm_rx = input_handler.start();
-
-        let (command_tx, command_rx) = AppCommandChannel::new();
 
         Ok(Self {
             terminal,
@@ -123,6 +125,7 @@ impl TuiApp {
             command_tx,
             command_rx,
             input_handler,
+            signal_handler,
             state: TuiAppState {
                 size,
                 tasks,
@@ -131,8 +134,8 @@ impl TuiApp {
                 scrollbar: ScrollbarState::default(),
                 selected_task_index,
                 has_sidebar,
-                done: false,
-                runner_done: false,
+                should_quit: false,
+                tasks_done: false,
             },
         })
     }
@@ -164,17 +167,28 @@ impl TuiApp {
         self.command_tx.clone()
     }
 
-    pub async fn run(&mut self) -> anyhow::Result<i32> {
-        let (result, callback) = match self.run_inner().await {
+    pub async fn run(&mut self, runner_tx: &RunnerCommandChannel) -> anyhow::Result<i32> {
+        let signal_handler = self.signal_handler.clone();
+        let command_tx = self.command_tx.clone();
+        tokio_spawn!("app-canceller", async move {
+            let subscriber = signal_handler.subscribe();
+            if let Some(subscriber) = subscriber {
+                let _guard = subscriber.listen().await;
+                command_tx.quit().await;
+            }
+        });
+
+        let (result, callback) = match self.run_inner(runner_tx).await {
             Ok(callback) => (Ok(()), callback),
             Err(err) => (Err(err).with_context(|| "failed to run tui app"), None),
         };
         self.cleanup()?;
+        runner_tx.quit();
         info!("App is exiting");
         Ok(0)
     }
 
-    pub async fn run_inner(&mut self) -> anyhow::Result<Option<oneshot::Sender<()>>> {
+    pub async fn run_inner(&mut self, runner_tx: &RunnerCommandChannel) -> anyhow::Result<Option<oneshot::Sender<()>>> {
         self.terminal.draw(|f| self.state.view(f))?;
 
         let mut last_render = Instant::now();
@@ -188,8 +202,8 @@ impl TuiApp {
             if matches!(event, AppCommand::Resize { .. }) {
                 self.terminal.autoresize()?;
             }
-            callback = self.state.update(event)?;
-            if self.state.done {
+            callback = self.state.update(event, runner_tx)?;
+            if self.state.should_quit {
                 break;
             }
             if FRAME_RATE <= last_render.elapsed() && needs_rerender {
@@ -267,10 +281,10 @@ impl TuiAppState {
     }
 
     fn input_options(&self) -> anyhow::Result<InputOptions> {
-        let has_selection = self.active_task()?.output.has_selection();
+        let task = self.active_task()?;
         Ok(InputOptions {
             focus: &self.focus,
-            has_selection,
+            has_selection: task.output.has_selection(),
         })
     }
 
@@ -422,7 +436,7 @@ impl TuiAppState {
         let scrollback = active_task.output.screen().scrollback();
 
         // Render pane
-        let pane_to_render = TerminalPane::new(&active_task, &self.focus, self.has_sidebar, self.runner_done);
+        let pane_to_render = TerminalPane::new(&active_task, &self.focus, self.has_sidebar, self.tasks_done);
         f.render_widget(&pane_to_render, pane);
 
         // Render pane scrollbar
@@ -728,7 +742,11 @@ impl TuiAppState {
         Ok(())
     }
 
-    fn update(&mut self, event: AppCommand) -> anyhow::Result<Option<oneshot::Sender<()>>> {
+    fn update(
+        &mut self,
+        event: AppCommand,
+        runner_tx: &RunnerCommandChannel,
+    ) -> anyhow::Result<Option<oneshot::Sender<()>>> {
         match event {
             AppCommand::PlanTask { task } => {
                 self.plan_task(&task);
@@ -765,15 +783,10 @@ impl TuiAppState {
                     .ok();
             }
             AppCommand::Done => {
-                self.runner_done = true;
+                self.tasks_done = true;
             }
             AppCommand::Quit => {
-                self.done = true;
-            }
-            AppCommand::Quit => {
-                if self.runner_done {
-                    self.done = true;
-                }
+                self.should_quit = true;
             }
             AppCommand::Tick => {
                 // self.table.tick();
