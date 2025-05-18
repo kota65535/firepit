@@ -1,11 +1,10 @@
 use crate::app::command::{AppCommandChannel, TaskResult};
-use crate::app::signal::SignalHandler;
 use crate::config::Restart;
 use crate::probe::Probe;
 use crate::process::{Child, ChildExit, Command, ProcessManager};
 use crate::project::{Task, Workspace};
 use crate::runner::command::{RunnerCommand, RunnerCommandChannel};
-use crate::runner::graph::{CallbackMessage, TaskGraph, VisitorCommand, VisitorHandle, VisitorMessage};
+use crate::runner::graph::{CallbackMessage, NodeResult, TaskGraph, VisitorCommand, VisitorHandle, VisitorMessage};
 use crate::tokio_spawn;
 use anyhow::Context;
 use futures::stream::FuturesUnordered;
@@ -249,7 +248,7 @@ impl TaskRunner {
                         if !deps_ok {
                             info!("Task does not run as its dependency task failed");
                             app_tx.finish_task(TaskResult::BadDeps);
-                            if let Err(e) = callback.send(CallbackMessage(Some(false))).await {
+                            if let Err(e) = callback.send(CallbackMessage(NodeResult::Failure)).await {
                                 warn!("Failed to send callback event: {:?}", e)
                             }
                             return Ok::<(), anyhow::Error>(());
@@ -259,7 +258,7 @@ impl TaskRunner {
                         if task.is_up_to_date() {
                             info!("Task output files are newer than input files");
                             app_tx.finish_task(TaskResult::UpToDate);
-                            if let Err(e) = callback.send(CallbackMessage(Some(false))).await {
+                            if let Err(e) = callback.send(CallbackMessage(NodeResult::Failure)).await {
                                 warn!("Failed to send callback event: {:?}", e)
                             }
                             return Ok::<(), anyhow::Error>(());
@@ -282,7 +281,7 @@ impl TaskRunner {
                         // Notify the app the task started
                         app_tx.start_task(task.name.clone(), pid, num_restart, task.restart.max_restart(), num_runs);
 
-                        let mut node_result = false;
+                        let mut node_result = NodeResult::None;
                         if task.is_service {
                             // Service task branch
                             let (cancel_probe_tx, cancel_probe_rx) = watch::channel(());
@@ -344,7 +343,7 @@ impl TaskRunner {
                                         if should_restart {
                                             info!("Task should restart");
                                             // Send restart message
-                                            if let Err(e) = callback.send(CallbackMessage(None)).await {
+                                            if let Err(e) = callback.send(CallbackMessage(NodeResult::None)).await {
                                                 warn!("Failed to send callback event: {:?}", e)
                                             }
                                             // Finish this closure
@@ -371,7 +370,7 @@ impl TaskRunner {
                                         info!("Task is ready");
                                         app_tx.ready_task();
                                         // Notify the visitor the task is ready
-                                        if let Err(e) = callback.send(CallbackMessage(Some(true))).await {
+                                        if let Err(e) = callback.send(CallbackMessage(NodeResult::Success)).await {
                                             warn!("Failed to send callback event: {:?}", e)
                                         }
                                         continue;
@@ -380,7 +379,7 @@ impl TaskRunner {
                                         info!("Task is not ready");
                                         app_tx.finish_task(TaskResult::NotReady);
                                         manager.stop_by_pid(pid).await;
-                                        node_result = false;
+                                        node_result = NodeResult::Failure;
                                         break;
                                     }
                                 }
@@ -391,11 +390,10 @@ impl TaskRunner {
                                         warn!("Failed to send cancel probe: {:?}", e)
                                     }
                                     app_tx.finish_task(TaskResult::NotReady);
-                                    node_result = false;
+                                    node_result = NodeResult::Failure;
                                     break;
                                 }
                             }
-                            node_result
                         } else {
                             // Normal task branch
                             let result = tokio::select! {
@@ -408,14 +406,13 @@ impl TaskRunner {
                             };
                             app_tx.finish_task(result.unwrap_or(TaskResult::Unknown));
                             node_result = match result {
-                                Some(TaskResult::Success) => true,
-                                _ => false,
+                                Some(TaskResult::Success) => NodeResult::Success,
+                                _ => NodeResult::Failure,
                             };
-                            node_result
                         };
 
                         // Notify the visitor the task finished
-                        if let Err(e) = callback.send(CallbackMessage(Some(node_result))).await {
+                        if let Err(e) = callback.send(CallbackMessage(node_result)).await {
                             warn!("Failed to send callback event: {:?}", e)
                         }
 
