@@ -47,7 +47,6 @@ pub enum AppCommand {
     ScrollUp(ScrollSize),
     ScrollDown(ScrollSize),
     ToggleSidebar,
-    Abort,
     Quit,
     Tick,
 
@@ -179,8 +178,8 @@ impl AppCommandChannel {
         self.send(AppCommand::Done);
     }
 
-    pub async fn stop(&self) {
-        self.send(AppCommand::Abort);
+    pub async fn quit(&self) {
+        self.send(AppCommand::Quit);
     }
 
     pub async fn pane_size(&self) -> Option<PaneSize> {

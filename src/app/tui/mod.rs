@@ -767,7 +767,7 @@ impl TuiAppState {
             AppCommand::Done => {
                 self.runner_done = true;
             }
-            AppCommand::Abort => {
+            AppCommand::Quit => {
                 self.done = true;
             }
             AppCommand::Quit => {

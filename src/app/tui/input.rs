@@ -140,7 +140,7 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<App
         // Global
         KeyCode::Char('c') if key_event.modifiers == KeyModifiers::CONTROL => {
             ctrl_c();
-            Some(AppCommand::Abort)
+            Some(AppCommand::Quit)
         }
         _ => None,
     }
@@ -153,7 +153,7 @@ fn ctrl_c() -> Option<AppCommand> {
         // We're unable to send the signal, stop rendering to force shutdown
         Err(_) => {
             debug!("unable to send sigint, shutting down");
-            Some(AppCommand::Abort)
+            Some(AppCommand::Quit)
         }
     }
 }
