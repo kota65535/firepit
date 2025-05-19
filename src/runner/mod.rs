@@ -216,16 +216,26 @@ impl TaskRunner {
                                 warn!("Failed to stop process {:?}: {:?}", &task, e);
                             }
                         }
-                        RunnerCommand::RestartTask { task } => {
-                            info!("Restarting task: {}", task);
-                            if let Err(err) = self.task_cancel_txs.get(&task).unwrap().send(()) {
-                                warn!("Failed to stop task {:?}: {:?}", &task, err);
+                        RunnerCommand::RestartTask { task, force } => {
+                            let mut tasks = vec![task.clone()];
+                            if !force {
+                                let task_graph = self.task_graph.transitive_closure(&tasks, Direction::Incoming)?;
+                                tasks = task_graph.sort()?.iter().map(|t| t.name.clone()).collect();
                             }
-                            if let Err(e) = self.manager.stop_by_label(&task).await {
-                                warn!("Failed to stop process {:?}: {:?}", &task, e);
-                            }
-                            if let Err(err) = visitor_tx.send(VisitorCommand::Restart { task, force: true }) {
-                                warn!("Failed to send VisitorCommand::Restart: {:?}", err);
+                            info!("Restarting task: {:?}", tasks);
+
+                            for task in tasks.iter() {
+                                let app_tx_cloned = app_tx.clone().with_name(&task);
+                                if let Err(err) = self.task_cancel_txs.get(task).unwrap().send(()) {
+                                    warn!("Failed to stop task {:?}: {:?}", &task, err);
+                                }
+                                if let Err(e) = self.manager.stop_by_label(&task).await {
+                                    warn!("Failed to stop process {:?}: {:?}", &task, e);
+                                }
+                                app_tx_cloned.finish_task(TaskResult::Reloading);
+                                if let Err(err) = visitor_tx.send(VisitorCommand::Restart { task: task.clone(), force: true }) {
+                                    warn!("Failed to send VisitorCommand::Restart: {:?}", err);
+                                }
                             }
                         }
                         RunnerCommand::Quit => {

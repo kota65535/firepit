@@ -123,7 +123,14 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<App
         KeyCode::Enter if options.on_task_list() => Some(AppCommand::EnterInteractive),
         KeyCode::Char('q') if options.on_task_list() => Some(AppCommand::Quit),
         KeyCode::Char('s') if options.on_task_list() => Some(AppCommand::StopTask { task: options.task }),
-        KeyCode::Char('r') if options.on_task_list() => Some(AppCommand::RestartTask { task: options.task }),
+        KeyCode::Char('r') if options.on_task_list() => Some(AppCommand::RestartTask {
+            task: options.task,
+            force: true,
+        }),
+        KeyCode::Char('R') if options.on_task_list() => Some(AppCommand::RestartTask {
+            task: options.task,
+            force: false,
+        }),
 
         // On pane (interactive mode)
         KeyCode::Char('z') if options.on_pane() && key_event.modifiers == KeyModifiers::CONTROL => {

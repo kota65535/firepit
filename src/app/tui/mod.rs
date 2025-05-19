@@ -786,8 +786,8 @@ impl TuiAppState {
             AppCommand::StopTask { task } => {
                 runner_tx.stop_task(&task);
             }
-            AppCommand::RestartTask { task } => {
-                runner_tx.restart_task(&task);
+            AppCommand::RestartTask { task, force } => {
+                runner_tx.restart_task(&task, force);
             }
             AppCommand::Tick => {
                 // self.table.tick();
