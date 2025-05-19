@@ -9,6 +9,7 @@ use std::path::Path;
 use firepit::app::command::{AppCommand, AppCommandChannel};
 use firepit::config::ProjectConfig;
 use firepit::project::Workspace;
+use firepit::runner::command::RunnerCommandChannel;
 use firepit::runner::watcher::FileWatcher;
 use rstest::rstest;
 use std::sync::{LazyLock, Once};
@@ -445,7 +446,7 @@ async fn run_task_inner(
     let (app_tx, app_rx) = AppCommandChannel::new();
 
     let manager = runner.manager.clone();
-    let cancel_tx = runner.cancel_tx.clone();
+    let runner_tx = runner.command_tx.clone();
 
     // Start runner
     let runner_fut = tokio::spawn(async move {
@@ -455,7 +456,7 @@ async fn run_task_inner(
     // Handle events and assert task statuses
     handle_events(
         app_rx,
-        cancel_tx,
+        runner_tx,
         status_expected,
         outputs_expected,
         restarts_expected,
@@ -506,7 +507,7 @@ async fn run_task_with_watch<F>(
     let watcher_tx = app_tx.clone();
 
     let manager = runner.manager.clone();
-    let cancel_tx = runner.cancel_tx.clone();
+    let runner_tx = runner.command_tx.clone();
 
     // Start runner
     let runner_fut = tokio::spawn(async move { runner.start(&app_tx, false).await.ok() });
@@ -520,7 +521,7 @@ async fn run_task_with_watch<F>(
     // Handle events and assert task statuses
     handle_events(
         app_rx,
-        cancel_tx,
+        runner_tx,
         status_expected,
         outputs_expected,
         restarts_expected,
@@ -540,7 +541,7 @@ const DEFAULT_TEST_TIMEOUT_SECONDS: u64 = 10;
 
 fn handle_events(
     mut app_rx: UnboundedReceiver<AppCommand>,
-    cancel_tx: watch::Sender<()>,
+    runner_tx: RunnerCommandChannel,
     statuses_expected: HashMap<String, String>,
     outputs_expected: Option<HashMap<String, String>>,
     restarts_expected: Option<HashMap<String, u64>>,
@@ -577,7 +578,7 @@ fn handle_events(
                         AppCommand::FinishTask { task, result } => {
                             statuses.insert(task, format!("Finished: {:?}", result));
                         }
-                        AppCommand::Stop => {
+                        AppCommand::Quit => {
                             break;
                         }
                         AppCommand::TaskOutput { task, output } => {
@@ -613,7 +614,7 @@ fn handle_events(
                 break;
             }
         }
-        cancel_tx.send(()).unwrap();
+        runner_tx.quit();
         assert_eq!(statuses_expected, statuses);
         if let Some(outputs_expected) = outputs_expected {
             assert_eq!(outputs_expected, outputs);

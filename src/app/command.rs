@@ -1,4 +1,4 @@
-use crate::app::tui::FRAME_RATE;
+use crate::app::FRAME_RATE;
 use crate::tokio_spawn;
 use std::io;
 use std::io::Write;
@@ -47,7 +47,7 @@ pub enum AppCommand {
     ScrollUp(ScrollSize),
     ScrollDown(ScrollSize),
     ToggleSidebar,
-    Stop,
+    Quit,
     Tick,
 
     ///
@@ -178,8 +178,8 @@ impl AppCommandChannel {
         self.send(AppCommand::Done);
     }
 
-    pub async fn stop(&self) {
-        self.send(AppCommand::Stop);
+    pub async fn quit(&self) {
+        self.send(AppCommand::Quit);
     }
 
     pub async fn pane_size(&self) -> Option<PaneSize> {
