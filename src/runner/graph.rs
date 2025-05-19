@@ -32,7 +32,7 @@ pub struct VisitorMessage {
 #[derive(Debug, Clone)]
 pub enum VisitorCommand {
     Stop,
-    Restart { task: String },
+    Restart { task: String, force: bool },
 }
 
 pub struct VisitorHandle {
@@ -164,6 +164,7 @@ impl TaskGraph {
             let targets_remaining_cloned = targets_remaining.clone();
             let visitor_tx_cloned = visitor_tx.clone();
             nodes_fut.push(tokio_spawn!("node", { name = task_name }, async move {
+                let mut ignore_deps = false;
                 'start: loop {
                     if dep_tasks.is_empty() {
                         info!("No dependency")
@@ -175,27 +176,32 @@ impl TaskGraph {
                         );
                     }
 
-                    let deps_ok = loop {
-                        tokio::select! {
-                            // Visitor command branch
-                            Ok(command) = visitor_rx.recv() => {
-                                match command {
-                                    VisitorCommand::Stop => {
-                                        info!("Visitor cancelled");
-                                        return Ok(())
-                                    }
-                                    VisitorCommand::Restart { task: task_name } => {
-                                        info!("Visitor restarted");
-                                        if task.name == task_name {
-                                            continue 'start;
+                    let deps_ok = if ignore_deps {
+                        true
+                    } else {
+                        loop {
+                            tokio::select! {
+                                // Visitor command branch
+                                Ok(command) = visitor_rx.recv() => {
+                                    match command {
+                                        VisitorCommand::Stop => {
+                                            info!("Visitor cancelled");
+                                            return Ok(())
                                         }
-                                        continue
-                                    }
-                                };
-                            }
-                            // Normal branch, waiting for all dependency tasks
-                            Ok(deps_ok) = Self::wait_all_watches(dep_rxs.clone()) => {
-                                break deps_ok;
+                                        VisitorCommand::Restart { task: task_name, force } => {
+                                            info!("Visitor restarted");
+                                            if task.name == task_name {
+                                                ignore_deps = force;
+                                                continue 'start;
+                                            }
+                                            continue
+                                        }
+                                    };
+                                }
+                                // Normal branch, waiting for all dependency tasks
+                                Ok(deps_ok) = Self::wait_all_watches(dep_rxs.clone()) => {
+                                    break deps_ok;
+                                }
                             }
                         }
                     };
@@ -224,9 +230,10 @@ impl TaskGraph {
                                                     info!("Visitor cancelled");
                                                     return Ok(())
                                                 }
-                                                VisitorCommand::Restart { task: task_name } => {
+                                                VisitorCommand::Restart { task: task_name, force } => {
                                                     info!("Visitor restarted");
                                                     if task.name == task_name {
+                                                        ignore_deps = force;
                                                         continue 'start;
                                                     }
                                                     continue 'recv
@@ -303,9 +310,10 @@ impl TaskGraph {
                                 info!("Visitor cancelled");
                                 return Ok(());
                             }
-                            VisitorCommand::Restart { task: task_name } => {
+                            VisitorCommand::Restart { task: task_name, force } => {
                                 if task.name == task_name {
                                     info!("Visitor restarted");
+                                    ignore_deps = force;
                                     continue 'start;
                                 }
                             }
@@ -381,27 +389,27 @@ impl TaskGraph {
     }
 
     async fn wait_all_watches(mut receivers: Vec<watch::Receiver<NodeResult>>) -> anyhow::Result<bool> {
-        let mut result = true;
         for rx in receivers.iter_mut() {
-            // Skip if the value exists
+            let v = rx.borrow().clone();
             if (*rx.borrow()).is_present() {
-                result = (*rx.borrow()).is_success();
+                if !(*rx.borrow()).is_success() {
+                    return Ok(false);
+                }
                 continue;
             }
-            // Wait for the value to be true
             loop {
-                // Wait for the value to change
                 if rx.changed().await.is_err() {
-                    // Channel has been closed
                     anyhow::bail!("watch channel closed");
                 }
                 if (*rx.borrow()).is_present() {
-                    result = (*rx.borrow()).is_success();
+                    if !(*rx.borrow()).is_success() {
+                        return Ok(false);
+                    }
                     break;
                 }
             }
         }
-        Ok(result)
+        Ok(true)
     }
 }
 

@@ -289,7 +289,7 @@ async fn test_service() {
 
     let mut stats = HashMap::new();
     stats.insert(String::from("#foo"), String::from("Finished: Success"));
-    stats.insert(String::from("#bar"), String::from("Finished: Success"));
+    stats.insert(String::from("#bar"), String::from("Ready"));
     stats.insert(String::from("#baz"), String::from("Ready"));
     stats.insert(String::from("#qux"), String::from("Ready"));
 
