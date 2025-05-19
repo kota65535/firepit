@@ -178,7 +178,7 @@ impl TuiApp {
             }
         });
 
-        self.run_inner().await.context("failed to run tui app")?;
+        self.run_inner(runner_tx).await.context("failed to run tui app")?;
 
         runner_tx.quit();
         self.cleanup()?;
