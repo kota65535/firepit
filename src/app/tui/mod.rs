@@ -178,21 +178,19 @@ impl TuiApp {
             }
         });
 
-        let (result, callback) = match self.run_inner(runner_tx).await {
-            Ok(callback) => (Ok(()), callback),
-            Err(err) => (Err(err).with_context(|| "failed to run tui app"), None),
-        };
-        self.cleanup()?;
+        self.run_inner().await.context("failed to run tui app")?;
+
         runner_tx.quit();
+        self.cleanup()?;
+
         info!("App is exiting");
         Ok(0)
     }
 
-    pub async fn run_inner(&mut self, runner_tx: &RunnerCommandChannel) -> anyhow::Result<Option<oneshot::Sender<()>>> {
+    pub async fn run_inner(&mut self) -> anyhow::Result<()> {
         self.terminal.draw(|f| self.state.view(f))?;
 
         let mut last_render = Instant::now();
-        let mut callback = None;
         let mut needs_rerender = true;
         while let Some(event) = self.poll().await? {
             // If we only receive ticks, then there's been no state change so no update needed
@@ -202,7 +200,7 @@ impl TuiApp {
             if matches!(event, AppCommand::Resize { .. }) {
                 self.terminal.autoresize()?;
             }
-            callback = self.state.update(event, runner_tx)?;
+            self.state.update(event)?;
             if self.state.should_quit {
                 break;
             }
@@ -213,7 +211,7 @@ impl TuiApp {
             }
         }
 
-        Ok(callback)
+        Ok(())
     }
 
     /// Blocking poll for events, will only return None if app handle has been
@@ -742,11 +740,7 @@ impl TuiAppState {
         Ok(())
     }
 
-    fn update(
-        &mut self,
-        event: AppCommand,
-        runner_tx: &RunnerCommandChannel,
-    ) -> anyhow::Result<Option<oneshot::Sender<()>>> {
+    fn update(&mut self, event: AppCommand) -> anyhow::Result<()> {
         match event {
             AppCommand::PlanTask { task } => {
                 self.plan_task(&task);
@@ -853,6 +847,6 @@ impl TuiAppState {
                 self.exit_search()?;
             }
         }
-        Ok(None)
+        Ok(())
     }
 }

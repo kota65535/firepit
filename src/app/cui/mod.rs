@@ -12,6 +12,7 @@ use crate::app::cui::lib::ColorConfig;
 use crate::app::cui::output::{OutputClient, OutputClientBehavior, OutputSink};
 use crate::app::cui::prefixed::PrefixedWriter;
 use crate::app::signal::SignalHandler;
+use crate::runner::command::RunnerCommandChannel;
 use crate::tokio_spawn;
 use anyhow::Context;
 use std::collections::{HashMap, HashSet};
@@ -70,14 +71,14 @@ impl CuiApp {
             .insert(task, output_client);
     }
 
-    pub async fn run(&mut self) -> anyhow::Result<i32> {
+    pub async fn run(&mut self, runner_tx: &RunnerCommandChannel) -> anyhow::Result<i32> {
         let signal_handler = self.signal_handler.clone();
-        let sender = self.command_tx.clone();
+        let command_tx = self.command_tx.clone();
         tokio_spawn!("cui-canceller", async move {
             let subscriber = signal_handler.subscribe();
             if let Some(subscriber) = subscriber {
                 let _guard = subscriber.listen().await;
-                sender.quit().await;
+                command_tx.quit().await;
             }
         });
         let mut failure = false;
@@ -116,6 +117,7 @@ impl CuiApp {
                 break;
             }
         }
+        runner_tx.quit();
         let exit_code = if failure { 1 } else { 0 };
         Ok(exit_code)
     }
