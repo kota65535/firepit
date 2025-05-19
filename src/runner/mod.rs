@@ -434,6 +434,10 @@ impl TaskRunner {
                             t.remove(&task.name);
                             t.is_empty()
                         };
+                        if quit_on_done && targets_done {
+                            info!("All target tasks done, cancelling runner");
+                            visitor_tx_cloned.send(VisitorCommand::Stop).ok();
+                        }
 
                         Ok(())
                     }));
