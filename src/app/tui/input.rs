@@ -120,7 +120,6 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<App
         KeyCode::Down if options.on_task_list() => Some(AppCommand::Down),
         KeyCode::Char('c') if options.has_selection => Some(AppCommand::CopySelection),
         KeyCode::Enter if options.on_task_list() => Some(AppCommand::EnterInteractive),
-        KeyCode::Char('q') if options.on_task_list() => Some(AppCommand::Quit),
 
         // On pane (interactive mode)
         KeyCode::Char('z') if options.on_pane() && key_event.modifiers == KeyModifiers::CONTROL => {
