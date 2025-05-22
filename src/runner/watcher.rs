@@ -52,13 +52,13 @@ impl FileWatcher {
 
         let (watcher_tx, mut watcher_rx) = broadcast::channel(1024);
 
-        // Cancel file watcher if cancel is sent
+        // Cancel the file watcher if cancel is sent
         let state = self.inner.clone();
         tokio_spawn!("watcher-canceller", async move {
             while let Ok(event) = watcher_rx.recv().await {
                 match event {
                     WatcherCommand::Stop => {
-                        info!("Received WatcherCommand::Stop");
+                        info!("Stopping watcher");
                         let mut state = state.lock().expect("not poisoned");
                         state.is_closing = true;
                         break;
