@@ -1,5 +1,4 @@
-use crate::app::signal::SignalHandler;
-use crate::project::{Task, Workspace};
+use crate::project::Task;
 use crate::runner::command::RunnerCommandChannel;
 use crate::tokio_spawn;
 use notify::Watcher;
@@ -8,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::RecvTimeoutError;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::{broadcast, mpsc, watch};
+use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
 

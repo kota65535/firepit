@@ -24,7 +24,6 @@ use crate::app::FRAME_RATE;
 use crate::runner::command::RunnerCommandChannel;
 use crate::tokio_spawn;
 use anyhow::Context;
-use futures::channel::mpsc::UnboundedReceiver;
 use indexmap::IndexMap;
 use ratatui::widgets::ScrollbarState;
 use ratatui::{
@@ -34,12 +33,9 @@ use ratatui::{
     Frame, Terminal,
 };
 use std::collections::HashMap;
-use std::{
-    io::{self, Stdout, Write},
-    time::Duration,
-};
+use std::io::{self, Stdout, Write};
 use tokio::{
-    sync::{mpsc, oneshot},
+    sync::mpsc,
     time::Instant,
 };
 use tracing::{debug, error, info};
