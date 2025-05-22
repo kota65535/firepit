@@ -16,6 +16,7 @@ use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
+use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 static INIT: Once = Once::new();
@@ -342,6 +343,7 @@ async fn test_watch() {
     runs.insert(String::from("#qux"), 1);
 
     run_task_with_watch(&path, tasks, stats, Some(outputs), None, Some(runs), None, async {
+        info!("Creating files");
         let mut f = File::create(BASE_PATH.join("watch").join("bar.txt")).unwrap();
         f.write_all(b"bar").unwrap();
         let mut f = File::create(BASE_PATH.join("watch").join("qux.txt")).unwrap();

@@ -69,11 +69,13 @@ impl FileWatcher {
 
         let state = self.inner.clone();
         let tasks = self.tasks.clone();
+        let dir = self.dir.clone();
         let debounce_duration = self.debounce_duration.clone();
         let runner_tx = runner_tx.clone();
         let future = std::thread::spawn(move || {
             let _guard = watcher;
             let mut event_buffer = Vec::new();
+            info!("Start watching files under {:?}", dir);
             loop {
                 match std_rx.recv_timeout(debounce_duration) {
                     Ok(event) => match event {
