@@ -511,7 +511,8 @@ async fn run_task_with_watch<F>(
     // Start runner
     let runner_fut = tokio::spawn(async move { runner.run(&app_tx, false).await.ok() });
 
-    tokio::time::sleep(Duration::from_millis(1000)).await;
+    // Ensure to run file watcher before runner
+    tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Do something in this closure, ex: create or update files
     tokio::spawn(async move { f.await });
