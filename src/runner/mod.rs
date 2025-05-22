@@ -179,18 +179,16 @@ impl TaskRunner {
                             for task in tasks.iter() {
                                 let app_tx_cloned = app_tx.clone().with_name(&task);
                                 app_tx_cloned.finish_task(TaskResult::Reloading);
-                                info!("Sending VisitorCommand::Restart");
                                 if let Err(err) = visitor_tx.send(VisitorCommand::Restart { task: task.clone(), force }) {
-                                    warn!("Failed to send VisitorCommand::Restart: {:?}", err);
+                                    warn!("Failed to restart visitor for task {:?}: {:?}", task, err);
                                 }
                             }
                         }
                         RunnerCommand::Quit => {
-                            info!("Cancelling runner");
-                            // Cancel visitor and stop all processes
+                            info!("Stopping runner");
                             self.manager.stop().await;
                             if let Err(err) = visitor_tx.send(VisitorCommand::Stop) {
-                                warn!("Failed to send cancel signal: {:?}", err);
+                                warn!("Failed to stop visitors: {:?}", err);
                             }
                             node_rx.close();
                         }
@@ -267,12 +265,12 @@ impl TaskRunner {
                                 Self::run_probe(task.clone(), log_rx, cancel_probe_rx)
                             );
 
-                            let mut task_finished = None;
-                            let mut probe_finished = None;
+                            let mut task_result = None;
+                            let mut probe_result = None;
                             tokio::select! {
-                                // Process branch, waits its completion
-                                result = &mut task_fut, if task_finished.is_none() => {
-                                    // Service task process should not finish before probe
+                                // Process branch, waiting its completion
+                                result = &mut task_fut, if task_result.is_none() => {
+                                    // Service task process should not finish before the probe.
                                     // So the node result is considered as `false`
                                     let result = result.with_context(|| format!("task {:?} failed to run", task.name))??;
 
@@ -299,29 +297,29 @@ impl TaskRunner {
                                     };
                                     if should_restart {
                                         info!("Task should restart");
-                                        // Send restart message
+                                        // Send a message to restart
                                         if let Err(e) = callback.send(CallbackMessage(NodeResult::None)).await {
                                             warn!("Failed to send callback event: {:?}", e)
                                         }
                                         // Finish this closure
                                         return Ok(());
                                     }
-                                    task_finished = Some(false)
+                                    task_result = Some(false)
                                 }
                                 // Probe branch
-                                result = &mut probe_fut, if probe_finished.is_none() => {
+                                result = &mut probe_fut, if probe_result.is_none() => {
                                     let result = result.with_context(|| format!("task {:?} failed to run", task.name))?;
                                     // The probe result is the node result
-                                    probe_finished = Some(result.unwrap_or(false));
+                                    probe_result = Some(result.unwrap_or(false));
                                 }
                             }
 
-                            if probe_finished.is_some() && task_finished.is_some() {
+                            if probe_result.is_some() && task_result.is_some() {
                                 info!("Task finished without restart after being ready state");
                                 node_result = NodeResult::Success;
                             }
-                            // If probe finished first
-                            if let Some(probe_ok) = probe_finished {
+                            // If the probe finished first
+                            if let Some(probe_ok) = probe_result {
                                 if probe_ok {
                                     // ...and is successful, wait for the process
                                     info!("Task is ready");
@@ -339,8 +337,8 @@ impl TaskRunner {
                                     node_result = NodeResult::Failure;
                                 }
                             }
-                            // If process finished before probe, consider it as failed regardless of the result
-                            if let Some(_) = task_finished {
+                            // If the process finished before the probe, consider it as failed regardless of the result
+                            if let Some(_) = task_result {
                                 info!("Task finished before it becomes ready");
                                 if let Err(e) = cancel_probe_tx.send(()) {
                                     warn!("Failed to send cancel probe: {:?}", e)
@@ -370,14 +368,14 @@ impl TaskRunner {
                             warn!("Failed to send callback event: {:?}", e)
                         }
 
-                        debug!("Task finished");
+                        info!("Task finished");
                         let targets_done = {
                             let mut t = targets_remaining_cloned.lock().expect("not poisoned");
                             t.remove(&task.name);
                             t.is_empty()
                         };
                         if quit_on_done && targets_done {
-                            info!("All target tasks done, cancelling runner");
+                            info!("All target tasks done, stopping visitors");
                             visitor_tx_cloned.send(VisitorCommand::Stop).ok();
                         }
 

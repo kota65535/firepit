@@ -187,7 +187,7 @@ impl TaskGraph {
                                 Ok(command) = visitor_rx.recv() => {
                                     match command {
                                         VisitorCommand::Stop => {
-                                            info!("Visitor cancelled");
+                                            info!("Visitor stopped");
                                             return Ok(())
                                         }
                                         VisitorCommand::Restart { task: task_name, force } => {
@@ -231,7 +231,7 @@ impl TaskGraph {
                                         Ok(command) = visitor_rx.recv() => {
                                             match command {
                                                 VisitorCommand::Stop => {
-                                                    info!("Visitor cancelled");
+                                                    info!("Visitor stopped");
                                                     return Ok(())
                                                 }
                                                 VisitorCommand::Restart { task: task_name, force } => {
@@ -252,15 +252,14 @@ impl TaskGraph {
                                                 Some(CallbackMessage(result)) => {
                                                     match result {
                                                         NodeResult::Success | NodeResult::Failure => {
-                                                            // Send errors indicate that there are no receivers which
-                                                            // happens when this node has no dependents
-                                                            if let Err(e) = tx.send(result.clone()) {
-                                                                debug!("Cannot send the result to the graph: {:?}", e);
-                                                            };
+                                                            // Send errors indicate that there are no receivers that
+                                                            // happen when this node has no dependents
+                                                            tx.send(result.clone()).ok();
+
                                                             // Service task should continue recv loop so that it can restart
-                                                            // even after reaching ready state
+                                                            // even after reaching the READY state
                                                             if result.is_success() && task.is_service {
-                                                                info!("Result: {:?}, still waiting callback", result);
+                                                                info!("Result: {:?}, still waiting for callback", result);
                                                                 continue 'recv;
                                                             }
                                                             // Finish the visitor
@@ -269,7 +268,7 @@ impl TaskGraph {
                                                         }
                                                         NodeResult::None => {
                                                             // No result means we should restart the task
-                                                            info!("Result is empty, resending");
+                                                            info!("Result is empty, restarting");
                                                             num_restart += 1;
                                                             continue 'send;
                                                         }
@@ -277,7 +276,7 @@ impl TaskGraph {
                                                 }
                                                 _ => {
                                                     // If the caller drops the callback sender without signaling
-                                                    // that the node processing is finished we assume that it is finished.
+                                                    // that the node processing is finished, we assume that it is finished.
                                                     warn!("Callback sender dropped");
                                                     tx.send(NodeResult::Failure).ok();
                                                     break 'send;
@@ -288,9 +287,8 @@ impl TaskGraph {
                                 }
                             }
                             Err(e) => {
-                                // Receiving end of node channel has been closed/dropped
-                                // Since there's nothing the mark the node as being done
-                                // we act as if we have been canceled.
+                                // The receiving end of the node channel has been closed/dropped.
+                                // We act as if we have been canceled.
                                 warn!("Cannot send to the runner: {:?}", e);
                                 tx.send(NodeResult::Failure).ok();
                                 break 'send;
@@ -305,7 +303,7 @@ impl TaskGraph {
                         t.is_empty()
                     };
                     if quit_on_done && targets_done {
-                        info!("All target node done, cancelling visitors");
+                        info!("All target node done, stopping visitors");
                         visitor_tx_cloned.send(VisitorCommand::Stop).ok();
                     }
 
@@ -313,7 +311,7 @@ impl TaskGraph {
                         match visitor_rx.recv().await {
                             Ok(command) => match command {
                                 VisitorCommand::Stop => {
-                                    info!("Visitor cancelled");
+                                    info!("Visitor stopped");
                                     return Ok(());
                                 }
                                 VisitorCommand::Restart { task: task_name, force } => {
@@ -326,9 +324,12 @@ impl TaskGraph {
                                     }
                                 }
                             },
-                            Err(err) => {
-                                info!("Visitor command error: {:?}", err);
+                            Err(broadcast::error::RecvError::Closed) => {
+                                info!("Visitor command channel closed");
                                 return Ok(());
+                            }
+                            Err(err) => {
+                                warn!("Visitor command channel error: {:?}", err);
                             }
                         };
                     }
