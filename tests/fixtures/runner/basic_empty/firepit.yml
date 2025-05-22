@@ -9,3 +9,7 @@ tasks:
 
   baz:
     command: echo "baz"
+
+log:
+  file: 11_service.log
+  level: debug

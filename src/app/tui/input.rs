@@ -1,11 +1,12 @@
 use crate::app::command::{AppCommand, ScrollSize};
 use crate::app::tui::lib::RingBuffer;
 use crate::app::tui::LayoutSections;
+use crate::app::DOUBLE_CLICK_DURATION;
 use crate::tokio_spawn;
 use crossterm::event::{EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use futures::StreamExt;
 use itertools::Itertools;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use tokio::sync::mpsc;
 use tracing::debug;
 
@@ -61,7 +62,7 @@ impl InputHandler {
     pub fn num_of_multiple_clicks(&self) -> usize {
         let mut count = 1;
         for (a, b) in self.click_times.iter().rev().tuple_windows() {
-            if a.duration_since(*b) > Duration::from_millis(300) {
+            if a.duration_since(*b) > DOUBLE_CLICK_DURATION {
                 break;
             }
             count += 1;

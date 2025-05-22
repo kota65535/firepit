@@ -1,9 +1,4 @@
-use crate::app::FRAME_RATE;
-use crate::tokio_spawn;
-use std::io;
-use std::io::Write;
-use std::sync::{Arc, Mutex};
-use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio::sync::broadcast;
 use tracing::warn;
 
 #[derive(Debug, Clone, strum::AsRefStr)]
@@ -19,8 +14,8 @@ pub struct RunnerCommandChannel {
 }
 
 impl RunnerCommandChannel {
-    pub fn new() -> (Self, broadcast::Receiver<RunnerCommand>) {
-        let (tx, rx) = broadcast::channel(10);
+    pub fn new(size: usize) -> (Self, broadcast::Receiver<RunnerCommand>) {
+        let (tx, rx) = broadcast::channel(size);
         (Self { tx }, rx)
     }
 

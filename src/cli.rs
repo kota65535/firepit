@@ -4,13 +4,11 @@ use crate::app::tui::TuiApp;
 use crate::config::{ProjectConfig, UI};
 use crate::log::init_logger;
 use crate::project::Workspace;
-use crate::runner::watcher::FileWatcher;
 use crate::runner::TaskRunner;
 use crate::tokio_spawn;
 use clap::Parser;
 use itertools::Itertools;
 use std::collections::HashMap;
-use std::time::Duration;
 use std::{env, path};
 use tracing::info;
 
@@ -126,26 +124,10 @@ pub async fn run() -> anyhow::Result<i32> {
 
     let ret = if args.watch {
         // Run file watcher
-        let mut file_watcher = FileWatcher::new()?;
-        let watcher_handle = file_watcher.run(&dir, Duration::from_millis(500))?;
-
-        // Start runner for file watcher
-        let mut watch_runner = runner.clone();
-        let watch_app_tx = app_tx.clone();
-        let watch_runner_fut = tokio_spawn!("watch-runner", async move {
-            watch_runner.watch(watcher_handle.rx, watch_app_tx).await
-        });
-
-        // Start normal task runner
         let runner_fut = tokio_spawn!("runner", { n = 0 }, async move { runner.start(&app_tx, false).await });
 
         // Wait all
         runner_fut.await??;
-        watch_runner_fut.await??;
-        watcher_handle
-            .future
-            .join()
-            .map_err(|e| anyhow::anyhow!("failed to join; {:?}", e))?;
         app_fut.await??
     } else {
         // Start task runner

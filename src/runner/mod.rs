@@ -5,7 +5,8 @@ use crate::process::{Child, ChildExit, Command, ProcessManager};
 use crate::project::{Task, Workspace};
 use crate::runner::command::{RunnerCommand, RunnerCommandChannel};
 use crate::runner::graph::{CallbackMessage, NodeResult, TaskGraph, VisitorCommand, VisitorHandle, VisitorMessage};
-use crate::tokio_spawn;
+use crate::runner::watcher::{FileWatcher, FileWatcherHandle, WatcherCommand};
+use crate::{tokio_spawn, PROCESS_MANAGER_STOP_TIMEOUT};
 use anyhow::Context;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
@@ -23,13 +24,16 @@ pub mod command;
 pub mod graph;
 pub mod watcher;
 
-#[derive(Debug)]
+pub const WATCHER_DEBOUNCE_DURATION: Duration = Duration::from_millis(500);
+
 pub struct TaskRunner {
     pub target_tasks: Vec<String>,
     pub tasks: Vec<Task>,
     pub task_graph: TaskGraph,
+    pub file_watcher: FileWatcher,
     pub manager: ProcessManager,
     pub concurrency: usize,
+    pub dir: PathBuf,
 
     // Senders/Receivers to cancel each task
     pub task_cancel_txs: HashMap<String, broadcast::Sender<()>>,
@@ -52,6 +56,8 @@ impl Clone for TaskRunner {
             target_tasks: self.target_tasks.clone(),
             tasks: self.tasks.clone(),
             task_graph: self.task_graph.clone(),
+            file_watcher: self.file_watcher.clone(),
+            dir: self.dir.clone(),
             manager: self.manager.clone(),
             concurrency: self.concurrency,
             task_cancel_txs: self.task_cancel_txs.clone(),
@@ -72,22 +78,26 @@ impl TaskRunner {
         let tasks = task_graph.sort()?;
         debug!("Task graph:\n{:?}", task_graph);
 
+        let file_watcher = FileWatcher::new(&all_tasks, &ws.dir, WATCHER_DEBOUNCE_DURATION);
+
         let manager = ProcessManager::new(ws.use_pty);
 
         let mut task_cancel_txs = HashMap::new();
         let mut task_cancel_rxs = HashMap::new();
         for t in tasks.iter() {
-            let (cancel_tx, cancel_rx) = broadcast::channel(1);
+            let (cancel_tx, cancel_rx) = broadcast::channel(all_tasks.len());
             task_cancel_txs.insert(t.name.clone(), cancel_tx);
             task_cancel_rxs.insert(t.name.clone(), cancel_rx);
         }
 
-        let (command_tx, command_rx) = RunnerCommandChannel::new();
+        let (command_tx, command_rx) = RunnerCommandChannel::new(all_tasks.len());
 
         Ok(TaskRunner {
             tasks,
             target_tasks,
             task_graph,
+            file_watcher,
+            dir: ws.dir.clone(),
             manager,
             concurrency: ws.concurrency,
             task_cancel_txs,
@@ -109,69 +119,8 @@ impl TaskRunner {
 
         let task_graph = self.task_graph.clone();
 
-        self.run(&task_graph, &app_tx, quit_on_done, 0).await
-    }
+        self.run(&task_graph, &app_tx, quit_on_done).await?;
 
-    pub async fn watch(
-        &mut self,
-        mut tokio_rx: UnboundedReceiver<HashSet<PathBuf>>,
-        app_tx: AppCommandChannel,
-    ) -> anyhow::Result<()> {
-        let manager = self.manager.clone();
-        let tasks = self.tasks.clone();
-        let cancel_txs = self.task_cancel_txs.clone();
-        let mut count = 1;
-
-        while !tokio_rx.is_closed() {
-            tokio::select! {
-                // Runner command branch
-                Ok(event) = self.command_rx.recv() => {
-                    match event {
-                        RunnerCommand::Quit => {
-                            tokio_rx.close()
-                        }
-                        _ => {}
-                    }
-                }
-                // Normal branch, calculates affected tasks from the changed files
-                Some(paths) = tokio_rx.recv() => {
-                    let mut this = self.clone();
-                    let app_tx = app_tx.clone();
-                    info!("{} Changed files: {:?}", paths.len(), paths);
-                    let mut changed_tasks = Vec::new();
-                    for t in tasks.iter() {
-                        if t.match_inputs(&paths) {
-                            changed_tasks.push(t.name.clone())
-                        }
-                    }
-                    if changed_tasks.len() > 0 {
-                        info!("Changed tasks: {:?}", changed_tasks);
-                        let task_graph = this
-                            .task_graph
-                            .transitive_closure(&changed_tasks, Direction::Incoming)?;
-                        let affected_tasks = task_graph.sort()?;
-                        info!(
-                        "Affected tasks: {:?}",
-                        affected_tasks.iter().map(|t| t.name.clone()).collect::<Vec<_>>());
-                        for t in affected_tasks.iter() {
-                            info!("Cancelling task: {}", t.name);
-                            if let Err(err) = cancel_txs.get(&t.name).unwrap().send(()) {
-                                warn!("Failed to send cancel task {:?}: {:?}", &t.name, err);
-                            }
-                            if let Err(e) = manager.stop_by_label(&t.name).await {
-                                warn!("Failed to stop task {:?}: {:?}", &t.name, e);
-                            }
-                        }
-                        info!("Cancelled all tasks");
-                        tokio_spawn!("runner", { n = count }, async move {
-                            this.run(&task_graph, &app_tx, false, count).await
-                        });
-                        count += 1;
-                    }
-                }
-            }
-        }
-        info!("Watcher runner finished");
         Ok(())
     }
 
@@ -180,7 +129,6 @@ impl TaskRunner {
         task_graph: &TaskGraph,
         app_tx: &AppCommandChannel,
         quit_on_done: bool,
-        num_runs: u64,
     ) -> anyhow::Result<()> {
         info!("Runner started");
 
@@ -196,6 +144,12 @@ impl TaskRunner {
         } = task_graph
             .visit(self.concurrency, quit_on_done)
             .context("error while visiting task graph")?;
+
+        // Run file watcher
+        let FileWatcherHandle {
+            watcher_tx,
+            future: watcher_fut,
+        } = self.file_watcher.run(&self.command_tx)?;
 
         // Task futures
         let mut task_fut = FuturesUnordered::new();
@@ -225,15 +179,20 @@ impl TaskRunner {
                             info!("Restarting task: {:?}", tasks);
 
                             for task in tasks.iter() {
-                                let app_tx_cloned = app_tx.clone().with_name(&task);
                                 if let Err(err) = self.task_cancel_txs.get(task).unwrap().send(()) {
                                     warn!("Failed to stop task {:?}: {:?}", &task, err);
                                 }
+                            }
+                            for task in tasks.iter() {
                                 if let Err(e) = self.manager.stop_by_label(&task).await {
                                     warn!("Failed to stop process {:?}: {:?}", &task, e);
                                 }
+                            }
+                            for task in tasks.iter() {
+                                let app_tx_cloned = app_tx.clone().with_name(&task);
                                 app_tx_cloned.finish_task(TaskResult::Reloading);
-                                if let Err(err) = visitor_tx.send(VisitorCommand::Restart { task: task.clone(), force: true }) {
+                                info!("Sending VisitorCommand::Restart");
+                                if let Err(err) = visitor_tx.send(VisitorCommand::Restart { task: task.clone(), force }) {
                                     warn!("Failed to send VisitorCommand::Restart: {:?}", err);
                                 }
                             }
@@ -255,7 +214,8 @@ impl TaskRunner {
                     let VisitorMessage {
                         node: task,
                         deps_ok,
-                        count: num_restart,
+                        num_runs,
+                        num_restart,
                         callback,
                     } = message;
 
@@ -287,8 +247,8 @@ impl TaskRunner {
                         }
 
                         info!(
-                            "Task is starting.\nrestart: {:?}\nshell: {:?} {:?}\ncommand: {:?}\nenv: {:?}\nworking_dir: {:?}",
-                            num_restart, task.shell, &task.shell_args, task.command, task.env, task.working_dir
+                            "Task is starting.\nrun: {:?}\nrestart: {:?}\nshell: {:?} {:?}\ncommand: {:?}\nenv: {:?}\nworking_dir: {:?}",
+                            num_runs, num_restart, task.shell, &task.shell_args, task.command, task.env, task.working_dir
                         );
 
                         app_tx = app_tx.clone();
@@ -347,7 +307,7 @@ impl TaskRunner {
                                                 },
                                             }
                                         }
-                                        None => true
+                                        None => false
                                     };
                                     if should_restart {
                                         info!("Task should restart");
@@ -451,6 +411,12 @@ impl TaskRunner {
             warn!("Failed to send cancel visitor: {:?}", err);
         }
 
+        if let Err(err) = watcher_tx.send(WatcherCommand::Stop) {
+            warn!("Failed to send cancel watcher: {:?}", err);
+        }
+
+        watcher_fut.await?;
+
         // Notify app the runner finished
         app_tx.done().await;
 
@@ -495,7 +461,7 @@ impl TaskRunner {
             .with_label(&task.name)
             .to_owned();
 
-        let process = match manager.spawn(cmd, Duration::from_millis(500)).await {
+        let process = match manager.spawn(cmd, PROCESS_MANAGER_STOP_TIMEOUT).await {
             Some(Ok(child)) => child,
             Some(Err(e)) => anyhow::bail!("failed to spawn task {:?}: {:?}", task.name, e),
             _ => return Ok(None),

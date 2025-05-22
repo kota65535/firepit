@@ -17,3 +17,6 @@ tasks:
         start_period: 1
 
 ui: tui
+log:
+  file: 13_watch_service.log
+  level: debug

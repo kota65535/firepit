@@ -15,6 +15,7 @@ pub struct Workspace {
     pub target_tasks: Vec<String>,
     pub concurrency: usize,
     pub use_pty: bool,
+    pub dir: PathBuf,
 }
 
 impl Workspace {
@@ -106,6 +107,7 @@ impl Workspace {
             target_tasks,
             concurrency: root_config.concurrency,
             use_pty,
+            dir: current_dir.to_owned(),
         })
     }
 

@@ -1,7 +1,6 @@
 use crate::project::Task;
 use crate::tokio_spawn;
 use anyhow::Context;
-use futures::future::join_all;
 use futures::stream::FuturesUnordered;
 use petgraph::algo::toposort;
 use petgraph::dot::{Config, Dot};
@@ -24,7 +23,8 @@ pub struct TaskGraph {
 
 pub struct VisitorMessage {
     pub node: Task,
-    pub count: u64,
+    pub num_runs: u64,
+    pub num_restart: u64,
     pub deps_ok: bool,
     pub callback: mpsc::Sender<CallbackMessage>,
 }
@@ -136,7 +136,7 @@ impl TaskGraph {
         // Channel to notify when all its dependency nodes have finished
         let (node_tx, node_rx) = mpsc::channel(max(concurrency, 1));
         // Channel to stop visitor
-        let (visitor_tx, visitor_rx) = broadcast::channel(1);
+        let (visitor_tx, visitor_rx) = broadcast::channel(self.graph.node_count());
 
         // Remaining target tasks
         let targets_remaining: HashSet<String> = self.targets.iter().map(|s| s.clone()).collect();
@@ -165,6 +165,8 @@ impl TaskGraph {
             let visitor_tx_cloned = visitor_tx.clone();
             nodes_fut.push(tokio_spawn!("node", { name = task_name }, async move {
                 let mut ignore_deps = false;
+                let mut num_runs = 0;
+                let mut num_restart = 0;
                 'start: loop {
                     if dep_tasks.is_empty() {
                         info!("No dependency")
@@ -192,6 +194,8 @@ impl TaskGraph {
                                             info!("Visitor restarted");
                                             if task.name == task_name {
                                                 ignore_deps = force;
+                                                num_runs += 1;
+                                                tx.send(NodeResult::None).ok();
                                                 continue 'start;
                                             }
                                             continue
@@ -208,13 +212,13 @@ impl TaskGraph {
 
                     info!("Dependencies finished. ok: {:?}", deps_ok);
 
-                    let mut count = 0;
                     // Loop for restarting service tasks
                     'send: loop {
                         let (callback_tx, mut callback_rx) = mpsc::channel::<CallbackMessage>(1);
                         let message = VisitorMessage {
                             node: task.clone(),
-                            count,
+                            num_runs,
+                            num_restart,
                             deps_ok,
                             callback: callback_tx.clone(),
                         };
@@ -234,6 +238,8 @@ impl TaskGraph {
                                                     info!("Visitor restarted");
                                                     if task.name == task_name {
                                                         ignore_deps = force;
+                                                        num_runs += 1;
+                                                        tx.send(NodeResult::None).ok();
                                                         continue 'start;
                                                     }
                                                     continue 'recv
@@ -264,7 +270,7 @@ impl TaskGraph {
                                                         NodeResult::None => {
                                                             // No result means we should restart the task
                                                             info!("Result is empty, resending");
-                                                            count += 1;
+                                                            num_restart += 1;
                                                             continue 'send;
                                                         }
                                                     }
@@ -304,18 +310,25 @@ impl TaskGraph {
                     }
 
                     loop {
-                        let command = visitor_rx.recv().await?;
-                        match command {
-                            VisitorCommand::Stop => {
-                                info!("Visitor cancelled");
-                                return Ok(());
-                            }
-                            VisitorCommand::Restart { task: task_name, force } => {
-                                if task.name == task_name {
-                                    info!("Visitor restarted");
-                                    ignore_deps = force;
-                                    continue 'start;
+                        match visitor_rx.recv().await {
+                            Ok(command) => match command {
+                                VisitorCommand::Stop => {
+                                    info!("Visitor cancelled");
+                                    return Ok(());
                                 }
+                                VisitorCommand::Restart { task: task_name, force } => {
+                                    if task.name == task_name {
+                                        info!("Visitor restarted");
+                                        num_runs += 1;
+                                        ignore_deps = force;
+                                        tx.send(NodeResult::None).ok();
+                                        continue 'start;
+                                    }
+                                }
+                            },
+                            Err(err) => {
+                                info!("Visitor command error: {:?}", err);
+                                return Ok(());
                             }
                         };
                     }

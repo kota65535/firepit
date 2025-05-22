@@ -1,4 +1,5 @@
 use crate::process::{Child, ChildExit, Command, ProcessManager};
+use crate::PROCESS_MANAGER_STOP_TIMEOUT;
 use anyhow::Context;
 use regex::Regex;
 use std::collections::HashMap;
@@ -189,7 +190,7 @@ impl ExecProbe {
             .with_label(&format!("{} probe", self.name))
             .to_owned();
 
-        match self.manager.spawn(cmd, Duration::from_millis(500)).await {
+        match self.manager.spawn(cmd, PROCESS_MANAGER_STOP_TIMEOUT).await {
             Some(Ok(child)) => Ok(child),
             Some(Err(e)) => Err(e).with_context(|| "unable to spawn task"),
             _ => anyhow::bail!("unable to spawn task"),
