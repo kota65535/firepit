@@ -394,16 +394,16 @@ impl TaskRunner {
         Self::join(&mut visitor_fut).await?;
         debug!("Visitors finished");
 
+        debug!("Waiting tasks to finish...");
+        Self::join(&mut task_fut).await?;
+        debug!("Tasks finished");
+
         if let Err(err) = watcher_tx.send(WatcherCommand::Stop) {
             warn!("Failed to send cancel watcher: {:?}", err);
         }
         debug!("Waiting watcher to finish...");
         watcher_fut.await?;
         debug!("Watcher finished");
-
-        debug!("Waiting tasks to finish...");
-        Self::join(&mut task_fut).await?;
-        debug!("Tasks finished");
 
         // Notify app the runner finished
         app_tx.done().await;
