@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 #[derive(Clone)]
 pub struct FileWatcher {
@@ -86,6 +86,7 @@ impl FileWatcher {
                     },
                     Err(RecvTimeoutError::Timeout) => {
                         if !event_buffer.is_empty() {
+                            debug!("Event buffer {:?}", event_buffer);
                             let paths = event_buffer
                                 .iter()
                                 .filter(|e| e.kind.is_create() || e.kind.is_modify() || e.kind.is_remove())
