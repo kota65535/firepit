@@ -29,7 +29,7 @@ pub struct TaskRunner {
     pub target_tasks: Vec<String>,
     pub tasks: Vec<Task>,
     pub task_graph: TaskGraph,
-    pub file_watcher: FileWatcher,
+    pub watcher: FileWatcher,
     pub manager: ProcessManager,
     pub concurrency: usize,
 
@@ -54,7 +54,7 @@ impl Clone for TaskRunner {
             target_tasks: self.target_tasks.clone(),
             tasks: self.tasks.clone(),
             task_graph: self.task_graph.clone(),
-            file_watcher: self.file_watcher.clone(),
+            watcher: self.watcher.clone(),
             manager: self.manager.clone(),
             concurrency: self.concurrency,
             task_cancel_txs: self.task_cancel_txs.clone(),
@@ -93,7 +93,7 @@ impl TaskRunner {
             tasks,
             target_tasks,
             task_graph,
-            file_watcher,
+            watcher: file_watcher,
             manager,
             concurrency: ws.concurrency,
             task_cancel_txs,
@@ -113,31 +113,23 @@ impl TaskRunner {
             self.manager.set_pty_size(pane_size.rows, pane_size.cols).await;
         }
 
-        let task_graph = self.task_graph.clone();
-
-        self.run(&task_graph, &app_tx, quit_on_done).await?;
-
-        Ok(())
+        self.run(&app_tx, quit_on_done).await
     }
 
-    async fn run(
-        &mut self,
-        task_graph: &TaskGraph,
-        app_tx: &AppCommandChannel,
-        quit_on_done: bool,
-    ) -> anyhow::Result<()> {
+    async fn run(&mut self, app_tx: &AppCommandChannel, quit_on_done: bool) -> anyhow::Result<()> {
         info!("Runner started");
 
         for t in self.target_tasks.iter() {
             app_tx.plan_task(t)
         }
 
-        // Run visitor
+        // Run visitors
         let VisitorHandle {
             mut node_rx,
             visitor_tx,
             future: mut visitor_fut,
-        } = task_graph
+        } = self
+            .task_graph
             .visit(self.concurrency, quit_on_done)
             .context("error while visiting task graph")?;
 
@@ -145,7 +137,7 @@ impl TaskRunner {
         let FileWatcherHandle {
             watcher_tx,
             future: watcher_fut,
-        } = self.file_watcher.run(&self.command_tx)?;
+        } = self.watcher.run(&self.command_tx)?;
 
         // Task futures
         let mut task_fut = FuturesUnordered::new();
@@ -395,23 +387,23 @@ impl TaskRunner {
             }
         }
 
-        debug!("Waiting for visitor to finish...");
-        Self::join(&mut visitor_fut).await?;
-        debug!("Visitor finished");
-
-        debug!("Waiting for tasks to finish...");
-        Self::join(&mut task_fut).await?;
-        debug!("Tasks finished");
+        if let Err(err) = watcher_tx.send(WatcherCommand::Stop) {
+            warn!("Failed to send cancel watcher: {:?}", err);
+        }
+        debug!("Waiting watcher to finish...");
+        watcher_fut.await?;
+        debug!("Watcher finished");
 
         if let Err(err) = visitor_tx.send(VisitorCommand::Stop) {
             warn!("Failed to send cancel visitor: {:?}", err);
         }
+        debug!("Waiting visitors to finish...");
+        Self::join(&mut visitor_fut).await?;
+        debug!("Visitors finished");
 
-        if let Err(err) = watcher_tx.send(WatcherCommand::Stop) {
-            warn!("Failed to send cancel watcher: {:?}", err);
-        }
-
-        watcher_fut.await?;
+        debug!("Waiting tasks to finish...");
+        Self::join(&mut task_fut).await?;
+        debug!("Tasks finished");
 
         // Notify app the runner finished
         app_tx.done().await;

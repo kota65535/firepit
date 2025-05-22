@@ -122,29 +122,14 @@ pub async fn run() -> anyhow::Result<i32> {
         }
     };
 
-    let ret = if args.watch {
-        // Run file watcher
-        let runner_fut = tokio_spawn!("runner", { n = 0 }, async move { runner.start(&app_tx, false).await });
-
-        // Wait all
-        runner_fut.await??;
-        app_fut.await??
-    } else {
-        // Start task runner
-        let quit_on_done = root.ui != UI::Tui;
-        let app_tx = app_tx.clone();
-        let runner_fut = tokio_spawn!(
-            "runner",
-            { n = 0 },
-            async move { runner.start(&app_tx, quit_on_done).await }
-        );
-
-        // Wait all
-        runner_fut.await??;
-        app_fut.await??
-    };
-
-    Ok(ret)
+    let quit_on_done = !args.watch && root.ui != UI::Tui;
+    let runner_fut = tokio_spawn!(
+        "runner",
+        { n = 0 },
+        async move { runner.start(&app_tx, quit_on_done).await }
+    );
+    runner_fut.await??;
+    app_fut.await?
 }
 
 fn parse_var_and_env(env: &Vec<String>) -> anyhow::Result<HashMap<String, String>> {
