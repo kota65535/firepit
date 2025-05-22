@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::RecvTimeoutError;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::watch;
+use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
@@ -26,12 +26,11 @@ pub struct FileWatcherState {
 
 #[derive(Debug, Clone)]
 pub enum WatcherCommand {
-    None,
     Stop,
 }
 
 pub struct FileWatcherHandle {
-    pub watcher_tx: watch::Sender<WatcherCommand>,
+    pub watcher_tx: broadcast::Sender<WatcherCommand>,
     pub future: JoinHandle<()>,
 }
 
@@ -51,18 +50,21 @@ impl FileWatcher {
         let mut watcher = notify::recommended_watcher(std_tx)?;
         watcher.watch(&self.dir, notify::RecursiveMode::Recursive)?;
 
-        let (watcher_tx, mut watcher_rx) = watch::channel(WatcherCommand::None);
+        let (watcher_tx, mut watcher_rx) = broadcast::channel(1024);
 
         // Cancel file watcher if cancel is sent
         let state = self.inner.clone();
         tokio_spawn!("watcher-canceller", async move {
-            while let Ok(_) = watcher_rx.changed().await {
-                info!("Stopping file watcher");
-                let mut state = state.lock().expect("not poisoned");
-                state.is_closing = true;
-                break;
+            while let Ok(event) = watcher_rx.recv().await {
+                match event {
+                    WatcherCommand::Stop => {
+                        info!("Received WatcherCommand::Stop");
+                        let mut state = state.lock().expect("not poisoned");
+                        state.is_closing = true;
+                        break;
+                    }
+                }
             }
-            info!("Stopped file watcher");
         });
 
         let state = self.inner.clone();
