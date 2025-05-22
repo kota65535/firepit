@@ -342,8 +342,10 @@ async fn test_watch() {
     runs.insert(String::from("#qux"), 1);
 
     run_task_with_watch(&path, tasks, stats, Some(outputs), None, Some(runs), None, async {
-        File::create(BASE_PATH.join("watch").join("bar.txt")).ok();
-        File::create(BASE_PATH.join("watch").join("qux.txt")).ok();
+        let mut f = File::create(BASE_PATH.join("watch").join("bar.txt")).unwrap();
+        f.write_all(b"bar").unwrap();
+        let mut f = File::create(BASE_PATH.join("watch").join("qux.txt")).unwrap();
+        f.write_all(b"qux").unwrap();
     })
     .await;
 }
