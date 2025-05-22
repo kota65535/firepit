@@ -24,9 +24,3 @@ tasks:
     command: echo "qux"
     inputs:
       - "qux.txt"
-
-ui: tui
-
-log:
-  file: 12_watch.log
-  level: debug

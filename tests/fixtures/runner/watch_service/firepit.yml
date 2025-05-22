@@ -15,8 +15,3 @@ tasks:
       healthcheck:
         command: nc -z localhost $(cat bar.txt)
         start_period: 1
-
-ui: tui
-log:
-  file: 13_watch_service.log
-  level: debug

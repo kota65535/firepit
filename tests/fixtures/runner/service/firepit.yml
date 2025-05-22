@@ -27,7 +27,3 @@ tasks:
         env:
           PORT: 11001
         start_period: 1
-
-log:
-  file: 11_service.log
-  level: debug
