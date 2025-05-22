@@ -387,19 +387,19 @@ impl TaskRunner {
             }
         }
 
-        if let Err(err) = watcher_tx.send(WatcherCommand::Stop) {
-            warn!("Failed to send cancel watcher: {:?}", err);
-        }
-        debug!("Waiting watcher to finish...");
-        watcher_fut.await?;
-        debug!("Watcher finished");
-
         if let Err(err) = visitor_tx.send(VisitorCommand::Stop) {
             warn!("Failed to send cancel visitor: {:?}", err);
         }
         debug!("Waiting visitors to finish...");
         Self::join(&mut visitor_fut).await?;
         debug!("Visitors finished");
+
+        if let Err(err) = watcher_tx.send(WatcherCommand::Stop) {
+            warn!("Failed to send cancel watcher: {:?}", err);
+        }
+        debug!("Waiting watcher to finish...");
+        watcher_fut.await?;
+        debug!("Watcher finished");
 
         debug!("Waiting tasks to finish...");
         Self::join(&mut task_fut).await?;
