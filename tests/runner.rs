@@ -460,7 +460,7 @@ async fn run_task_inner(
 
     // Start runner
     let runner_fut = tokio::spawn(async move {
-        runner.start(&app_tx, false).await.ok();
+        runner.run(&app_tx, false).await.ok();
     });
 
     // Handle events and assert task statuses
@@ -509,7 +509,7 @@ async fn run_task_with_watch<F>(
     let runner_tx = runner.command_tx.clone();
 
     // Start runner
-    let runner_fut = tokio::spawn(async move { runner.start(&app_tx, false).await.ok() });
+    let runner_fut = tokio::spawn(async move { runner.run(&app_tx, false).await.ok() });
 
     tokio::time::sleep(Duration::from_millis(1000)).await;
 

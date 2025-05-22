@@ -116,7 +116,7 @@ impl TaskRunner {
         self.run(&app_tx, quit_on_done).await
     }
 
-    async fn run(&mut self, app_tx: &AppCommandChannel, quit_on_done: bool) -> anyhow::Result<()> {
+    pub async fn run(&mut self, app_tx: &AppCommandChannel, quit_on_done: bool) -> anyhow::Result<()> {
         info!("Runner started");
 
         for t in self.target_tasks.iter() {
