@@ -12,7 +12,6 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use petgraph::Direction;
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -33,7 +32,6 @@ pub struct TaskRunner {
     pub file_watcher: FileWatcher,
     pub manager: ProcessManager,
     pub concurrency: usize,
-    pub dir: PathBuf,
 
     // Senders/Receivers to cancel each task
     pub task_cancel_txs: HashMap<String, broadcast::Sender<()>>,
@@ -57,7 +55,6 @@ impl Clone for TaskRunner {
             tasks: self.tasks.clone(),
             task_graph: self.task_graph.clone(),
             file_watcher: self.file_watcher.clone(),
-            dir: self.dir.clone(),
             manager: self.manager.clone(),
             concurrency: self.concurrency,
             task_cancel_txs: self.task_cancel_txs.clone(),
@@ -97,7 +94,6 @@ impl TaskRunner {
             target_tasks,
             task_graph,
             file_watcher,
-            dir: ws.dir.clone(),
             manager,
             concurrency: ws.concurrency,
             task_cancel_txs,
