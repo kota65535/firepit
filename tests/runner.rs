@@ -10,19 +10,27 @@ use firepit::app::command::{AppCommand, AppCommandChannel};
 use firepit::config::ProjectConfig;
 use firepit::project::Workspace;
 use firepit::runner::command::RunnerCommandChannel;
-use firepit::runner::watcher::FileWatcher;
 use rstest::rstest;
 use std::sync::{LazyLock, Once};
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
+use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 static INIT: Once = Once::new();
 
 pub fn setup() {
     INIT.call_once(|| {
+        // init_logger(
+        //     &LogConfig {
+        //         level: "debug".to_string(),
+        //         file: Some("a.log".to_string()),
+        //     },
+        //     true,
+        // )
+        // .unwrap();
         tracing_subscriber::fmt()
             .with_env_filter(EnvFilter::new("debug"))
             .with_ansi(false)
@@ -289,7 +297,7 @@ async fn test_service() {
 
     let mut stats = HashMap::new();
     stats.insert(String::from("#foo"), String::from("Finished: Success"));
-    stats.insert(String::from("#bar"), String::from("Finished: Success"));
+    stats.insert(String::from("#bar"), String::from("Ready"));
     stats.insert(String::from("#baz"), String::from("Ready"));
     stats.insert(String::from("#qux"), String::from("Ready"));
 
@@ -335,8 +343,11 @@ async fn test_watch() {
     runs.insert(String::from("#qux"), 1);
 
     run_task_with_watch(&path, tasks, stats, Some(outputs), None, Some(runs), None, async {
-        File::create(BASE_PATH.join("watch").join("bar.txt")).ok();
-        File::create(BASE_PATH.join("watch").join("qux.txt")).ok();
+        info!("Creating files");
+        let mut f = File::create(BASE_PATH.join("watch").join("bar.txt")).unwrap();
+        f.write_all(b"bar").unwrap();
+        let mut f = File::create(BASE_PATH.join("watch").join("qux.txt")).unwrap();
+        f.write_all(b"qux").unwrap();
     })
     .await;
 }
@@ -445,12 +456,11 @@ async fn run_task_inner(
     let mut runner = TaskRunner::new(&ws)?;
     let (app_tx, app_rx) = AppCommandChannel::new();
 
-    let manager = runner.manager.clone();
     let runner_tx = runner.command_tx.clone();
 
     // Start runner
     let runner_fut = tokio::spawn(async move {
-        runner.start(&app_tx, false).await.ok();
+        runner.run(&app_tx, false).await.ok();
     });
 
     // Handle events and assert task statuses
@@ -465,8 +475,6 @@ async fn run_task_inner(
     )
     .await?;
 
-    // Stop processes to forcing runner to finish
-    manager.stop().await;
     runner_fut.await?;
     Ok(())
 }
@@ -494,26 +502,17 @@ async fn run_task_with_watch<F>(
     )
     .unwrap();
 
-    // Create file watcher
-    let mut file_watcher = FileWatcher::new().unwrap();
-    let fwh = file_watcher.run(&path, Duration::from_millis(500)).unwrap();
-
     // Create runner
     let mut runner = TaskRunner::new(&ws).unwrap();
     let (app_tx, app_rx) = AppCommandChannel::new();
 
-    // Create watch runner
-    let mut watch_runner = runner.clone();
-    let watcher_tx = app_tx.clone();
-
-    let manager = runner.manager.clone();
     let runner_tx = runner.command_tx.clone();
 
     // Start runner
-    let runner_fut = tokio::spawn(async move { runner.start(&app_tx, false).await.ok() });
+    let runner_fut = tokio::spawn(async move { runner.run(&app_tx, false).await.ok() });
 
-    // Start watch runner
-    let watcher_fut = tokio::spawn(async move { watch_runner.watch(fwh.rx, watcher_tx).await.ok() });
+    // Ensure to run file watcher before runner
+    tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Do something in this closure, ex: create or update files
     tokio::spawn(async move { f.await });
@@ -531,10 +530,7 @@ async fn run_task_with_watch<F>(
     .await
     .unwrap();
 
-    // Stop processes to forcing runner to finish
-    manager.stop().await;
     runner_fut.await.ok();
-    watcher_fut.await.ok();
 }
 
 const DEFAULT_TEST_TIMEOUT_SECONDS: u64 = 10;

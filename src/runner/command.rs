@@ -1,13 +1,10 @@
-use crate::app::FRAME_RATE;
-use crate::tokio_spawn;
-use std::io;
-use std::io::Write;
-use std::sync::{Arc, Mutex};
-use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio::sync::broadcast;
 use tracing::warn;
 
 #[derive(Debug, Clone, strum::AsRefStr)]
 pub enum RunnerCommand {
+    StopTask { task: String },
+    RestartTask { task: String, force: bool },
     Quit,
 }
 
@@ -17,9 +14,20 @@ pub struct RunnerCommandChannel {
 }
 
 impl RunnerCommandChannel {
-    pub fn new() -> (Self, broadcast::Receiver<RunnerCommand>) {
-        let (tx, rx) = broadcast::channel(10);
+    pub fn new(size: usize) -> (Self, broadcast::Receiver<RunnerCommand>) {
+        let (tx, rx) = broadcast::channel(size);
         (Self { tx }, rx)
+    }
+
+    pub fn stop_task(&self, task: &str) {
+        self.send(RunnerCommand::StopTask { task: task.to_string() })
+    }
+
+    pub fn restart_task(&self, task: &str, force: bool) {
+        self.send(RunnerCommand::RestartTask {
+            task: task.to_string(),
+            force,
+        })
     }
 
     pub fn quit(&self) {

@@ -41,6 +41,3 @@ tasks:
     vars:
       E: 5
     command: echo "quux {{ E }}"
-
-log:
-  file: a.log

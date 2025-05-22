@@ -24,5 +24,3 @@ tasks:
     command: echo "qux"
     inputs:
       - "qux.txt"
-
-ui: tui

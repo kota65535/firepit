@@ -32,6 +32,13 @@ pub enum AppCommand {
         task: String,
         result: TaskResult,
     },
+    StopTask {
+        task: String,
+    },
+    RestartTask {
+        task: String,
+        force: bool,
+    },
     SetStdin {
         task: String,
         stdin: Box<dyn Write + Send>,

@@ -24,7 +24,6 @@ use crate::app::FRAME_RATE;
 use crate::runner::command::RunnerCommandChannel;
 use crate::tokio_spawn;
 use anyhow::Context;
-use futures::channel::mpsc::UnboundedReceiver;
 use indexmap::IndexMap;
 use ratatui::widgets::ScrollbarState;
 use ratatui::{
@@ -34,12 +33,9 @@ use ratatui::{
     Frame, Terminal,
 };
 use std::collections::HashMap;
-use std::{
-    io::{self, Stdout, Write},
-    time::Duration,
-};
+use std::io::{self, Stdout, Write};
 use tokio::{
-    sync::{mpsc, oneshot},
+    sync::mpsc,
     time::Instant,
 };
 use tracing::{debug, error, info};
@@ -178,7 +174,7 @@ impl TuiApp {
             }
         });
 
-        self.run_inner().await.context("failed to run tui app")?;
+        self.run_inner(runner_tx).await.context("failed to run tui app")?;
 
         runner_tx.quit();
         self.cleanup()?;
@@ -187,7 +183,7 @@ impl TuiApp {
         Ok(0)
     }
 
-    pub async fn run_inner(&mut self) -> anyhow::Result<()> {
+    pub async fn run_inner(&mut self, runner_tx: &RunnerCommandChannel) -> anyhow::Result<()> {
         self.terminal.draw(|f| self.state.view(f))?;
 
         let mut last_render = Instant::now();
@@ -200,7 +196,7 @@ impl TuiApp {
             if matches!(event, AppCommand::Resize { .. }) {
                 self.terminal.autoresize()?;
             }
-            self.state.update(event)?;
+            self.state.update(event, runner_tx)?;
             if self.state.should_quit {
                 break;
             }
@@ -283,6 +279,7 @@ impl TuiAppState {
         Ok(InputOptions {
             focus: &self.focus,
             has_selection: task.output.has_selection(),
+            task: task.name.clone(),
         })
     }
 
@@ -740,7 +737,7 @@ impl TuiAppState {
         Ok(())
     }
 
-    fn update(&mut self, event: AppCommand) -> anyhow::Result<()> {
+    fn update(&mut self, event: AppCommand, runner_tx: &RunnerCommandChannel) -> anyhow::Result<()> {
         match event {
             AppCommand::PlanTask { task } => {
                 self.plan_task(&task);
@@ -781,6 +778,12 @@ impl TuiAppState {
             }
             AppCommand::Quit => {
                 self.should_quit = true;
+            }
+            AppCommand::StopTask { task } => {
+                runner_tx.stop_task(&task);
+            }
+            AppCommand::RestartTask { task, force } => {
+                runner_tx.restart_task(&task, force);
             }
             AppCommand::Tick => {
                 // self.table.tick();

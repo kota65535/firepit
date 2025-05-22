@@ -1,11 +1,12 @@
 use crate::app::command::{AppCommand, ScrollSize};
 use crate::app::tui::lib::RingBuffer;
 use crate::app::tui::LayoutSections;
+use crate::app::DOUBLE_CLICK_DURATION;
 use crate::tokio_spawn;
 use crossterm::event::{EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use futures::StreamExt;
 use itertools::Itertools;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use tokio::sync::mpsc;
 use tracing::debug;
 
@@ -17,6 +18,7 @@ pub struct InputHandler {
 pub struct InputOptions<'a> {
     pub focus: &'a LayoutSections,
     pub has_selection: bool,
+    pub task: String,
 }
 
 impl InputOptions<'_> {
@@ -60,7 +62,7 @@ impl InputHandler {
     pub fn num_of_multiple_clicks(&self) -> usize {
         let mut count = 1;
         for (a, b) in self.click_times.iter().rev().tuple_windows() {
-            if a.duration_since(*b) > Duration::from_millis(300) {
+            if a.duration_since(*b) > DOUBLE_CLICK_DURATION {
                 break;
             }
             count += 1;
@@ -120,6 +122,16 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<App
         KeyCode::Down if options.on_task_list() => Some(AppCommand::Down),
         KeyCode::Char('c') if options.has_selection => Some(AppCommand::CopySelection),
         KeyCode::Enter if options.on_task_list() => Some(AppCommand::EnterInteractive),
+        KeyCode::Char('q') if options.on_task_list() => Some(AppCommand::Quit),
+        KeyCode::Char('s') if options.on_task_list() => Some(AppCommand::StopTask { task: options.task }),
+        KeyCode::Char('r') if options.on_task_list() => Some(AppCommand::RestartTask {
+            task: options.task,
+            force: true,
+        }),
+        KeyCode::Char('R') if options.on_task_list() => Some(AppCommand::RestartTask {
+            task: options.task,
+            force: false,
+        }),
 
         // On pane (interactive mode)
         KeyCode::Char('z') if options.on_pane() && key_event.modifiers == KeyModifiers::CONTROL => {

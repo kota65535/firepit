@@ -1,4 +1,3 @@
-use crate::app::cui::lib::BOLD;
 use crate::config::{DependsOnConfig, HealthCheckConfig, ProjectConfig, Restart, ServiceConfig, TaskConfig, UI};
 use crate::probe::{ExecProbe, LogLineProbe, Probe};
 use crate::template::ConfigRenderer;
@@ -15,6 +14,7 @@ pub struct Workspace {
     pub target_tasks: Vec<String>,
     pub concurrency: usize,
     pub use_pty: bool,
+    pub dir: PathBuf,
 }
 
 impl Workspace {
@@ -106,6 +106,7 @@ impl Workspace {
             target_tasks,
             concurrency: root_config.concurrency,
             use_pty,
+            dir: current_dir.to_owned(),
         })
     }
 

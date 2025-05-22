@@ -1,7 +1,6 @@
 use crate::project::Task;
 use crate::tokio_spawn;
 use anyhow::Context;
-use futures::future::join_all;
 use futures::stream::FuturesUnordered;
 use petgraph::algo::toposort;
 use petgraph::dot::{Config, Dot};
@@ -14,7 +13,7 @@ use std::fmt;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{broadcast, mpsc, watch};
 use tokio::task::JoinHandle;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 #[derive(Clone)]
 pub struct TaskGraph {
@@ -24,7 +23,8 @@ pub struct TaskGraph {
 
 pub struct VisitorMessage {
     pub node: Task,
-    pub count: u64,
+    pub num_runs: u64,
+    pub num_restart: u64,
     pub deps_ok: bool,
     pub callback: mpsc::Sender<CallbackMessage>,
 }
@@ -32,6 +32,7 @@ pub struct VisitorMessage {
 #[derive(Debug, Clone)]
 pub enum VisitorCommand {
     Stop,
+    Restart { task: String, force: bool },
 }
 
 pub struct VisitorHandle {
@@ -135,7 +136,7 @@ impl TaskGraph {
         // Channel to notify when all its dependency nodes have finished
         let (node_tx, node_rx) = mpsc::channel(max(concurrency, 1));
         // Channel to stop visitor
-        let (visitor_tx, visitor_rx) = broadcast::channel(1);
+        let (visitor_tx, visitor_rx) = broadcast::channel(self.graph.node_count());
 
         // Remaining target tasks
         let targets_remaining: HashSet<String> = self.targets.iter().map(|s| s.clone()).collect();
@@ -163,123 +164,176 @@ impl TaskGraph {
             let targets_remaining_cloned = targets_remaining.clone();
             let visitor_tx_cloned = visitor_tx.clone();
             nodes_fut.push(tokio_spawn!("node", { name = task_name }, async move {
-                if dep_tasks.is_empty() {
-                    info!("No dependency")
-                } else {
-                    info!(
-                        "Waiting for {} deps: {:?}",
-                        dep_tasks.len(),
-                        dep_tasks.iter().map(|t| t.name.clone()).collect::<Vec<_>>()
-                    );
-                }
-
-                let deps_ok = loop {
-                    tokio::select! {
-                        // Visitor command branch
-                        Ok(command) = visitor_rx.recv() => {
-                            match command {
-                                VisitorCommand::Stop => {
-                                    info!("Visitor cancelled");
-                                    return Ok(())
-                                }
-                            };
-                        }
-                        // Normal branch, waiting for all dependency tasks
-                        Ok(deps_ok) = Self::wait_all_watches(dep_rxs.clone()) => {
-                            break deps_ok;
-                        }
+                let mut ignore_deps = false;
+                let mut num_runs = 0;
+                let mut num_restart = 0;
+                'start: loop {
+                    if dep_tasks.is_empty() {
+                        info!("No dependency")
+                    } else {
+                        info!(
+                            "Waiting for {} deps: {:?}",
+                            dep_tasks.len(),
+                            dep_tasks.iter().map(|t| t.name.clone()).collect::<Vec<_>>()
+                        );
                     }
-                };
 
-                info!("Dependencies finished. ok: {:?}", deps_ok);
-
-                let mut count = 0;
-                // Loop for restarting service tasks
-                'send: loop {
-                    let (callback_tx, mut callback_rx) = mpsc::channel::<CallbackMessage>(1);
-                    let message = VisitorMessage {
-                        node: task.clone(),
-                        count,
-                        deps_ok,
-                        callback: callback_tx.clone(),
-                    };
-                    match node_tx.send(message).await {
-                        Ok(_) => {
-                            // Loop for restarting service tasks
-                            'recv: loop {
-                                tokio::select! {
-                                    // Visitor command branch
-                                    Ok(command) = visitor_rx.recv() => {
-                                        match command {
-                                            VisitorCommand::Stop => {
-                                                info!("Visitor cancelled");
-                                                return Ok(())
+                    let deps_ok = if ignore_deps {
+                        true
+                    } else {
+                        loop {
+                            tokio::select! {
+                                // Visitor command branch
+                                Ok(command) = visitor_rx.recv() => {
+                                    match command {
+                                        VisitorCommand::Stop => {
+                                            info!("Visitor stopped");
+                                            return Ok(())
+                                        }
+                                        VisitorCommand::Restart { task: task_name, force } => {
+                                            info!("Visitor restarted");
+                                            if task.name == task_name {
+                                                ignore_deps = force;
+                                                num_runs += 1;
+                                                tx.send(NodeResult::None).ok();
+                                                continue 'start;
                                             }
-                                        };
-                                    }
-                                    // Normal branch, waiting for the node result
-                                    result = callback_rx.recv() => {
-                                        match result {
-                                            Some(CallbackMessage(result)) => {
-                                                match result {
-                                                    NodeResult::Success | NodeResult::Failure => {
-                                                        // Send errors indicate that there are no receivers which
-                                                        // happens when this node has no dependents
-                                                        if let Err(e) = tx.send(result.clone()) {
-                                                            debug!("Cannot send the result to the graph: {:?}", e);
-                                                        };
-                                                        // Service task should continue recv loop so that it can restart
-                                                        // even after reaching ready state
-                                                        if result.is_success() && task.is_service {
-                                                            info!("Result: {:?}, still waiting callback", result);
-                                                            continue 'recv;
-                                                        }
-                                                        // Finish the visitor
-                                                        info!("Result: {:?}", result);
-                                                        break 'send;
+                                            continue
+                                        }
+                                    };
+                                }
+                                // Normal branch, waiting for all dependency tasks
+                                Ok(deps_ok) = Self::wait_all_watches(dep_rxs.clone()) => {
+                                    break deps_ok;
+                                }
+                            }
+                        }
+                    };
+
+                    info!("Dependencies finished. ok: {:?}", deps_ok);
+
+                    // Loop for restarting service tasks
+                    'send: loop {
+                        let (callback_tx, mut callback_rx) = mpsc::channel::<CallbackMessage>(1);
+                        let message = VisitorMessage {
+                            node: task.clone(),
+                            num_runs,
+                            num_restart,
+                            deps_ok,
+                            callback: callback_tx.clone(),
+                        };
+                        match node_tx.send(message).await {
+                            Ok(_) => {
+                                // Loop for restarting service tasks
+                                'recv: loop {
+                                    tokio::select! {
+                                        // Visitor command branch
+                                        Ok(command) = visitor_rx.recv() => {
+                                            match command {
+                                                VisitorCommand::Stop => {
+                                                    info!("Visitor stopped");
+                                                    return Ok(())
+                                                }
+                                                VisitorCommand::Restart { task: task_name, force } => {
+                                                    info!("Visitor restarted");
+                                                    if task.name == task_name {
+                                                        ignore_deps = force;
+                                                        num_runs += 1;
+                                                        tx.send(NodeResult::None).ok();
+                                                        continue 'start;
                                                     }
-                                                    NodeResult::None => {
-                                                        // No result means we should restart the task
-                                                        info!("Result is empty, resending");
-                                                        count += 1;
-                                                        continue 'send;
+                                                    continue 'recv
+                                                }
+                                            };
+                                        }
+                                        // Normal branch, waiting for the node result
+                                        result = callback_rx.recv() => {
+                                            match result {
+                                                Some(CallbackMessage(result)) => {
+                                                    match result {
+                                                        NodeResult::Success | NodeResult::Failure => {
+                                                            // Send errors indicate that there are no receivers that
+                                                            // happen when this node has no dependents
+                                                            tx.send(result.clone()).ok();
+
+                                                            // Service task should continue recv loop so that it can restart
+                                                            // even after reaching the READY state
+                                                            if result.is_success() && task.is_service {
+                                                                info!("Result: {:?}, still waiting for callback", result);
+                                                                continue 'recv;
+                                                            }
+                                                            // Finish the visitor
+                                                            info!("Result: {:?}", result);
+                                                            break 'send;
+                                                        }
+                                                        NodeResult::None => {
+                                                            // No result means we should restart the task
+                                                            info!("Result is empty, restarting");
+                                                            num_restart += 1;
+                                                            continue 'send;
+                                                        }
                                                     }
                                                 }
-                                            }
-                                            _ => {
-                                                // If the caller drops the callback sender without signaling
-                                                // that the node processing is finished we assume that it is finished.
-                                                warn!("Callback sender dropped");
-                                                tx.send(NodeResult::Failure).ok();
-                                                break 'send;
+                                                _ => {
+                                                    // If the caller drops the callback sender without signaling
+                                                    // that the node processing is finished, we assume that it is finished.
+                                                    warn!("Callback sender dropped");
+                                                    tx.send(NodeResult::Failure).ok();
+                                                    break 'send;
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
-                        }
-                        Err(e) => {
-                            // Receiving end of node channel has been closed/dropped
-                            // Since there's nothing the mark the node as being done
-                            // we act as if we have been canceled.
-                            warn!("Cannot send to the runner: {:?}", e);
-                            tx.send(NodeResult::Failure).ok();
-                            break 'send;
-                        }
-                    };
-                }
+                            Err(e) => {
+                                // The receiving end of the node channel has been closed/dropped.
+                                // We act as if we have been canceled.
+                                warn!("Cannot send to the runner: {:?}", e);
+                                tx.send(NodeResult::Failure).ok();
+                                break 'send;
+                            }
+                        };
+                    }
 
-                info!("Visitor finished");
-                let targets_done = {
-                    let mut t = targets_remaining_cloned.lock().expect("not poisoned");
-                    t.remove(&task.name);
-                    t.is_empty()
-                };
-                if quit_on_done && targets_done {
-                    info!("All target node done, cancelling visitors");
-                    visitor_tx_cloned.send(VisitorCommand::Stop).ok();
+                    info!("Visitor finished");
+                    let targets_done = {
+                        let mut t = targets_remaining_cloned.lock().expect("not poisoned");
+                        t.remove(&task.name);
+                        t.is_empty()
+                    };
+                    if quit_on_done && targets_done {
+                        info!("All target node done, stopping visitors");
+                        visitor_tx_cloned.send(VisitorCommand::Stop).ok();
+                    }
+
+                    loop {
+                        match visitor_rx.recv().await {
+                            Ok(command) => match command {
+                                VisitorCommand::Stop => {
+                                    info!("Visitor stopped");
+                                    return Ok(());
+                                }
+                                VisitorCommand::Restart { task: task_name, force } => {
+                                    if task.name == task_name {
+                                        info!("Visitor restarted");
+                                        num_runs += 1;
+                                        ignore_deps = force;
+                                        tx.send(NodeResult::None).ok();
+                                        continue 'start;
+                                    }
+                                }
+                            },
+                            Err(broadcast::error::RecvError::Closed) => {
+                                info!("Visitor command channel closed");
+                                return Ok(());
+                            }
+                            Err(err) => {
+                                warn!("Visitor command channel error: {:?}", err);
+                            }
+                        };
+                    }
                 }
-                Ok(())
             }));
         }
 
@@ -349,27 +403,27 @@ impl TaskGraph {
     }
 
     async fn wait_all_watches(mut receivers: Vec<watch::Receiver<NodeResult>>) -> anyhow::Result<bool> {
-        let mut result = true;
         for rx in receivers.iter_mut() {
-            // Skip if the value exists
+            let v = rx.borrow().clone();
             if (*rx.borrow()).is_present() {
-                result = (*rx.borrow()).is_success();
+                if !(*rx.borrow()).is_success() {
+                    return Ok(false);
+                }
                 continue;
             }
-            // Wait for the value to be true
             loop {
-                // Wait for the value to change
                 if rx.changed().await.is_err() {
-                    // Channel has been closed
                     anyhow::bail!("watch channel closed");
                 }
                 if (*rx.borrow()).is_present() {
-                    result = (*rx.borrow()).is_success();
+                    if !(*rx.borrow()).is_success() {
+                        return Ok(false);
+                    }
                     break;
                 }
             }
         }
-        Ok(result)
+        Ok(true)
     }
 }
 
