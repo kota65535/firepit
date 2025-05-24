@@ -19,7 +19,7 @@ use std::collections::{HashMap, HashSet};
 use std::io::{stdout, Stdout, Write};
 use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc;
-use tracing::debug;
+use tracing::{debug, error, info};
 
 pub struct CuiApp {
     color_selector: ColorSelector,
@@ -71,16 +71,34 @@ impl CuiApp {
             .insert(task, output_client);
     }
 
+    pub fn command_tx(&self) -> AppCommandChannel {
+        self.command_tx.clone()
+    }
+
     pub async fn run(&mut self, runner_tx: &RunnerCommandChannel) -> anyhow::Result<i32> {
         let signal_handler = self.signal_handler.clone();
         let command_tx = self.command_tx.clone();
-        tokio_spawn!("cui-canceller", async move {
+        tokio_spawn!("app-canceller", async move {
             let subscriber = signal_handler.subscribe();
             if let Some(subscriber) = subscriber {
                 let _guard = subscriber.listen().await;
                 command_tx.quit().await;
             }
         });
+
+        let ret = self.run_inner().await;
+        runner_tx.quit();
+
+        if let Err(err) = ret {
+            error!("Error: {}", err);
+            return Err(err);
+        }
+
+        info!("App is exiting");
+        Ok(0)
+    }
+
+    pub async fn run_inner(&mut self) -> anyhow::Result<i32> {
         let mut failure = false;
         let mut task_remaining: HashSet<String> = self.target_tasks.iter().cloned().collect();
         while let Some(event) = self.command_rx.recv().await {
@@ -117,12 +135,7 @@ impl CuiApp {
                 break;
             }
         }
-        runner_tx.quit();
         let exit_code = if failure { 1 } else { 0 };
         Ok(exit_code)
-    }
-
-    pub fn command_tx(&self) -> AppCommandChannel {
-        self.command_tx.clone()
     }
 }
