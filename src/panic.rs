@@ -13,13 +13,16 @@ pub fn panic_handler(panic_info: &std::panic::PanicHookInfo) {
         Some(location) => format!("file '{}' at line {}\n", location.file(), location.line()),
         None => "unknown.".to_string(),
     };
-
-    let report = Report::new("firepit", "0.1.0", Method::Panic, explanation, cause);
+    let name = env!("CARGO_PKG_NAME");
+    let version = env!("CARGO_PKG_VERSION");
+    let report = Report::new(name, version, Method::Panic, explanation, cause);
 
     let report_message = if let Some(backtrace) = report.serialize() {
         format!("Backtrace: \n{backtrace}\n")
     } else {
         format!("Unable to serialize backtrace.")
     };
-    eprintln!("Oops! Firepit has crashed. {}", report_message);
+    eprintln!("Oops! {} has crashed. {}", name, report_message);
+
+    std::process::exit(1);
 }
