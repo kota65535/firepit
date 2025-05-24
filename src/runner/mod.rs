@@ -6,7 +6,7 @@ use crate::project::{Task, Workspace};
 use crate::runner::command::{RunnerCommand, RunnerCommandChannel};
 use crate::runner::graph::{CallbackMessage, NodeResult, TaskGraph, VisitorCommand, VisitorHandle, VisitorMessage};
 use crate::runner::watcher::{FileWatcher, FileWatcherHandle, WatcherCommand};
-use crate::{tokio_spawn, PROCESS_MANAGER_STOP_TIMEOUT};
+use crate::{tokio_spawn, TASK_STOP_TIMEOUT};
 use anyhow::Context;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
@@ -23,7 +23,7 @@ pub mod command;
 pub mod graph;
 pub mod watcher;
 
-pub const WATCHER_DEBOUNCE_DURATION: Duration = Duration::from_millis(500);
+pub const WATCHER_DEBOUNCE_DURATION: Duration = Duration::from_millis(300);
 
 pub struct TaskRunner {
     pub target_tasks: Vec<String>,
@@ -51,7 +51,7 @@ impl TaskRunner {
 
         let manager = ProcessManager::new(ws.use_pty);
 
-        let (command_tx, command_rx) = RunnerCommandChannel::new(all_tasks.len());
+        let (command_tx, command_rx) = RunnerCommandChannel::new(1024);
 
         Ok(TaskRunner {
             tasks,
@@ -132,12 +132,15 @@ impl TaskRunner {
                             }
                             info!("Restarting task: {:?}", tasks);
 
+                            info!("Stopping tasks");
                             for task in tasks.iter() {
                                 app_tx.clone().with_name(&task).finish_task(TaskResult::Reloading);
                                 if let Err(e) = self.manager.stop_by_label(&task).await {
                                     warn!("Failed to stop process {:?}: {:?}", &task, e);
                                 }
                             }
+                            info!("Stopped tasks");
+                            info!("Restarting visitors");
                             for task in tasks.iter() {
                                 if let Err(err) = visitor_tx.send(VisitorCommand::Restart { task: task.clone(), force }) {
                                     warn!("Failed to restart visitor for task {:?}: {:?}", task, err);
@@ -146,7 +149,10 @@ impl TaskRunner {
                         }
                         RunnerCommand::Quit => {
                             info!("Stopping runner");
+                            info!("Stopping tasks");
                             self.manager.stop().await;
+                            info!("Stopped tasks");
+                            info!("Stopping visitors");
                             if let Err(err) = visitor_tx.send(VisitorCommand::Stop) {
                                 warn!("Failed to stop visitors: {:?}", err);
                             }
@@ -399,7 +405,7 @@ impl TaskRunner {
             .with_label(&task.name)
             .to_owned();
 
-        let process = match manager.spawn(cmd, PROCESS_MANAGER_STOP_TIMEOUT).await {
+        let process = match manager.spawn(cmd, TASK_STOP_TIMEOUT).await {
             Some(Ok(child)) => child,
             Some(Err(e)) => anyhow::bail!("failed to spawn task {:?}: {:?}", task.name, e),
             _ => return Ok(None),

@@ -13,7 +13,7 @@ use std::fmt;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{broadcast, mpsc, watch};
 use tokio::task::JoinHandle;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 #[derive(Clone)]
 pub struct TaskGraph {
@@ -144,7 +144,7 @@ impl TaskGraph {
         // Channel to notify nodes
         let (node_tx, node_rx) = mpsc::channel(max(concurrency, 1));
         // Channel to stop or restart visitor
-        let (visitor_tx, visitor_rx) = broadcast::channel(self.graph.node_count());
+        let (visitor_tx, visitor_rx) = broadcast::channel(1024);
 
         // Remaining target tasks
         let targets_remaining: HashSet<String> = self.targets.iter().map(|s| s.clone()).collect();
