@@ -36,7 +36,7 @@ pub struct Args {
     #[arg(short, long, default_value = "false")]
     pub watch: bool,
 
-    /// Force only the specified tasks
+    /// Force only the specified tasks to run, ignoring their dependencies
     #[arg(short, long, default_value = "false")]
     pub force: bool,
 
