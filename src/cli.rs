@@ -127,11 +127,7 @@ pub async fn run() -> anyhow::Result<i32> {
     };
 
     let quit_on_done = !args.watch && root.ui != UI::Tui;
-    let runner_fut = tokio_spawn!(
-        "runner",
-        { n = 0 },
-        async move { runner.start(&app_tx, quit_on_done).await }
-    );
+    let runner_fut = tokio_spawn!("runner", async move { runner.start(&app_tx, quit_on_done).await });
     runner_fut.await??;
     app_fut.await?
 }

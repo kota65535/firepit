@@ -12,4 +12,5 @@ pub mod runner;
 pub mod template;
 pub mod util;
 
-pub const PROCESS_MANAGER_STOP_TIMEOUT: Duration = Duration::from_secs(5000);
+pub const TASK_STOP_TIMEOUT: Duration = Duration::from_secs(5000);
+pub const PROBE_STOP_TIMEOUT: Duration = Duration::from_secs(1000);
