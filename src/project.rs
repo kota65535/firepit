@@ -13,6 +13,7 @@ pub struct Workspace {
     pub children: HashMap<String, Project>,
     pub target_tasks: Vec<String>,
     pub concurrency: usize,
+    pub force: bool,
     pub use_pty: bool,
     pub dir: PathBuf,
 }
@@ -25,6 +26,7 @@ impl Workspace {
         current_dir: &Path,
         vars: &HashMap<String, String>,
         env: &HashMap<String, String>,
+        force: bool,
     ) -> anyhow::Result<Workspace> {
         let mut target_tasks = Vec::new();
         for task in tasks.iter() {
@@ -105,6 +107,7 @@ impl Workspace {
             children,
             target_tasks,
             concurrency: root_config.concurrency,
+            force,
             use_pty,
             dir: current_dir.to_owned(),
         })

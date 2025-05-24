@@ -28,6 +28,7 @@ fn test_env_file_not_found() {
         &std::env::current_dir().unwrap(),
         &HashMap::new(),
         &HashMap::new(),
+        false,
     )
     .unwrap_err();
     assert_starts_with!(err.to_string(), "cannot read env file");
@@ -44,6 +45,7 @@ fn test_bad_env_file() {
         &std::env::current_dir().unwrap(),
         &HashMap::new(),
         &HashMap::new(),
+        false,
     )
     .unwrap_err();
     assert_starts_with!(err.to_string(), "cannot parse env file");

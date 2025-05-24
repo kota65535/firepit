@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::{env, path};
 use tracing::info;
 
-/// Firepit: Simple task & service runner with comfortable TUI
+/// Firepit: Simple task & service runner with a comfortable TUI
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Args {
@@ -35,6 +35,10 @@ pub struct Args {
     /// Watch mode
     #[arg(short, long, default_value = "false")]
     pub watch: bool,
+
+    /// Force only the specified tasks
+    #[arg(short, long, default_value = "false")]
+    pub force: bool,
 
     /// Log file
     #[arg(long)]
@@ -89,8 +93,8 @@ pub async fn run() -> anyhow::Result<i32> {
         return Ok(0);
     }
 
-    // Aggregate information in config files into more workable form
-    let ws = Workspace::new(&root, &children, &args.tasks, dir.as_path(), &var, &env)?;
+    // Aggregate information in config files into a more workable form
+    let ws = Workspace::new(&root, &children, &args.tasks, dir.as_path(), &var, &env, args.force)?;
 
     // Create runner
     let mut runner = TaskRunner::new(&ws)?;

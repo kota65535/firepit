@@ -42,8 +42,8 @@ impl TaskRunner {
         let all_tasks = ws.tasks();
         let target_tasks = ws.target_tasks.clone();
 
-        let task_graph = TaskGraph::new(&all_tasks, Some(&target_tasks))?;
-        let task_graph = task_graph.transitive_closure(&target_tasks, Direction::Outgoing)?;
+        let task_graph_all = TaskGraph::new(&all_tasks, Some(&target_tasks), ws.force)?;
+        let task_graph = task_graph_all.transitive_closure(&target_tasks, Direction::Outgoing)?;
         let tasks = task_graph.sort()?;
         debug!("Task graph:\n{:?}", task_graph);
 

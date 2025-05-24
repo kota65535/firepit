@@ -41,10 +41,6 @@ pub struct VisitorHandle {
     pub future: FuturesUnordered<JoinHandle<anyhow::Result<()>>>,
 }
 
-/// Callback message takes following values:
-/// Some(true): success
-/// Some(false): failure
-/// None: should restart
 #[derive(Debug, Clone)]
 pub struct CallbackMessage(pub NodeResult);
 
@@ -56,13 +52,13 @@ pub enum NodeResult {
 }
 
 impl NodeResult {
-    pub fn is_success(&self) -> bool {
+    pub fn success(&self) -> bool {
         match self {
             NodeResult::Success => true,
             _ => false,
         }
     }
-    pub fn is_present(&self) -> bool {
+    pub fn present(&self) -> bool {
         match self {
             NodeResult::None => false,
             _ => true,
@@ -71,17 +67,29 @@ impl NodeResult {
 }
 
 impl TaskGraph {
-    pub fn new(tasks: &Vec<Task>, targets: Option<&Vec<String>>) -> anyhow::Result<TaskGraph> {
+    pub fn new(tasks: &Vec<Task>, targets: Option<&Vec<String>>, force: bool) -> anyhow::Result<TaskGraph> {
         let mut graph = DiGraph::<Task, bool>::new();
         let mut nodes = HashMap::new();
 
-        for t in tasks {
-            let idx = graph.add_node(t.clone());
-            nodes.insert(t.name.clone(), idx);
+        // If `force` is true, we only add the target tasks as nodes to the graph
+        if force {
+            let target_set = targets
+                .map(|t| t.iter().cloned().collect::<HashSet<_>>())
+                .unwrap_or_default();
+            for t in tasks {
+                if target_set.contains(&t.name) {
+                    let idx = graph.add_node(t.clone());
+                    nodes.insert(t.name.clone(), idx);
+                }
+            }
+        } else {
+            for t in tasks {
+                let idx = graph.add_node(t.clone());
+                nodes.insert(t.name.clone(), idx);
+            }
         }
 
-        // It is user's responsibility to ensure that the dependency task exists.
-        // If the specified dependency task does not exist, it is simply ignored
+        // Add edges to the graph based on task dependencies
         for t in tasks {
             for d in &t.depends_on {
                 let from = nodes.get(&t.name);
@@ -90,6 +98,8 @@ impl TaskGraph {
                     (Some(from), Some(to)) => {
                         graph.add_edge(*from, *to, d.cascade);
                     }
+                    // Ignore if the dependent task does not exist.
+                    // This can occur when creating a subgraph by `transitive_closure`.
                     _ => {
                         warn!("Cannot find node for task {} and dependency {}", t.name, d.task);
                     }
@@ -97,9 +107,9 @@ impl TaskGraph {
             }
         }
 
-        // If targets are not given, consider all tasks as target.
+        // If targets are not given, consider all tasks as target
         let targets = targets
-            .map(|t| t.clone())
+            .cloned()
             .unwrap_or_else(|| tasks.iter().map(|t| t.name.clone()).collect());
 
         let ret = TaskGraph { graph, targets };
@@ -123,19 +133,17 @@ impl TaskGraph {
     }
 
     pub fn visit(&self, concurrency: usize, quit_on_done: bool) -> anyhow::Result<VisitorHandle> {
-        debug!("Visitor started");
-        // Each node has a broadcast channel to notify all dependent nodes when it finishes
+        // Each node has a watch channel to send the result for all dependent nodes
         let mut txs = HashMap::new();
         let mut rxs = HashMap::new();
         for node_id in self.graph.node_identifiers() {
-            // Each node can finish at most once so we set the capacity to 1
             let (tx, rx) = watch::channel::<NodeResult>(NodeResult::None);
             txs.insert(node_id, tx);
             rxs.insert(node_id, rx);
         }
-        // Channel to notify when all its dependency nodes have finished
+        // Channel to notify nodes
         let (node_tx, node_rx) = mpsc::channel(max(concurrency, 1));
-        // Channel to stop visitor
+        // Channel to stop or restart visitor
         let (visitor_tx, visitor_rx) = broadcast::channel(self.graph.node_count());
 
         // Remaining target tasks
@@ -151,10 +159,12 @@ impl TaskGraph {
 
             let task = self.graph.node_weight(node_id).context("node not found")?.clone();
             let neighbors = self.graph.neighbors_directed(node_id, Direction::Outgoing);
+            // Dependency tasks
             let dep_tasks = neighbors
                 .clone()
-                .map(|n| self.graph.node_weight(n).context("node not found").cloned())
+                .map(|n| self.graph.node_weight(n).cloned().context("node not found"))
                 .collect::<anyhow::Result<Vec<_>>>()?;
+            // Watch channels to receive the result of dependent tasks
             let dep_rxs = neighbors
                 .clone()
                 .map(|n| rxs.get(&n).cloned().context("sender not found"))
@@ -258,7 +268,7 @@ impl TaskGraph {
 
                                                             // Service task should continue recv loop so that it can restart
                                                             // even after reaching the READY state
-                                                            if result.is_success() && task.is_service {
+                                                            if result.success() && task.is_service {
                                                                 info!("Result: {:?}, still waiting for callback", result);
                                                                 continue 'recv;
                                                             }
@@ -385,7 +395,7 @@ impl TaskGraph {
             .map(|&i| self.graph.node_weight(i).unwrap().clone())
             .collect::<Vec<_>>();
 
-        TaskGraph::new(&tasks, Some(names))
+        TaskGraph::new(&tasks, Some(names), false)
     }
 
     #[allow(dead_code)]
@@ -405,8 +415,8 @@ impl TaskGraph {
     async fn wait_all_watches(mut receivers: Vec<watch::Receiver<NodeResult>>) -> anyhow::Result<bool> {
         for rx in receivers.iter_mut() {
             let v = rx.borrow().clone();
-            if (*rx.borrow()).is_present() {
-                if !(*rx.borrow()).is_success() {
+            if (*rx.borrow()).present() {
+                if !(*rx.borrow()).success() {
                     return Ok(false);
                 }
                 continue;
@@ -415,8 +425,8 @@ impl TaskGraph {
                 if rx.changed().await.is_err() {
                     anyhow::bail!("watch channel closed");
                 }
-                if (*rx.borrow()).is_present() {
-                    if !(*rx.borrow()).is_success() {
+                if (*rx.borrow()).present() {
+                    if !(*rx.borrow()).success() {
                         return Ok(false);
                     }
                     break;
