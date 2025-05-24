@@ -33,36 +33,8 @@ pub struct TaskRunner {
     pub manager: ProcessManager,
     pub concurrency: usize,
 
-    // Senders/Receivers to cancel each task
-    pub task_cancel_txs: HashMap<String, broadcast::Sender<()>>,
-    pub task_cancel_rxs: HashMap<String, broadcast::Receiver<()>>,
-
     pub command_tx: RunnerCommandChannel,
     pub command_rx: broadcast::Receiver<RunnerCommand>,
-}
-
-impl Clone for TaskRunner {
-    fn clone(&self) -> Self {
-        let mut cancel_rxs = HashMap::new();
-        // Create new receivers from the corresponding senders
-        // so that the sender can cancel all the task executions
-        for (k, v) in self.task_cancel_txs.iter() {
-            cancel_rxs.insert(k.clone(), v.subscribe());
-        }
-
-        Self {
-            target_tasks: self.target_tasks.clone(),
-            tasks: self.tasks.clone(),
-            task_graph: self.task_graph.clone(),
-            watcher: self.watcher.clone(),
-            manager: self.manager.clone(),
-            concurrency: self.concurrency,
-            task_cancel_txs: self.task_cancel_txs.clone(),
-            task_cancel_rxs: cancel_rxs,
-            command_tx: self.command_tx.clone(),
-            command_rx: self.command_rx.resubscribe(),
-        }
-    }
 }
 
 impl TaskRunner {
@@ -70,22 +42,14 @@ impl TaskRunner {
         let all_tasks = ws.tasks();
         let target_tasks = ws.target_tasks.clone();
 
-        let task_graph_all = TaskGraph::new(&all_tasks, Some(&target_tasks))?;
-        let task_graph = task_graph_all.transitive_closure(&target_tasks, Direction::Outgoing)?;
+        let task_graph = TaskGraph::new(&all_tasks, Some(&target_tasks))?;
+        let task_graph = task_graph.transitive_closure(&target_tasks, Direction::Outgoing)?;
         let tasks = task_graph.sort()?;
         debug!("Task graph:\n{:?}", task_graph);
 
         let file_watcher = FileWatcher::new(&all_tasks, &ws.dir, WATCHER_DEBOUNCE_DURATION);
 
         let manager = ProcessManager::new(ws.use_pty);
-
-        let mut task_cancel_txs = HashMap::new();
-        let mut task_cancel_rxs = HashMap::new();
-        for t in tasks.iter() {
-            let (cancel_tx, cancel_rx) = broadcast::channel(all_tasks.len());
-            task_cancel_txs.insert(t.name.clone(), cancel_tx);
-            task_cancel_rxs.insert(t.name.clone(), cancel_rx);
-        }
 
         let (command_tx, command_rx) = RunnerCommandChannel::new(all_tasks.len());
 
@@ -96,8 +60,6 @@ impl TaskRunner {
             watcher: file_watcher,
             manager,
             concurrency: ws.concurrency,
-            task_cancel_txs,
-            task_cancel_rxs,
             command_tx,
             command_rx,
         })
@@ -199,7 +161,6 @@ impl TaskRunner {
 
                     let mut app_tx = app_tx.clone().with_name(&task.name);
                     let manager = self.manager.clone();
-                    let mut cancel_rx = self.task_cancel_rxs.get(&task.name).unwrap().resubscribe();
                     let task_name = task.name.clone();
                     let visitor_tx_cloned = visitor_tx.clone();
                     let targets_remaining_cloned = targets_remaining.clone();
@@ -249,7 +210,7 @@ impl TaskRunner {
                             let mut task_fut = tokio_spawn!(
                                 "process",
                                 { name = task.name },
-                                Self::run_process(task.clone(), process, app_tx.clone(), cancel_rx.resubscribe())
+                                Self::run_process(task.clone(), process, app_tx.clone())
                             );
                             let mut probe_fut = tokio_spawn!(
                                 "probe",
@@ -340,14 +301,7 @@ impl TaskRunner {
                             }
                         } else {
                             // Normal task branch
-                            let result = tokio::select! {
-                                task_result = Self::run_process(task.clone(), process, app_tx.clone(), cancel_rx.resubscribe()) => {
-                                    task_result?
-                                }
-                                _ = cancel_rx.recv() => {
-                                    return Ok(());
-                                }
-                            };
+                            let result = Self::run_process(task.clone(), process, app_tx.clone()).await?;
                             app_tx.finish_task(result.unwrap_or(TaskResult::Unknown));
                             node_result = match result {
                                 Some(TaskResult::Success) => NodeResult::Success,
@@ -454,7 +408,6 @@ impl TaskRunner {
         task: Task,
         mut process: Child,
         app_tx: AppCommandChannel,
-        mut cancel_rx: broadcast::Receiver<()>,
     ) -> anyhow::Result<Option<TaskResult>> {
         let pid = process.pid().unwrap_or(0);
 
@@ -465,28 +418,18 @@ impl TaskRunner {
 
         // Wait until complete
         info!("Process is waiting for output. PID={}", pid);
-        let result = tokio::select! {
-            _ = cancel_rx.recv() => {
-                info!("Task is canceled, stopping...");
-                process.stop().await;
-                Ok(None)
-            }
-            result = process.wait_with_piped_outputs(app_tx.clone()) => {
-                let result = match result {
-                    Ok(Some(exit_status)) => match exit_status {
-                        ChildExit::Finished(Some(code)) if code == 0 => TaskResult::Success,
-                        ChildExit::Finished(Some(code)) => TaskResult::Failure(code),
-                        ChildExit::Killed | ChildExit::KilledExternal => TaskResult::Stopped,
-                        ChildExit::Failed => TaskResult::Unknown,
-                        _ => TaskResult::Unknown,
-                    },
-                    Err(e) => anyhow::bail!("error while waiting task {:?}: {:?}", task.name, e),
-                    Ok(None) => anyhow::bail!("unable to determine why child exited"),
-                };
-                Ok(Some(result))
-            }
+        let result = match process.wait_with_piped_outputs(app_tx.clone()).await {
+            Ok(Some(exit_status)) => match exit_status {
+                ChildExit::Finished(Some(code)) if code == 0 => TaskResult::Success,
+                ChildExit::Finished(Some(code)) => TaskResult::Failure(code),
+                ChildExit::Killed | ChildExit::KilledExternal => TaskResult::Stopped,
+                ChildExit::Failed => TaskResult::Unknown,
+                _ => TaskResult::Unknown,
+            },
+            Err(e) => anyhow::bail!("error while waiting task {:?}: {:?}", task.name, e),
+            Ok(None) => anyhow::bail!("unable to determine why child exited"),
         };
         info!("Process finished. PID={}", pid);
-        result
+        Ok(Some(result))
     }
 }
