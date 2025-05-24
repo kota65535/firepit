@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2025-05-24
+
+### 🚀 Features
+
+- Enable to stop/restart task from TUI (#82)
+- Add `force` flag (#83)
+
+### 🐛 Bug Fixes
+
+- Handle panic correctly (#84)
+- Log fatal errors (#86)
+- Stop/restart tasks gracefully (#87)
+- Modify shutdown timeout (#88)
+
+### 🚜 Refactor
+
+- Reorganize modules (#79)
+- Invert `no_quit` flag (#81)
+- Refactor visitor (#80)
+
 ## [0.3.3] - 2025-05-13
 
 ### 🐛 Bug Fixes
