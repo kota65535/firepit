@@ -7,8 +7,7 @@ use std::path;
 use std::path::Path;
 
 use firepit::app::command::{AppCommand, AppCommandChannel};
-use firepit::config::{LogConfig, ProjectConfig};
-use firepit::log::init_logger;
+use firepit::config::ProjectConfig;
 use firepit::project::Workspace;
 use firepit::runner::command::RunnerCommandChannel;
 use rstest::rstest;
@@ -18,23 +17,24 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tracing::info;
+use tracing_subscriber::EnvFilter;
 
 static INIT: Once = Once::new();
 
 pub fn setup() {
     INIT.call_once(|| {
-        init_logger(
-            &LogConfig {
-                level: "debug".to_string(),
-                file: Some("a.log".to_string()),
-            },
-            true,
-        )
-        .unwrap();
-        // tracing_subscriber::fmt()
-        //     .with_env_filter(EnvFilter::new("debug"))
-        //     .with_ansi(false)
-        //     .init();
+        // init_logger(
+        //     &LogConfig {
+        //         level: "debug".to_string(),
+        //         file: Some("a.log".to_string()),
+        //     },
+        //     true,
+        // )
+        // .unwrap();
+        tracing_subscriber::fmt()
+            .with_env_filter(EnvFilter::new("debug"))
+            .with_ansi(false)
+            .init();
     });
 }
 
