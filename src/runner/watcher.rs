@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
-use tracing::{debug, info, warn};
+use tracing::{info, trace, warn};
 
 #[derive(Clone)]
 pub struct FileWatcher {
@@ -88,14 +88,13 @@ impl FileWatcher {
                     },
                     Err(RecvTimeoutError::Timeout) => {
                         if !event_buffer.is_empty() {
-                            debug!("Event buffer {:?}", event_buffer);
                             let paths = event_buffer
                                 .iter()
                                 .filter(|e| e.kind.is_create() || e.kind.is_modify() || e.kind.is_remove())
                                 .flat_map(|e| e.paths.clone())
                                 .collect::<HashSet<_>>();
 
-                            info!("{} Changed files: {:?}", paths.len(), paths);
+                            trace!("{} Changed files: {:?}", paths.len(), paths);
                             let mut changed_tasks = Vec::new();
                             for t in tasks.iter() {
                                 if t.match_inputs(&paths) {

@@ -151,9 +151,7 @@ impl TaskRunner {
                     match event {
                         RunnerCommand::StopTask { task } => {
                             info!("Stopping task: {}", task);
-                            if let Err(err) = self.task_cancel_txs.get(&task).unwrap().send(()) {
-                                warn!("Failed to stop task {:?}: {:?}", &task, err);
-                            }
+                            app_tx.clone().with_name(&task).finish_task(TaskResult::Stopped);
                             if let Err(e) = self.manager.stop_by_label(&task).await {
                                 warn!("Failed to stop process {:?}: {:?}", &task, e);
                             }
@@ -167,18 +165,12 @@ impl TaskRunner {
                             info!("Restarting task: {:?}", tasks);
 
                             for task in tasks.iter() {
-                                if let Err(err) = self.task_cancel_txs.get(task).unwrap().send(()) {
-                                    warn!("Failed to stop task {:?}: {:?}", &task, err);
-                                }
-                            }
-                            for task in tasks.iter() {
+                                app_tx.clone().with_name(&task).finish_task(TaskResult::Reloading);
                                 if let Err(e) = self.manager.stop_by_label(&task).await {
                                     warn!("Failed to stop process {:?}: {:?}", &task, e);
                                 }
                             }
                             for task in tasks.iter() {
-                                let app_tx_cloned = app_tx.clone().with_name(&task);
-                                app_tx_cloned.finish_task(TaskResult::Reloading);
                                 if let Err(err) = visitor_tx.send(VisitorCommand::Restart { task: task.clone(), force }) {
                                     warn!("Failed to restart visitor for task {:?}: {:?}", task, err);
                                 }
@@ -473,10 +465,10 @@ impl TaskRunner {
 
         // Wait until complete
         info!("Process is waiting for output. PID={}", pid);
-        tokio::select! {
+        let result = tokio::select! {
             _ = cancel_rx.recv() => {
                 info!("Task is canceled, stopping...");
-                process.kill().await;
+                process.stop().await;
                 Ok(None)
             }
             result = process.wait_with_piped_outputs(app_tx.clone()) => {
@@ -491,9 +483,10 @@ impl TaskRunner {
                     Err(e) => anyhow::bail!("error while waiting task {:?}: {:?}", task.name, e),
                     Ok(None) => anyhow::bail!("unable to determine why child exited"),
                 };
-                info!("Process finished. PID={}", pid);
                 Ok(Some(result))
             }
-        }
+        };
+        info!("Process finished. PID={}", pid);
+        result
     }
 }
