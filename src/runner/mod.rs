@@ -205,7 +205,7 @@ impl TaskRunner {
                         let mut node_result = NodeResult::None;
                         if task.is_service {
                             // Service task branch
-                            let (cancel_probe_tx, cancel_probe_rx) = watch::channel(());
+                            let (probe_cancel_tx, probe_cancel_rx) = watch::channel(());
                             let log_rx = app_tx.subscribe_output();
                             let mut task_fut = tokio_spawn!(
                                 "process",
@@ -215,7 +215,7 @@ impl TaskRunner {
                             let mut probe_fut = tokio_spawn!(
                                 "probe",
                                 { name = task.name },
-                                Self::run_probe(task.clone(), log_rx, cancel_probe_rx)
+                                Self::run_probe(task.clone(), log_rx, probe_cancel_rx)
                             );
 
                             let mut task_result = None;
@@ -296,7 +296,7 @@ impl TaskRunner {
                                 // If the process finished before the probe, consider it as failed regardless of the result
                                 if let Some(_) = task_result {
                                     info!("Task finished before it becomes ready");
-                                    if let Err(e) = cancel_probe_tx.send(()) {
+                                    if let Err(e) = probe_cancel_tx.send(()) {
                                         warn!("Failed to send cancel probe: {:?}", e)
                                     }
                                     app_tx.finish_task(TaskResult::NotReady);
@@ -376,11 +376,11 @@ impl TaskRunner {
     async fn run_probe(
         task: Task,
         log_rx: UnboundedReceiver<Vec<u8>>,
-        cancel: watch::Receiver<()>,
+        cancel_rx: watch::Receiver<()>,
     ) -> anyhow::Result<bool> {
         match task.probe.clone() {
-            Probe::LogLine(probe) => probe.run(log_rx, cancel).await,
-            Probe::Exec(probe) => probe.run(cancel).await,
+            Probe::LogLine(probe) => probe.run(log_rx, cancel_rx).await,
+            Probe::Exec(probe) => probe.run(cancel_rx).await,
             Probe::None => Ok(true),
         }
     }

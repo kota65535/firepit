@@ -34,7 +34,7 @@ impl LogLineProbe {
     pub async fn run(
         &self,
         mut log_rx: mpsc::UnboundedReceiver<Vec<u8>>,
-        mut cancel: watch::Receiver<()>,
+        mut cancel_rx: watch::Receiver<()>,
     ) -> anyhow::Result<bool> {
         debug!(
             "Probe started (LogLineProbe).\nregex: {:?}\ntimeout: {:?}",
@@ -44,7 +44,7 @@ impl LogLineProbe {
         loop {
             tokio::select! {
                 // Cancelling branch, quits immediately
-                _ = cancel.changed() => {
+                _ = cancel_rx.changed() => {
                     debug!("Probe cancelled");
                     return Ok(false);
                 },
@@ -111,7 +111,7 @@ impl ExecProbe {
         }
     }
 
-    pub async fn run(&self, mut cancel: watch::Receiver<()>) -> anyhow::Result<bool> {
+    pub async fn run(&self, mut cancel_rx: watch::Receiver<()>) -> anyhow::Result<bool> {
         debug!(
             "Probe started (ExecProbe).\ncommand: {:?}\nshell: {:?}\nenv: {:?}\n\nworking_dir: {:?}\ninterval: {:?}\ntimeout: {:?}\nretries: {:?}\nstart_period: {:?}",
             self.command, self.shell, self.env, self.working_dir, self.interval, self.timeout, self.retries, self.start_period
@@ -135,7 +135,7 @@ impl ExecProbe {
 
             tokio::select! {
                 // Cancelling branch, kill the process and quits immediately
-                _ = cancel.changed() => {
+                _ = cancel_rx.changed() => {
                     debug!("Probe cancelled");
                     if let Some(pid) = process.pid() { self.manager.stop_by_pid(pid).await; }
                     return Ok(false);
