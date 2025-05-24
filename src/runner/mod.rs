@@ -17,7 +17,7 @@ use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::{broadcast, watch};
 use tokio::task::JoinHandle;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 pub mod command;
 pub mod graph;
@@ -75,7 +75,13 @@ impl TaskRunner {
             self.manager.set_pty_size(pane_size.rows, pane_size.cols).await;
         }
 
-        self.run(&app_tx, quit_on_done).await
+        let ret = self.run(&app_tx, quit_on_done).await;
+
+        if let Err(err) = ret {
+            error!("Error: {:?}", err);
+            return Err(err);
+        }
+        Ok(())
     }
 
     pub async fn run(&mut self, app_tx: &AppCommandChannel, quit_on_done: bool) -> anyhow::Result<()> {

@@ -34,10 +34,7 @@ use ratatui::{
 };
 use std::collections::HashMap;
 use std::io::{self, Stdout, Write};
-use tokio::{
-    sync::mpsc,
-    time::Instant,
-};
+use tokio::{sync::mpsc, time::Instant};
 use tracing::{debug, error, info};
 
 #[derive(Debug, Clone)]
@@ -174,10 +171,14 @@ impl TuiApp {
             }
         });
 
-        self.run_inner(runner_tx).await.context("failed to run tui app")?;
-
+        let ret = self.run_inner(runner_tx).await;
         runner_tx.quit();
         self.cleanup()?;
+
+        if let Err(err) = ret {
+            error!("Error: {}", err);
+            return Err(err);
+        }
 
         info!("App is exiting");
         Ok(0)
@@ -740,7 +741,7 @@ impl TuiAppState {
     fn update(&mut self, event: AppCommand, runner_tx: &RunnerCommandChannel) -> anyhow::Result<()> {
         match event {
             AppCommand::PlanTask { task } => {
-                self.plan_task(&task);
+                self.plan_task(&task)?;
             }
             AppCommand::StartTask {
                 task,
@@ -749,16 +750,16 @@ impl TuiAppState {
                 max_restart,
                 reload,
             } => {
-                self.start_task(&task, pid, restart, max_restart, reload);
+                self.start_task(&task, pid, restart, max_restart, reload)?;
             }
             AppCommand::TaskOutput { task, output } => {
                 self.process_output(&task, &output)?;
             }
             AppCommand::ReadyTask { task } => {
-                self.ready_task(&task);
+                self.ready_task(&task)?;
             }
             AppCommand::FinishTask { task, result } => {
-                self.finish_task(&task, result);
+                self.finish_task(&task, result)?;
                 self.insert_stdin(&task, None)?;
             }
             AppCommand::SetStdin { task, stdin } => {
