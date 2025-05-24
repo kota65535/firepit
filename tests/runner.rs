@@ -56,7 +56,7 @@ async fn test_basic_single() {
     outputs.insert(String::from("#bar"), String::from("bar"));
     outputs.insert(String::from("#baz"), String::from("baz"));
 
-    run_task(&path, tasks, statuses, Some(outputs)).await.unwrap();
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
 
 #[tokio::test]
@@ -74,7 +74,7 @@ async fn test_basic_empty() {
     outputs.insert(String::from("#bar"), String::from("bar"));
     outputs.insert(String::from("#baz"), String::from("baz"));
 
-    run_task(&path, tasks, statuses, Some(outputs)).await.unwrap();
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
 
 #[tokio::test]
@@ -91,7 +91,7 @@ async fn test_basic_failure() {
     let mut outputs = HashMap::new();
     outputs.insert(String::from("#baz"), String::from("baz"));
 
-    run_task(&path, tasks, statuses, Some(outputs)).await.unwrap();
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
 
 #[tokio::test]
@@ -115,7 +115,7 @@ async fn test_basic_multi(#[case] dir: &str) {
     outputs.insert(String::from("bar#bar"), String::from("bar"));
     outputs.insert(String::from("#baz"), String::from("baz"));
 
-    run_task(&path, tasks, statuses, Some(outputs)).await.unwrap();
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 
     // With unqualified task name
     let tasks = vec![String::from("foo")];
@@ -128,7 +128,7 @@ async fn test_basic_multi(#[case] dir: &str) {
     outputs.insert(String::from("foo#foo"), String::from("foo"));
     outputs.insert(String::from("bar#bar"), String::from("bar"));
 
-    run_task(&path, tasks, statuses, Some(outputs)).await.unwrap();
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
 
 #[tokio::test]
@@ -150,7 +150,7 @@ async fn test_vars() {
     outputs.insert(String::from("#baz"), String::from("baz 3"));
     outputs.insert(String::from("#qux"), String::from("qux 12001"));
 
-    run_task(&path, tasks, stats, Some(outputs)).await.unwrap();
+    run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
 }
 
 #[tokio::test]
@@ -169,7 +169,7 @@ async fn test_vars_multi() {
     outputs.insert(String::from("bar#bar"), String::from("bar 2foo"));
     outputs.insert(String::from("#baz"), String::from("baz 3bar"));
 
-    run_task(&path, tasks, stats, Some(outputs)).await.unwrap();
+    run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
 }
 
 #[tokio::test]
@@ -197,7 +197,7 @@ async fn test_vars_dep() {
     outputs.insert(String::from("#quux-1"), String::from("quux 3"));
     outputs.insert(String::from("#quux-2"), String::from("quux 4"));
 
-    run_task(&path, tasks, stats, Some(outputs)).await.unwrap();
+    run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
 }
 
 #[tokio::test]
@@ -223,7 +223,7 @@ async fn test_vars_dep_multi() {
     outputs.insert(String::from("p2#qux"), String::from("qux 5"));
     outputs.insert(String::from("p2#qux-1"), String::from("qux 4"));
 
-    run_task(&path, tasks, stats, Some(outputs)).await.unwrap();
+    run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
 }
 
 #[tokio::test]
@@ -247,7 +247,7 @@ async fn test_vars_dep_same() {
     outputs.insert(String::from("#qux-1"), String::from("qux 6"));
     outputs.insert(String::from("#qux-2"), String::from("qux 5"));
 
-    run_task(&path, tasks, stats, Some(outputs)).await.unwrap();
+    run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
 }
 
 #[tokio::test]
@@ -272,7 +272,7 @@ async fn test_vars_and_env_from_cli() {
     let vars = HashMap::from([("A".to_string(), "11".to_string())]);
     let env = HashMap::from([("B".to_string(), "12".to_string())]);
 
-    run_task_with_var_env(&path, tasks, stats, Some(outputs), vars, env)
+    run_task_with_var_env(&path, tasks, stats, Some(outputs), vars, env, false)
         .await
         .unwrap();
 }
@@ -283,7 +283,7 @@ async fn test_cyclic() {
     let path = BASE_PATH.join("cyclic");
     let tasks = vec![String::from("foo")];
 
-    let err = run_task(&path, tasks, HashMap::new(), None)
+    let err = run_task(&path, tasks, HashMap::new(), None, false)
         .await
         .expect_err("should fail");
     assert!(err.to_string().contains("cyclic dependency"));
@@ -301,7 +301,7 @@ async fn test_service() {
     stats.insert(String::from("#baz"), String::from("Ready"));
     stats.insert(String::from("#qux"), String::from("Ready"));
 
-    run_task(&path, tasks, stats, None).await.unwrap();
+    run_task(&path, tasks, stats, None, false).await.unwrap();
 }
 
 #[tokio::test]
@@ -315,7 +315,7 @@ async fn test_service_failure() {
     stats.insert(String::from("#bar"), String::from("Finished: NotReady"));
     stats.insert(String::from("#baz"), String::from("Finished: NotReady"));
 
-    run_task(&path, tasks, stats, None).await.unwrap();
+    run_task(&path, tasks, stats, None, false).await.unwrap();
 }
 
 #[tokio::test]
@@ -342,13 +342,23 @@ async fn test_watch() {
     runs.insert(String::from("#baz"), 0);
     runs.insert(String::from("#qux"), 1);
 
-    run_task_with_watch(&path, tasks, stats, Some(outputs), None, Some(runs), None, async {
-        info!("Creating files");
-        let mut f = File::create(BASE_PATH.join("watch").join("bar.txt")).unwrap();
-        f.write_all(b"bar").unwrap();
-        let mut f = File::create(BASE_PATH.join("watch").join("qux.txt")).unwrap();
-        f.write_all(b"qux").unwrap();
-    })
+    run_task_with_watch(
+        &path,
+        tasks,
+        stats,
+        Some(outputs),
+        None,
+        Some(runs),
+        None,
+        false,
+        async {
+            info!("Creating files");
+            let mut f = File::create(BASE_PATH.join("watch").join("bar.txt")).unwrap();
+            f.write_all(b"bar").unwrap();
+            let mut f = File::create(BASE_PATH.join("watch").join("qux.txt")).unwrap();
+            f.write_all(b"qux").unwrap();
+        },
+    )
     .await;
 }
 
@@ -372,7 +382,7 @@ async fn test_watch_service() {
     }
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    run_task_with_watch(&path, tasks, stats, None, None, Some(runs), Some(20), async {
+    run_task_with_watch(&path, tasks, stats, None, None, Some(runs), Some(20), false, async {
         tokio::time::sleep(Duration::from_secs(1)).await;
         let mut f = File::create(BASE_PATH.join("watch_service").join("bar.txt")).unwrap();
         f.write_all(b"12000").unwrap();
@@ -393,7 +403,7 @@ async fn test_up_to_date() {
     stats.insert(String::from("#bar"), String::from("Finished: Success"));
     stats.insert(String::from("#baz"), String::from("Finished: Success"));
 
-    run_task(&path, tasks, stats, None).await.unwrap();
+    run_task(&path, tasks, stats, None, false).await.unwrap();
 }
 
 async fn run_task(
@@ -401,6 +411,7 @@ async fn run_task(
     tasks: Vec<String>,
     status_expected: HashMap<String, String>,
     outputs_expected: Option<HashMap<String, String>>,
+    force: bool,
 ) -> anyhow::Result<()> {
     run_task_inner(
         path,
@@ -412,6 +423,7 @@ async fn run_task(
         None,
         HashMap::new(),
         HashMap::new(),
+        force,
     )
     .await
 }
@@ -423,6 +435,7 @@ async fn run_task_with_var_env(
     outputs_expected: Option<HashMap<String, String>>,
     vars: HashMap<String, String>,
     env: HashMap<String, String>,
+    force: bool,
 ) -> anyhow::Result<()> {
     run_task_inner(
         path,
@@ -434,6 +447,7 @@ async fn run_task_with_var_env(
         None,
         vars,
         env,
+        force,
     )
     .await
 }
@@ -448,10 +462,11 @@ async fn run_task_inner(
     timeout_seconds: Option<u64>,
     vars: HashMap<String, String>,
     env: HashMap<String, String>,
+    force: bool,
 ) -> anyhow::Result<()> {
     let path = path::absolute(path)?;
     let (root, children) = ProjectConfig::new_multi(&path)?;
-    let ws = Workspace::new(&root, &children, &tasks, &path, &vars, &env)?;
+    let ws = Workspace::new(&root, &children, &tasks, &path, &vars, &env, force)?;
     // Create runner
     let mut runner = TaskRunner::new(&ws)?;
     let (app_tx, app_rx) = AppCommandChannel::new();
@@ -487,6 +502,7 @@ async fn run_task_with_watch<F>(
     restarts_expected: Option<HashMap<String, u64>>,
     runs_expected: Option<HashMap<String, u64>>,
     timeout_seconds: Option<u64>,
+    force: bool,
     f: F,
 ) where
     F: Future<Output = ()> + Send + 'static,
@@ -499,6 +515,7 @@ async fn run_task_with_watch<F>(
         &path,
         &HashMap::new(),
         &HashMap::new(),
+        force,
     )
     .unwrap();
 
