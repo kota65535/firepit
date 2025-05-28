@@ -95,7 +95,7 @@ impl CuiApp {
         }
 
         info!("App is exiting");
-        Ok(0)
+        Ok(ret?)
     }
 
     pub async fn run_inner(&mut self) -> anyhow::Result<i32> {
