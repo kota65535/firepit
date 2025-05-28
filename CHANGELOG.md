@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.1] - 2025-05-28
+
+### 🐛 Bug Fixes
+
+- *(deps)* Update rust crate clap to v4.5.39 (#90)
+- Fix wrong exit code (#91)
+
 ## [0.4.0] - 2025-05-24
 
 ### 🚀 Features
