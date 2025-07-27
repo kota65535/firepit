@@ -40,7 +40,7 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 tui-term = { version = "=0.1.9", default-features = false }
 vt100 = { git = "https://github.com/kota65535/vt100-rust", rev = "cc4bd1eb6f1e302eaa5a5f24d5bed02a4244d0c6" }
-which = "7.0.1"
+which = "8.0.0"
 
 # The profile that 'dist' will build with
 [profile.dist]
