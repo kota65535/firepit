@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.3] - 2025-07-27
+
+### 🐛 Bug Fixes
+
+- *(deps)* Update rust crate petgraph to v0.8.2 (#94)
+- *(deps)* Update rust crate clap to v4.5.40 (#95)
+- *(deps)* Update rust crate libc to v0.2.173 (#96)
+- *(deps)* Update rust crate libc to v0.2.174 (#97)
+- *(deps)* Update rust crate human-panic to v2.0.3 (#100)
+- *(deps)* Update rust crate clap to v4.5.41 (#101)
+- *(deps)* Update rust crate serde_json to v1.0.141 (#102)
+- *(deps)* Update rust crate axoupdater to v0.9.1 (#103)
+- Handle up-to-date as success (#105)
+- *(deps)* Update rust crate console to 0.16.0 (#98)
+- *(deps)* Update rust crate which to v8 (#93)
+- *(deps)* Update rust crate tokio to v1.47.0 (#69)
+- *(deps)* Update rust crate indexmap to v2.10.0 (#65)
+- Fix up-to-date icon (#107)
+
 ## [0.4.2] - 2025-05-28
 
 ### 🐛 Bug Fixes
