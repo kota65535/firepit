@@ -191,7 +191,7 @@ impl TaskRunner {
                         if task.is_up_to_date() {
                             info!("Task output files are newer than input files");
                             app_tx.finish_task(TaskResult::UpToDate);
-                            if let Err(e) = callback.send(CallbackMessage(NodeResult::Failure)).await {
+                            if let Err(e) = callback.send(CallbackMessage(NodeResult::Success)).await {
                                 warn!("Failed to send callback event: {:?}", e)
                             }
                             return Ok::<(), anyhow::Error>(());
