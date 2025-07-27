@@ -64,7 +64,7 @@ impl TaskTable<'_> {
                         match r {
                             TaskResult::Success => Cell::new(Text::raw("\u{2705}\u{FE0F}")), // ✅
                             TaskResult::Failure(_) => Cell::new(Text::raw("\u{274C}\u{FE0F}")), // ❌
-                            TaskResult::UpToDate => Cell::new(Text::raw("\u{1F966}")),       // 🥬
+                            TaskResult::UpToDate => Cell::new(Text::raw("\u{1F96C}")),       // 🥬
                             TaskResult::BadDeps | TaskResult::NotReady | TaskResult::Stopped => {
                                 Cell::new(Text::raw("\u{1F6AB}")) // 🚫
                             }
