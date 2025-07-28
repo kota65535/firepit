@@ -63,7 +63,6 @@ pub struct TuiAppState {
     selected_task_index: usize,
     has_sidebar: bool,
     should_quit: bool,
-    tasks_done: bool,
 }
 
 impl TuiApp {
@@ -128,7 +127,6 @@ impl TuiApp {
                 selected_task_index,
                 has_sidebar,
                 should_quit: false,
-                tasks_done: false,
             },
         })
     }
@@ -432,7 +430,7 @@ impl TuiAppState {
         let scrollback = active_task.output.screen().scrollback();
 
         // Render pane
-        let pane_to_render = TerminalPane::new(&active_task, &self.focus, self.has_sidebar, self.tasks_done);
+        let pane_to_render = TerminalPane::new(&active_task, &self.focus, self.has_sidebar);
         f.render_widget(&pane_to_render, pane);
 
         // Render pane scrollbar
@@ -774,9 +772,7 @@ impl TuiAppState {
                     })
                     .ok();
             }
-            AppCommand::Done => {
-                self.tasks_done = true;
-            }
+            AppCommand::Done => {}
             AppCommand::Quit => {
                 self.should_quit = true;
             }

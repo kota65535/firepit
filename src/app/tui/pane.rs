@@ -21,22 +21,20 @@ static COPY_SELECTION: &'static (&str, &str) = &("[c]", "Copy Selection");
 static SHOW_TASKS: &'static (&str, &str) = &("[h]", "Show Tasks");
 static NAVIGATE_SEARCH_RESULT: &'static (&str, &str) = &("[n\u{FF65}N]", "Next/Prev Match");
 static CLEAR_SEARCH_RESULT: &'static (&str, &str) = &("[Esc]", "Clear");
-static QUIT: &'static (&str, &str) = &("[Ctrl-c]", "Quit");
+static QUIT: &'static (&str, &str) = &("[q]", "Quit");
 
 pub struct TerminalPane<'a> {
     task: &'a Task,
     section: &'a LayoutSections,
     has_sidebar: bool,
-    done: bool,
 }
 
 impl<'a> TerminalPane<'a> {
-    pub fn new(task: &'a Task, section: &'a LayoutSections, has_sidebar: bool, done: bool) -> Self {
+    pub fn new(task: &'a Task, section: &'a LayoutSections, has_sidebar: bool) -> Self {
         Self {
             task,
             section,
             has_sidebar,
-            done,
         }
     }
 
@@ -83,9 +81,7 @@ impl<'a> TerminalPane<'a> {
                 search_spans.push(Span::styled(format!("/ {}\n", query), Style::default().bold()));
             }
         }
-        if self.done {
-            help_spans.push(key_help_spans(*QUIT));
-        }
+        help_spans.push(key_help_spans(*QUIT));
 
         Text::from(vec![
             Line::from(search_spans).left_aligned(),
