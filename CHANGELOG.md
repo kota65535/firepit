@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2025-07-28
+
+### 🚀 Features
+
+- Change default UI (#108)
+
+### 🐛 Bug Fixes
+
+- Show quit key (#109)
+
 ## [0.4.3] - 2025-07-27
 
 ### 🐛 Bug Fixes
