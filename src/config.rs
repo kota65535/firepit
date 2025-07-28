@@ -69,8 +69,8 @@ pub struct ProjectConfig {
 
     /// UI configuration.
     /// Valid only in root project config.
-    #[serde(default = "default_ui")]
-    pub ui: UI,
+    #[serde(default)]
+    pub ui: Option<UI>,
 
     /// Additional config files to be included
     #[serde(default)]

@@ -11,10 +11,13 @@ use tracing::warn;
 pub struct Workspace {
     pub root: Project,
     pub children: HashMap<String, Project>,
+    pub tasks: Vec<Task>,
     pub target_tasks: Vec<String>,
+    pub labels: HashMap<String, String>,
+    pub ui: UI,
+    pub use_pty: bool,
     pub concurrency: usize,
     pub force: bool,
-    pub use_pty: bool,
     pub dir: PathBuf,
 }
 
@@ -97,7 +100,32 @@ impl Workspace {
             children.insert(k.clone(), Project::new(k, v)?);
         }
 
-        let use_pty = match root_config.ui {
+        let mut tasks = root.tasks.values().cloned().collect::<Vec<_>>();
+        for p in children.values() {
+            tasks.extend(p.tasks.values().cloned().collect::<Vec<_>>());
+        }
+
+        let labels = tasks
+            .iter()
+            .cloned()
+            .map(|t| (t.name, t.label))
+            .collect::<HashMap<_, _>>();
+
+        let ui = if !atty::is(atty::Stream::Stdout) {
+            UI::Cui
+        } else {
+            let has_service_task = tasks
+                .iter()
+                .filter(|t| target_tasks.contains(&t.name))
+                .any(|t| t.is_service);
+            if has_service_task {
+                UI::Tui
+            } else {
+                UI::Cui
+            }
+        };
+
+        let use_pty = match ui {
             UI::Tui => true,
             UI::Cui => false,
         };
@@ -105,42 +133,15 @@ impl Workspace {
         Ok(Self {
             root,
             children,
+            tasks,
             target_tasks,
+            labels,
+            ui,
+            use_pty,
             concurrency: root_config.concurrency,
             force,
-            use_pty,
             dir: current_dir.to_owned(),
         })
-    }
-
-    pub fn tasks(&self) -> Vec<Task> {
-        // All tasks
-        let mut tasks = self.root.tasks.values().cloned().collect::<Vec<_>>();
-        for p in self.children.values() {
-            tasks.extend(p.tasks.values().cloned().collect::<Vec<_>>());
-        }
-        tasks
-    }
-
-    pub fn task(&self, name: &str) -> Option<Task> {
-        self.root
-            .tasks
-            .values()
-            .find(|t| t.name == name)
-            .or_else(|| {
-                self.children
-                    .values()
-                    .flat_map(|c| c.tasks.values())
-                    .find(|t| t.name == name)
-            })
-            .cloned()
-    }
-
-    pub fn labels(&self) -> HashMap<String, String> {
-        self.tasks()
-            .into_iter()
-            .map(|t| (t.name, t.label))
-            .collect::<HashMap<_, _>>()
     }
 }
 
