@@ -78,10 +78,13 @@
     },
     "ui": {
       "description": "UI configuration. Valid only in root project config.",
-      "default": "cui",
-      "allOf": [
+      "default": null,
+      "anyOf": [
         {
           "$ref": "#/definitions/UI"
+        },
+        {
+          "type": "null"
         }
       ]
     },

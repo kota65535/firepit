@@ -69,8 +69,8 @@ pub struct ProjectConfig {
 
     /// UI configuration.
     /// Valid only in root project config.
-    #[serde(default = "default_ui")]
-    pub ui: UI,
+    #[serde(default)]
+    pub ui: Option<UI>,
 
     /// Additional config files to be included
     #[serde(default)]
@@ -105,14 +105,6 @@ pub fn default_log() -> LogConfig {
 
 pub fn default_log_level() -> String {
     "info".to_string()
-}
-
-pub fn default_ui() -> UI {
-    if atty::is(atty::Stream::Stdout) {
-        UI::Tui
-    } else {
-        UI::Cui
-    }
 }
 
 impl ProjectConfig {
