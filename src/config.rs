@@ -107,14 +107,6 @@ pub fn default_log_level() -> String {
     "info".to_string()
 }
 
-pub fn default_ui() -> UI {
-    if atty::is(atty::Stream::Stdout) {
-        UI::Tui
-    } else {
-        UI::Cui
-    }
-}
-
 impl ProjectConfig {
     pub fn new_multi(dir: &Path) -> anyhow::Result<(ProjectConfig, HashMap<String, ProjectConfig>)> {
         let dir = path::absolute(dir)?;

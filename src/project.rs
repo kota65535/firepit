@@ -111,17 +111,22 @@ impl Workspace {
             .map(|t| (t.name, t.label))
             .collect::<HashMap<_, _>>();
 
+        // Determine UI.
+        // - If stdout is not a TTY, use CUI
+        // - If UI is explicitly set in the CLI option or the root config, use it
+        // - If UI is not set, determine based on tasks
         let ui = if !atty::is(atty::Stream::Stdout) {
             UI::Cui
         } else {
-            let has_service_task = tasks
-                .iter()
-                .filter(|t| target_tasks.contains(&t.name))
-                .any(|t| t.is_service);
-            if has_service_task {
-                UI::Tui
-            } else {
-                UI::Cui
+            match root_config.ui {
+                Some(ui) => ui,
+                None => {
+                    if tasks.iter().any(|t| target_tasks.contains(&t.name) && t.is_service) {
+                        UI::Tui
+                    } else {
+                        UI::Cui
+                    }
+                }
             }
         };
 
