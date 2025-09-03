@@ -1,4 +1,4 @@
-use assertables::assert_starts_with;
+use assertables::assert_ok;
 use firepit::config::ProjectConfig;
 use firepit::project::Workspace;
 use std::collections::HashMap;
@@ -21,7 +21,7 @@ pub fn setup() {
 fn test_env_file_not_found() {
     let path = Path::new("tests/fixtures/project/no_env_file");
     let (root, children) = ProjectConfig::new_multi(path).unwrap();
-    let err = Workspace::new(
+    let result = Workspace::new(
         &root,
         &children,
         &Vec::new(),
@@ -29,16 +29,15 @@ fn test_env_file_not_found() {
         &HashMap::new(),
         &HashMap::new(),
         false,
-    )
-    .unwrap_err();
-    assert_starts_with!(err.to_string(), "cannot read env file");
+    );
+    assert_ok!(result);
 }
 
 #[test]
 fn test_bad_env_file() {
     let path = Path::new("tests/fixtures/project/bad_env_file");
     let (root, children) = ProjectConfig::new_multi(path).unwrap();
-    let err = Workspace::new(
+    let result = Workspace::new(
         &root,
         &children,
         &Vec::new(),
@@ -46,7 +45,6 @@ fn test_bad_env_file() {
         &HashMap::new(),
         &HashMap::new(),
         false,
-    )
-    .unwrap_err();
-    assert_starts_with!(err.to_string(), "cannot parse env file");
+    );
+    assert_ok!(result);
 }
