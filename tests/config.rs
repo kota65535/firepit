@@ -1,5 +1,5 @@
 use assertables::assert_starts_with;
-use firepit::config::ProjectConfig;
+use firepit::config::{ProjectConfig, ShellConfig};
 use std::collections::HashMap;
 use std::env;
 use std::path::Path;
@@ -37,14 +37,19 @@ fn to_absolute_path(root: &Path, path: &str) -> String {
 fn test_multi() {
     let path = Path::new("tests/fixtures/config/multi");
     let (root, children) = ProjectConfig::new_multi(path).unwrap();
-    let foo = &children.get("foo").unwrap();
-    let bar = &children.get("bar").unwrap();
+    let foo = children.get("foo").unwrap().clone();
+    let bar = children.get("bar").unwrap().clone();
 
     // root
     assert_eq_env(&root.env, &HashMap::from([("A", "a"), ("B", "b")]));
     assert_eq!(root.env_files, vec![".env.root"]);
-    assert_eq!(root.shell.command, "shell-root");
-    assert_eq!(root.shell.args, vec!["args-root"]);
+    assert_eq!(
+        root.shell.unwrap(),
+        ShellConfig {
+            command: "shell-root".to_string(),
+            args: vec!["args-root".to_string()],
+        }
+    );
 
     // foo
     assert_eq_env(
@@ -55,8 +60,13 @@ fn test_multi() {
         foo.env_files,
         vec![to_absolute_path(&path, ".env.root"), String::from(".env.foo")]
     );
-    assert_eq!(foo.shell.command, "shell-foo");
-    assert_eq!(foo.shell.args, vec!["args-foo"]);
+    assert_eq!(
+        foo.shell.unwrap(),
+        ShellConfig {
+            command: "shell-foo".to_string(),
+            args: vec!["args-foo".to_string()],
+        }
+    );
 
     // bar
     assert_eq_env(
@@ -67,22 +77,32 @@ fn test_multi() {
         bar.env_files,
         vec![to_absolute_path(&path, ".env.root"), String::from(".env.bar")]
     );
-    assert_eq!(bar.shell.command, "shell-bar");
-    assert_eq!(bar.shell.args, vec!["args-bar"]);
+    assert_eq!(
+        bar.shell.unwrap(),
+        ShellConfig {
+            command: "shell-root".to_string(),
+            args: vec!["args-root".to_string()],
+        }
+    );
 }
 
 #[test]
 fn test_merge() {
     let path = Path::new("tests/fixtures/config/merge");
     let (root, children) = ProjectConfig::new_multi(path).unwrap();
-    let foo = &children.get("foo").unwrap();
-    let bar = &children.get("bar").unwrap();
+    let foo = children.get("foo").unwrap().clone();
+    let bar = children.get("bar").unwrap().clone();
 
     // root
     assert_eq_env(&root.env, &HashMap::from([("A", "a"), ("B", "b")]));
     assert_eq!(root.env_files, vec![".env.root"]);
-    assert_eq!(root.shell.command, "shell-root");
-    assert_eq!(root.shell.args, vec!["args-root"]);
+    assert_eq!(
+        root.shell.unwrap(),
+        ShellConfig {
+            command: "shell-root".to_string(),
+            args: vec!["args-root".to_string()],
+        }
+    );
 
     // foo
     assert_eq_env(
@@ -97,8 +117,13 @@ fn test_merge() {
             String::from(".env.a"),
         ]
     );
-    assert_eq!(foo.shell.command, "shell-foo");
-    assert_eq!(foo.shell.args, vec!["args-foo"]);
+    assert_eq!(
+        foo.shell.unwrap(),
+        ShellConfig {
+            command: "shell-foo".to_string(),
+            args: vec!["args-foo".to_string()],
+        }
+    );
     assert_eq!(foo.tasks.get("foo").unwrap().command, Some("echo \"foo\"".to_string()));
     assert_eq!(
         foo.tasks.get("foo-2").unwrap().command,
@@ -118,8 +143,13 @@ fn test_merge() {
             String::from(".env.b")
         ]
     );
-    assert_eq!(bar.shell.command, "shell-bar");
-    assert_eq!(bar.shell.args, vec!["args-bar"]);
+    assert_eq!(
+        bar.shell.unwrap(),
+        ShellConfig {
+            command: "shell-root".to_string(),
+            args: vec!["args-root".to_string()],
+        }
+    );
     assert_eq!(bar.tasks.get("bar").unwrap().command, Some("echo \"bar\"".to_string()));
     assert_eq!(
         bar.tasks.get("bar-2").unwrap().command,
