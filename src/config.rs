@@ -42,7 +42,7 @@ pub struct ProjectConfig {
     #[serde(default)]
     pub vars: HashMap<String, String>,
 
-    /// Environment variables of all tasks.
+    /// Environment variables for all tasks.
     /// Merged with those of child projects.
     #[serde(default)]
     pub env: HashMap<String, String>,
@@ -52,6 +52,11 @@ pub struct ProjectConfig {
     /// If environment variable duplicates, the later one wins.
     #[serde(default)]
     pub env_files: Vec<String>,
+
+    /// Dependency tasks for all tasks.
+    /// Merged with those of child projects.
+    #[serde(default)]
+    pub depends_on: Vec<DependsOnConfig>,
 
     /// Task definitions
     #[serde(default)]
@@ -140,10 +145,17 @@ impl ProjectConfig {
                 // Merge env_files
                 child_config.env_files = root_config
                     .env_files
-                    .clone()
                     .iter()
                     .map(|f| root_config.dir.join(f).to_str().unwrap().to_string())
                     .chain(child_config.env_files)
+                    .collect();
+
+                // Merge depends_on
+                child_config.depends_on = root_config
+                    .depends_on
+                    .iter()
+                    .chain(child_config.depends_on.iter())
+                    .cloned()
                     .collect();
 
                 child_config = child_config.merge(&root_config.dir)?;

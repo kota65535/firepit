@@ -10,6 +10,9 @@ shell:
   args:
     - args-foo
 
+depends_on:
+  - "#install"
+
 tasks:
   foo:
     command: echo "foo"
@@ -22,3 +25,5 @@ tasks:
     env:
       B: b-foo-2
       D: d
+    depends_on:
+      - foo

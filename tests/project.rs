@@ -48,3 +48,31 @@ fn test_bad_env_file() {
     );
     assert_ok!(result);
 }
+
+#[test]
+fn test_multi() {
+    let path = Path::new("tests/fixtures/project/multi");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &Vec::new(),
+        &std::env::current_dir().unwrap(),
+        &HashMap::new(),
+        &HashMap::new(),
+        false,
+    )
+    .unwrap();
+
+    let foo = ws.children.get("foo").unwrap().task("foo").unwrap();
+    assert_eq!(
+        foo.depends_on.iter().map(|s| s.task.clone()).collect::<Vec<_>>(),
+        vec!["#install".to_string()]
+    );
+
+    let foo2 = ws.children.get("foo").unwrap().task("foo-2").unwrap();
+    assert_eq!(
+        foo2.depends_on.iter().map(|s| s.task.clone()).collect::<Vec<_>>(),
+        vec!["#install".to_string(), "foo#foo".to_string()]
+    );
+}

@@ -10,6 +10,9 @@ shell:
   args:
     - args-foo
 
+depends_on:
+  - foo
+
 tasks:
   foo:
     command: echo "foo"
