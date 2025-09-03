@@ -29,8 +29,8 @@ pub struct ProjectConfig {
     pub projects: HashMap<String, String>,
 
     /// Shell configuration for all tasks
-    #[serde(default = "default_shell")]
-    pub shell: ShellConfig,
+    #[schemars(default = "default_shell")]
+    pub shell: Option<ShellConfig>,
 
     /// Working directory for all tasks.
     #[serde(default = "default_working_dir")]
@@ -120,8 +120,11 @@ impl ProjectConfig {
                 }
                 let mut child_config = ProjectConfig::new(name, root_config.dir.join(path).as_path())?;
 
+                child_config.shell = child_config.shell.or(root_config.shell.clone());
+
                 for t in child_config.tasks.values_mut() {
                     t.project = name.clone();
+                    t.shell = t.clone().shell.or(child_config.shell.clone());
                 }
 
                 // Merge vars
@@ -410,7 +413,7 @@ fn absolute_or_join(path: &str, dir: &Path) -> PathBuf {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
 pub struct ShellConfig {
     /// Shell command.
     pub command: String,

@@ -62,9 +62,12 @@
         ],
         "command": "bash"
       },
-      "allOf": [
+      "anyOf": [
         {
           "$ref": "#/definitions/ShellConfig"
+        },
+        {
+          "type": "null"
         }
       ]
     },

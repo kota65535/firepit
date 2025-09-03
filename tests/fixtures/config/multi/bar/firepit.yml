@@ -5,11 +5,6 @@ env:
 env_files:
   - .env.bar
 
-shell:
-  command: shell-bar
-  args:
-    - args-bar
-
 tasks:
   bar:
     command: echo "bar"

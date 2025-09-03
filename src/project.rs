@@ -1,4 +1,6 @@
-use crate::config::{DependsOnConfig, HealthCheckConfig, ProjectConfig, Restart, ServiceConfig, TaskConfig, UI};
+use crate::config::{
+    default_shell, DependsOnConfig, HealthCheckConfig, ProjectConfig, Restart, ServiceConfig, TaskConfig, UI,
+};
 use crate::probe::{ExecProbe, LogLineProbe, Probe};
 use crate::template::ConfigRenderer;
 use anyhow::Context;
@@ -249,7 +251,7 @@ impl Task {
         let task_name = Task::qualified_name(project_name, task_name);
 
         // Shell
-        let task_shell = task_config.shell.clone().unwrap_or(config.shell.clone());
+        let task_shell = task_config.clone().shell.unwrap_or(default_shell());
 
         // Working directory
         let task_working_dir = task_config
