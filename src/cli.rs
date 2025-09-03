@@ -68,9 +68,6 @@ pub async fn run() -> anyhow::Result<i32> {
     let var = parse_var_and_env(&args.var)?;
     let env = parse_var_and_env(&args.env)?;
 
-    info!("Working dir: {:?}", dir);
-    info!("Tasks: {:?}", args.tasks);
-
     // Load config files
     let (mut root, children) = ProjectConfig::new_multi(&dir)?;
 
@@ -86,6 +83,10 @@ pub async fn run() -> anyhow::Result<i32> {
     };
 
     init_logger(&root.log, args.tokio_console)?;
+
+    info!("Tasks: {:?}", args.tasks);
+    info!("Root project config: {:?}", root);
+    info!("Child project config: {:?}", children);
 
     // Print workspace information if no task specified
     if args.tasks.is_empty() {
