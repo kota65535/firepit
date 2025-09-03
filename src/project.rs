@@ -173,7 +173,7 @@ impl Project {
         })
     }
 
-    pub fn task(&self, name: &String) -> Option<Task> {
+    pub fn task(&self, name: &str) -> Option<Task> {
         self.tasks.get(&Task::qualified_name(&self.name, name)).cloned()
     }
 }
@@ -277,6 +277,13 @@ impl Task {
         )?;
         let merged_task_env = Self::merge_env(project_env, task_env)?;
 
+        // Depends On
+        let depends_on = task_config
+            .depends_on
+            .iter()
+            .chain(config.depends_on.iter())
+            .collect::<Vec<_>>();
+
         // Input files
         let inputs = task_config
             .input_paths(&config.dir)
@@ -342,14 +349,13 @@ impl Task {
 
         Ok(Self {
             name: Task::qualified_name(project_name, &task_name),
-            label: task_config.label.clone().unwrap_or(task_name),
+            label: task_config.label.clone().unwrap_or(task_name.clone()),
             command: task_config.command.clone().unwrap_or("".to_string()),
             shell: task_shell.command,
             shell_args: task_shell.args,
             working_dir: task_working_dir,
             env: merged_task_env,
-            depends_on: task_config
-                .depends_on
+            depends_on: depends_on
                 .iter()
                 .map(|s| match s {
                     DependsOnConfig::String(s) => DependsOn {
@@ -361,6 +367,7 @@ impl Task {
                         cascade: s.cascade,
                     },
                 })
+                .filter(|d| d.task != task_name) // Exclude the task itself
                 .collect(),
             is_service,
             probe,

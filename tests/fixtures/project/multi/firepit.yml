@@ -13,3 +13,12 @@ shell:
 env:
   A: a
   B: b
+
+depends_on:
+  - "#install"
+
+tasks:
+  install:
+    command: echo "install"
+    depends_on:
+      - "install"

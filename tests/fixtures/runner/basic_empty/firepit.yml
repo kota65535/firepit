@@ -1,6 +1,7 @@
 tasks:
   foo:
     depends_on:
+      - foo
       - bar
       - baz
 
