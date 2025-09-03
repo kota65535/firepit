@@ -11,7 +11,7 @@
       "minimum": 0.0
     },
     "depends_on": {
-      "description": "Names of dependency tasks for all tasks. Merged with those of child projects.",
+      "description": "Dependency tasks for all tasks. Merged with those of child projects.",
       "default": [],
       "type": "array",
       "items": {
