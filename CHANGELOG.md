@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.0] - 2025-09-03
+
+### 🚀 Features
+
+- Project level `depends_on` (#128)
+
+### 🐛 Bug Fixes
+
+- Ignore if env file not found (#127)
+
 ## [0.5.1] - 2025-09-03
 
 ### 🐛 Bug Fixes
