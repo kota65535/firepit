@@ -53,7 +53,7 @@ pub struct ProjectConfig {
     #[serde(default)]
     pub env_files: Vec<String>,
 
-    /// Names of dependency tasks for all tasks.
+    /// Dependency tasks for all tasks.
     /// Merged with those of child projects.
     #[serde(default)]
     pub depends_on: Vec<DependsOnConfig>,
