@@ -10,8 +10,16 @@
       "format": "uint",
       "minimum": 0.0
     },
+    "depends_on": {
+      "description": "Names of dependency tasks for all tasks. Merged with those of child projects.",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/DependsOnConfig"
+      }
+    },
     "env": {
-      "description": "Environment variables of all tasks. Merged with those of child projects.",
+      "description": "Environment variables for all tasks. Merged with those of child projects.",
       "default": {},
       "type": "object",
       "additionalProperties": {
