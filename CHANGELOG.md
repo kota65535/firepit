@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.1] - 2025-09-03
+
+### 🐛 Bug Fixes
+
+- *(deps)* Update rust crate clap to v4.5.42 (#110)
+- *(deps)* Update rust crate serde_json to v1.0.142 (#111)
+- *(deps)* Update rust crate tokio to v1.47.1 (#112)
+- *(deps)* Update rust crate clap to v4.5.43 (#114)
+- *(deps)* Update rust crate libc to v0.2.175 (#115)
+- *(deps)* Update rust crate clap to v4.5.44 (#117)
+- *(deps)* Update rust crate anyhow to v1.0.99 (#118)
+- *(deps)* Update rust crate clap to v4.5.45 (#119)
+- *(deps)* Update rust crate serde_json to v1.0.143 (#120)
+- *(deps)* Update rust crate regex to v1.11.2 (#122)
+- *(deps)* Update rust crate clap to v4.5.46 (#123)
+- *(deps)* Update rust crate tracing-subscriber to v0.3.20 [security] (#124)
+- *(deps)* Update rust crate clap to v4.5.47 (#125)
+- Inherit shell config correctly (#126)
+
 ## [0.5.0] - 2025-07-28
 
 ### 🚀 Features
