@@ -266,7 +266,11 @@ impl Task {
         // 4. Project env
         // 5. Task env file
         // 6. Task env
-        let project_env = Self::merge_env(Self::load_env_files(&config.env_files_paths())?, config.env.clone())?;
+        let project_env = Self::merge_env(
+            // Ignore if env file not found
+            Self::load_env_files(&config.env_files_paths()).unwrap_or(HashMap::new()),
+            config.env.clone(),
+        )?;
         let task_env = Self::merge_env(
             Self::load_env_files(&task_config.env_file_paths(&config.dir))?,
             task_config.env.clone(),
