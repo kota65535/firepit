@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.2] - 2025-09-04
+
+### 🐛 Bug Fixes
+
+- Preserve env/vars order (#129)
+
 ## [0.6.1] - 2025-09-03
 
 ### 🐛 Bug Fixes
