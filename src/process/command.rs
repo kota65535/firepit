@@ -1,7 +1,7 @@
+use indexmap::IndexMap;
 use itertools::Itertools;
 use std::path::PathBuf;
 use std::{
-    collections::BTreeMap,
     ffi::{OsStr, OsString},
     process::Stdio,
 };
@@ -13,7 +13,7 @@ pub struct Command {
     program: OsString,
     args: Vec<OsString>,
     cwd: Option<PathBuf>,
-    env: BTreeMap<OsString, OsString>,
+    env: IndexMap<OsString, OsString>,
     open_stdin: bool,
     env_clear: bool,
     label: Option<String>,
@@ -26,7 +26,7 @@ impl Command {
             program,
             args: Vec::new(),
             cwd: None,
-            env: BTreeMap::new(),
+            env: IndexMap::new(),
             open_stdin: true,
             env_clear: false,
             label: None,
