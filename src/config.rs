@@ -2,6 +2,7 @@ use crate::project::Task;
 use crate::template::ROOT_DIR_CONTEXT_KEY;
 use crate::util::merge_yaml;
 use anyhow::Context;
+use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use schemars::JsonSchema;
@@ -40,12 +41,12 @@ pub struct ProjectConfig {
     /// Merged with those of child projects.
     /// Can be used at `working_dir`, `env`, `env_files`.
     #[serde(default)]
-    pub vars: HashMap<String, String>,
+    pub vars: IndexMap<String, String>,
 
     /// Environment variables for all tasks.
     /// Merged with those of child projects.
     #[serde(default)]
-    pub env: HashMap<String, String>,
+    pub env: IndexMap<String, String>,
 
     /// Dotenv files for all tasks.
     /// Merged with those of child projects.
@@ -359,12 +360,12 @@ pub struct TaskConfig {
     /// Template variables.
     /// Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, [`LogProbeConfig::log`](LogProbeConfig::log).
     #[serde(default)]
-    pub vars: HashMap<String, String>,
+    pub vars: IndexMap<String, String>,
 
     /// Environment variables.
     /// Merged with the project's env.
     #[serde(default)]
-    pub env: HashMap<String, String>,
+    pub env: IndexMap<String, String>,
 
     /// Dotenv files
     /// Merged with the project's env.
@@ -454,7 +455,7 @@ pub struct DependsOnConfigStruct {
     pub task: String,
 
     #[serde(default, deserialize_with = "deserialize_hash_map")]
-    pub vars: HashMap<String, String>,
+    pub vars: IndexMap<String, String>,
 
     #[serde(default = "default_cascade")]
     pub cascade: bool,
@@ -498,7 +499,7 @@ pub struct ExecProbeConfig {
     /// Environment variables.
     /// Merged with the task's env.
     #[serde(default, deserialize_with = "deserialize_hash_map")]
-    pub env: HashMap<String, String>,
+    pub env: IndexMap<String, String>,
 
     /// Dotenv files
     /// Merged with the task's env.
@@ -655,12 +656,12 @@ pub enum UI {
 
 /// Deserializes hash map while converting number to string, which is the default behavior.
 /// This is necessary when using serde(untagged), as it strictly checks types.
-fn deserialize_hash_map<'de, D>(deserializer: D) -> Result<HashMap<String, String>, D::Error>
+fn deserialize_hash_map<'de, D>(deserializer: D) -> Result<IndexMap<String, String>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let map: HashMap<String, Value> = HashMap::deserialize(deserializer)?;
-    let mut new_map = HashMap::new();
+    let map: IndexMap<String, Value> = IndexMap::deserialize(deserializer)?;
+    let mut new_map = IndexMap::new();
 
     for (key, value) in map {
         let value_str = match value {

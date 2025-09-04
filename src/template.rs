@@ -1,6 +1,7 @@
 use crate::config::{DependsOnConfig, HealthCheckConfig, ProjectConfig, ServiceConfig, TaskConfig};
 use crate::project::Task;
 use anyhow::Context;
+use indexmap::IndexMap;
 use std::collections::HashMap;
 use tera::Tera;
 use tracing::{debug, info};
@@ -22,15 +23,13 @@ impl ProjectConfig {
         context.insert(PROJECT_CONTEXT_KEY, &self.name);
 
         // Render vars
-        let mut rendered_vars = HashMap::new();
+        let mut rendered_vars = IndexMap::new();
         for (k, v) in self.vars.iter() {
-            rendered_vars.insert(k.clone(), tera.render_str(&v, &context)?);
+            let rendered = tera.render_str(&v, &context)?;
+            context.insert(k, &rendered);
+            rendered_vars.insert(k, rendered);
         }
 
-        // Update context with rendered vars
-        for (k, v) in rendered_vars.iter() {
-            context.insert(k, v)
-        }
         Ok(context)
     }
 
@@ -50,7 +49,7 @@ impl ProjectConfig {
         config.working_dir = tera.render_str(&config.working_dir, &context)?;
 
         // Render env
-        let mut rendered_env = HashMap::new();
+        let mut rendered_env = IndexMap::new();
         for (k, v) in config.env.iter() {
             rendered_env.insert(k.clone(), tera.render_str(v, &context)?);
         }
@@ -86,15 +85,13 @@ impl TaskConfig {
         context.insert(TASK_CONTEXT_KEY, &self.full_orig_name());
 
         // Render vars
-        let mut rendered_vars = HashMap::new();
+        let mut rendered_vars = IndexMap::new();
         for (k, v) in self.vars.iter() {
-            rendered_vars.insert(k.clone(), tera.render_str(&v, &context)?);
+            let rendered = tera.render_str(&v, &context)?;
+            context.insert(k, &rendered);
+            rendered_vars.insert(k, rendered);
         }
 
-        // Update context with rendered vars
-        for (k, v) in rendered_vars.iter() {
-            context.insert(k, v)
-        }
         Ok(context)
     }
 
@@ -103,7 +100,7 @@ impl TaskConfig {
         let mut tera = Tera::default();
 
         // Render vars
-        let mut rendered_vars = HashMap::new();
+        let mut rendered_vars = IndexMap::new();
         for (k, v) in config.vars.iter() {
             rendered_vars.insert(k.clone(), tera.render_str(&v, &context)?);
         }
@@ -124,7 +121,7 @@ impl TaskConfig {
         };
 
         // Render env
-        let mut rendered_env = HashMap::new();
+        let mut rendered_env = IndexMap::new();
         for (k, v) in config.env.iter() {
             rendered_env.insert(tera.render_str(k, &context)?, tera.render_str(v, &context)?);
         }
@@ -159,7 +156,7 @@ impl TaskConfig {
                             };
 
                             // Render env
-                            let mut rendered_env = HashMap::new();
+                            let mut rendered_env = IndexMap::new();
                             for (k, v) in c.env.iter() {
                                 rendered_env.insert(tera.render_str(k, &context)?, tera.render_str(v, &context)?);
                             }
@@ -185,7 +182,7 @@ impl TaskConfig {
         for depends_on in config.depends_on.iter_mut() {
             if let DependsOnConfig::Struct(ref mut dep) = depends_on {
                 // Render vars
-                let mut rendered_vars = HashMap::new();
+                let mut rendered_vars = IndexMap::new();
                 for (k, v) in dep.vars.iter() {
                     rendered_vars.insert(k.clone(), tera.render_str(&v, &context)?);
                 }

@@ -1,6 +1,6 @@
 use assertables::assert_starts_with;
 use firepit::config::{ProjectConfig, ShellConfig};
-use std::collections::HashMap;
+use indexmap::IndexMap;
 use std::env;
 use std::path::Path;
 use std::sync::Once;
@@ -17,7 +17,7 @@ pub fn setup() {
     });
 }
 
-fn assert_eq_env(actual: &HashMap<String, String>, expected: &HashMap<&str, &str>) {
+fn assert_eq_env(actual: &IndexMap<String, String>, expected: &IndexMap<&str, &str>) {
     for (key, value) in expected {
         assert_eq!(actual.get(*key), Some(&value.to_string()));
     }
@@ -41,7 +41,7 @@ fn test_multi() {
     let bar = children.get("bar").unwrap().clone();
 
     // root
-    assert_eq_env(&root.env, &HashMap::from([("A", "a"), ("B", "b")]));
+    assert_eq_env(&root.env, &IndexMap::from([("A", "a"), ("B", "b")]));
     assert_eq!(root.env_files, vec![".env.root"]);
     assert_eq!(
         root.shell.unwrap(),
@@ -54,7 +54,7 @@ fn test_multi() {
     // foo
     assert_eq_env(
         &children.get("foo").unwrap().env,
-        &HashMap::from([("A", "a"), ("B", "b-foo"), ("C", "c")]),
+        &IndexMap::from([("A", "a"), ("B", "b-foo"), ("C", "c")]),
     );
     assert_eq!(
         foo.env_files,
@@ -71,7 +71,7 @@ fn test_multi() {
     // bar
     assert_eq_env(
         &children.get("bar").unwrap().env,
-        &HashMap::from([("A", "a"), ("B", "b-bar"), ("C", "c")]),
+        &IndexMap::from([("A", "a"), ("B", "b-bar"), ("C", "c")]),
     );
     assert_eq!(
         bar.env_files,
@@ -94,7 +94,7 @@ fn test_merge() {
     let bar = children.get("bar").unwrap().clone();
 
     // root
-    assert_eq_env(&root.env, &HashMap::from([("A", "a"), ("B", "b")]));
+    assert_eq_env(&root.env, &IndexMap::from([("A", "a"), ("B", "b")]));
     assert_eq!(root.env_files, vec![".env.root"]);
     assert_eq!(
         root.shell.unwrap(),
@@ -107,7 +107,7 @@ fn test_merge() {
     // foo
     assert_eq_env(
         &children.get("foo").unwrap().env,
-        &HashMap::from([("A", "a"), ("B", "b-foo"), ("C", "c")]),
+        &IndexMap::from([("A", "a"), ("B", "b-foo"), ("C", "c")]),
     );
     assert_eq!(
         foo.env_files,
@@ -133,7 +133,7 @@ fn test_merge() {
     // bar
     assert_eq_env(
         &children.get("bar").unwrap().env,
-        &HashMap::from([("A", "a"), ("B", "b-bar"), ("C", "c")]),
+        &IndexMap::from([("A", "a"), ("B", "b-bar"), ("C", "c")]),
     );
     assert_eq!(
         bar.env_files,

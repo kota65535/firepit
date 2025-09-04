@@ -1,6 +1,6 @@
 vars:
   A: 1
-  B: 2
+  B: "{{ A | int + 1 }}"
 
 tasks:
   foo:
@@ -12,7 +12,7 @@ tasks:
 
   bar:
     env:
-      B: "{{ B }}"
+      B: "{{ B | int + 1 }}"
     command: echo "bar ${B}"
 
   baz:

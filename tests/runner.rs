@@ -146,7 +146,7 @@ async fn test_vars() {
 
     let mut outputs = HashMap::new();
     outputs.insert(String::from("#foo"), String::from("foo 1"));
-    outputs.insert(String::from("#bar"), String::from("bar 2"));
+    outputs.insert(String::from("#bar"), String::from("bar 3"));
     outputs.insert(String::from("#baz"), String::from("baz 3"));
     outputs.insert(String::from("#qux"), String::from("qux 12001"));
 

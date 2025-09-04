@@ -269,11 +269,11 @@ impl Task {
         let project_env = Self::merge_env(
             // Ignore if env file not found
             Self::load_env_files(&config.env_files_paths()).unwrap_or(HashMap::new()),
-            config.env.clone(),
+            config.env.clone().into_iter().collect(),
         )?;
         let task_env = Self::merge_env(
             Self::load_env_files(&task_config.env_file_paths(&config.dir))?,
-            task_config.env.clone(),
+            task_config.env.clone().into_iter().collect(),
         )?;
         let merged_task_env = Self::merge_env(project_env, task_env)?;
 
@@ -321,7 +321,7 @@ impl Task {
                                 // Environment variables
                                 let hc_env = Self::merge_env(
                                     Self::load_env_files(&c.env_files_paths(&config.dir))?,
-                                    c.env.clone(),
+                                    c.env.clone().into_iter().collect(),
                                 )?;
                                 let merged_hc_env = Self::merge_env(merged_task_env.clone(), hc_env)?;
 
