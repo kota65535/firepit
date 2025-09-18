@@ -114,9 +114,13 @@ impl CuiApp {
                 }
                 AppCommand::FinishTask { task, result } => {
                     debug!("Task {:?} finished", task);
+                    let output_clients = self.output_clients.read().expect("lock poisoned");
+                    let output_client = output_clients.get(&task).context("output client not found")?;
+                    output_client.stdout().flush().context("failed to flush stdout")?;
+
                     let message = match result {
                         TaskResult::Failure(code) => Some(format!("Process finished with exit code {code}")),
-                        TaskResult::Stopped => Some("Process terminated".to_string()),
+                        TaskResult::Stopped => Some("Process is terminated".to_string()),
                         _ => None,
                     };
                     failure |= result.is_failure();
