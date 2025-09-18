@@ -114,6 +114,7 @@ impl Task {
                 TaskResult::Success => Some("Process finished with exit code 0".to_string()),
                 TaskResult::Failure(code) => Some(format!("Process finished with exit code {code}")),
                 TaskResult::Stopped => Some("Process is terminated".to_string()),
+                TaskResult::NotReady => Some("Task is not ready".to_string()),
                 _ => None,
             },
             _ => None,
