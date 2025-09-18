@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.3] - 2025-09-18
+
+### 🐛 Bug Fixes
+
+- *(deps)* Update rust crate console to v0.16.1 (#130)
+- *(deps)* Update rust crate serde to v1.0.221 (#131)
+- *(deps)* Update rust crate serde_json to v1.0.144 (#132)
+- *(deps)* Update rust crate serde_json to v1.0.145 (#133)
+- *(deps)* Update rust crate serde to v1.0.223 (#134)
+- *(deps)* Update rust crate serde to v1.0.224 (#135)
+- *(deps)* Update rust crate serde to v1.0.225 (#136)
+- Clearly visible finish line (#138)
+
 ## [0.6.2] - 2025-09-04
 
 ### 🐛 Bug Fixes
