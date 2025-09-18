@@ -8,7 +8,8 @@ pub mod prefixed;
 use crate::app::command::AppCommand;
 use crate::app::command::{AppCommandChannel, TaskResult};
 use crate::app::cui::color::ColorSelector;
-use crate::app::cui::lib::ColorConfig;
+use crate::app::cui::lib::{ColorConfig, BOLD_RED};
+use crate::app::cui::line::LineWriter;
 use crate::app::cui::output::{OutputClient, OutputClientBehavior, OutputSink};
 use crate::app::cui::prefixed::PrefixedWriter;
 use crate::app::signal::SignalHandler;
@@ -16,7 +17,7 @@ use crate::runner::command::RunnerCommandChannel;
 use crate::tokio_spawn;
 use anyhow::Context;
 use std::collections::{HashMap, HashSet};
-use std::io::{stdout, Stdout, Write};
+use std::io::{stderr, stdout, Stdout, Write};
 use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info};
@@ -101,6 +102,7 @@ impl CuiApp {
     pub async fn run_inner(&mut self) -> anyhow::Result<i32> {
         let mut failure = false;
         let mut task_remaining: HashSet<String> = self.target_tasks.iter().cloned().collect();
+        let mut finisher = LineWriter::new(stderr());
         while let Some(event) = self.command_rx.recv().await {
             match event {
                 AppCommand::StartTask { task, .. } => self.register_output_client(&task),
@@ -114,14 +116,19 @@ impl CuiApp {
                 }
                 AppCommand::FinishTask { task, result } => {
                     debug!("Task {:?} finished", task);
+
                     let message = match result {
                         TaskResult::Failure(code) => Some(format!("Process finished with exit code {code}")),
-                        TaskResult::Stopped => Some("Process terminated".to_string()),
+                        TaskResult::Stopped => Some("Process is terminated".to_string()),
+                        TaskResult::NotReady => Some("Task is not ready".to_string()),
                         _ => None,
                     };
                     failure |= result.is_failure();
                     if let Some(message) = message {
-                        eprintln!("{}", message);
+                        let line = BOLD_RED.apply_to(format!("{}: {}\n", task, message));
+                        finisher
+                            .write_all(line.to_string().as_bytes())
+                            .context("failed to write to stderr")?;
                     }
                     task_remaining.remove(&task);
                     debug!("Target tasks remaining: {:?}", task_remaining);
