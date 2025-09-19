@@ -2,6 +2,7 @@ use std::time::Duration;
 
 pub mod command;
 pub mod cui;
+mod input;
 pub mod signal;
 pub mod tui;
 

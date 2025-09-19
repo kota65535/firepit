@@ -134,7 +134,7 @@ impl Workspace {
 
         let use_pty = match ui {
             UI::Tui => true,
-            UI::Cui => false,
+            UI::Cui => atty::is(atty::Stream::Stdout),
         };
 
         Ok(Self {
