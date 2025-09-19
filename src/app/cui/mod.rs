@@ -5,9 +5,12 @@ pub mod logs;
 pub mod output;
 pub mod prefixed;
 
+pub mod input;
+
 use crate::app::command::AppCommand;
 use crate::app::command::{AppCommandChannel, TaskResult};
 use crate::app::cui::color::ColorSelector;
+use crate::app::cui::input::InputHandler;
 use crate::app::cui::lib::{ColorConfig, BOLD_RED};
 use crate::app::cui::line::LineWriter;
 use crate::app::cui::output::{OutputClient, OutputClientBehavior, OutputSink};
@@ -18,15 +21,18 @@ use crate::tokio_spawn;
 use anyhow::Context;
 use std::collections::{HashMap, HashSet};
 use std::io::{stderr, stdout, Stdout, Write};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info};
 
 pub struct CuiApp {
     color_selector: ColorSelector,
     output_clients: Arc<RwLock<HashMap<String, OutputClient<PrefixedWriter<Stdout>>>>>,
+    stdins: Arc<Mutex<HashMap<String, Box<dyn Write + Send>>>>,
     command_tx: AppCommandChannel,
     command_rx: mpsc::UnboundedReceiver<AppCommand>,
+    crossterm_rx: mpsc::Receiver<crossterm::event::Event>,
+    input_handler: InputHandler,
     signal_handler: SignalHandler,
     target_tasks: Vec<String>,
     labels: HashMap<String, String>,
@@ -40,11 +46,17 @@ impl CuiApp {
         quit_on_done: bool,
     ) -> anyhow::Result<Self> {
         let (command_tx, command_rx) = AppCommandChannel::new();
+        let input_handler = InputHandler::new();
+        let crossterm_rx = input_handler.start();
+
         Ok(Self {
             color_selector: ColorSelector::default(),
             output_clients: Arc::new(RwLock::new(HashMap::new())),
+            stdins: Arc::new(Mutex::new(HashMap::new())),
             command_tx,
             command_rx,
+            crossterm_rx,
+            input_handler,
             signal_handler: SignalHandler::infer()?,
             target_tasks: target_tasks.clone(),
             labels: labels.clone(),
@@ -103,8 +115,22 @@ impl CuiApp {
         let mut failure = false;
         let mut task_remaining: HashSet<String> = self.target_tasks.iter().cloned().collect();
         let mut finisher = LineWriter::new(stderr());
-        while let Some(event) = self.command_rx.recv().await {
+
+        while let Some(event) = self.poll().await? {
             match event {
+                AppCommand::Input { bytes } => {
+                    for (task, stdin) in self.stdins.lock().expect("lock poisoned").iter_mut() {
+                        stdin
+                            .write_all(&bytes)
+                            .context(format!("failed writing to stdin of task {}", task))?;
+                    }
+                }
+                AppCommand::SetStdin { task, stdin } => {
+                    self.stdins
+                        .lock()
+                        .expect("lock poisoned")
+                        .insert(task.to_string(), stdin);
+                }
                 AppCommand::StartTask { task, .. } => self.register_output_client(&task),
                 AppCommand::TaskOutput { task, output } => {
                     let output_clients = self.output_clients.read().expect("lock poisoned");
@@ -112,7 +138,7 @@ impl CuiApp {
                     output_client
                         .stdout()
                         .write_all(output.as_slice())
-                        .context("failed to write to stdout")?;
+                        .context("failed writing to stdout")?;
                 }
                 AppCommand::FinishTask { task, result } => {
                     debug!("Task {:?} finished", task);
@@ -128,7 +154,7 @@ impl CuiApp {
                         let line = BOLD_RED.apply_to(format!("{}: {}\n", task, message));
                         finisher
                             .write_all(line.to_string().as_bytes())
-                            .context("failed to write to stderr")?;
+                            .context("failed writing to stderr")?;
                     }
                     task_remaining.remove(&task);
                     debug!("Target tasks remaining: {:?}", task_remaining);
@@ -144,5 +170,33 @@ impl CuiApp {
         }
         let exit_code = if failure { 1 } else { 0 };
         Ok(exit_code)
+    }
+
+    /// Blocking poll for events, will only return None if app handle has been
+    /// dropped
+    async fn poll<'a>(&mut self) -> anyhow::Result<Option<AppCommand>> {
+        let input_closed = self.crossterm_rx.is_closed();
+
+        if input_closed {
+            Ok(self.command_rx.recv().await)
+        } else {
+            let mut event = None;
+            loop {
+                tokio::select! {
+                    e = self.crossterm_rx.recv() => {
+                        if let Some(e) = e {
+                            event = self.input_handler.handle(e);
+                        }
+                    }
+                    e = self.command_rx.recv() => {
+                        event = e;
+                    }
+                }
+                if event.is_some() {
+                    break;
+                }
+            }
+            Ok(event)
+        }
     }
 }
