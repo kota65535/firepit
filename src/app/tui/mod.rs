@@ -27,11 +27,10 @@ use crate::runner::command::RunnerCommandChannel;
 use crate::tokio_spawn;
 use anyhow::Context;
 use indexmap::IndexMap;
-use ratatui::widgets::ScrollbarState;
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Layout},
-    widgets::TableState,
+    widgets::{ScrollbarState, TableState},
     Frame, Terminal,
 };
 use std::collections::HashMap;
@@ -66,6 +65,7 @@ pub struct TuiAppState {
     selected_task_index: usize,
     has_sidebar: bool,
     quitting: bool,
+    force_quitting: bool,
     done: bool,
 }
 
@@ -131,6 +131,7 @@ impl TuiApp {
                 selected_task_index,
                 has_sidebar,
                 quitting: false,
+                force_quitting: false,
                 done: false,
             },
         })
@@ -449,7 +450,7 @@ impl TuiAppState {
 
         // Render quitting dialog
         if self.quitting {
-            render_quit_dialog(f);
+            render_quit_dialog(f, self.force_quitting);
         }
 
         // Render help dialog
@@ -809,6 +810,9 @@ impl TuiAppState {
                 runner_tx.quit();
             }
             AppCommand::Quit => {
+                if self.quitting {
+                    self.force_quitting = true;
+                }
                 self.quitting = true;
                 runner_tx.quit();
             }

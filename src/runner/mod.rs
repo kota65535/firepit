@@ -150,8 +150,15 @@ impl TaskRunner {
                         RunnerCommand::Quit => {
                             info!("Stopping runner");
                             info!("Stopping tasks");
-                            self.manager.stop().await;
-                            info!("Stopped tasks");
+                            tokio::select! {
+                                Ok(RunnerCommand::Quit) = self.command_rx.recv() => {
+                                    self.manager.kill().await;
+                                    info!("Force stopped tasks")
+                                }
+                                _ = self.manager.stop() => {
+                                    info!("Gracefully stopped tasks")
+                                }
+                            }
                             info!("Stopping visitors");
                             if let Err(err) = visitor_tx.send(VisitorCommand::Stop) {
                                 warn!("Failed to stop visitors: {:?}", err);
