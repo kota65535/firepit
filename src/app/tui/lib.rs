@@ -1,5 +1,5 @@
-use ratatui::style::{Color, Style, Stylize};
-use ratatui::text::Span;
+use ratatui::prelude::Span;
+use ratatui::prelude::{Color, Style, Stylize};
 use std::collections::VecDeque;
 use std::fmt::{Display, Formatter};
 use std::ops::Deref;

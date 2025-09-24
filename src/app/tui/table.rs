@@ -2,12 +2,12 @@ use crate::app::command::{TaskResult, TaskStatus};
 use crate::app::tui::lib::key_help_spans;
 use crate::app::tui::task::Task;
 use indexmap::IndexMap;
-use ratatui::text::Line;
+use ratatui::prelude::{Line, Span};
 use ratatui::{
     layout::{Constraint, Rect},
     style::{Color, Style, Stylize},
     text::Text,
-    widgets::{Block, Cell, Row, StatefulWidget, Table, TableState},
+    widgets::{Block, Cell, Paragraph, Row, StatefulWidget, Table, TableState, Widget},
 };
 
 /// A widget that renders a table of their tasks and their current status
@@ -20,9 +20,6 @@ pub struct TaskTable<'b> {
 
 static NAVIGATE_TASKS: &'static (&str, &str) = &("[↑↓]", "Navigate");
 static HIDE_TASKS: &'static (&str, &str) = &("[h] ", "Hide");
-static STOP_TASK: &'static (&str, &str) = &("[s] ", "Stop");
-static RESTART_TASK: &'static (&str, &str) = &("[rR]", "Restart");
-
 static MAX_WIDTH: usize = 40;
 static STATUS_COLUMN_WIDTH: u16 = 3;
 
@@ -77,50 +74,80 @@ impl TaskTable<'_> {
             })
             .collect()
     }
+
+    fn status_summary(&self) -> Span {
+        let targets = self.tasks.values().filter(|t| t.is_target).collect::<Vec<_>>();
+
+        // Running: some tasks are still running
+        if targets.iter().any(|t| {
+            matches!(
+                t.status(),
+                TaskStatus::Planned | TaskStatus::Running(_) | TaskStatus::Finished(TaskResult::Reloading)
+            )
+        }) {
+            return Span::styled(" Running ", Style::default().fg(Color::White).bg(Color::LightBlue));
+        }
+        // Failure: some tasks have failed
+        if targets
+            .iter()
+            .any(|t| matches!(t.status(), TaskStatus::Finished(r) if r.is_failure()))
+        {
+            return Span::styled(" Failure ", Style::default().fg(Color::White).bg(Color::LightRed));
+        }
+
+        // All tasks should have finished successfully or become ready
+
+        // Ready: all service tasks are ready to use
+        if targets.iter().any(|t| matches!(t.status(), TaskStatus::Ready)) {
+            return Span::styled("  Ready  ", Style::default().fg(Color::White).bg(Color::LightGreen));
+        }
+        // Success: all tasks have finished successfully
+        Span::styled(" Success ", Style::default().fg(Color::White).bg(Color::LightGreen))
+    }
 }
 
 impl<'a> StatefulWidget for &'a TaskTable<'a> {
     type State = TableState;
 
     fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer, state: &mut Self::State) {
-        let width = area.width;
-        // Task name column & status column
+        let layout = ratatui::prelude::Layout::vertical([
+            Constraint::Length(2), // Header
+            Constraint::Fill(1),   // Table
+            Constraint::Length(3), // Footer
+        ]);
+        let [header_area, table_area, footer_area] = layout.areas(area);
+        let width = table_area.width;
+
+        // Render header
+        let title_span = Span::raw("\u{1f3d5}  Tasks"); // 🏕
+        let status_span = self.status_summary();
+        let space_span =
+            Span::raw(" ".repeat(usize::from(width).saturating_sub(title_span.width() + status_span.width())));
+        let header = Paragraph::new(Text::from(vec![
+            Line::from(vec![title_span, space_span, status_span]),
+            Line::from("─".repeat(usize::from(width))),
+        ]));
+
+        // Render table
         let widths = [
             Constraint::Min(width.saturating_sub(STATUS_COLUMN_WIDTH + 1)),
             Constraint::Length(1),
             Constraint::Length(STATUS_COLUMN_WIDTH),
         ];
-        let name_col_bar = "─".repeat(usize::from(width.saturating_sub(STATUS_COLUMN_WIDTH + 1)));
-        let status_col_bar = "─".repeat(usize::from(STATUS_COLUMN_WIDTH));
         let table = Table::new(self.rows(), widths)
             .highlight_style(Style::default().fg(Color::Yellow))
             .column_spacing(0)
-            .block(Block::new())
-            .header(
-                vec![
-                    format!("\u{1f3d5}  Tasks\n{name_col_bar}"),
-                    "\n─".to_owned(),
-                    format!("\n{status_col_bar}"),
-                ]
-                .into_iter()
-                .map(Cell::from)
-                .collect::<Row>()
-                .height(2),
-            )
-            .footer(
-                Row::new(vec![
-                    Cell::new(Text::from(vec![
-                        Line::from(format!("{name_col_bar}\n")),
-                        Line::from(key_help_spans(*NAVIGATE_TASKS)),
-                        Line::from(key_help_spans(*HIDE_TASKS)),
-                        Line::from(key_help_spans(*STOP_TASK)),
-                        Line::from(key_help_spans(*RESTART_TASK)),
-                    ])),
-                    Cell::new("─"),
-                    Cell::new(status_col_bar),
-                ])
-                .height(5),
-            );
-        StatefulWidget::render(table, area, buf, state);
+            .block(Block::new());
+
+        // Render footer
+        let footer = Paragraph::new(Text::from(vec![
+            Line::raw("─".repeat(usize::from(width))),
+            Line::from(key_help_spans(*NAVIGATE_TASKS)),
+            Line::from(key_help_spans(*HIDE_TASKS)),
+        ]));
+
+        Widget::render(header, header_area, buf);
+        StatefulWidget::render(table, table_area, buf, state);
+        Widget::render(footer, footer_area, buf);
     }
 }

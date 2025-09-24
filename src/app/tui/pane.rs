@@ -2,9 +2,9 @@ use crate::app::tui::lib::key_help_spans;
 use crate::app::tui::task::Task;
 use crate::app::tui::LayoutSections;
 use itertools::Itertools;
-use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Stylize};
-use ratatui::text::{Span, Text};
+use ratatui::prelude::{Color, Stylize};
+use ratatui::prelude::{Constraint, Layout, Rect};
+use ratatui::prelude::{Span, Text};
 use ratatui::widgets::{Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget};
 use ratatui::{
     style::Style,
@@ -13,6 +13,8 @@ use ratatui::{
 };
 use tui_term::widget::PseudoTerminal;
 
+static STOP_TASK: &'static (&str, &str) = &("[s]", "Stop");
+static RESTART_TASK: &'static (&str, &str) = &("[r]", "Restart");
 static START_INTERACTION: &'static (&str, &str) = &("[Enter]", "Interact");
 static EXIT_INTERACTION: &'static (&str, &str) = &("[Ctrl-z]", "Exit Interaction");
 static START_SEARCH: &'static (&str, &str) = &("[/]", "Search");
@@ -69,6 +71,9 @@ impl<'a> TerminalPane<'a> {
                         help_spans.push(key_help_spans(*CLEAR_SEARCH_RESULT));
                     }
                 }
+                help_spans.push(key_help_spans(*RESTART_TASK));
+                help_spans.push(key_help_spans(*STOP_TASK));
+                help_spans.push(key_help_spans(*QUIT));
             }
             LayoutSections::Search { query } => {
                 if self.task.output.has_selection() {
@@ -81,7 +86,6 @@ impl<'a> TerminalPane<'a> {
                 search_spans.push(Span::styled(format!("/ {}\n", query), Style::default().bold()));
             }
         }
-        help_spans.push(key_help_spans(*QUIT));
 
         Text::from(vec![
             Line::from(search_spans).left_aligned(),
