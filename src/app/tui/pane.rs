@@ -2,9 +2,7 @@ use crate::app::tui::lib::key_help_spans;
 use crate::app::tui::task::Task;
 use crate::app::tui::LayoutSections;
 use itertools::Itertools;
-use ratatui::prelude::{Color, Stylize};
-use ratatui::prelude::{Constraint, Layout, Rect};
-use ratatui::prelude::{Span, Text};
+use ratatui::prelude::{Color, Constraint, Layout, Rect, Span, Stylize, Text};
 use ratatui::widgets::{Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget};
 use ratatui::{
     style::Style,

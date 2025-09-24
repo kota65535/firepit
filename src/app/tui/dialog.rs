@@ -6,15 +6,25 @@ use ratatui::widgets::block::{Position, Title};
 use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph, Wrap};
 use ratatui::Frame;
 
-const QUIT_TXT: &str = "Quitting...";
+const QUIT_TXT: &str = "Quitting...\n(Press q to force quit)";
+const FORCE_QUIT_TXT: &str = "Force quitting...";
 const HELP_TXT: &str = include_str!("help.txt");
 
 pub static QUIT_LINES: Lazy<Vec<&str>> = Lazy::new(|| QUIT_TXT.lines().collect());
+pub static FORCE_QUIT_LINES: Lazy<Vec<&str>> = Lazy::new(|| FORCE_QUIT_TXT.lines().collect());
 pub static HELP_LINES: Lazy<Vec<&str>> = Lazy::new(|| HELP_TXT.lines().collect());
 
-pub fn quit_dialog_size(screen_width: u16, screen_height: u16) -> (Rect, usize, usize) {
-    let content_height = QUIT_LINES.len();
-    let content_width = QUIT_LINES.iter().map(|line| line.len()).max().unwrap_or(0);
+pub fn quit_lines(force: bool) -> &'static Lazy<Vec<&'static str>> {
+    if force {
+        &FORCE_QUIT_LINES
+    } else {
+        &QUIT_LINES
+    }
+}
+
+pub fn quit_dialog_size(screen_width: u16, screen_height: u16, force: bool) -> (Rect, usize, usize) {
+    let content_height = quit_lines(force).len();
+    let content_width = quit_lines(force).iter().map(|line| line.len()).max().unwrap_or(0);
     let width = (content_width as u16 + 6).min(screen_width.saturating_sub(4));
     let height = (content_height as u16 + 2).min(screen_height.saturating_sub(4));
 
@@ -35,9 +45,9 @@ pub fn quit_dialog_size(screen_width: u16, screen_height: u16) -> (Rect, usize, 
     (dialog_rect, content_width, content_height)
 }
 
-pub fn render_quit_dialog(f: &mut Frame) {
+pub fn render_quit_dialog(f: &mut Frame, force: bool) {
     let area = f.size();
-    let (dialog_area, _content_width, _content_height) = quit_dialog_size(area.width, area.height);
+    let (dialog_area, _content_width, _content_height) = quit_dialog_size(area.width, area.height, force);
 
     // Clear the background
     f.render_widget(Clear, dialog_area);
@@ -47,12 +57,17 @@ pub fn render_quit_dialog(f: &mut Frame) {
         .bg(Color::DarkGray)
         .padding(Padding::horizontal(2));
 
-    let lines = QUIT_LINES
-        .iter()
-        .cloned()
-        .map(|line| Line::from(line))
-        .collect::<Vec<_>>();
+    let lines = if force {
+        vec![Line::from(FORCE_QUIT_TXT)]
+    } else {
+        QUIT_LINES
+            .iter()
+            .cloned()
+            .map(|line| Line::from(line))
+            .collect::<Vec<_>>()
+    };
 
+    // Create message paragraph
     let message = Paragraph::new(Text::from(lines))
         .block(block)
         .centered()
@@ -90,21 +105,6 @@ pub fn render_help_dialog(f: &mut Frame, scroll: usize) {
 
     let (dialog_area, _content_width, content_height) = help_dialog_size(area.width, area.height);
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(Title::from("Help").position(Position::Top).alignment(Alignment::Left))
-        .title(
-            Title::from(Line::from(vec![
-                Span::styled("[↑↓] ", Style::default().fg(Color::Yellow)),
-                Span::raw("Scroll "),
-                Span::styled("[Esc] ", Style::default().fg(Color::Yellow)),
-                Span::raw("Close "),
-            ]))
-            .position(Position::Top)
-            .alignment(Alignment::Right),
-        )
-        .padding(Padding::horizontal(2));
-
     // Calculate visible content based on scroll
     let visual_height = dialog_area.height.saturating_sub(2) as usize;
     let scroll_offset = scroll.min(content_height.saturating_sub(visual_height));
@@ -121,6 +121,24 @@ pub fn render_help_dialog(f: &mut Frame, scroll: usize) {
             }
         })
         .collect::<Vec<_>>();
+
+    let mut instruction = Vec::new();
+    if visual_height < content_height {
+        instruction.push(Span::styled(" [↑↓] ", Style::default().fg(Color::Yellow)));
+        instruction.push(Span::raw("Scroll"));
+    }
+    instruction.push(Span::styled(" [Esc] ", Style::default().fg(Color::Yellow)));
+    instruction.push(Span::raw("Close "));
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(Title::from(" Help ").position(Position::Top).alignment(Alignment::Left))
+        .title(
+            Title::from(Line::from(instruction))
+                .position(Position::Top)
+                .alignment(Alignment::Right),
+        )
+        .padding(Padding::horizontal(2));
 
     // Create message paragraph
     let message = Paragraph::new(Text::from(visible_lines))
