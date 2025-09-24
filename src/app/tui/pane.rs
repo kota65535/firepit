@@ -24,6 +24,7 @@ static SHOW_TASKS: &'static (&str, &str) = &("[h]", "Show Tasks");
 static NAVIGATE_SEARCH_RESULT: &'static (&str, &str) = &("[n\u{FF65}N]", "Next/Prev Match");
 static CLEAR_SEARCH_RESULT: &'static (&str, &str) = &("[Esc]", "Clear");
 static QUIT: &'static (&str, &str) = &("[q]", "Quit");
+static HELP: &'static (&str, &str) = &("[?]", "Help");
 
 pub struct TerminalPane<'a> {
     task: &'a Task,
@@ -74,6 +75,7 @@ impl<'a> TerminalPane<'a> {
                 help_spans.push(key_help_spans(*RESTART_TASK));
                 help_spans.push(key_help_spans(*STOP_TASK));
                 help_spans.push(key_help_spans(*QUIT));
+                help_spans.push(key_help_spans(*HELP));
             }
             LayoutSections::Search { query } => {
                 if self.task.output.has_selection() {
@@ -84,6 +86,9 @@ impl<'a> TerminalPane<'a> {
                 }
                 help_spans.push(key_help_spans(*EXIT_SEARCH));
                 search_spans.push(Span::styled(format!("/ {}\n", query), Style::default().bold()));
+            }
+            LayoutSections::Help { .. } => {
+                // No footer content for help dialog
             }
         }
 

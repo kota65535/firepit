@@ -55,6 +55,10 @@ pub enum AppCommand {
     ScrollDown(ScrollSize),
     ToggleSidebar,
     Quit,
+    OpenHelp,
+    HelpScrollUp,
+    HelpScrollDown,
+    ExitHelp,
     Tick,
 
     ///

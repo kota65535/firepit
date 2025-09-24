@@ -1,0 +1,31 @@
+## Basic
+↑↓, Mouse click  : Select task
+h                : Hide task list
+q, Ctrl-C        : Quit application
+
+## Viewing Log
+Mouse wheel down : Scroll down
+Mouse wheel up   : Scroll up
+e                : Scroll down 1 line
+y                : Scroll up 1 line
+d                : Scroll down half of the screen
+u                : Scroll up half of the screen
+f                : Scroll down one screen
+b                : Scroll up one screen
+Mouse drag       : Select log range
+c                : Copy selected log range to the clipboard
+
+## Searching Log
+/                : Start searching log
+n                : Go to next match
+N                : Go to previous match
+Esc              : Stop searching log
+
+## Interaction with Tasks
+Enter            : Start interaction with a selected task
+Ctrl-Z           : Stop interaction
+
+## Restarting Tasks
+r                : Restart a selected task
+R                : Restart a selected task and dependents
+s                : Stop a selected task
