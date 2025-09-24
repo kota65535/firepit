@@ -30,6 +30,10 @@ impl InputOptions<'_> {
         matches!(self.focus, LayoutSections::Search { .. })
     }
 
+    pub fn on_help(&self) -> bool {
+        matches!(self.focus, LayoutSections::Help { .. })
+    }
+
     pub fn on_pane(&self) -> bool {
         matches!(self.focus, LayoutSections::Pane { .. })
     }
@@ -104,7 +108,10 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<App
     }
     match key_event.code {
         // On task list
-        KeyCode::Char('/') if options.on_task_list() => Some(AppCommand::EnterSearch),
+        KeyCode::Up if options.on_task_list() => Some(AppCommand::Up),
+        KeyCode::Down if options.on_task_list() => Some(AppCommand::Down),
+        KeyCode::Char('k') if options.on_task_list() => Some(AppCommand::Up),
+        KeyCode::Char('j') if options.on_task_list() => Some(AppCommand::Down),
         KeyCode::Char('h') if options.on_task_list() => Some(AppCommand::ToggleSidebar),
         KeyCode::Char('e') if options.on_task_list() => Some(AppCommand::ScrollDown(ScrollSize::One)),
         KeyCode::Char('y') if options.on_task_list() => Some(AppCommand::ScrollUp(ScrollSize::One)),
@@ -114,12 +121,9 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<App
         KeyCode::Char('b') if options.on_task_list() => Some(AppCommand::ScrollUp(ScrollSize::Full)),
         KeyCode::Char('G') if options.on_task_list() => Some(AppCommand::ScrollDown(ScrollSize::Edge)),
         KeyCode::Char('g') if options.on_task_list() => Some(AppCommand::ScrollUp(ScrollSize::Edge)),
-        KeyCode::Char('j') if options.on_task_list() => Some(AppCommand::Down),
-        KeyCode::Char('k') if options.on_task_list() => Some(AppCommand::Up),
+        KeyCode::Char('/') if options.on_task_list() => Some(AppCommand::EnterSearch),
         KeyCode::Char('n') if options.on_task_list() => Some(AppCommand::SearchNext),
         KeyCode::Char('N') if options.on_task_list() => Some(AppCommand::SearchPrevious),
-        KeyCode::Up if options.on_task_list() => Some(AppCommand::Up),
-        KeyCode::Down if options.on_task_list() => Some(AppCommand::Down),
         KeyCode::Char('c') if options.has_selection => Some(AppCommand::CopySelection),
         KeyCode::Enter if options.on_task_list() => Some(AppCommand::EnterInteractive),
         KeyCode::Char('q') if options.on_task_list() => Some(AppCommand::Quit),
@@ -148,8 +152,17 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<App
         KeyCode::Esc if options.on_search() || options.on_task_list() => Some(AppCommand::ExitSearch),
         KeyCode::Enter if options.on_search() => Some(AppCommand::SearchRun),
 
+        // On help dialog
+        KeyCode::Up if options.on_help() => Some(AppCommand::HelpScrollUp),
+        KeyCode::Down if options.on_help() => Some(AppCommand::HelpScrollDown),
+        KeyCode::Char('k') if options.on_help() => Some(AppCommand::HelpScrollUp),
+        KeyCode::Char('j') if options.on_help() => Some(AppCommand::HelpScrollDown),
+        KeyCode::Esc if options.on_help() => Some(AppCommand::ExitHelp),
+        KeyCode::Char('?') if options.on_help() => Some(AppCommand::ExitHelp),
+
         // Global
         KeyCode::Char('c') if key_event.modifiers == KeyModifiers::CONTROL => Some(AppCommand::Quit),
+        KeyCode::Char('?') if options.on_task_list() => Some(AppCommand::OpenHelp),
         _ => None,
     }
 }

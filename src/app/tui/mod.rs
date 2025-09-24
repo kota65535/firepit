@@ -1,4 +1,5 @@
 mod clipboard;
+mod dialog;
 mod input;
 mod lib;
 mod pane;
@@ -13,6 +14,7 @@ use crate::app::command::{AppCommand, TaskResult};
 use crate::app::command::{Direction, PaneSize, ScrollSize, TaskRun, TaskStatus};
 use crate::app::signal::SignalHandler;
 use crate::app::tui::clipboard::copy_to_clipboard;
+use crate::app::tui::dialog::{help_dialog_size, render_help_dialog, render_quit_dialog};
 use crate::app::tui::input::{InputHandler, InputOptions};
 use crate::app::tui::pane::{TerminalPane, TerminalScroll};
 use crate::app::tui::search::{Match, SearchResults};
@@ -42,6 +44,7 @@ pub enum LayoutSections {
     Pane,
     TaskList(Option<SearchResults>),
     Search { query: String },
+    Help { scroll: usize, max_scroll: usize },
 }
 
 pub struct TuiApp {
@@ -62,7 +65,8 @@ pub struct TuiAppState {
     scrollbar: ScrollbarState,
     selected_task_index: usize,
     has_sidebar: bool,
-    should_quit: bool,
+    quitting: bool,
+    done: bool,
 }
 
 impl TuiApp {
@@ -126,7 +130,8 @@ impl TuiApp {
                 scrollbar: ScrollbarState::default(),
                 selected_task_index,
                 has_sidebar,
-                should_quit: false,
+                quitting: false,
+                done: false,
             },
         })
     }
@@ -170,7 +175,6 @@ impl TuiApp {
         });
 
         let ret = self.run_inner(runner_tx).await;
-        runner_tx.quit();
         self.cleanup()?;
 
         if let Err(err) = ret {
@@ -196,7 +200,7 @@ impl TuiApp {
                 self.terminal.autoresize()?;
             }
             self.state.update(event, runner_tx)?;
-            if self.state.should_quit {
+            if self.state.done {
                 break;
             }
             if FRAME_RATE <= last_render.elapsed() && needs_rerender {
@@ -439,9 +443,19 @@ impl TuiAppState {
         let scrollbar_to_render = TerminalScroll::new(&self.focus);
         f.render_stateful_widget(scrollbar_to_render, pane, &mut self.scrollbar);
 
-        // Render table
+        // Render task list
         let table_to_render = TaskTable::new(&self.tasks);
         f.render_stateful_widget(&table_to_render, table, &mut self.table);
+
+        // Render quitting dialog
+        if self.quitting {
+            render_quit_dialog(f);
+        }
+
+        // Render help dialog
+        if let LayoutSections::Help { scroll, max_scroll } = self.focus {
+            render_help_dialog(f, scroll);
+        }
     }
 
     /// Insert a stdin to be associated with a task
@@ -716,6 +730,24 @@ impl TuiAppState {
         Ok(())
     }
 
+    pub fn scroll_help_up(&mut self) {
+        if let LayoutSections::Help { scroll, max_scroll } = &mut self.focus {
+            self.focus = LayoutSections::Help {
+                max_scroll: *max_scroll,
+                scroll: scroll.saturating_sub(1),
+            }
+        }
+    }
+
+    pub fn scroll_help_down(&mut self) {
+        if let LayoutSections::Help { scroll, max_scroll } = &mut self.focus {
+            self.focus = LayoutSections::Help {
+                max_scroll: *max_scroll,
+                scroll: scroll.saturating_add(1).min(*max_scroll),
+            }
+        }
+    }
+
     pub fn search_input_char(&mut self, c: char) -> anyhow::Result<()> {
         let LayoutSections::Search { query, .. } = &mut self.focus else {
             debug!("Modifying search query while not searching");
@@ -772,9 +804,29 @@ impl TuiAppState {
                     })
                     .ok();
             }
-            AppCommand::Done => {}
+            AppCommand::Done => {
+                self.done = true;
+                runner_tx.quit();
+            }
             AppCommand::Quit => {
-                self.should_quit = true;
+                self.quitting = true;
+                runner_tx.quit();
+            }
+            AppCommand::OpenHelp => {
+                let (rect, content_width, content_height) = help_dialog_size(self.size.cols(), self.size.rows());
+                self.focus = LayoutSections::Help {
+                    scroll: 0,
+                    max_scroll: content_height.saturating_sub(rect.height.saturating_sub(2) as usize),
+                };
+            }
+            AppCommand::HelpScrollUp => {
+                self.scroll_help_up();
+            }
+            AppCommand::HelpScrollDown => {
+                self.scroll_help_down();
+            }
+            AppCommand::ExitHelp => {
+                self.focus = LayoutSections::TaskList(None);
             }
             AppCommand::StopTask { task } => {
                 runner_tx.stop_task(&task);
