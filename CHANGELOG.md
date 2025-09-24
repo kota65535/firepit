@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0] - 2025-09-24
+
+### 🚀 Features
+
+- Show status summary (#144)
+- Help dialog (#145)
+- Force quit (#146)
+
+### 🐛 Bug Fixes
+
+- *(deps)* Update rust crate anyhow to v1.0.100 (#140)
+- *(deps)* Update rust crate clap to v4.5.48 (#141)
+- *(deps)* Update rust crate serde to v1.0.226 (#142)
+- *(deps)* Update rust crate libc to v0.2.176 (#143)
+
 ## [0.6.3] - 2025-09-18
 
 ### 🐛 Bug Fixes
