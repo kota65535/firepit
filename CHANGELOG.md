@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.1] - 2025-09-25
+
+### 🐛 Bug Fixes
+
+- Reverse persisted log order (#148)
+- Force quit (#149)
+
+### 📚 Documentation
+
+- Force quit
+
 ## [0.7.0] - 2025-09-24
 
 ### 🚀 Features
