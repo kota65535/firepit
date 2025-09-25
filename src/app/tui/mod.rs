@@ -394,13 +394,13 @@ impl TuiAppState {
     }
 
     pub fn persist_tasks(&mut self) -> anyhow::Result<()> {
-        for (d, o) in self.tasks.values().zip(self.tasks.values()).filter(|(s, _)| {
+        for t in self.tasks.values().rev().filter(|t| {
             matches!(
-                s.status(),
+                t.status(),
                 TaskStatus::Running(_) | TaskStatus::Ready | TaskStatus::Finished(_)
             )
         }) {
-            o.persist_screen()?
+            t.persist_screen()?
         }
         Ok(())
     }
