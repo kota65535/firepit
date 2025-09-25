@@ -17,7 +17,7 @@ use std::{io, sync::Arc, time::Duration};
 pub use command::Command;
 use futures::stream::FuturesUnordered;
 use futures::{Future, StreamExt};
-use tokio::sync::{watch, Mutex};
+use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tracing::{debug, trace};
 
@@ -38,8 +38,6 @@ struct ProcessManagerInner {
     is_closing: bool,
     children: Vec<Child>,
     size: Option<PtySize>,
-    current_shutdown_priority: u8,
-    shutdown_cancel_tx: Option<watch::Sender<u8>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -56,8 +54,6 @@ impl ProcessManager {
                 is_closing: false,
                 children: Vec::new(),
                 size: None,
-                current_shutdown_priority: 0,
-                shutdown_cancel_tx: None,
             })),
             use_pty,
         }
@@ -139,11 +135,11 @@ impl ProcessManager {
     /// systems this will send a SIGINT, and on windows it will just kill
     /// the process immediately.
     pub async fn stop(&self) {
-        self.close_with_priority(1, |mut c| async move { c.stop().await }).await
+        self.close(|mut c| async move { c.stop().await }).await
     }
 
     pub async fn kill(&self) {
-        self.close_with_priority(2, |mut c| async move { c.kill().await }).await
+        self.close(|mut c| async move { c.kill().await }).await
     }
 
     /// Stop the process manager, waiting for all child processes to exit.
@@ -152,114 +148,6 @@ impl ProcessManager {
     /// `Self::stop` if the timeout elapses.
     pub async fn wait(&self) {
         self.close(|mut c| async move { c.wait().await }).await
-    }
-
-    /// Close the process manager with priority handling
-    ///
-    /// Higher priority operations can interrupt lower priority ones
-    async fn close_with_priority<F, C>(&self, priority: u8, callback: F)
-    where
-        F: Fn(Child) -> C + Sync + Send + Copy + 'static,
-        C: Future<Output = Option<ChildExit>> + Sync + Send + 'static,
-    {
-        let (cancel_rx, should_start) = {
-            let mut lock = self.state.lock().await;
-
-            // Check if we should override the current operation
-            let should_start = if lock.current_shutdown_priority == 0 {
-                // No current operation
-                true
-            } else if priority > lock.current_shutdown_priority {
-                // Higher priority operation overrides current one
-                if let Some(sender) = &lock.shutdown_cancel_tx {
-                    let _ = sender.send(priority);
-                }
-                true
-            } else if priority == lock.current_shutdown_priority {
-                // Same priority operation, don't start a new one
-                false
-            } else {
-                // Lower priority operation, ignore
-                return;
-            };
-
-            if should_start {
-                lock.is_closing = true;
-                lock.current_shutdown_priority = priority;
-
-                let (cancel_tx, cancel_rx) = watch::channel(priority);
-                lock.shutdown_cancel_tx = Some(cancel_tx);
-                (cancel_rx, true)
-            } else {
-                // Wait for existing operation to complete
-                if let Some(sender) = &lock.shutdown_cancel_tx {
-                    let cancel_rx = sender.subscribe();
-                    (cancel_rx, false)
-                } else {
-                    return;
-                }
-            }
-        };
-
-        if !should_start {
-            // Wait for existing operation to complete or be cancelled
-            let mut rx = cancel_rx;
-            let _ = rx.changed().await;
-            return;
-        }
-
-        self.execute_shutdown(priority, callback, cancel_rx).await;
-
-        // Clear operation state
-        {
-            let mut lock = self.state.lock().await;
-            lock.current_shutdown_priority = 0;
-            lock.shutdown_cancel_tx = None;
-            lock.children = vec![];
-        }
-    }
-
-    async fn execute_shutdown<F, C>(&self, priority: u8, callback: F, mut cancel_rx: watch::Receiver<u8>)
-    where
-        F: Fn(Child) -> C + Sync + Send + Copy + 'static,
-        C: Future<Output = Option<ChildExit>> + Sync + Send + 'static,
-    {
-        let children = {
-            let lock = self.state.lock().await;
-            lock.children.clone()
-        };
-
-        let mut set = JoinSet::new();
-        for child in children {
-            set.spawn(async move { callback(child).await });
-        }
-
-        debug!("Waiting for {} processes to exit with priority {}", set.len(), priority);
-
-        loop {
-            tokio::select! {
-                // Check for cancellation/override
-                Ok(()) = cancel_rx.changed() => {
-                    let new_priority = *cancel_rx.borrow();
-                    if new_priority != priority {
-                        debug!("Shutdown operation priority {} cancelled by priority {}", priority, new_priority);
-                        // Abort remaining tasks and let the new operation take over
-                        set.abort_all();
-                        return;
-                    }
-                }
-                // Wait for processes to exit
-                Some(out) = set.join_next() => {
-                    trace!("process exited: {:?}", out);
-                    if set.is_empty() {
-                        break;
-                    }
-                }
-                else => break,
-            }
-        }
-
-        debug!("All processes exited for priority {}", priority);
     }
 
     /// Close the process manager, running the given callback on each child
@@ -273,12 +161,33 @@ impl ProcessManager {
         F: Fn(Child) -> C + Sync + Send + Copy + 'static,
         C: Future<Output = Option<ChildExit>> + Sync + Send + 'static,
     {
-        self.close_with_priority(1, callback).await
+        let mut set = JoinSet::new();
+
+        {
+            let mut lock = self.state.lock().await;
+            lock.is_closing = true;
+            for child in lock.children.iter() {
+                let child = child.clone();
+                set.spawn(async move { callback(child).await });
+            }
+        }
+
+        debug!("Waiting for {} processes to exit", set.len());
+
+        while let Some(out) = set.join_next().await {
+            trace!("process exited: {:?}", out);
+        }
+
+        {
+            let mut lock = self.state.lock().await;
+
+            // just allocate a new vec rather than clearing the old one
+            lock.children = vec![];
+        }
     }
 
     pub async fn is_closed(&self) -> bool {
-        let lock = self.state.lock().await;
-        lock.is_closing || lock.current_shutdown_priority != 0
+        self.state.lock().await.is_closing
     }
 
     pub async fn set_pty_size(&self, rows: u16, cols: u16) {

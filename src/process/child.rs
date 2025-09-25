@@ -304,7 +304,7 @@ impl ShutdownStyle {
     ///
     /// If an exit channel is provided, the exit code will be sent to the
     /// channel when the child process exits.
-    async fn process(&self, child: &mut ChildHandle) -> ChildState {
+    async fn process(&self, child: &mut ChildHandle, receiver: &mut mpsc::Receiver<ChildCommand>) -> ChildState {
         match self {
             // Windows doesn't give the ability to send a signal to a process so we
             // can't make use of the graceful shutdown timeout.
@@ -331,15 +331,25 @@ impl ShutdownStyle {
 
                     debug!("starting shutdown");
 
-                    let result = tokio::time::timeout(*timeout, fut).await;
-                    match result {
-                        // We ignore the exit code and mark it as killed since we sent a SIGINT
-                        // This avoids reliance on an underlying process exiting with
-                        // no exit code or a non-zero in order for turbo to operate correctly.
-                        Ok(Ok(_exit_code)) => ChildState::Exited(ChildExit::Killed),
-                        Ok(Err(_)) => ChildState::Exited(ChildExit::Failed),
-                        Err(_) => {
-                            debug!("graceful shutdown timed out, killing child");
+                    tokio::select! {
+                        result = tokio::time::timeout(*timeout, fut) => {
+                            match result {
+                                // We ignore the exit code and mark it as killed since we sent a SIGINT
+                                // This avoids reliance on an underlying process exiting with
+                                // no exit code or a non-zero in order for turbo to operate correctly.
+                                Ok(Ok(_exit_code)) => ChildState::Exited(ChildExit::Killed),
+                                Ok(Err(_)) => ChildState::Exited(ChildExit::Failed),
+                                Err(_) => {
+                                    debug!("graceful shutdown timed out, killing child");
+                                    match child.kill().await {
+                                        Ok(_) => ChildState::Exited(ChildExit::Killed),
+                                        Err(_) => ChildState::Exited(ChildExit::Failed),
+                                    }
+                                }
+                            }
+                        }
+                        Some(ChildCommand::Kill) = receiver.recv() => {
+                            debug!("received kill command, killing child");
                             match child.kill().await {
                                 Ok(_) => ChildState::Exited(ChildExit::Killed),
                                 Err(_) => ChildState::Exited(ChildExit::Failed),
@@ -443,7 +453,7 @@ impl Child {
             };
             tokio::select! {
                 command = command_rx.recv() => {
-                    manager.handle_child_command(command, &mut child, controller).await;
+                    manager.handle_child_command(command, &mut child, controller, &mut command_rx).await;
                 }
                 status = child.wait() => {
                     drop(controller);
@@ -721,6 +731,7 @@ impl ChildStateManager {
         command: Option<ChildCommand>,
         child: &mut ChildHandle,
         controller: Option<Box<dyn PtyController + Send>>,
+        receiver: &mut mpsc::Receiver<ChildCommand>,
     ) {
         let state = match command {
             // we received a command to stop the child process, or the channel was closed.
@@ -729,12 +740,12 @@ impl ChildStateManager {
             // dropped, and the channel is not closed while there are still permits
             Some(ChildCommand::Stop) | None => {
                 debug!("stopping child process");
-                self.shutdown_style.process(child).await
+                self.shutdown_style.process(child, receiver).await
             }
             // we received a command to kill the child process
             Some(ChildCommand::Kill) => {
                 debug!("killing child process");
-                ShutdownStyle::Kill.process(child).await
+                ShutdownStyle::Kill.process(child, receiver).await
             }
         };
         match state {

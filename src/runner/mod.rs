@@ -152,11 +152,12 @@ impl TaskRunner {
                             info!("Stopping tasks");
                             tokio::select! {
                                 Ok(RunnerCommand::Quit) = self.command_rx.recv() => {
+                                    info!("Killing tasks");
                                     self.manager.kill().await;
-                                    info!("Force stopped tasks")
+                                    info!("Killed tasks");
                                 }
-                                _ = self.manager.stop() => {
-                                    info!("Gracefully stopped tasks")
+                                _ =  self.manager.stop() => {
+                                    info!("Stopped tasks");
                                 }
                             }
                             info!("Stopping visitors");
