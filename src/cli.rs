@@ -49,11 +49,11 @@ pub struct Args {
     pub log_level: Option<String>,
 
     /// Force TUI
-    #[arg(short, long, conflicts_with = "cui")]
+    #[arg(long, conflicts_with = "cui")]
     pub tui: bool,
 
     /// Force CUI
-    #[arg(short, long, conflicts_with = "tui")]
+    #[arg(long, conflicts_with = "tui")]
     pub cui: bool,
 
     /// Enable instrumentation for tokio-console
@@ -75,9 +75,9 @@ pub async fn run() -> anyhow::Result<i32> {
     root.log.file = args.log_file.or(root.log.file);
     root.log.level = args.log_level.unwrap_or(root.log.level);
     root.ui = if args.tui {
-        Some(UI::Tui)
+        UI::Tui
     } else if args.cui {
-        Some(UI::Cui)
+        UI::Cui
     } else {
         root.ui
     };
@@ -110,16 +110,16 @@ pub async fn run() -> anyhow::Result<i32> {
     info!("Dep tasks: {:?}", dep_tasks);
 
     // Create & start UI
-    let (app_tx, app_fut) = match ws.ui {
+    let (app_tx, app_fut) = match root.ui {
         UI::Cui => {
-            let mut app = CuiApp::new(&runner.target_tasks, &ws.labels, !args.watch)?;
+            let mut app = CuiApp::new(&runner.target_tasks, &ws.labels(), !args.watch)?;
             let runner_tx = runner.command_tx();
             let command_tx = app.command_tx();
             let fut = tokio_spawn!("app", async move { app.run(&runner_tx).await });
             (command_tx, fut)
         }
         UI::Tui => {
-            let mut app = TuiApp::new(&runner.target_tasks, &dep_tasks, &ws.labels)?;
+            let mut app = TuiApp::new(&runner.target_tasks, &dep_tasks, &ws.labels())?;
             let runner_tx = runner.command_tx();
             let command_tx = app.command_tx();
             let fut = tokio_spawn!("app", async move { app.run(&runner_tx).await });
@@ -127,7 +127,7 @@ pub async fn run() -> anyhow::Result<i32> {
         }
     };
 
-    let quit_on_done = !args.watch && ws.ui != UI::Tui;
+    let quit_on_done = !args.watch && root.ui != UI::Tui;
     let runner_fut = tokio_spawn!("runner", async move { runner.start(&app_tx, quit_on_done).await });
     runner_fut.await??;
     app_fut.await?

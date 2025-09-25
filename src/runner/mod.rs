@@ -39,7 +39,7 @@ pub struct TaskRunner {
 
 impl TaskRunner {
     pub fn new(ws: &Workspace) -> anyhow::Result<TaskRunner> {
-        let all_tasks = ws.tasks.clone();
+        let all_tasks = ws.tasks();
         let target_tasks = ws.target_tasks.clone();
 
         let task_graph_all = TaskGraph::new(&all_tasks, Some(&target_tasks), ws.force)?;
