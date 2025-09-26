@@ -4,6 +4,8 @@ vars:
 tasks:
   foo:
     label: "{{ project }}/{{ task }}"
+    env:
+      A: "{{ A }}"
     command: |
       echo "foo ${A}"
       cat {{ root_dir }}/root.txt

@@ -1,6 +1,6 @@
 env:
+  A: a-bar
   B: b-bar
-  C: c
 
 env_files:
   - .env.bar
@@ -8,9 +8,3 @@ env_files:
 tasks:
   bar:
     command: echo "bar"
-  bar-2:
-    command: echo "bar-2"
-    shell:
-      command: shell-bar-2
-      args:
-        - args-bar-2

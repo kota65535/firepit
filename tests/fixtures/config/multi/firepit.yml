@@ -2,6 +2,10 @@ projects:
   foo: foo
   bar: bar
 
+env:
+  A: a-root
+  B: b-root
+
 env_files:
   - .env.root
 
@@ -9,7 +13,3 @@ shell:
   command: shell-root
   args:
     - args-root
-
-env:
-  A: a
-  B: b

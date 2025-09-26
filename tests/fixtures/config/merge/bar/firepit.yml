@@ -1,9 +1,13 @@
 includes:
   - "{{ root_dir }}/b.yml"
 
+vars:
+  bar: bar
+  B: bar
+
 env:
-  B: b-bar
-  C: c
+  bar: bar
+  B: bar
 
 env_files:
   - .env.bar

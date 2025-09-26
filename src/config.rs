@@ -14,6 +14,7 @@ use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::thread::available_parallelism;
 use std::{io, path};
+use tera::Tera;
 use tracing::info;
 
 const CONFIG_FILE: [&str; 2] = ["firepit.yml", "firepit.yaml"];
@@ -29,33 +30,29 @@ pub struct ProjectConfig {
     #[serde(default)]
     pub projects: HashMap<String, String>,
 
-    /// Shell configuration for all tasks
-    #[schemars(default = "default_shell")]
-    pub shell: Option<ShellConfig>,
+    /// Shell configuration for all tasks.
+    #[serde(default = "default_shell")]
+    pub shell: ShellConfig,
 
     /// Working directory for all tasks.
     #[serde(default = "default_working_dir")]
     pub working_dir: String,
 
     /// Template variables.
-    /// Merged with those of child projects.
-    /// Can be used at `working_dir`, `env`, `env_files`.
+    /// Can be used at `working_dir`, `env`, `env_files` and `tasks`.
     #[serde(default)]
     pub vars: IndexMap<String, String>,
 
     /// Environment variables for all tasks.
-    /// Merged with those of child projects.
     #[serde(default)]
     pub env: IndexMap<String, String>,
 
     /// Dotenv files for all tasks.
-    /// Merged with those of child projects.
     /// If environment variable duplicates, the later one wins.
     #[serde(default)]
     pub env_files: Vec<String>,
 
     /// Dependency tasks for all tasks.
-    /// Merged with those of child projects.
     #[serde(default)]
     pub depends_on: Vec<DependsOnConfig>,
 
@@ -78,20 +75,32 @@ pub struct ProjectConfig {
     #[serde(default = "default_ui")]
     pub ui: UI,
 
-    /// Additional config files to be included
+    /// Additional config files to be included.
     #[serde(default)]
     pub includes: Vec<String>,
 
     /// project directory path (absolute)
     #[serde(skip)]
     pub dir: PathBuf,
+
+    /// Raw YAML data
+    #[serde(skip)]
+    pub raw: Value,
 }
 
 pub fn default_shell() -> ShellConfig {
     ShellConfig {
-        command: "bash".to_string(),
-        args: vec!["-c".to_string()],
+        command: default_shell_command(),
+        args: default_shell_args(),
     }
+}
+
+pub fn default_shell_command() -> String {
+    "bash".to_string()
+}
+
+pub fn default_shell_args() -> Vec<String> {
+    vec!["-c".to_string()]
 }
 
 pub fn default_working_dir() -> String {
@@ -126,6 +135,14 @@ impl ProjectConfig {
         let dir = path::absolute(dir)?;
         let mut root_config = ProjectConfig::find_root(&dir)?;
         let mut children = HashMap::new();
+
+        // Tera context is used for merge
+        let mut context = tera::Context::new();
+        context.insert(
+            ROOT_DIR_CONTEXT_KEY,
+            &root_config.dir.as_os_str().to_str().unwrap_or(""),
+        );
+
         if root_config.is_root() {
             // Multi project
             for (name, path) in &root_config.projects {
@@ -133,41 +150,10 @@ impl ProjectConfig {
                     anyhow::bail!("Project name must not contain '#'. Found: {:?}", name)
                 }
                 let mut child_config = ProjectConfig::new(name, root_config.dir.join(path).as_path())?;
-
-                child_config.shell = child_config.shell.or(root_config.shell.clone());
-
                 for t in child_config.tasks.values_mut() {
                     t.project = name.clone();
-                    t.shell = t.clone().shell.or(child_config.shell.clone());
                 }
-
-                // Merge vars
-                for (k, v) in root_config.vars.iter() {
-                    child_config.vars.entry(k.clone()).or_insert(v.clone());
-                }
-
-                // Merge env
-                for (k, v) in root_config.env.iter() {
-                    child_config.env.entry(k.clone()).or_insert(v.clone());
-                }
-
-                // Merge env_files
-                child_config.env_files = root_config
-                    .env_files
-                    .iter()
-                    .map(|f| root_config.dir.join(f).to_str().unwrap().to_string())
-                    .chain(child_config.env_files)
-                    .collect();
-
-                // Merge depends_on
-                child_config.depends_on = root_config
-                    .depends_on
-                    .iter()
-                    .chain(child_config.depends_on.iter())
-                    .cloned()
-                    .collect();
-
-                child_config = child_config.merge(&root_config.dir)?;
+                child_config = child_config.merge(&context)?;
                 children.insert(name.clone(), child_config);
             }
         } else {
@@ -175,7 +161,7 @@ impl ProjectConfig {
             root_config.name = "".to_string();
         }
 
-        root_config = root_config.merge(&root_config.dir)?;
+        root_config = root_config.merge(&context)?;
 
         Self::validate(&root_config, &children)?;
         Ok((root_config, children))
@@ -208,7 +194,7 @@ impl ProjectConfig {
     }
 
     pub fn new_from_str(name: &str, str: &str, dir: &Path) -> anyhow::Result<ProjectConfig> {
-        let mut data: ProjectConfig = serde_yaml::from_str(str)?;
+        let mut data = serde_yaml::from_str::<ProjectConfig>(str)?;
 
         // Project dir
         data.dir = dir.to_owned();
@@ -234,6 +220,11 @@ impl ProjectConfig {
                 })
                 .collect();
         }
+
+        // Save raw data
+        let raw_data = serde_yaml::from_str::<Value>(str)?;
+        data.raw = raw_data;
+
         Ok(data)
     }
 
@@ -251,25 +242,35 @@ impl ProjectConfig {
         Self::new_from_str(name, &buf, dir).with_context(|| format!("cannot parse config file {:?}", path))
     }
 
-    pub fn merge(&self, root_dir: &Path) -> anyhow::Result<Self> {
-        let mut context = tera::Context::new();
-        context.insert(ROOT_DIR_CONTEXT_KEY, &root_dir.as_os_str().to_str().unwrap_or(""));
-        let rendered = self.render(&self.context(&context)?, false)?;
+    pub fn merge(&self, context: &tera::Context) -> anyhow::Result<Self> {
+        // Render includes only
+        let mut tera = Tera::default();
+        let mut rendered_includes = Vec::new();
+        for f in self.includes.iter() {
+            rendered_includes.push(tera.render_str(f, &context)?);
+        }
 
-        let mut raw_data: Value = serde_yaml::to_value(rendered.clone())?;
+        // Start from empty value
+        let mut ret = Value::Null;
 
-        for incl in rendered.includes.iter() {
+        // Merge included files first
+        for incl in rendered_includes.iter() {
             info!("Config file {:?} includes {:?}", self.dir, incl);
-            let path = absolute_or_join(&incl, &rendered.dir);
-            let (file, _) = Self::open_file(&rendered.dir.join(&incl))
+            let path = absolute_or_join(&incl, &self.dir);
+            let (file, _) = Self::open_file(&self.dir.join(&incl))
                 .with_context(|| format!("cannot open included file {:?}", path))?;
             let reader = BufReader::new(file);
             let raw_yaml: Value =
                 serde_yaml::from_reader(reader).with_context(|| format!("cannot read included file {:?}.", path))?;
-            merge_yaml(&mut raw_data, &raw_yaml, false)
+            merge_yaml(&mut ret, &raw_yaml, true)
         }
-        let merged_str = serde_yaml::to_string(&raw_data)?;
-        let merged = Self::new_from_str(&self.name, &merged_str, &rendered.dir)?;
+
+        // Merge the main file
+        merge_yaml(&mut ret, &self.raw, true);
+
+        // Convert back to ProjectConfig
+        let merged_str = serde_yaml::to_string(&ret)?;
+        let merged = Self::new_from_str(&self.name, &merged_str, &self.dir)?;
         Ok(merged)
     }
 
@@ -322,7 +323,7 @@ impl ProjectConfig {
 
     pub fn schema() -> anyhow::Result<String> {
         let schema = schemars::schema_for!(ProjectConfig);
-        serde_json::to_string_pretty(&schema).context("cannot create config scehma")
+        serde_json::to_string_pretty(&schema).context("cannot create config schema")
     }
 
     pub fn task(&self, name: &str) -> anyhow::Result<&TaskConfig> {
@@ -437,10 +438,11 @@ fn absolute_or_join(path: &str, dir: &Path) -> PathBuf {
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
 pub struct ShellConfig {
     /// Shell command.
+    #[serde(default = "default_shell_command")]
     pub command: String,
 
     /// Arguments of the shell command.
-    #[serde(default)]
+    #[serde(default = "default_shell_args")]
     pub args: Vec<String>,
 }
 

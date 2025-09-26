@@ -17,6 +17,13 @@ pub fn setup() {
     });
 }
 
+fn assert_eq_env(actual: &HashMap<String, String>, expected: &HashMap<&str, &str>) {
+    assert_eq!(actual.len(), expected.len());
+    for (key, value) in expected {
+        assert_eq!(actual.get(*key), Some(&value.to_string()));
+    }
+}
+
 #[test]
 fn test_env_file_not_found() {
     let path = Path::new("tests/fixtures/project/no_env_file");
@@ -64,15 +71,17 @@ fn test_multi() {
     )
     .unwrap();
 
-    let foo = ws.children.get("foo").unwrap().task("foo").unwrap();
+    let root = ws.root.task("root").unwrap();
+    assert_eq_env(&root.env, &HashMap::from([("A", "a-x"), ("B", "b-x-x")]));
     assert_eq!(
-        foo.depends_on.iter().map(|s| s.task.clone()).collect::<Vec<_>>(),
+        root.depends_on.iter().map(|s| s.task.clone()).collect::<Vec<_>>(),
         vec!["#install".to_string()]
     );
+    assert_eq!(root.command, "echo \"root x\"".to_string());
 
-    let foo2 = ws.children.get("foo").unwrap().task("foo-2").unwrap();
-    assert_eq!(
-        foo2.depends_on.iter().map(|s| s.task.clone()).collect::<Vec<_>>(),
-        vec!["#install".to_string(), "foo#foo".to_string()]
-    );
+    let install = ws.root.task("install").unwrap();
+    assert_eq_env(&install.env, &HashMap::from([("A", "a-x"), ("B", "b-x-x"), ("C", "c")]));
+    assert_eq!(install.depends_on.is_empty(), true);
+
+    let foo = ws.children.get("foo").unwrap().task("foo").unwrap();
 }

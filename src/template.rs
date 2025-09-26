@@ -12,6 +12,7 @@ pub struct ConfigRenderer {
 }
 
 pub const ROOT_DIR_CONTEXT_KEY: &str = "root_dir";
+pub const PROJECT_DIRS_CONTEXT_KEY: &str = "project_dirs";
 pub const PROJECT_DIR_CONTEXT_KEY: &str = "project_dir";
 pub const PROJECT_CONTEXT_KEY: &str = "project";
 pub const TASK_CONTEXT_KEY: &str = "task";
@@ -21,6 +22,7 @@ impl ProjectConfig {
         let mut tera = Tera::default();
         let mut context = context.clone();
         context.insert(PROJECT_CONTEXT_KEY, &self.name);
+        context.insert(PROJECT_DIR_CONTEXT_KEY, &self.dir.as_os_str().to_str().unwrap_or(""));
 
         // Render vars
         let mut rendered_vars = IndexMap::new();
@@ -213,12 +215,12 @@ impl ConfigRenderer {
         if self.child_configs.is_empty() {
             context.insert(PROJECT_DIR_CONTEXT_KEY, root_dir);
         } else {
-            let project_dir = self
+            let project_dirs = self
                 .child_configs
                 .iter()
                 .map(|(k, v)| (k.as_str(), v.dir.as_os_str().to_str().unwrap_or("")))
                 .collect::<HashMap<_, _>>();
-            context.insert(PROJECT_DIR_CONTEXT_KEY, &project_dir);
+            context.insert(PROJECT_DIRS_CONTEXT_KEY, &project_dirs);
         }
         context
     }
