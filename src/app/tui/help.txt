@@ -2,7 +2,7 @@
 ↑↓, jk, Mouse click : Select a task
 h                   : Toggle task list
 q, Ctrl-C           : Stop all tasks and quit
-qq, Ctrl-CC         : Force kill all tasks and quit
+qq, Ctrl-CC         : Kill all tasks and quit immediately
 
 ## Viewing Log
 Mouse wheel down    : Scroll down
@@ -13,6 +13,10 @@ d                   : Scroll down half of the screen
 u                   : Scroll up half of the screen
 f                   : Scroll down one screen
 b                   : Scroll up one screen
+g                   : Go to the top
+G                   : Go to the bottom
+
+## Copying Log
 Mouse drag          : Select log range
 c                   : Copy selected log range to the clipboard
 
