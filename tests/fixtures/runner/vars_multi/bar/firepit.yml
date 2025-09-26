@@ -8,4 +8,4 @@ tasks:
   bar:
     command: |
       echo "bar ${C}"
-      cat {{ project_dir["foo"] }}/foo.txt
+      cat {{ project_dirs["foo"] }}/foo.txt

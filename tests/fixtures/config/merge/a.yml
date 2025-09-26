@@ -1,5 +1,11 @@
+env:
+  A: a
+
 env_files:
   - .env.a
+
+vars:
+  A: a
 
 tasks:
   a:

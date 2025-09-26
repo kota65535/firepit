@@ -1,7 +1,6 @@
 use assertables::assert_starts_with;
 use firepit::config::{ProjectConfig, ShellConfig};
 use indexmap::IndexMap;
-use std::env;
 use std::path::Path;
 use std::sync::Once;
 use tracing_subscriber::EnvFilter;
@@ -23,16 +22,6 @@ fn assert_eq_env(actual: &IndexMap<String, String>, expected: &IndexMap<&str, &s
     }
 }
 
-fn to_absolute_path(root: &Path, path: &str) -> String {
-    env::current_dir()
-        .unwrap()
-        .join(root)
-        .join(path)
-        .to_str()
-        .unwrap()
-        .to_string()
-}
-
 #[test]
 fn test_multi() {
     let path = Path::new("tests/fixtures/config/multi");
@@ -41,10 +30,10 @@ fn test_multi() {
     let bar = children.get("bar").unwrap().clone();
 
     // root
-    assert_eq_env(&root.env, &IndexMap::from([("A", "a"), ("B", "b")]));
+    assert_eq_env(&root.env, &IndexMap::from([("A", "a-root"), ("B", "b-root")]));
     assert_eq!(root.env_files, vec![".env.root"]);
     assert_eq!(
-        root.shell.unwrap(),
+        root.shell,
         ShellConfig {
             command: "shell-root".to_string(),
             args: vec!["args-root".to_string()],
@@ -54,14 +43,11 @@ fn test_multi() {
     // foo
     assert_eq_env(
         &children.get("foo").unwrap().env,
-        &IndexMap::from([("A", "a"), ("B", "b-foo"), ("C", "c")]),
+        &IndexMap::from([("A", "a-foo"), ("B", "b-foo")]),
     );
+    assert_eq!(foo.env_files, vec![String::from(".env.foo")]);
     assert_eq!(
-        foo.env_files,
-        vec![to_absolute_path(&path, ".env.root"), String::from(".env.foo")]
-    );
-    assert_eq!(
-        foo.shell.unwrap(),
+        foo.shell,
         ShellConfig {
             command: "shell-foo".to_string(),
             args: vec!["args-foo".to_string()],
@@ -71,17 +57,14 @@ fn test_multi() {
     // bar
     assert_eq_env(
         &children.get("bar").unwrap().env,
-        &IndexMap::from([("A", "a"), ("B", "b-bar"), ("C", "c")]),
+        &IndexMap::from([("A", "a-bar"), ("B", "b-bar")]),
     );
+    assert_eq!(bar.env_files, vec![String::from(".env.bar")]);
     assert_eq!(
-        bar.env_files,
-        vec![to_absolute_path(&path, ".env.root"), String::from(".env.bar")]
-    );
-    assert_eq!(
-        bar.shell.unwrap(),
+        bar.shell,
         ShellConfig {
-            command: "shell-root".to_string(),
-            args: vec!["args-root".to_string()],
+            command: "bash".to_string(),
+            args: vec!["-c".to_string()],
         }
     );
 }
@@ -95,30 +78,23 @@ fn test_merge() {
 
     // root
     assert_eq_env(&root.env, &IndexMap::from([("A", "a"), ("B", "b")]));
-    assert_eq!(root.env_files, vec![".env.root"]);
+    assert_eq!(root.env_files, vec![".env.a", ".env.b", ".env.root"]);
     assert_eq!(
-        root.shell.unwrap(),
+        root.shell,
         ShellConfig {
             command: "shell-root".to_string(),
-            args: vec!["args-root".to_string()],
+            args: vec!["-x".to_string(), "-c".to_string()],
         }
     );
 
     // foo
     assert_eq_env(
         &children.get("foo").unwrap().env,
-        &IndexMap::from([("A", "a"), ("B", "b-foo"), ("C", "c")]),
+        &IndexMap::from([("A", "a"), ("foo", "foo")]),
     );
+    assert_eq!(foo.env_files, vec![String::from(".env.a"), String::from(".env.foo"),]);
     assert_eq!(
-        foo.env_files,
-        vec![
-            to_absolute_path(&path, ".env.root"),
-            String::from(".env.foo"),
-            String::from(".env.a"),
-        ]
-    );
-    assert_eq!(
-        foo.shell.unwrap(),
+        foo.shell,
         ShellConfig {
             command: "shell-foo".to_string(),
             args: vec!["args-foo".to_string()],
@@ -133,21 +109,14 @@ fn test_merge() {
     // bar
     assert_eq_env(
         &children.get("bar").unwrap().env,
-        &IndexMap::from([("A", "a"), ("B", "b-bar"), ("C", "c")]),
+        &IndexMap::from([("bar", "bar"), ("B", "bar")]),
     );
+    assert_eq!(bar.env_files, vec![String::from(".env.b"), String::from(".env.bar"),]);
     assert_eq!(
-        bar.env_files,
-        vec![
-            to_absolute_path(&path, ".env.root"),
-            String::from(".env.bar"),
-            String::from(".env.b")
-        ]
-    );
-    assert_eq!(
-        bar.shell.unwrap(),
+        bar.shell,
         ShellConfig {
-            command: "shell-root".to_string(),
-            args: vec!["args-root".to_string()],
+            command: "bash".to_string(),
+            args: vec!["-x".to_string(), "-c".to_string()],
         }
     );
     assert_eq!(bar.tasks.get("bar").unwrap().command, Some("echo \"bar\"".to_string()));

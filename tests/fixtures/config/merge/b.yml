@@ -1,9 +1,17 @@
+env:
+  B: b
+
 env_files:
   - .env.b
+
+vars:
+  B: b
 
 tasks:
   b:
     command: echo "b"
 
-  bar:
-    command: echo "overwritten"
+shell:
+  args:
+    - -x
+    - -c

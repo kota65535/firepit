@@ -2,6 +2,14 @@ projects:
   foo: foo
   bar: bar
 
+vars:
+  X: x
+  XX: "{{ X }}-{{ X }}"
+
+env:
+  A: a-{{ X }}
+  B: b-{{ XX }}
+
 env_files:
   - .env.root
 
@@ -10,15 +18,15 @@ shell:
   args:
     - args-root
 
-env:
-  A: a
-  B: b
-
 depends_on:
   - "#install"
 
 tasks:
+  root:
+    command: echo "root {{ X }}"
   install:
     command: echo "install"
+    env:
+      C: c
     depends_on:
       - "install"

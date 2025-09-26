@@ -11,7 +11,7 @@
       "minimum": 0.0
     },
     "depends_on": {
-      "description": "Dependency tasks for all tasks. Merged with those of child projects.",
+      "description": "Dependency tasks for all tasks.",
       "default": [],
       "type": "array",
       "items": {
@@ -19,7 +19,7 @@
       }
     },
     "env": {
-      "description": "Environment variables for all tasks. Merged with those of child projects.",
+      "description": "Environment variables for all tasks.",
       "default": {},
       "type": "object",
       "additionalProperties": {
@@ -27,7 +27,7 @@
       }
     },
     "env_files": {
-      "description": "Dotenv files for all tasks. Merged with those of child projects. If environment variable duplicates, the later one wins.",
+      "description": "Dotenv files for all tasks. If environment variable duplicates, the later one wins.",
       "default": [],
       "type": "array",
       "items": {
@@ -35,7 +35,7 @@
       }
     },
     "includes": {
-      "description": "Additional config files to be included",
+      "description": "Additional config files to be included.",
       "default": [],
       "type": "array",
       "items": {
@@ -63,19 +63,16 @@
       }
     },
     "shell": {
-      "description": "Shell configuration for all tasks",
+      "description": "Shell configuration for all tasks.",
       "default": {
         "args": [
           "-c"
         ],
         "command": "bash"
       },
-      "anyOf": [
+      "allOf": [
         {
           "$ref": "#/definitions/ShellConfig"
-        },
-        {
-          "type": "null"
         }
       ]
     },
@@ -97,7 +94,7 @@
       ]
     },
     "vars": {
-      "description": "Template variables. Merged with those of child projects. Can be used at `working_dir`, `env`, `env_files`.",
+      "description": "Template variables. Can be used at `working_dir`, `env`, `env_files` and `tasks`.",
       "default": {},
       "type": "object",
       "additionalProperties": {
@@ -335,13 +332,12 @@
     },
     "ShellConfig": {
       "type": "object",
-      "required": [
-        "command"
-      ],
       "properties": {
         "args": {
           "description": "Arguments of the shell command.",
-          "default": [],
+          "default": [
+            "-c"
+          ],
           "type": "array",
           "items": {
             "type": "string"
@@ -349,6 +345,7 @@
         },
         "command": {
           "description": "Shell command.",
+          "default": "bash",
           "type": "string"
         }
       }
