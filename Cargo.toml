@@ -42,9 +42,6 @@ tui-term = { version = "=0.1.9", default-features = false }
 vt100 = { git = "https://github.com/kota65535/vt100-rust", rev = "cc4bd1eb6f1e302eaa5a5f24d5bed02a4244d0c6" }
 which = "8.0.0"
 
-[profile.dev]
-incremental = true
-
 # The profile that 'dist' will build with
 [profile.dist]
 inherits = "release"

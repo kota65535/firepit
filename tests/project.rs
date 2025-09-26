@@ -81,7 +81,7 @@ fn test_multi() {
 
     let install = ws.root.task("install").unwrap();
     assert_eq_env(&install.env, &HashMap::from([("A", "a-x"), ("B", "b-x-x"), ("C", "c")]));
-    assert_eq!(install.depends_on.is_empty(), true);
+    assert!(install.depends_on.is_empty());
 
     let foo = ws.children.get("foo").unwrap().task("foo").unwrap();
 }
