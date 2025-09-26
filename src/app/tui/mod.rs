@@ -423,6 +423,7 @@ impl TuiAppState {
             Layout::horizontal([Constraint::Max(0), Constraint::Length(cols)])
         };
         let [table, pane] = horizontal.areas(f.size());
+        let [console, _footer] = Layout::vertical([Constraint::Fill(1), Constraint::Length(2)]).areas(pane);
 
         let active_task = match self.active_task() {
             Ok(task) => task,
@@ -442,7 +443,7 @@ impl TuiAppState {
         self.scrollbar = self.scrollbar.content_length(content_length);
         self.scrollbar = self.scrollbar.position(content_length.saturating_sub(scrollback));
         let scrollbar_to_render = TerminalScroll::new(&self.focus);
-        f.render_stateful_widget(scrollbar_to_render, pane, &mut self.scrollbar);
+        f.render_stateful_widget(scrollbar_to_render, console, &mut self.scrollbar);
 
         // Render task list
         let table_to_render = TaskTable::new(&self.tasks);
