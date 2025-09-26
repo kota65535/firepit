@@ -43,7 +43,18 @@ impl<'a> TerminalPane<'a> {
         matches!(self.section, LayoutSections::Pane)
     }
 
-    fn footer(&self) -> Text {
+    fn right_footer(&self) -> Text {
+        if matches!(self.section, LayoutSections::TaskList { .. }) {
+            Text::from(vec![
+                Line::from(key_help_spans(*QUIT)),
+                Line::from(key_help_spans(*HELP)),
+            ])
+        } else {
+            Text::default()
+        }
+    }
+
+    fn left_footer(&self) -> Text {
         let mut help_spans = Vec::new();
         let mut search_spans = Vec::new();
         match self.section {
@@ -72,8 +83,6 @@ impl<'a> TerminalPane<'a> {
                 }
                 help_spans.push(key_help_spans(*RESTART_TASK));
                 help_spans.push(key_help_spans(*STOP_TASK));
-                help_spans.push(key_help_spans(*QUIT));
-                help_spans.push(key_help_spans(*HELP));
             }
             LayoutSections::Search { query } => {
                 if self.task.output.has_selection() {
@@ -83,7 +92,8 @@ impl<'a> TerminalPane<'a> {
                     help_spans.push(key_help_spans(*SHOW_TASKS));
                 }
                 help_spans.push(key_help_spans(*EXIT_SEARCH));
-                search_spans.push(Span::styled(format!("/ {}\n", query), Style::default().bold()));
+                // Show cursor
+                search_spans.push(Span::styled(format!("/{}\u{2588}\n", query), Style::default().bold()));
             }
             LayoutSections::Help { .. } => {
                 // No footer content for help dialog
@@ -110,8 +120,11 @@ impl<'a> Widget for &TerminalPane<'a> {
         Self: Sized,
     {
         // Create vertical layout with terminal and fixed height block
-        let layout = Layout::vertical([Constraint::Fill(1), Constraint::Length(2)]);
-        let [terminal_area, block_area] = layout.areas(area);
+        let [main_area, footer_area] = Layout::vertical([Constraint::Fill(1), Constraint::Length(2)]).areas(area);
+
+        // Create horizontal layout for footer with flexible left area and fixed width right area
+        let [left_footer_area, right_footer_area] =
+            Layout::horizontal([Constraint::Fill(1), Constraint::Length(9)]).areas(footer_area);
 
         let screen = self.task.output.screen();
         let terminal_block = Block::default()
@@ -130,18 +143,24 @@ impl<'a> Widget for &TerminalPane<'a> {
 
         // Terminal widget
         let term = PseudoTerminal::new(screen).block(terminal_block);
-        term.render(terminal_area, buf);
+        term.render(main_area, buf);
 
-        // Footer widget
-        let footer_block = Block::default()
+        // Footer widgets
+        let left_footer_block = Block::default()
             .borders(if self.has_sidebar { Borders::LEFT } else { Borders::NONE })
             .border_style(if self.highlight() {
                 Style::new().fg(Color::Yellow)
             } else {
                 Style::new()
             });
-        let footer_widget = Paragraph::new(self.footer()).block(footer_block);
-        footer_widget.render(block_area, buf);
+        let left_footer_widget = Paragraph::new(self.left_footer()).block(left_footer_block);
+        left_footer_widget.render(left_footer_area, buf);
+
+        let right_footer_block = Block::default().borders(Borders::NONE);
+        let right_footer_widget = Paragraph::new(self.right_footer())
+            .block(right_footer_block)
+            .left_aligned();
+        right_footer_widget.render(right_footer_area, buf);
     }
 }
 
