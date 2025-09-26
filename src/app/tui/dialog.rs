@@ -115,7 +115,7 @@ pub fn render_help_dialog(f: &mut Frame, scroll: usize) {
         .take(visual_height)
         .map(|line| {
             if line.starts_with("#") {
-                Line::styled(line, Style::default().fg(Color::LightBlue))
+                Line::styled(line, Style::default().fg(Color::Blue))
             } else {
                 Line::raw(line)
             }

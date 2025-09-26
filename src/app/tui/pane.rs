@@ -88,9 +88,6 @@ impl<'a> TerminalPane<'a> {
                 if self.task.output.has_selection() {
                     help_spans.push(key_help_spans(*COPY_SELECTION));
                 }
-                if !self.has_sidebar {
-                    help_spans.push(key_help_spans(*SHOW_TASKS));
-                }
                 help_spans.push(key_help_spans(*EXIT_SEARCH));
                 // Show cursor
                 search_spans.push(Span::styled(format!("/{}\u{2588}\n", query), Style::default().bold()));
@@ -114,6 +111,8 @@ impl<'a> TerminalPane<'a> {
     }
 }
 
+const RIGHT_FOOTER_WIDTH: u16 = 10;
+
 impl<'a> Widget for &TerminalPane<'a> {
     fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer)
     where
@@ -123,8 +122,16 @@ impl<'a> Widget for &TerminalPane<'a> {
         let [main_area, footer_area] = Layout::vertical([Constraint::Fill(1), Constraint::Length(2)]).areas(area);
 
         // Create horizontal layout for footer with flexible left area and fixed width right area
-        let [left_footer_area, right_footer_area] =
-            Layout::horizontal([Constraint::Fill(1), Constraint::Length(9)]).areas(footer_area);
+        let right_footer_width = match self.section {
+            LayoutSections::TaskList { .. } => RIGHT_FOOTER_WIDTH,
+            _ => 2, // Right footer is not shown, but keep some space for padding
+        };
+        let [left_footer_area, right_footer_area, _margin] = Layout::horizontal([
+            Constraint::Fill(1),
+            Constraint::Length(right_footer_width),
+            Constraint::Length(1),
+        ])
+        .areas(footer_area);
 
         let screen = self.task.output.screen();
         let terminal_block = Block::default()
@@ -153,7 +160,7 @@ impl<'a> Widget for &TerminalPane<'a> {
             } else {
                 Style::new()
             });
-        let left_footer_widget = Paragraph::new(self.left_footer()).block(left_footer_block);
+        let left_footer_widget = Paragraph::new(self.left_footer()).block(left_footer_block).centered();
         left_footer_widget.render(left_footer_area, buf);
 
         let right_footer_block = Block::default().borders(Borders::NONE);
