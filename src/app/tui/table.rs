@@ -1,8 +1,9 @@
 use crate::app::command::{TaskResult, TaskStatus};
 use crate::app::tui::lib::key_help_spans;
 use crate::app::tui::task::Task;
+use crate::app::tui::LayoutSections;
 use indexmap::IndexMap;
-use ratatui::prelude::{Line, Span};
+use ratatui::prelude::{Layout, Line};
 use ratatui::{
     layout::{Constraint, Rect},
     style::{Color, Style, Stylize},
@@ -16,6 +17,7 @@ use ratatui::{
 /// in that order.
 pub struct TaskTable<'b> {
     tasks: &'b IndexMap<String, Task>,
+    section: &'b LayoutSections,
 }
 
 static NAVIGATE_TASKS: &'static (&str, &str) = &("[↑↓]", "Navigate");
@@ -24,8 +26,8 @@ static MAX_WIDTH: usize = 40;
 static STATUS_COLUMN_WIDTH: u16 = 3;
 
 impl<'b> TaskTable<'b> {
-    pub fn new(tasks: &'b IndexMap<String, Task>) -> Self {
-        Self { tasks }
+    pub fn new(tasks: &'b IndexMap<String, Task>, section: &'b LayoutSections) -> Self {
+        Self { tasks, section }
     }
 }
 
@@ -75,7 +77,7 @@ impl TaskTable<'_> {
             .collect()
     }
 
-    fn status_summary(&self) -> Span {
+    fn status_summary(&self) -> Line {
         let targets = self.tasks.values().filter(|t| t.is_target).collect::<Vec<_>>();
 
         // Running: some tasks are still running
@@ -85,24 +87,24 @@ impl TaskTable<'_> {
                 TaskStatus::Planned | TaskStatus::Running(_) | TaskStatus::Finished(TaskResult::Reloading)
             )
         }) {
-            return Span::styled(" Running ", Style::default().fg(Color::White).bg(Color::LightBlue));
+            return Line::styled(" Running ", Style::default().fg(Color::White).bg(Color::Blue));
         }
         // Failure: some tasks have failed
         if targets
             .iter()
             .any(|t| matches!(t.status(), TaskStatus::Finished(r) if r.is_failure()))
         {
-            return Span::styled(" Failure ", Style::default().fg(Color::White).bg(Color::LightRed));
+            return Line::styled(" Failure ", Style::default().fg(Color::White).bg(Color::Red));
         }
 
         // All tasks should have finished successfully or become ready
 
         // Ready: all service tasks are ready to use
         if targets.iter().any(|t| matches!(t.status(), TaskStatus::Ready)) {
-            return Span::styled("  Ready  ", Style::default().fg(Color::White).bg(Color::LightGreen));
+            return Line::styled("  Ready  ", Style::default().fg(Color::White).bg(Color::Green));
         }
         // Success: all tasks have finished successfully
-        Span::styled(" Success ", Style::default().fg(Color::White).bg(Color::LightGreen))
+        Line::styled(" Success ", Style::default().fg(Color::White).bg(Color::Green))
     }
 }
 
@@ -110,27 +112,26 @@ impl<'a> StatefulWidget for &'a TaskTable<'a> {
     type State = TableState;
 
     fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer, state: &mut Self::State) {
-        let layout = ratatui::prelude::Layout::vertical([
-            Constraint::Length(2), // Header
+        let [header_area, header_line, table_area, footer_line, footer_area] = Layout::vertical([
+            Constraint::Length(1), // Header
+            Constraint::Length(1), // Header line
             Constraint::Fill(1),   // Table
-            Constraint::Length(3), // Footer
-        ]);
-        let [header_area, table_area, footer_area] = layout.areas(area);
-        let width = table_area.width;
+            Constraint::Length(1), // Footer line
+            Constraint::Length(2), // Footer
+        ])
+        .areas(area);
 
         // Render header
-        let title_span = Span::raw("\u{1f3d5}  Tasks"); // 🏕
-        let status_span = self.status_summary();
-        let space_span =
-            Span::raw(" ".repeat(usize::from(width).saturating_sub(title_span.width() + status_span.width())));
-        let header = Paragraph::new(Text::from(vec![
-            Line::from(vec![title_span, space_span, status_span]),
-            Line::from("─".repeat(usize::from(width))),
-        ]));
+        let [title_area, status_area, _margin] =
+            Layout::horizontal([Constraint::Fill(1), Constraint::Fill(1), Constraint::Length(1)]).areas(header_area);
+        let title = Paragraph::new(Line::from("\u{1f3d5}  Tasks")).left_aligned(); // 🏕
+        let status = Paragraph::new(self.status_summary()).right_aligned();
+        Widget::render(title, title_area, buf);
+        Widget::render(status, status_area, buf);
 
         // Render table
         let widths = [
-            Constraint::Min(width.saturating_sub(STATUS_COLUMN_WIDTH + 1)),
+            Constraint::Min(area.width.saturating_sub(STATUS_COLUMN_WIDTH + 1)),
             Constraint::Length(1),
             Constraint::Length(STATUS_COLUMN_WIDTH),
         ];
@@ -138,16 +139,20 @@ impl<'a> StatefulWidget for &'a TaskTable<'a> {
             .highlight_style(Style::default().fg(Color::Yellow))
             .column_spacing(0)
             .block(Block::new());
+        StatefulWidget::render(table, table_area, buf, state);
 
         // Render footer
-        let footer = Paragraph::new(Text::from(vec![
-            Line::raw("─".repeat(usize::from(width))),
-            Line::from(key_help_spans(*NAVIGATE_TASKS)),
-            Line::from(key_help_spans(*HIDE_TASKS)),
-        ]));
+        if matches!(self.section, LayoutSections::TaskList { .. }) {
+            let footer = Paragraph::new(Text::from(vec![
+                Line::from(key_help_spans(*NAVIGATE_TASKS)),
+                Line::from(key_help_spans(*HIDE_TASKS)),
+            ]));
+            Widget::render(footer, footer_area, buf);
+        }
 
-        Widget::render(header, header_area, buf);
-        StatefulWidget::render(table, table_area, buf, state);
-        Widget::render(footer, footer_area, buf);
+        // Render header and footer lines
+        let line = Paragraph::new(Text::from("─".repeat(usize::from(area.width))));
+        Widget::render(line.clone(), header_line, buf);
+        Widget::render(line.clone(), footer_line, buf);
     }
 }
