@@ -1,4 +1,4 @@
-use crate::app::command::{TaskResult, TaskStatus};
+use crate::app::command::TaskStatus;
 use crate::app::cui::lib::BOLD;
 use crate::app::tui::term_output::TerminalOutput;
 use std::io::Write;
@@ -84,17 +84,7 @@ impl Task {
                 pid, self.restart, max_restart, self.reload
             ),
             TaskStatus::Finished(result) => {
-                let result = match result {
-                    TaskResult::Success => format!("Success"),
-                    TaskResult::Failure(code) => format!("Failure with exit code {code}"),
-                    TaskResult::UpToDate => format!("Up-to-date"),
-                    TaskResult::BadDeps => format!("Dependency task failed"),
-                    TaskResult::Stopped => format!("Stopped"),
-                    TaskResult::NotReady => format!("Service not ready"),
-                    TaskResult::Reloading => format!("Service is reloading..."),
-                    TaskResult::Unknown => format!("Unknown"),
-                };
-                format!("Finished: {}", result)
+                format!("Finished: {}", result.short_message())
             }
         };
 
@@ -110,13 +100,13 @@ impl Task {
                     None
                 }
             }
-            TaskStatus::Finished(result) => match result {
-                TaskResult::Success => Some("Process finished with exit code 0".to_string()),
-                TaskResult::Failure(code) => Some(format!("Process finished with exit code {code}")),
-                TaskResult::Stopped => Some("Process is terminated".to_string()),
-                TaskResult::NotReady => Some("Task is not ready".to_string()),
-                _ => None,
-            },
+            TaskStatus::Finished(result) => {
+                if result.is_failure() {
+                    Some(result.long_message(&self.name))
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
     }

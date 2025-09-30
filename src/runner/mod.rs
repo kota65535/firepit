@@ -35,6 +35,8 @@ pub struct TaskRunner {
 
     pub command_tx: RunnerCommandChannel,
     pub command_rx: broadcast::Receiver<RunnerCommand>,
+
+    pub fail_fast: bool,
 }
 
 impl TaskRunner {
@@ -62,6 +64,7 @@ impl TaskRunner {
             concurrency: ws.concurrency,
             command_tx,
             command_rx,
+            fail_fast: ws.fail_fast,
         })
     }
 
@@ -180,6 +183,8 @@ impl TaskRunner {
                     } = message;
 
                     let mut app_tx = app_tx.clone().with_name(&task.name);
+                    let fail_fast = self.fail_fast;
+                    let command_tx = self.command_tx.clone();
                     let manager = self.manager.clone();
                     let task_name = task.name.clone();
                     let visitor_tx_cloned = visitor_tx.clone();
@@ -328,6 +333,11 @@ impl TaskRunner {
                                 _ => NodeResult::Failure,
                             };
                         };
+
+                        if fail_fast && matches!(node_result, NodeResult::Failure) {
+                            info!("Fail-fast enabled, stopping all tasks");
+                            command_tx.quit();
+                        }
 
                         // Notify the visitor the task finished
                         if let Err(e) = callback.send(CallbackMessage(node_result)).await {

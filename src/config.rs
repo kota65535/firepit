@@ -13,7 +13,7 @@ use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::thread::available_parallelism;
-use std::{io, path};
+use std::{io, iter, path};
 use tera::Tera;
 use tracing::info;
 
@@ -78,6 +78,10 @@ pub struct ProjectConfig {
     /// Additional config files to be included.
     #[serde(default)]
     pub includes: Vec<String>,
+
+    /// project file path (absolute)
+    #[serde(skip)]
+    pub path: PathBuf,
 
     /// project directory path (absolute)
     #[serde(skip)]
@@ -163,40 +167,43 @@ impl ProjectConfig {
 
         root_config = root_config.merge(&context)?;
 
-        Self::validate(&root_config, &children)?;
+        Self::validate_multi(&root_config, &children)?;
+
         Ok((root_config, children))
     }
 
-    fn validate(root: &ProjectConfig, children: &HashMap<String, ProjectConfig>) -> anyhow::Result<()> {
+    fn validate_multi(root: &ProjectConfig, children: &HashMap<String, ProjectConfig>) -> anyhow::Result<()> {
         let mut tasks = root.tasks.values().map(|t| t.full_name()).collect::<HashSet<_>>();
         for p in children.values() {
             tasks.extend(p.tasks.values().map(|t| t.full_name()).collect::<HashSet<_>>());
         }
-
-        let deps = root
-            .tasks
-            .values()
-            .chain(children.values().flat_map(|p| p.tasks.values()))
-            .flat_map(|t| t.depends_on.iter())
-            .map(|d| match d {
-                DependsOnConfig::String(s) => s.clone(),
-                DependsOnConfig::Struct(s) => s.task.clone(),
-            })
-            .collect::<HashSet<_>>();
-
-        for d in deps.iter() {
-            if !tasks.contains(d) {
-                anyhow::bail!("task {:?} is not defined.", d);
-            }
+        for config in iter::once(root).chain(children.values()) {
+            config
+                .validate(&tasks)
+                .context(format!("invalid config file: {:?}", root.path))?;
         }
-
         Ok(())
     }
 
-    pub fn new_from_str(name: &str, str: &str, dir: &Path) -> anyhow::Result<ProjectConfig> {
+    fn validate(&self, tasks: &HashSet<String>) -> anyhow::Result<()> {
+        for (_, t) in self.tasks.iter() {
+            for d in t.depends_on.iter().map(|d| match d {
+                DependsOnConfig::String(s) => s.clone(),
+                DependsOnConfig::Struct(s) => s.task.clone(),
+            }) {
+                if !tasks.contains(&d) {
+                    anyhow::bail!("tasks.{}.depends_on: task {:?} is not defined.", t.name, d);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn new_from_str(name: &str, str: &str, path: &Path, dir: &Path) -> anyhow::Result<ProjectConfig> {
         let mut data = serde_yaml::from_str::<ProjectConfig>(str)?;
 
         // Project dir
+        data.path = path.to_owned();
         data.dir = dir.to_owned();
 
         // Name
@@ -239,7 +246,8 @@ impl ProjectConfig {
             })?;
         let mut buf = String::new();
         file.read_to_string(&mut buf)?;
-        Self::new_from_str(name, &buf, dir).with_context(|| format!("cannot parse config file {:?}", path))
+        Self::new_from_str(name, &buf, path.as_path(), dir)
+            .with_context(|| format!("cannot parse config file {:?}", path))
     }
 
     pub fn merge(&self, context: &tera::Context) -> anyhow::Result<Self> {
@@ -270,7 +278,7 @@ impl ProjectConfig {
 
         // Convert back to ProjectConfig
         let merged_str = serde_yaml::to_string(&ret)?;
-        let merged = Self::new_from_str(&self.name, &merged_str, &self.dir)?;
+        let merged = Self::new_from_str(&self.name, &merged_str, &self.path, &self.dir)?;
         Ok(merged)
     }
 

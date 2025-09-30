@@ -15,6 +15,7 @@ pub struct Workspace {
     pub concurrency: usize,
     pub force: bool,
     pub use_pty: bool,
+    pub fail_fast: bool,
     pub dir: PathBuf,
 }
 
@@ -27,6 +28,7 @@ impl Workspace {
         vars: &HashMap<String, String>,
         env: &HashMap<String, String>,
         force: bool,
+        fail_fast: Option<bool>,
     ) -> anyhow::Result<Workspace> {
         let mut target_tasks = Vec::new();
         for task in tasks.iter() {
@@ -54,7 +56,7 @@ impl Workspace {
                             Err(_) => child_configs.values().map(|c| c.task(task_name)).flatten().collect(),
                         };
                         if tasks.is_empty() {
-                            anyhow::bail!("task {:?} is not defined.", task)
+                            anyhow::bail!("task {:?} does not exist in any project", task)
                         }
                         target_tasks.extend(tasks.iter().map(|t| t.full_name()));
                     } else {
@@ -102,6 +104,14 @@ impl Workspace {
             UI::Cui => false,
         };
 
+        let fail_fast = match fail_fast {
+            Some(f) => f,
+            None => match root_config.ui {
+                UI::Tui => false,
+                UI::Cui => true,
+            },
+        };
+
         Ok(Self {
             root,
             children,
@@ -109,6 +119,7 @@ impl Workspace {
             concurrency: root_config.concurrency,
             force,
             use_pty,
+            fail_fast,
             dir: current_dir.to_owned(),
         })
     }

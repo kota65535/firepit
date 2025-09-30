@@ -295,11 +295,33 @@ impl TaskResult {
     pub fn is_failure(&self) -> bool {
         matches!(
             self,
-            TaskResult::Failure(_)
-                | TaskResult::Stopped
-                | TaskResult::BadDeps
-                | TaskResult::NotReady
-                | TaskResult::Unknown
+            TaskResult::Failure(_) | TaskResult::Stopped | TaskResult::NotReady | TaskResult::Unknown
         )
+    }
+
+    pub fn short_message(&self) -> String {
+        match self {
+            TaskResult::Success => format!("Success"),
+            TaskResult::Failure(code) => format!("Failed with exit code {code}"),
+            TaskResult::UpToDate => format!("Up-to-date"),
+            TaskResult::BadDeps => format!("Dependency task failed"),
+            TaskResult::Stopped => format!("Stopped"),
+            TaskResult::NotReady => format!("Service not ready"),
+            TaskResult::Reloading => format!("Service is reloading..."),
+            TaskResult::Unknown => format!("Unknown"),
+        }
+    }
+
+    pub fn long_message(&self, name: &str) -> String {
+        match self {
+            TaskResult::Success => format!("Task {:?} finished with exit code 0", name),
+            TaskResult::Failure(code) => format!("Task {:?} finished with exit code {:?}", name, code),
+            TaskResult::UpToDate => format!("Task {:?} is not run because it is up-to-date", name),
+            TaskResult::BadDeps => format!("Task {:?} is not run because dependency task(s) failed", name),
+            TaskResult::Stopped => format!("Task {:?} is terminated", name),
+            TaskResult::NotReady => format!("Service task {:?} is terminated because it did not become ready", name),
+            TaskResult::Reloading => format!("Service task {:?} is reloading...", name),
+            TaskResult::Unknown => format!("Unknown"),
+        }
     }
 }
