@@ -3,6 +3,7 @@ use tracing::warn;
 
 #[derive(Debug, Clone, strum::AsRefStr)]
 pub enum RunnerCommand {
+    StopTasks,
     StopTask { task: String },
     RestartTask { task: String, force: bool },
     Quit,
@@ -17,6 +18,10 @@ impl RunnerCommandChannel {
     pub fn new(size: usize) -> (Self, broadcast::Receiver<RunnerCommand>) {
         let (tx, rx) = broadcast::channel(size);
         (Self { tx }, rx)
+    }
+
+    pub fn stop_tasks(&self) {
+        self.send(RunnerCommand::StopTasks);
     }
 
     pub fn stop_task(&self, task: &str) {

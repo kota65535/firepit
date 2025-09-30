@@ -120,12 +120,14 @@ impl TaskRunner {
                 // Runner command branch
                 Ok(event) = self.command_rx.recv() => {
                     match event {
+                        RunnerCommand::StopTasks  => {
+                           info!("Stopping all tasks");
+                           self.manager.stop().await;
+                        }
                         RunnerCommand::StopTask { task } => {
                             info!("Stopping task: {}", task);
                             app_tx.clone().with_name(&task).finish_task(TaskResult::Stopped);
-                            if let Err(e) = self.manager.stop_by_label(&task).await {
-                                warn!("Failed to stop process {:?}: {:?}", &task, e);
-                            }
+                            self.manager.stop_by_label(&task).await;
                         }
                         RunnerCommand::RestartTask { task, force } => {
                             let mut tasks = vec![task.clone()];
@@ -138,9 +140,7 @@ impl TaskRunner {
                             info!("Stopping tasks");
                             for task in tasks.iter() {
                                 app_tx.clone().with_name(&task).finish_task(TaskResult::Reloading);
-                                if let Err(e) = self.manager.stop_by_label(&task).await {
-                                    warn!("Failed to stop process {:?}: {:?}", &task, e);
-                                }
+                                self.manager.stop_by_label(&task).await;
                             }
                             info!("Stopped tasks");
                             info!("Restarting visitors");
@@ -156,10 +156,10 @@ impl TaskRunner {
                             tokio::select! {
                                 Ok(RunnerCommand::Quit) = self.command_rx.recv() => {
                                     info!("Killing tasks");
-                                    self.manager.kill().await;
+                                    self.manager.close_by_kill().await;
                                     info!("Killed tasks");
                                 }
-                                _ =  self.manager.stop() => {
+                                _ =  self.manager.close() => {
                                     info!("Stopped tasks");
                                 }
                             }
@@ -336,7 +336,7 @@ impl TaskRunner {
 
                         if fail_fast && matches!(node_result, NodeResult::Failure) {
                             info!("Fail-fast enabled, stopping all tasks");
-                            command_tx.quit();
+                            command_tx.stop_tasks();
                         }
 
                         // Notify the visitor the task finished
