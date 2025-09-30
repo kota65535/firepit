@@ -118,7 +118,7 @@ impl ProcessManager {
     {
         let mut children = {
             let lock = self.state.lock().await;
-            lock.children.iter().filter(|c| filter(c)).cloned().collect::<Vec<_>>()
+            lock.children.iter().cloned().filter(filter).collect::<Vec<_>>()
         };
 
         let results = FuturesUnordered::from_iter(children.iter_mut().map(|c| c.stop()))
