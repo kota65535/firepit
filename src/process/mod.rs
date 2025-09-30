@@ -14,14 +14,13 @@ mod command;
 
 use std::{io, sync::Arc, time::Duration};
 
+pub use self::child::{Child, ChildExit};
 pub use command::Command;
 use futures::stream::FuturesUnordered;
 use futures::{Future, StreamExt};
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tracing::{debug, trace};
-
-pub use self::child::{Child, ChildExit};
 
 /// A process manager that is responsible for spawning and managing child
 /// processes. When the manager is Open, new child processes can be spawned
@@ -101,14 +100,25 @@ impl ProcessManager {
         Some(child)
     }
 
-    pub async fn stop_by_label(&self, label: &str) -> anyhow::Result<Vec<ChildExit>> {
+    pub async fn stop_by_label(&self, label: &str) -> Vec<ChildExit> {
+        self.stop_inner(|c| c.label() == label).await
+    }
+
+    pub async fn stop_by_pid(&self, pid: u32) -> Option<ChildExit> {
+        self.stop_inner(|c| c.pid() == Some(pid)).await.pop()
+    }
+
+    pub async fn stop(&self) -> Vec<ChildExit> {
+        self.stop_inner(|c| true).await
+    }
+
+    async fn stop_inner<F>(&self, filter: F) -> Vec<ChildExit>
+    where
+        F: FnMut(&Child) -> bool,
+    {
         let mut children = {
             let lock = self.state.lock().await;
-            lock.children
-                .iter()
-                .filter(|c| c.label() == label)
-                .cloned()
-                .collect::<Vec<_>>()
+            lock.children.iter().cloned().filter(filter).collect::<Vec<_>>()
         };
 
         let results = FuturesUnordered::from_iter(children.iter_mut().map(|c| c.stop()))
@@ -116,38 +126,15 @@ impl ProcessManager {
             .collect()
             .await;
 
-        Ok(results)
+        results
     }
 
-    pub async fn stop_by_pid(&self, pid: u32) -> Option<ChildExit> {
-        let child = {
-            let mut lock = self.state.lock().await;
-            lock.children.iter_mut().find(|c| c.pid() == Some(pid)).cloned()
-        };
-        if let Some(mut c) = child {
-            c.stop().await
-        } else {
-            None
-        }
+    pub async fn close(&self) {
+        self.close_inner(|mut c| async move { c.stop().await }).await
     }
 
-    /// Stop the process manager, closing all child processes. On posix
-    /// systems this will send a SIGINT, and on windows it will just kill
-    /// the process immediately.
-    pub async fn stop(&self) {
-        self.close(|mut c| async move { c.stop().await }).await
-    }
-
-    pub async fn kill(&self) {
-        self.close(|mut c| async move { c.kill().await }).await
-    }
-
-    /// Stop the process manager, waiting for all child processes to exit.
-    ///
-    /// If you want to set a timeout, use `tokio::time::timeout` and
-    /// `Self::stop` if the timeout elapses.
-    pub async fn wait(&self) {
-        self.close(|mut c| async move { c.wait().await }).await
+    pub async fn close_by_kill(&self) {
+        self.close_inner(move |mut c| async move { c.kill().await }).await
     }
 
     /// Close the process manager, running the given callback on each child
@@ -156,7 +143,7 @@ impl ProcessManager {
     /// with two different strategies will propagate both signals to the child
     /// processes. clearing the task queue and re-enabling spawning are both
     /// idempotent operations
-    async fn close<F, C>(&self, callback: F)
+    async fn close_inner<F, C>(&self, callback: F)
     where
         F: Fn(Child) -> C + Sync + Send + Copy + 'static,
         C: Future<Output = Option<ChildExit>> + Sync + Send + 'static,

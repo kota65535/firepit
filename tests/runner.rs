@@ -466,7 +466,7 @@ async fn run_task_inner(
 ) -> anyhow::Result<()> {
     let path = path::absolute(path)?;
     let (root, children) = ProjectConfig::new_multi(&path)?;
-    let ws = Workspace::new(&root, &children, &tasks, &path, &vars, &env, force)?;
+    let ws = Workspace::new(&root, &children, &tasks, &path, &vars, &env, force, Some(false))?;
     // Create runner
     let mut runner = TaskRunner::new(&ws)?;
     let (app_tx, app_rx) = AppCommandChannel::new();
@@ -516,6 +516,7 @@ async fn run_task_with_watch<F>(
         &HashMap::new(),
         &HashMap::new(),
         force,
+        Some(false),
     )
     .unwrap();
 

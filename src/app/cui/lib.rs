@@ -70,6 +70,7 @@ impl ColorConfig {
 }
 
 pub static GREY: Lazy<Style> = Lazy::new(|| Style::new().dim());
+pub static RED: Lazy<Style> = Lazy::new(|| Style::new().red());
 pub static CYAN: Lazy<Style> = Lazy::new(|| Style::new().cyan());
 pub static BOLD: Lazy<Style> = Lazy::new(|| Style::new().bold());
 pub static MAGENTA: Lazy<Style> = Lazy::new(|| Style::new().magenta());

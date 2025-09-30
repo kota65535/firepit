@@ -36,6 +36,7 @@ fn test_env_file_not_found() {
         &HashMap::new(),
         &HashMap::new(),
         false,
+        Some(false),
     );
     assert_ok!(result);
 }
@@ -52,6 +53,7 @@ fn test_bad_env_file() {
         &HashMap::new(),
         &HashMap::new(),
         false,
+        Some(false),
     );
     assert_ok!(result);
 }
@@ -68,6 +70,7 @@ fn test_multi() {
         &HashMap::new(),
         &HashMap::new(),
         false,
+        Some(false),
     )
     .unwrap();
 

@@ -40,6 +40,20 @@ pub struct Args {
     #[arg(short, long, default_value = "false")]
     pub force: bool,
 
+    // The following 3 fields are a dirty workaround for clap not supporting automatic negation flags.
+    // cf. https://github.com/clap-rs/clap/issues/815
+    #[arg(long = "ff", overrides_with = "_no_fail_fast", hide = true)]
+    _fail_fast: bool,
+
+    #[arg(long = "no-ff", hide = true)]
+    _no_fail_fast: bool,
+
+    #[arg(
+        long = "ff, --no-ff",
+        help = "Enable or disable fail-fast. [default: false in TUI mode, and true in CUI mode]"
+    )]
+    _dummy_fail_fast_help: bool,
+
     /// Log file
     #[arg(long)]
     pub log_file: Option<String>,
@@ -48,11 +62,11 @@ pub struct Args {
     #[arg(long)]
     pub log_level: Option<String>,
 
-    /// Force TUI
+    /// Force TUI mode
     #[arg(long, conflicts_with = "cui")]
     pub tui: bool,
 
-    /// Force CUI
+    /// Force CUI mode
     #[arg(long, conflicts_with = "tui")]
     pub cui: bool,
 
@@ -61,12 +75,25 @@ pub struct Args {
     pub tokio_console: bool,
 }
 
+impl Args {
+    /// Determine the fail-fast setting based on the command line arguments
+    fn fail_fast(&self) -> Option<bool> {
+        match (self._fail_fast, self._no_fail_fast) {
+            (true, false) => Some(true),
+            (false, true) => Some(false),
+            (false, false) => None,
+            (true, true) => Some(true),
+        }
+    }
+}
+
 pub async fn run() -> anyhow::Result<i32> {
     // Arguments
     let args = Args::parse();
-    let dir = path::absolute(args.dir)?;
+    let dir = path::absolute(&args.dir)?;
     let var = parse_var_and_env(&args.var)?;
     let env = parse_var_and_env(&args.env)?;
+    let fail_fast = args.fail_fast();
 
     // Load config files
     let (mut root, children) = ProjectConfig::new_multi(&dir)?;
@@ -95,7 +122,16 @@ pub async fn run() -> anyhow::Result<i32> {
     }
 
     // Aggregate information in config files into a more workable form
-    let ws = Workspace::new(&root, &children, &args.tasks, dir.as_path(), &var, &env, args.force)?;
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &args.tasks,
+        dir.as_path(),
+        &var,
+        &env,
+        args.force,
+        fail_fast,
+    )?;
 
     // Create runner
     let mut runner = TaskRunner::new(&ws)?;
@@ -112,7 +148,7 @@ pub async fn run() -> anyhow::Result<i32> {
     // Create & start UI
     let (app_tx, app_fut) = match root.ui {
         UI::Cui => {
-            let mut app = CuiApp::new(&runner.target_tasks, &ws.labels(), !args.watch)?;
+            let mut app = CuiApp::new(&runner.target_tasks, &ws.labels(), !args.watch, ws.fail_fast)?;
             let runner_tx = runner.command_tx();
             let command_tx = app.command_tx();
             let fut = tokio_spawn!("app", async move { app.run(&runner_tx).await });

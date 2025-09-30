@@ -35,6 +35,8 @@ pub struct TaskRunner {
 
     pub command_tx: RunnerCommandChannel,
     pub command_rx: broadcast::Receiver<RunnerCommand>,
+
+    pub fail_fast: bool,
 }
 
 impl TaskRunner {
@@ -62,6 +64,7 @@ impl TaskRunner {
             concurrency: ws.concurrency,
             command_tx,
             command_rx,
+            fail_fast: ws.fail_fast,
         })
     }
 
@@ -117,12 +120,14 @@ impl TaskRunner {
                 // Runner command branch
                 Ok(event) = self.command_rx.recv() => {
                     match event {
+                        RunnerCommand::StopTasks  => {
+                           info!("Stopping all tasks");
+                           self.manager.stop().await;
+                        }
                         RunnerCommand::StopTask { task } => {
                             info!("Stopping task: {}", task);
                             app_tx.clone().with_name(&task).finish_task(TaskResult::Stopped);
-                            if let Err(e) = self.manager.stop_by_label(&task).await {
-                                warn!("Failed to stop process {:?}: {:?}", &task, e);
-                            }
+                            self.manager.stop_by_label(&task).await;
                         }
                         RunnerCommand::RestartTask { task, force } => {
                             let mut tasks = vec![task.clone()];
@@ -135,9 +140,7 @@ impl TaskRunner {
                             info!("Stopping tasks");
                             for task in tasks.iter() {
                                 app_tx.clone().with_name(&task).finish_task(TaskResult::Reloading);
-                                if let Err(e) = self.manager.stop_by_label(&task).await {
-                                    warn!("Failed to stop process {:?}: {:?}", &task, e);
-                                }
+                                self.manager.stop_by_label(&task).await;
                             }
                             info!("Stopped tasks");
                             info!("Restarting visitors");
@@ -153,10 +156,10 @@ impl TaskRunner {
                             tokio::select! {
                                 Ok(RunnerCommand::Quit) = self.command_rx.recv() => {
                                     info!("Killing tasks");
-                                    self.manager.kill().await;
+                                    self.manager.close_by_kill().await;
                                     info!("Killed tasks");
                                 }
-                                _ =  self.manager.stop() => {
+                                _ =  self.manager.close() => {
                                     info!("Stopped tasks");
                                 }
                             }
@@ -180,6 +183,8 @@ impl TaskRunner {
                     } = message;
 
                     let mut app_tx = app_tx.clone().with_name(&task.name);
+                    let fail_fast = self.fail_fast;
+                    let command_tx = self.command_tx.clone();
                     let manager = self.manager.clone();
                     let task_name = task.name.clone();
                     let visitor_tx_cloned = visitor_tx.clone();
@@ -328,6 +333,11 @@ impl TaskRunner {
                                 _ => NodeResult::Failure,
                             };
                         };
+
+                        if fail_fast && matches!(node_result, NodeResult::Failure) {
+                            info!("Fail-fast enabled, stopping all tasks");
+                            command_tx.stop_tasks();
+                        }
 
                         // Notify the visitor the task finished
                         if let Err(e) = callback.send(CallbackMessage(node_result)).await {
