@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.0] - 2025-09-30
+
+### 🚀 Features
+
+- Fail-fast mode (#154)
+
+### 🐛 Bug Fixes
+
+- Adjust colors and spaces (#152)
+
+### 📚 Documentation
+
+- Fix help (#153)
+
 ## [0.8.1] - 2025-09-26
 
 ### 🐛 Bug Fixes
