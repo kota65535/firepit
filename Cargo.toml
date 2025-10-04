@@ -39,7 +39,7 @@ tokio = { version = "1.41.1", features = ["full"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 tui-term = { version = "=0.1.9", default-features = false }
-vt100 = { git = "https://github.com/kota65535/vt100-rust", rev = "cc4bd1eb6f1e302eaa5a5f24d5bed02a4244d0c6" }
+vt100 = { git = "https://github.com/kota65535/vt100-rust", rev = "472dacc87ec8142b2e513aefa9b98998dd8ff0c2" }
 which = "8.0.0"
 
 # The profile that 'dist' will build with
