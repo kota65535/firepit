@@ -15,6 +15,7 @@ use crate::app::signal::SignalHandler;
 use crate::runner::command::RunnerCommandChannel;
 use crate::tokio_spawn;
 use anyhow::Context;
+use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 use std::io::{stdout, Stdout, Write};
 use std::sync::{Arc, RwLock};
@@ -102,8 +103,8 @@ impl CuiApp {
     }
 
     pub async fn run_inner(&mut self) -> anyhow::Result<i32> {
-        let mut tasks_remaining: HashSet<String> = self.target_tasks.iter().cloned().collect();
-        let mut failed_tasks: HashMap<String, TaskResult> = HashMap::new();
+        let mut tasks_remaining = self.target_tasks.iter().cloned().collect::<HashSet<_>>();
+        let mut failed_tasks = IndexMap::new();
         while let Some(event) = self.command_rx.recv().await {
             match event {
                 AppCommand::StartTask { task, .. } => self.register_output_client(&task),
@@ -139,7 +140,13 @@ impl CuiApp {
             if self.fail_fast {
                 let (task, result) = failed_tasks.iter().next().unwrap();
                 eprintln!();
-                eprintln!("{}", RED.apply_to(format!("FAILURE: {}", result.long_message(&task))));
+                eprintln!(
+                    "{}",
+                    RED.apply_to(format!(
+                        "FAILURE: {}",
+                        result.long_message(self.labels.get(task).unwrap_or(task))
+                    ))
+                );
             } else {
                 eprintln!();
                 eprintln!(
