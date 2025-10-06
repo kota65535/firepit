@@ -840,7 +840,7 @@ dependencies = [
 
 [[package]]
 name = "firepit"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "anyhow",
  "assertables",

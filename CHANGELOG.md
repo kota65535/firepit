@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.1] - 2025-10-06
+
+### 🚜 Refactor
+
+- Mouse events (#156)
+
 ## [0.9.0] - 2025-09-30
 
 ### 🚀 Features
