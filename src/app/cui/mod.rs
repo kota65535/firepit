@@ -16,7 +16,7 @@ use crate::runner::command::RunnerCommandChannel;
 use crate::tokio_spawn;
 use anyhow::Context;
 use std::collections::{HashMap, HashSet};
-use std::io::{stderr, stdout, Stdout, Write};
+use std::io::{stdout, Stdout, Write};
 use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info};

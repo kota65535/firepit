@@ -284,6 +284,8 @@ impl TuiAppState {
             focus: &self.focus,
             has_selection: task.output.has_selection(),
             task: task.name.clone(),
+            has_sidebar: self.has_sidebar,
+            sidebar_width: self.size.task_list_width(),
         })
     }
 
@@ -499,40 +501,6 @@ impl TuiAppState {
         usize::from(s)
     }
 
-    pub fn handle_mouse(&mut self, mut event: crossterm::event::MouseEvent, clicks: usize) -> anyhow::Result<()> {
-        let table_width = self.size.task_list_width();
-        debug!("Original mouse event: {event:?}, table_width: {table_width}");
-
-        // Do nothing in table & pane header
-        if event.row < 2 {
-            return Ok(());
-        }
-
-        // Subtract header height
-        event.row -= 2;
-
-        if self.has_sidebar {
-            if event.column < table_width - 1 {
-                // Task table clicked
-                self.select_task(event.row as usize);
-                // Set mouse event column to 0 for ease of selection
-                event.column = 0;
-            } else {
-                // Terminal pane clicked
-                // So subtract the width of the table if we have sidebar
-                if self.has_sidebar && event.column >= table_width {
-                    event.column -= table_width;
-                }
-                debug!("Translated mouse event: {event:?}");
-            }
-        }
-
-        let task = self.active_task_mut()?;
-        task.output.handle_mouse(event, clicks)?;
-
-        Ok(())
-    }
-
     pub fn copy_selection(&self) -> anyhow::Result<()> {
         let task = self.active_task()?;
         let Some(text) = task.output.copy_selection() else {
@@ -545,6 +513,18 @@ impl TuiAppState {
     pub fn clear_selection(&mut self) -> anyhow::Result<()> {
         let task = self.active_task_mut()?;
         task.output.clear_selection();
+        Ok(())
+    }
+
+    pub fn update_selection(&mut self, rows: u16, cols: u16) -> anyhow::Result<()> {
+        let task = self.active_task_mut()?;
+        task.output.update_selection(rows, cols);
+        Ok(())
+    }
+
+    pub fn line_selection(&mut self, rows: u16) -> anyhow::Result<()> {
+        let task = self.active_task_mut()?;
+        task.output.line_selection(rows);
         Ok(())
     }
 
@@ -823,12 +803,6 @@ impl TuiAppState {
                     max_scroll: content_height.saturating_sub(rect.height.saturating_sub(2) as usize),
                 };
             }
-            AppCommand::HelpScrollUp => {
-                self.scroll_help_up();
-            }
-            AppCommand::HelpScrollDown => {
-                self.scroll_help_down();
-            }
             AppCommand::ExitHelp => {
                 self.focus = LayoutSections::TaskList(None);
             }
@@ -849,11 +823,17 @@ impl TuiAppState {
                 self.exit_search()?;
                 self.select_next_task();
             }
+            AppCommand::Select { index } => {
+                self.exit_search()?;
+                self.select_task(index + self.table.offset());
+            }
             AppCommand::ScrollUp(size) => {
                 self.scroll_terminal_output(Direction::Up, self.scroll_size(size))?;
+                self.scroll_help_up();
             }
             AppCommand::ScrollDown(size) => {
                 self.scroll_terminal_output(Direction::Down, self.scroll_size(size))?;
+                self.scroll_help_down();
             }
             AppCommand::ToggleSidebar => {
                 self.has_sidebar = !self.has_sidebar;
@@ -868,11 +848,14 @@ impl TuiAppState {
             AppCommand::Input { bytes } => {
                 self.forward_input(&bytes)?;
             }
-            AppCommand::Mouse(m) => {
-                self.handle_mouse(m, 1)?;
+            AppCommand::ClearSelection => {
+                self.clear_selection()?;
             }
-            AppCommand::MouseMultiClick(m, n) => {
-                self.handle_mouse(m, n)?;
+            AppCommand::LineSelection { rows } => {
+                self.line_selection(rows)?;
+            }
+            AppCommand::UpdateSelection { rows, cols } => {
+                self.update_selection(rows, cols)?;
             }
             AppCommand::CopySelection => {
                 self.copy_selection()?;
