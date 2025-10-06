@@ -51,13 +51,14 @@ pub enum AppCommand {
     ///
     Up,
     Down,
+    Select {
+        index: usize,
+    },
     ScrollUp(ScrollSize),
     ScrollDown(ScrollSize),
     ToggleSidebar,
     Quit,
     OpenHelp,
-    HelpScrollUp,
-    HelpScrollDown,
     ExitHelp,
     Tick,
 
@@ -73,8 +74,14 @@ pub enum AppCommand {
     ///
     /// Mouse Commands
     ///
-    Mouse(crossterm::event::MouseEvent),
-    MouseMultiClick(crossterm::event::MouseEvent, usize),
+    ClearSelection,
+    UpdateSelection {
+        rows: u16,
+        cols: u16,
+    },
+    LineSelection {
+        rows: u16,
+    },
     CopySelection,
     Resize {
         rows: u16,

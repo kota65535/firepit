@@ -3,7 +3,9 @@ use crate::app::tui::lib::RingBuffer;
 use crate::app::tui::LayoutSections;
 use crate::app::DOUBLE_CLICK_DURATION;
 use crate::tokio_spawn;
-use crossterm::event::{EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crossterm::event::{
+    Event, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+};
 use futures::StreamExt;
 use itertools::Itertools;
 use std::time::Instant;
@@ -19,6 +21,8 @@ pub struct InputOptions<'a> {
     pub focus: &'a LayoutSections,
     pub has_selection: bool,
     pub task: String,
+    pub has_sidebar: bool,
+    pub sidebar_width: u16,
 }
 
 impl InputOptions<'_> {
@@ -46,7 +50,7 @@ impl InputHandler {
         }
     }
 
-    pub fn start(&self) -> mpsc::Receiver<crossterm::event::Event> {
+    pub fn start(&self) -> mpsc::Receiver<Event> {
         let (tx, rx) = mpsc::channel(1024);
 
         if atty::is(atty::Stream::Stdin) {
@@ -74,28 +78,54 @@ impl InputHandler {
         count
     }
 
-    pub fn handle(&mut self, event: crossterm::event::Event, options: InputOptions) -> Option<AppCommand> {
+    pub fn handle(&mut self, event: Event, options: InputOptions) -> Option<AppCommand> {
         match event {
-            crossterm::event::Event::Key(k) => translate_key_event(options, k),
-            crossterm::event::Event::Mouse(m) => match m.kind {
-                crossterm::event::MouseEventKind::ScrollDown => Some(AppCommand::ScrollDown(ScrollSize::One)),
-                crossterm::event::MouseEventKind::ScrollUp => Some(AppCommand::ScrollUp(ScrollSize::One)),
-                crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
-                    self.click_times.push(Instant::now());
-                    let num_clicks = self.num_of_multiple_clicks();
-                    if num_clicks == 1 {
-                        Some(AppCommand::Mouse(m))
-                    } else {
-                        debug!("Clicked {} times", num_clicks);
-                        Some(AppCommand::MouseMultiClick(m, num_clicks))
-                    }
+            Event::Key(k) => translate_key_event(options, k),
+            Event::Mouse(m) => self.translate_mouse_event(options, m),
+            Event::Resize(cols, rows) => Some(AppCommand::Resize { rows, cols }),
+            _ => None,
+        }
+    }
+
+    fn translate_mouse_event(&mut self, options: InputOptions, mut mouse_event: MouseEvent) -> Option<AppCommand> {
+        // Subtract header height
+        mouse_event.row = mouse_event.row.saturating_sub(2);
+
+        // Check if the mouse event is within the sidebar area
+        let on_sidebar = if options.has_sidebar {
+            // To make it easier to select log ranges, treat the border and some margin as part of the pane
+            let within_sidebar = mouse_event.column < options.sidebar_width - 2;
+            if !within_sidebar {
+                // Adjust column to be relative to the pane area
+                mouse_event.column = mouse_event.column.saturating_sub(options.sidebar_width);
+            }
+            within_sidebar
+        } else {
+            false
+        };
+
+        match (mouse_event.kind, on_sidebar) {
+            (MouseEventKind::ScrollDown, true) => Some(AppCommand::Down),
+            (MouseEventKind::ScrollDown, false) => Some(AppCommand::ScrollDown(ScrollSize::One)),
+            (MouseEventKind::ScrollUp, true) => Some(AppCommand::Up),
+            (MouseEventKind::ScrollUp, false) => Some(AppCommand::ScrollUp(ScrollSize::One)),
+            (MouseEventKind::Down(MouseButton::Left), true) => Some(AppCommand::Select {
+                index: mouse_event.row as usize,
+            }),
+            (MouseEventKind::Down(MouseButton::Left), false) => {
+                self.click_times.push(Instant::now());
+                let num_clicks = self.num_of_multiple_clicks();
+                if num_clicks == 1 {
+                    Some(AppCommand::ClearSelection)
+                } else {
+                    debug!("Clicked {} times", num_clicks);
+                    Some(AppCommand::LineSelection { rows: mouse_event.row })
                 }
-                crossterm::event::MouseEventKind::Drag(crossterm::event::MouseButton::Left) => {
-                    Some(AppCommand::Mouse(m))
-                }
-                _ => None,
-            },
-            crossterm::event::Event::Resize(cols, rows) => Some(AppCommand::Resize { rows, cols }),
+            }
+            (MouseEventKind::Drag(MouseButton::Left), _) => Some(AppCommand::UpdateSelection {
+                rows: mouse_event.row,
+                cols: mouse_event.column,
+            }),
             _ => None,
         }
     }
@@ -153,10 +183,10 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<App
         KeyCode::Enter if options.on_search() => Some(AppCommand::SearchRun),
 
         // On help dialog
-        KeyCode::Up if options.on_help() => Some(AppCommand::HelpScrollUp),
-        KeyCode::Down if options.on_help() => Some(AppCommand::HelpScrollDown),
-        KeyCode::Char('k') if options.on_help() => Some(AppCommand::HelpScrollUp),
-        KeyCode::Char('j') if options.on_help() => Some(AppCommand::HelpScrollDown),
+        KeyCode::Up if options.on_help() => Some(AppCommand::ScrollUp(ScrollSize::One)),
+        KeyCode::Down if options.on_help() => Some(AppCommand::ScrollDown(ScrollSize::One)),
+        KeyCode::Char('k') if options.on_help() => Some(AppCommand::ScrollUp(ScrollSize::One)),
+        KeyCode::Char('j') if options.on_help() => Some(AppCommand::ScrollDown(ScrollSize::One)),
         KeyCode::Esc if options.on_help() => Some(AppCommand::ExitHelp),
         KeyCode::Char('?') if options.on_help() => Some(AppCommand::ExitHelp),
 
@@ -170,7 +200,7 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<App
 // Inspired by mprocs encode_term module
 // https://github.com/pvolok/mprocs/blob/08d17adebd110501106f86124ef1955fb2beb881/src/encode_term.rs
 fn encode_key(key: KeyEvent) -> Vec<u8> {
-    use crossterm::event::KeyCode::*;
+    use KeyCode::*;
 
     if key.kind == KeyEventKind::Release {
         return Vec::new();
