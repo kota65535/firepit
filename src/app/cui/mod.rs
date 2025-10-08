@@ -121,7 +121,13 @@ impl CuiApp {
 
                     if result.is_failure() {
                         failed_tasks.insert(task.clone(), result);
-                        eprintln!("{}", RED.apply_to(format!("{}", result.long_message(&task))));
+                        eprintln!(
+                            "{}",
+                            RED.apply_to(format!(
+                                "{}",
+                                result.long_message(self.labels.get(&task).unwrap_or(&task))
+                            ))
+                        );
                     }
                     tasks_remaining.remove(&task);
                     debug!("Target tasks remaining: {:?}", tasks_remaining);
