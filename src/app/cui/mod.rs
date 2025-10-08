@@ -116,7 +116,7 @@ impl CuiApp {
                         .write_all(output.as_slice())
                         .context("failed to write to stdout")?;
                 }
-                AppCommand::FinishTask { task, result } => {
+                AppCommand::FinishTask { task, result, datetime } => {
                     debug!("Task {:?} finished", task);
 
                     if result.is_failure() {

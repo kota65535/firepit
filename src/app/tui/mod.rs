@@ -26,6 +26,7 @@ use crate::app::FRAME_RATE;
 use crate::runner::command::RunnerCommandChannel;
 use crate::tokio_spawn;
 use anyhow::Context;
+use chrono::{DateTime, Local};
 use indexmap::IndexMap;
 use ratatui::{
     backend::CrosstermBackend,
@@ -35,7 +36,10 @@ use ratatui::{
 };
 use std::collections::HashMap;
 use std::io::{self, Stdout, Write};
-use tokio::{sync::mpsc, time::Instant};
+use tokio::{
+    sync::mpsc,
+    time::{Duration, Instant},
+};
 use tracing::{debug, error, info};
 
 #[derive(Debug, Clone)]
@@ -193,7 +197,7 @@ impl TuiApp {
         let mut last_render = Instant::now();
         let mut needs_rerender = true;
         while let Some(event) = self.poll().await? {
-            // If we only receive ticks, then there's been no state change so no update needed
+            // For non-tick events, always set needs_rerender to true
             if !matches!(event, AppCommand::Tick) {
                 needs_rerender = true;
             }
@@ -361,6 +365,7 @@ impl TuiAppState {
         restart: u64,
         max_restart: Option<u64>,
         reload: u64,
+        datetime: DateTime<Local>,
     ) -> anyhow::Result<()> {
         self.set_status(
             task,
@@ -369,6 +374,7 @@ impl TuiAppState {
                 restart,
                 max_restart,
                 reload,
+                start_time: datetime,
             }),
         )
     }
@@ -377,8 +383,13 @@ impl TuiAppState {
         self.set_status(task, TaskStatus::Ready)
     }
 
-    pub fn finish_task(&mut self, task: &str, result: TaskResult) -> anyhow::Result<()> {
-        self.set_status(task, TaskStatus::Finished(result))
+    pub fn finish_task(
+        &mut self,
+        task: &str,
+        result: TaskResult,
+        datetime: Option<DateTime<Local>>,
+    ) -> anyhow::Result<()> {
+        self.set_status(task, TaskStatus::Finished(result, datetime))
     }
 
     pub fn has_stdin(&self) -> anyhow::Result<bool> {
@@ -399,7 +410,7 @@ impl TuiAppState {
         for t in self.tasks.values().rev().filter(|t| {
             matches!(
                 t.status(),
-                TaskStatus::Running(_) | TaskStatus::Ready | TaskStatus::Finished(_)
+                TaskStatus::Running(_) | TaskStatus::Ready | TaskStatus::Finished(_, _)
             )
         }) {
             t.persist_screen()?
@@ -760,8 +771,9 @@ impl TuiAppState {
                 restart,
                 max_restart,
                 reload,
+                datetime,
             } => {
-                self.start_task(&task, pid, restart, max_restart, reload)?;
+                self.start_task(&task, pid, restart, max_restart, reload, datetime)?;
             }
             AppCommand::TaskOutput { task, output } => {
                 self.process_output(&task, &output)?;
@@ -769,8 +781,8 @@ impl TuiAppState {
             AppCommand::ReadyTask { task } => {
                 self.ready_task(&task)?;
             }
-            AppCommand::FinishTask { task, result } => {
-                self.finish_task(&task, result)?;
+            AppCommand::FinishTask { task, result, datetime } => {
+                self.finish_task(&task, result, datetime)?;
                 self.insert_stdin(&task, None)?;
             }
             AppCommand::SetStdin { task, stdin } => {
@@ -812,9 +824,8 @@ impl TuiAppState {
             AppCommand::RestartTask { task, force } => {
                 runner_tx.restart_task(&task, force);
             }
-            AppCommand::Tick => {
-                // self.table.tick();
-            }
+            AppCommand::Tick => {}
+            AppCommand::Redraw => {}
             AppCommand::Up => {
                 self.exit_search()?;
                 self.select_previous_task();

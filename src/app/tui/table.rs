@@ -58,7 +58,7 @@ impl TaskTable<'_> {
                     TaskStatus::Planned => Cell::new(Text::raw("\u{1FAB5}")), // 🪵
                     TaskStatus::Running(_) => Cell::new(Text::raw("\u{1F525}")), // 🔥
                     TaskStatus::Ready => Cell::new(Text::raw("\u{1F356}")),   // 🍖
-                    TaskStatus::Finished(r) => {
+                    TaskStatus::Finished(r, _) => {
                         // Append `\u{FE0F}` (Variation Selector-16) so that the terminal treat the emoji as full-width
                         match r {
                             TaskResult::Success => Cell::new(Text::raw("\u{2705}\u{FE0F}")), // ✅
@@ -84,7 +84,7 @@ impl TaskTable<'_> {
         if targets.iter().any(|t| {
             matches!(
                 t.status(),
-                TaskStatus::Planned | TaskStatus::Running(_) | TaskStatus::Finished(TaskResult::Reloading)
+                TaskStatus::Planned | TaskStatus::Running(_) | TaskStatus::Finished(TaskResult::Reloading, _)
             )
         }) {
             return Line::styled(" Running ", Style::default().fg(Color::White).bg(Color::Blue));
@@ -92,7 +92,7 @@ impl TaskTable<'_> {
         // Failure: some tasks have failed
         if targets
             .iter()
-            .any(|t| matches!(t.status(), TaskStatus::Finished(r) if r.is_failure()))
+            .any(|t| matches!(t.status(), TaskStatus::Finished(r, _) if r.is_failure()))
         {
             return Line::styled(" Failure ", Style::default().fg(Color::White).bg(Color::Red));
         }

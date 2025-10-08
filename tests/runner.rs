@@ -582,14 +582,14 @@ fn handle_events(
                 }
                 Some(event) = app_rx.recv() => {
                     match event {
-                        AppCommand::StartTask { task, pid: _, restart, max_restart: _, reload } => {
+                        AppCommand::StartTask { task, pid: _, restart, max_restart: _, reload, datetime: _ } => {
                             restarts.insert(task.clone(), restart);
                             runs.insert(task.clone(), reload);
                         }
                         AppCommand::ReadyTask { task } => {
                             statuses.insert(task, String::from("Ready"));
                         }
-                        AppCommand::FinishTask { task, result } => {
+                        AppCommand::FinishTask { task, result, datetime: _ } => {
                             statuses.insert(task, format!("Finished: {:?}", result));
                         }
                         AppCommand::Quit => {
