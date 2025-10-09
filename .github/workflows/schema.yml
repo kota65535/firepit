@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
         with:
           ref: ${{ github.head_ref }}
 
@@ -19,13 +19,13 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2
 
       - name: Run
         run: cargo run --bin firepit-schema
 
       - name: Configure git
-        uses: kota65535/github-git-config-action@v2
+        uses: kota65535/github-git-config-action@c237550e392b6d305c1102ea2dc0f14eb755c4ac # v2
         with:
           user.name: github-actions[bot]
           user.email: 41898282+github-actions[bot]@users.noreply.github.com
