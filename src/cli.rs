@@ -9,6 +9,8 @@ use crate::tokio_spawn;
 use clap::Parser;
 use itertools::Itertools;
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::Write;
 use std::{env, path};
 use tracing::info;
 
@@ -62,6 +64,10 @@ pub struct Args {
     #[arg(long)]
     pub log_level: Option<String>,
 
+    /// Gantt chart file
+    #[arg(long)]
+    pub gantt_file: Option<String>,
+
     /// Force TUI mode
     #[arg(long, conflicts_with = "cui")]
     pub tui: bool,
@@ -101,6 +107,7 @@ pub async fn run() -> anyhow::Result<i32> {
     // Override config files with CLI options
     root.log.file = args.log_file.or(root.log.file);
     root.log.level = args.log_level.unwrap_or(root.log.level);
+    root.gantt_file = args.gantt_file.or(root.gantt_file);
     root.ui = if args.tui {
         UI::Tui
     } else if args.cui {
@@ -164,7 +171,17 @@ pub async fn run() -> anyhow::Result<i32> {
     };
 
     let quit_on_done = !args.watch && root.ui != UI::Tui;
-    let runner_fut = tokio_spawn!("runner", async move { runner.start(&app_tx, quit_on_done).await });
+    let runner_fut = tokio_spawn!("runner", async move {
+        let result = runner.start(&app_tx, quit_on_done).await;
+        if let Ok(_) = result {
+            if let Some(gantt_path) = root.gantt_file {
+                if let Ok(gantt) = runner.gantt() {
+                    save_gantt_chart(&gantt, &gantt_path);
+                }
+            }
+        }
+        result
+    });
     runner_fut.await??;
     app_fut.await?
 }
@@ -195,4 +212,17 @@ fn print_summary(root: &ProjectConfig, children: &HashMap<String, ProjectConfig>
         ))
     }
     eprintln!("{}", lines.join("\n"));
+}
+
+fn save_gantt_chart(gantt: &str, path: &str) {
+    let mut file = match File::create(path) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("Failed to create gantt chart file: {:?}", e);
+            return;
+        }
+    };
+    if let Err(e) = file.write_all(gantt.as_bytes()) {
+        eprintln!("failed to write gantt chart file");
+    }
 }

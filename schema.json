@@ -34,6 +34,13 @@
         "type": "string"
       }
     },
+    "gantt_file": {
+      "description": "Gantt chart output file path.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "includes": {
       "description": "Additional config files to be included.",
       "default": [],
@@ -224,12 +231,14 @@
       "type": "object",
       "properties": {
         "file": {
+          "description": "Log file path.",
           "type": [
             "string",
             "null"
           ]
         },
         "level": {
+          "description": "Log level: error, warn, info, debug, trace",
           "default": "info",
           "type": "string"
         }

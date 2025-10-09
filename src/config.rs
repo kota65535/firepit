@@ -70,6 +70,9 @@ pub struct ProjectConfig {
     #[serde(default = "default_log")]
     pub log: LogConfig,
 
+    /// Gantt chart output file path.
+    pub gantt_file: Option<String>,
+
     /// UI configuration.
     /// Valid only in root project config.
     #[serde(default = "default_ui")]
@@ -457,7 +460,10 @@ pub struct ShellConfig {
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct LogConfig {
     #[serde(default = "default_log_level")]
+    /// Log level: error, warn, info, debug, trace
     pub level: String,
+
+    /// Log file path.
     pub file: Option<String>,
 }
 

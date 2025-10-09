@@ -485,4 +485,45 @@ impl TaskRunner {
         info!("Process finished. PID={}, result={:?}", pid, result);
         Ok(Some(result))
     }
+
+    pub fn gantt(&self) -> anyhow::Result<String> {
+        let started_times = self
+            .start_times
+            .lock()
+            .expect("not poisoned")
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect::<IndexMap<_, _>>();
+        let finished_times = self
+            .end_times
+            .lock()
+            .expect("not poisoned")
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect::<IndexMap<_, _>>();
+
+        let title = self.target_tasks.join(", ");
+
+        let mut gantt = String::from(format!(
+            "gantt\n\ttitle {}\n\tdateFormat x\n\taxisFormat %H:%M:%S\n",
+            title
+        ));
+
+        for (task, start_time) in started_times.iter() {
+            let end_time = finished_times.get(task);
+            if end_time.is_none() {
+                continue;
+            }
+            let end_time = end_time.unwrap();
+
+            gantt.push_str(&format!(
+                "\t{} : {}, {}\n",
+                task,
+                start_time.timestamp_millis(),
+                end_time.timestamp_millis()
+            ));
+        }
+
+        Ok(gantt)
+    }
 }
