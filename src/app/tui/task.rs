@@ -1,6 +1,7 @@
-use crate::app::command::TaskStatus;
+use crate::app::command::{TaskResult, TaskStatus};
 use crate::app::cui::lib::BOLD;
 use crate::app::tui::term_output::TerminalOutput;
+use chrono::{DateTime, Local};
 use std::io::Write;
 
 pub struct Task {
@@ -13,6 +14,9 @@ pub struct Task {
     pub reload: u64,
     status: TaskStatus,
     pub output: TerminalOutput,
+    pub start_time: Option<DateTime<Local>>,
+    pub end_time: Option<DateTime<Local>>,
+    pub result: Option<TaskResult>,
 }
 
 impl Task {
@@ -27,6 +31,9 @@ impl Task {
             reload: 0,
             status: TaskStatus::Planned,
             output,
+            start_time: None,
+            end_time: None,
+            result: None,
         }
     }
 
@@ -41,6 +48,11 @@ impl Task {
                 self.restart = run.restart;
                 self.max_restart = run.max_restart;
                 self.reload = run.reload;
+                self.start_time = Some(run.start_time);
+            }
+            TaskStatus::Finished(result, end_time) => {
+                self.result = Some(result);
+                self.end_time = end_time;
             }
             _ => {}
         }
@@ -76,15 +88,41 @@ impl Task {
         let status = match self.status {
             TaskStatus::Planned => format!("Waiting"),
             TaskStatus::Running(_) => format!(
-                "Running, PID: {}, Restart: {}/{}, Reload: {}",
-                pid, self.restart, max_restart, self.reload
+                "Running, PID: {}, Restart: {}/{}, Reload: {}, Elapsed: {}",
+                pid,
+                self.restart,
+                max_restart,
+                self.reload,
+                self.start_time.map_or("N/A".to_string(), |t| {
+                    let duration = chrono::Local::now() - t;
+                    format!("{}s", duration.num_seconds())
+                })
             ),
             TaskStatus::Ready => format!(
-                "Ready, PID: {}, Restart: {}/{}, Reload: {}",
-                pid, self.restart, max_restart, self.reload
+                "Ready, PID: {}, Restart: {}/{}, Reload: {}, Elapsed: {}",
+                pid,
+                self.restart,
+                max_restart,
+                self.reload,
+                self.start_time.map_or("N/A".to_string(), |t| {
+                    let duration = chrono::Local::now() - t;
+                    format!("{}s", duration.num_seconds())
+                })
             ),
-            TaskStatus::Finished(result) => {
-                format!("Finished: {}", result.short_message())
+            TaskStatus::Finished(r, end_time) => {
+                format!(
+                    "Finished - {}, Restart: {}/{}, Reload: {}, Elapsed: {}",
+                    r.short_message(),
+                    self.restart,
+                    max_restart,
+                    self.reload,
+                    self.start_time.map_or("N/A".to_string(), |st| {
+                        end_time.map_or("N/A".to_string(), |et| {
+                            let duration = et - st;
+                            format!("{}s", duration.num_seconds())
+                        })
+                    })
+                )
             }
         };
 
@@ -100,7 +138,7 @@ impl Task {
                     None
                 }
             }
-            TaskStatus::Finished(result) => {
+            TaskStatus::Finished(result, _) => {
                 if result.is_failure() {
                     Some(result.long_message(&self.name))
                 } else {

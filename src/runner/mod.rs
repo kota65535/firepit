@@ -8,8 +8,10 @@ use crate::runner::graph::{CallbackMessage, NodeResult, TaskGraph, VisitorComman
 use crate::runner::watcher::{FileWatcher, FileWatcherHandle, WatcherCommand};
 use crate::{tokio_spawn, TASK_STOP_TIMEOUT};
 use anyhow::Context;
+use chrono::{DateTime, Local};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
+use indexmap::IndexMap;
 use petgraph::Direction;
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
@@ -37,6 +39,9 @@ pub struct TaskRunner {
     pub command_rx: broadcast::Receiver<RunnerCommand>,
 
     pub fail_fast: bool,
+
+    pub start_times: Arc<Mutex<IndexMap<String, DateTime<Local>>>>,
+    pub end_times: Arc<Mutex<IndexMap<String, DateTime<Local>>>>,
 }
 
 impl TaskRunner {
@@ -65,6 +70,8 @@ impl TaskRunner {
             command_tx,
             command_rx,
             fail_fast: ws.fail_fast,
+            start_times: Arc::new(Mutex::new(IndexMap::new())),
+            end_times: Arc::new(Mutex::new(IndexMap::new())),
         })
     }
 
@@ -126,7 +133,9 @@ impl TaskRunner {
                         }
                         RunnerCommand::StopTask { task } => {
                             info!("Stopping task: {}", task);
-                            app_tx.clone().with_name(&task).finish_task(TaskResult::Stopped);
+                            let end_time =  Local::now();
+                            self.end_times.lock().expect("not poisoned").insert( task.clone(), end_time);
+                            app_tx.clone().with_name(&task).finish_task(TaskResult::Stopped, Some(end_time));
                             self.manager.stop_by_label(&task).await;
                         }
                         RunnerCommand::RestartTask { task, force } => {
@@ -139,7 +148,9 @@ impl TaskRunner {
 
                             info!("Stopping tasks");
                             for task in tasks.iter() {
-                                app_tx.clone().with_name(&task).finish_task(TaskResult::Reloading);
+                                let end_time =  Local::now();
+                                self.end_times.lock().expect("not poisoned").insert( task.clone(), end_time);
+                                app_tx.clone().with_name(&task).finish_task(TaskResult::Reloading, Some(end_time));
                                 self.manager.stop_by_label(&task).await;
                             }
                             info!("Stopped tasks");
@@ -189,11 +200,13 @@ impl TaskRunner {
                     let task_name = task.name.clone();
                     let visitor_tx_cloned = visitor_tx.clone();
                     let targets_remaining_cloned = targets_remaining.clone();
+                    let start_times_cloned = self.start_times.clone();
+                    let end_times_cloned = self.end_times.clone();
                     task_fut.push(tokio_spawn!("task", { name = task_name }, async move {
                         // Skip the task if any dependency task didn't finish successfully
                         if !deps_ok {
                             info!("Task does not run as its dependency task failed");
-                            app_tx.finish_task(TaskResult::BadDeps);
+                            app_tx.finish_task(TaskResult::BadDeps, None);
                             if let Err(e) = callback.send(CallbackMessage(NodeResult::Failure)).await {
                                 warn!("Failed to send callback event: {:?}", e)
                             }
@@ -203,7 +216,7 @@ impl TaskRunner {
                         // Skip the task if output files are newer than input files if both defined
                         if task.is_up_to_date() {
                             info!("Task output files are newer than input files");
-                            app_tx.finish_task(TaskResult::UpToDate);
+                            app_tx.finish_task(TaskResult::UpToDate, None);
                             if let Err(e) = callback.send(CallbackMessage(NodeResult::Success)).await {
                                 warn!("Failed to send callback event: {:?}", e)
                             }
@@ -223,9 +236,11 @@ impl TaskRunner {
                             _ => anyhow::bail!("failed to spawn task {:?}", task.name),
                         };
                         let pid = process.pid().unwrap_or(0);
+                        let start_time = Local::now();
+                        start_times_cloned.lock().expect("not poisoned").insert(task.name.clone(), start_time);
 
                         // Notify the app the task started
-                        app_tx.start_task(task.name.clone(), pid, num_restart, task.restart.max_restart(), num_runs);
+                        app_tx.start_task(task.name.clone(), pid, num_restart, task.restart.max_restart(), num_runs, start_time);
 
                         let mut node_result = NodeResult::None;
                         if task.is_service {
@@ -252,7 +267,9 @@ impl TaskRunner {
                                     // So the node result is considered as `false`
                                     let result = result.with_context(|| format!("task {:?} failed to run", task.name))??;
 
-                                    app_tx.finish_task(result.unwrap_or(TaskResult::Unknown));
+                                    let end_time =  Local::now();
+                                    end_times_cloned.lock().expect("not poisoned").insert(task.name.clone(),  Local::now());
+                                    app_tx.finish_task(result.unwrap_or(TaskResult::Unknown), Some(end_time));
 
                                     let should_restart = match result {
                                         Some(result) => {
@@ -310,7 +327,9 @@ impl TaskRunner {
                                 } else {
                                     // ...and is failure, kill the process
                                     info!("Task is not ready");
-                                    app_tx.finish_task(TaskResult::NotReady);
+                                    let end_time =  Local::now();
+                                    end_times_cloned.lock().expect("not poisoned").insert(task.name.clone(),  Local::now());
+                                    app_tx.finish_task(TaskResult::NotReady, Some(end_time));
                                     manager.stop_by_pid(pid).await;
                                     node_result = NodeResult::Failure;
                                 }
@@ -321,13 +340,17 @@ impl TaskRunner {
                                 if let Err(e) = probe_cancel_tx.send(()) {
                                     warn!("Failed to send cancel probe: {:?}", e)
                                 }
-                                app_tx.finish_task(TaskResult::NotReady);
+                                let end_time =  Local::now();
+                                end_times_cloned.lock().expect("not poisoned").insert(task.name.clone(), end_time);
+                                app_tx.finish_task(TaskResult::NotReady, Some(end_time));
                                 node_result = NodeResult::Failure;
                             }
                         } else {
                             // Normal task branch
                             let result = Self::run_process(task.clone(), process, app_tx.clone()).await?;
-                            app_tx.finish_task(result.unwrap_or(TaskResult::Unknown));
+                            let end_time =  Local::now();
+                            end_times_cloned.lock().expect("not poisoned").insert(task.name.clone(), end_time);
+                            app_tx.finish_task(result.unwrap_or(TaskResult::Unknown), Some(end_time));
                             node_result = match result {
                                 Some(TaskResult::Success) => NodeResult::Success,
                                 _ => NodeResult::Failure,

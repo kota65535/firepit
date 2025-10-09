@@ -1,5 +1,6 @@
-use crate::app::FRAME_RATE;
+use crate::app::{FORCE_RENDER_RATE, FRAME_RATE};
 use crate::tokio_spawn;
+use chrono::{DateTime, Local};
 use std::io;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
@@ -20,6 +21,7 @@ pub enum AppCommand {
         restart: u64,
         max_restart: Option<u64>,
         reload: u64,
+        datetime: DateTime<Local>,
     },
     TaskOutput {
         task: String,
@@ -31,6 +33,7 @@ pub enum AppCommand {
     FinishTask {
         task: String,
         result: TaskResult,
+        datetime: Option<DateTime<Local>>,
     },
     StopTask {
         task: String,
@@ -61,6 +64,7 @@ pub enum AppCommand {
     OpenHelp,
     ExitHelp,
     Tick,
+    Redraw,
 
     ///
     /// Interaction Commands
@@ -133,11 +137,20 @@ impl AppCommandChannel {
         let (tx, rx) = mpsc::unbounded_channel();
         let tick_sender = tx.clone();
         tokio_spawn!("tick", async move {
-            let mut interval = tokio::time::interval(FRAME_RATE);
+            let mut frame_rate_interval = tokio::time::interval(FRAME_RATE);
+            let mut force_render_interval = tokio::time::interval(FORCE_RENDER_RATE);
             loop {
-                interval.tick().await;
-                if tick_sender.send(AppCommand::Tick).is_err() {
-                    break;
+                tokio::select! {
+                    _ = frame_rate_interval.tick() => {
+                        if tick_sender.send(AppCommand::Tick).is_err() {
+                            break;
+                        }
+                    },
+                    _ = force_render_interval.tick() => {
+                        if tick_sender.send(AppCommand::Redraw).is_err() {
+                            break;
+                        }
+                    },
                 }
             }
         });
@@ -161,13 +174,22 @@ impl AppCommandChannel {
         self.send(AppCommand::PlanTask { task: task.to_string() })
     }
 
-    pub fn start_task(&self, task: String, pid: u32, restart: u64, max_restart: Option<u64>, reload: u64) {
+    pub fn start_task(
+        &self,
+        task: String,
+        pid: u32,
+        restart: u64,
+        max_restart: Option<u64>,
+        reload: u64,
+        datetime: DateTime<Local>,
+    ) {
         self.send(AppCommand::StartTask {
             task,
             pid,
             restart,
             max_restart,
             reload,
+            datetime,
         })
     }
 
@@ -177,10 +199,11 @@ impl AppCommandChannel {
         })
     }
 
-    pub fn finish_task(&self, result: TaskResult) {
+    pub fn finish_task(&self, result: TaskResult, end_time: Option<DateTime<Local>>) {
         self.send(AppCommand::FinishTask {
             task: self.name.clone(),
             result,
+            datetime: end_time,
         })
     }
 
@@ -256,7 +279,7 @@ pub enum TaskStatus {
     Planned,
     Running(TaskRun),
     Ready,
-    Finished(TaskResult),
+    Finished(TaskResult, Option<DateTime<Local>>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -265,6 +288,7 @@ pub struct TaskRun {
     pub restart: u64,
     pub max_restart: Option<u64>,
     pub reload: u64,
+    pub start_time: DateTime<Local>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
