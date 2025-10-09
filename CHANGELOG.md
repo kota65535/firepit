@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.0] - 2025-10-09
+
+### 🚀 Features
+
+- Task timeline gantt chart (#160)
+
+### 🐛 Bug Fixes
+
+- Show elapsed time (#159)
+
 ## [0.9.3] - 2025-10-08
 
 ### 🐛 Bug Fixes
