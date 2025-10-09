@@ -39,7 +39,7 @@ pub struct ProjectConfig {
     pub working_dir: String,
 
     /// Template variables.
-    /// Can be used at `working_dir`, `env`, `env_files` and `tasks`.
+    /// Can be used at `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}` and `tasks`.
     #[serde(default)]
     pub vars: IndexMap<String, String>,
 
@@ -170,12 +170,10 @@ impl ProjectConfig {
 
         root_config = root_config.merge(&context)?;
 
-        Self::validate_multi(&root_config, &children)?;
-
         Ok((root_config, children))
     }
 
-    fn validate_multi(root: &ProjectConfig, children: &HashMap<String, ProjectConfig>) -> anyhow::Result<()> {
+    pub fn validate_multi(root: &ProjectConfig, children: &HashMap<String, ProjectConfig>) -> anyhow::Result<()> {
         let mut tasks = root.tasks.values().map(|t| t.full_name()).collect::<HashSet<_>>();
         for p in children.values() {
             tasks.extend(p.tasks.values().map(|t| t.full_name()).collect::<HashSet<_>>());
@@ -378,7 +376,8 @@ pub struct TaskConfig {
     pub working_dir: Option<String>,
 
     /// Template variables.
-    /// Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, [`LogProbeConfig::log`](LogProbeConfig::log).
+    /// Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`,
+    /// `service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`
     #[serde(default)]
     pub vars: IndexMap<String, String>,
 

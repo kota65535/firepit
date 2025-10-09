@@ -91,11 +91,12 @@ impl Workspace {
         }
 
         let mut renderer = ConfigRenderer::new(&root_config, &child_configs);
-        let (root_config, child_config) = renderer.render()?;
+        let (root_config, child_configs) = renderer.render()?;
+        ProjectConfig::validate_multi(&root_config, &child_configs)?;
 
         let root = Project::new("", &root_config)?;
         let mut children = HashMap::new();
-        for (k, v) in child_config.iter() {
+        for (k, v) in child_configs.iter() {
             children.insert(k.clone(), Project::new(k, v)?);
         }
 
