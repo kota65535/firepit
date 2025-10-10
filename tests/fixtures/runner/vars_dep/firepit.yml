@@ -27,9 +27,10 @@ tasks:
       C: 3
     command: echo "baz {{ C }}"
     depends_on:
-      - task: quux
+      - task: "{% if C == '3' or C == '4' %}quux{% endif %}"
         vars:
           E: "{{ C }}"
+      - "{% if A != '1' %}qux{% endif %}"
 
   qux:
     vars:

@@ -1,6 +1,6 @@
 vars:
   A: 1
-  B: "{{ A | int + 1 }}"
+  "{% if A == '1' %}B{% endif %}": "{{ A | int + 1 }}"
 
 tasks:
   foo:

@@ -101,7 +101,7 @@
       ]
     },
     "vars": {
-      "description": "Template variables. Can be used at `working_dir`, `env`, `env_files` and `tasks`.",
+      "description": "Template variables. Can be used at `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}` and `tasks`.",
       "default": {},
       "type": "object",
       "additionalProperties": {
@@ -439,7 +439,7 @@
           ]
         },
         "vars": {
-          "description": "Template variables. Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, [`LogProbeConfig::log`](LogProbeConfig::log).",
+          "description": "Template variables. Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`, `service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`",
           "default": {},
           "type": "object",
           "additionalProperties": {

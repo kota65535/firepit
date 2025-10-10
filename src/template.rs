@@ -1,4 +1,6 @@
-use crate::config::{DependsOnConfig, HealthCheckConfig, ProjectConfig, ServiceConfig, TaskConfig};
+use crate::config::{
+    DependsOnConfig, DependsOnConfigStruct, HealthCheckConfig, ProjectConfig, ServiceConfig, TaskConfig,
+};
 use crate::project::Task;
 use anyhow::Context;
 use indexmap::IndexMap;
@@ -25,11 +27,11 @@ impl ProjectConfig {
         context.insert(PROJECT_DIR_CONTEXT_KEY, &self.dir.as_os_str().to_str().unwrap_or(""));
 
         // Render vars
-        let mut rendered_vars = IndexMap::new();
         for (k, v) in self.vars.iter() {
-            let rendered = tera.render_str(&v, &context)?;
-            context.insert(k, &rendered);
-            rendered_vars.insert(k, rendered);
+            let rk = tera.render_str(&k, &context)?;
+            if !rk.is_empty() {
+                context.insert(rk, &tera.render_str(&v, &context)?);
+            }
         }
 
         Ok(context)
@@ -51,18 +53,14 @@ impl ProjectConfig {
         config.working_dir = tera.render_str(&config.working_dir, &context)?;
 
         // Render env
-        let mut rendered_env = IndexMap::new();
-        for (k, v) in config.env.iter() {
-            rendered_env.insert(k.clone(), tera.render_str(v, &context)?);
-        }
-        config.env = rendered_env;
+        config.env = render_map(&config.env, &mut tera, context)?;
 
         // Render env_files
-        let mut rendered_env_files = Vec::new();
-        for f in config.env_files.iter() {
-            rendered_env_files.push(tera.render_str(f, &context)?);
-        }
-        config.env_files = rendered_env_files;
+        config.env_files = config
+            .env_files
+            .iter()
+            .map(|f| tera.render_str(f, &context))
+            .collect::<anyhow::Result<Vec<_>, _>>()?;
 
         // Render tasks
         if render_task {
@@ -87,13 +85,12 @@ impl TaskConfig {
         context.insert(TASK_CONTEXT_KEY, &self.full_orig_name());
 
         // Render vars
-        let mut rendered_vars = IndexMap::new();
         for (k, v) in self.vars.iter() {
-            let rendered = tera.render_str(&v, &context)?;
-            context.insert(k, &rendered);
-            rendered_vars.insert(k, rendered);
+            let rk = tera.render_str(&k, &context)?;
+            if !rk.is_empty() {
+                context.insert(rk, &tera.render_str(&v, &context)?);
+            }
         }
-
         Ok(context)
     }
 
@@ -102,11 +99,7 @@ impl TaskConfig {
         let mut tera = Tera::default();
 
         // Render vars
-        let mut rendered_vars = IndexMap::new();
-        for (k, v) in config.vars.iter() {
-            rendered_vars.insert(k.clone(), tera.render_str(&v, &context)?);
-        }
-        config.vars = rendered_vars;
+        config.vars = render_map(&config.vars, &mut tera, context)?;
 
         // Render label
         if let Some(l) = config.label {
@@ -123,11 +116,7 @@ impl TaskConfig {
         };
 
         // Render env
-        let mut rendered_env = IndexMap::new();
-        for (k, v) in config.env.iter() {
-            rendered_env.insert(tera.render_str(k, &context)?, tera.render_str(v, &context)?);
-        }
-        config.env = rendered_env;
+        config.env = render_map(&config.env, &mut tera, &context)?;
 
         // Render env_files
         let mut rendered_env_files = Vec::new();
@@ -158,18 +147,14 @@ impl TaskConfig {
                             };
 
                             // Render env
-                            let mut rendered_env = IndexMap::new();
-                            for (k, v) in c.env.iter() {
-                                rendered_env.insert(tera.render_str(k, &context)?, tera.render_str(v, &context)?);
-                            }
-                            c.env = rendered_env;
+                            c.env = render_map(&c.env, &mut tera, context)?;
 
                             // Render env_files
-                            let mut rendered_env_files = Vec::new();
-                            for f in c.env_files.iter() {
-                                rendered_env_files.push(tera.render_str(f, &context)?);
-                            }
-                            c.env_files = rendered_env_files;
+                            c.env_files = c
+                                .env_files
+                                .iter()
+                                .map(|f| tera.render_str(f, &context))
+                                .collect::<anyhow::Result<Vec<_>, _>>()?;
                         }
                     }
                     st.healthcheck = Some(healthcheck);
@@ -180,17 +165,32 @@ impl TaskConfig {
             }
         }
 
-        // Render depends_on[*].vars
-        for depends_on in config.depends_on.iter_mut() {
-            if let DependsOnConfig::Struct(ref mut dep) = depends_on {
-                // Render vars
-                let mut rendered_vars = IndexMap::new();
-                for (k, v) in dep.vars.iter() {
-                    rendered_vars.insert(k.clone(), tera.render_str(&v, &context)?);
+        // Render depends_on task and vars
+        let mut rendered_depends_on = Vec::new();
+        for depends_on in config.depends_on.iter() {
+            match depends_on {
+                DependsOnConfig::String(task) => {
+                    let task = tera.render_str(task, &context)?;
+                    // Ignore if rendered task name is empty
+                    if !task.ends_with("#") {
+                        rendered_depends_on.push(DependsOnConfig::String(task))
+                    }
                 }
-                dep.vars = rendered_vars;
+                DependsOnConfig::Struct(dep) => {
+                    let task = tera.render_str(&dep.task, &context)?;
+                    // Ignore if rendered task name is empty
+                    if !task.ends_with("#") {
+                        let vars = render_map(&dep.vars, &mut tera, context)?;
+                        rendered_depends_on.push(DependsOnConfig::Struct(DependsOnConfigStruct {
+                            task,
+                            vars,
+                            cascade: dep.cascade,
+                        }));
+                    }
+                }
             }
         }
+        config.depends_on = rendered_depends_on;
 
         Ok(config)
     }
@@ -285,17 +285,17 @@ impl ConfigRenderer {
         }
     }
 
-    fn get_task_mut<'a>(
+    fn get_task<'a>(
         task_name: &str,
-        root_config: &'a mut ProjectConfig,
-        child_configs: &'a mut HashMap<String, ProjectConfig>,
-    ) -> Option<&'a mut TaskConfig> {
+        root_config: &'a ProjectConfig,
+        child_configs: &'a HashMap<String, ProjectConfig>,
+    ) -> Option<&'a TaskConfig> {
         if let Some((p, t)) = task_name.split_once("#") {
             if p.is_empty() {
-                return root_config.tasks.get_mut(t);
+                return root_config.tasks.get(t);
             }
-            if let Some(c) = child_configs.get_mut(p) {
-                return c.tasks.get_mut(t);
+            if let Some(c) = child_configs.get(p) {
+                return c.tasks.get(t);
             }
         }
         None
@@ -335,7 +335,7 @@ impl ConfigRenderer {
         contexts: &mut HashMap<String, tera::Context>,
     ) -> anyhow::Result<()> {
         // Get task config
-        let task_config = Self::get_task_mut(task_name, raw_root_config, raw_child_configs)
+        let task_config = Self::get_task(task_name, raw_root_config, raw_child_configs)
             .context(format!("unknown task {:?}", task_name))?;
         let context = contexts
             .get(task_name)
@@ -359,8 +359,10 @@ impl ConfigRenderer {
             };
 
             // Get dependency task config
-            let dep_task = Self::get_task_mut(&depends_on.task, raw_root_config, raw_child_configs)
-                .context(format!("unknown task {:?}", task_name))?;
+            let dep_task = Self::get_task(&depends_on.task, raw_root_config, raw_child_configs).context(format!(
+                "unknown dependency task {:?} for {:?}",
+                depends_on.task, task_name
+            ))?;
 
             let mut variant_task = dep_task.clone();
 
@@ -440,4 +442,21 @@ impl ConfigRenderer {
 
         Ok(())
     }
+}
+
+fn render_map(
+    map: &IndexMap<String, String>,
+    tera: &mut Tera,
+    context: &tera::Context,
+) -> anyhow::Result<IndexMap<String, String>> {
+    let mut ret = IndexMap::new();
+    for (k, v) in map.iter() {
+        let rk = tera.render_str(&k, &context)?;
+        // Ignore if rendered value is empty
+        if !rk.is_empty() {
+            let rv = tera.render_str(&v, &context)?;
+            ret.insert(rk, rv);
+        }
+    }
+    Ok(ret)
 }
