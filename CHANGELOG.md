@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.0] - 2025-10-10
+
+### 🚀 Features
+
+- Conditional deps (#165)
+
 ## [0.10.0] - 2025-10-09
 
 ### 🚀 Features
