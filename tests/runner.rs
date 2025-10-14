@@ -270,9 +270,8 @@ async fn test_vars_and_env_from_cli() {
     outputs.insert(String::from("#qux"), String::from("qux 13001"));
 
     let vars = HashMap::from([("A".to_string(), "11".to_string())]);
-    let env = HashMap::from([("B".to_string(), "12".to_string())]);
 
-    run_task_with_var_env(&path, tasks, stats, Some(outputs), vars, env, false)
+    run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
         .await
         .unwrap();
 }
@@ -422,19 +421,17 @@ async fn run_task(
         None,
         None,
         HashMap::new(),
-        HashMap::new(),
         force,
     )
     .await
 }
 
-async fn run_task_with_var_env(
+async fn run_task_with_vars(
     path: &Path,
     tasks: Vec<String>,
     status_expected: HashMap<String, String>,
     outputs_expected: Option<HashMap<String, String>>,
     vars: HashMap<String, String>,
-    env: HashMap<String, String>,
     force: bool,
 ) -> anyhow::Result<()> {
     run_task_inner(
@@ -446,7 +443,6 @@ async fn run_task_with_var_env(
         None,
         None,
         vars,
-        env,
         force,
     )
     .await
@@ -461,12 +457,11 @@ async fn run_task_inner(
     runs_expected: Option<HashMap<String, u64>>,
     timeout_seconds: Option<u64>,
     vars: HashMap<String, String>,
-    env: HashMap<String, String>,
     force: bool,
 ) -> anyhow::Result<()> {
     let path = path::absolute(path)?;
     let (root, children) = ProjectConfig::new_multi(&path)?;
-    let ws = Workspace::new(&root, &children, &tasks, &path, &vars, &env, force, Some(false))?;
+    let ws = Workspace::new(&root, &children, &tasks, &path, &vars, force, Some(false))?;
     // Create runner
     let mut runner = TaskRunner::new(&ws)?;
     let (app_tx, app_rx) = AppCommandChannel::new();
@@ -513,7 +508,6 @@ async fn run_task_with_watch<F>(
         &HashMap::new(),
         &tasks,
         &path,
-        &HashMap::new(),
         &HashMap::new(),
         force,
         Some(false),

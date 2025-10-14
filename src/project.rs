@@ -26,7 +26,6 @@ impl Workspace {
         tasks: &Vec<String>,
         current_dir: &Path,
         vars: &HashMap<String, String>,
-        env: &HashMap<String, String>,
         force: bool,
         fail_fast: Option<bool>,
     ) -> anyhow::Result<Workspace> {
@@ -86,7 +85,6 @@ impl Workspace {
                         .task_mut(task_name)?
                 };
                 task.vars.extend(vars.clone());
-                task.env.extend(env.clone());
             }
         }
 
