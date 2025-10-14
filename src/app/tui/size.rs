@@ -34,8 +34,8 @@ impl SizeInfo {
 
     pub fn pane_rows(&self) -> u16 {
         self.rows
-            // Account for header and footer in layout
-            .saturating_sub(2)
+            // Account for top padding (1) and footer (2) in layout
+            .saturating_sub(3)
             // Always allocate at least one row as vt100 crashes if emulating a zero area terminal
             .max(1)
     }
