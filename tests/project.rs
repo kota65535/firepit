@@ -34,7 +34,6 @@ fn test_env_file_not_found() {
         &Vec::new(),
         &std::env::current_dir().unwrap(),
         &HashMap::new(),
-        &HashMap::new(),
         false,
         Some(false),
     );
@@ -51,7 +50,6 @@ fn test_bad_env_file() {
         &Vec::new(),
         &std::env::current_dir().unwrap(),
         &HashMap::new(),
-        &HashMap::new(),
         false,
         Some(false),
     );
@@ -67,7 +65,6 @@ fn test_multi() {
         &children,
         &Vec::new(),
         &std::env::current_dir().unwrap(),
-        &HashMap::new(),
         &HashMap::new(),
         false,
         Some(false),

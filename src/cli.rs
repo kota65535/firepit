@@ -26,10 +26,6 @@ pub struct Args {
     #[arg(short, long)]
     pub var: Vec<String>,
 
-    /// Environment variables in format: {Name}={Value}
-    #[arg(short, long)]
-    pub env: Vec<String>,
-
     /// Working directory
     #[arg(short, long, default_value = ".")]
     pub dir: String,
@@ -98,7 +94,6 @@ pub async fn run() -> anyhow::Result<i32> {
     let args = Args::parse();
     let dir = path::absolute(&args.dir)?;
     let var = parse_var_and_env(&args.var)?;
-    let env = parse_var_and_env(&args.env)?;
     let fail_fast = args.fail_fast();
 
     // Load config files
@@ -135,7 +130,6 @@ pub async fn run() -> anyhow::Result<i32> {
         &args.tasks,
         dir.as_path(),
         &var,
-        &env,
         args.force,
         fail_fast,
     )?;
