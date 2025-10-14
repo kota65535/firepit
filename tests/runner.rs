@@ -265,7 +265,7 @@ async fn test_vars_and_env_from_cli() {
 
     let mut outputs = HashMap::new();
     outputs.insert(String::from("#foo"), String::from("foo 11"));
-    outputs.insert(String::from("#bar"), String::from("bar 12"));
+    outputs.insert(String::from("#bar"), String::from("bar 2"));
     outputs.insert(String::from("#baz"), String::from("baz 3"));
     outputs.insert(String::from("#qux"), String::from("qux 13001"));
 
@@ -474,7 +474,7 @@ async fn run_task_inner(
     });
 
     // Handle events and assert task statuses
-    handle_events(
+    let events_fut = handle_events(
         app_rx,
         runner_tx,
         status_expected,
@@ -482,10 +482,10 @@ async fn run_task_inner(
         restarts_expected,
         runs_expected,
         timeout_seconds,
-    )
-    .await?;
+    );
 
     runner_fut.await?;
+    events_fut.await?;
     Ok(())
 }
 
