@@ -78,10 +78,17 @@ impl TaskTable<'_> {
     }
 
     fn status_summary(&self) -> Line {
-        let targets = self.tasks.values().filter(|t| t.is_target).collect::<Vec<_>>();
+        // Failure: any task has failed
+        if self
+            .tasks
+            .values()
+            .any(|t| matches!(t.status(), TaskStatus::Finished(r, _) if r.is_failure()))
+        {
+            return Line::styled(" Failure ", Style::default().fg(Color::White).bg(Color::Red));
+        }
 
         // Running: some tasks are still running
-        if targets.iter().any(|t| {
+        if self.tasks.values().any(|t| {
             matches!(
                 t.status(),
                 TaskStatus::Planned | TaskStatus::Running(_) | TaskStatus::Finished(TaskResult::Reloading, _)
@@ -89,21 +96,8 @@ impl TaskTable<'_> {
         }) {
             return Line::styled(" Running ", Style::default().fg(Color::White).bg(Color::Blue));
         }
-        // Failure: some tasks have failed
-        if targets
-            .iter()
-            .any(|t| matches!(t.status(), TaskStatus::Finished(r, _) if r.is_failure()))
-        {
-            return Line::styled(" Failure ", Style::default().fg(Color::White).bg(Color::Red));
-        }
 
-        // All tasks should have finished successfully or become ready
-
-        // Ready: all service tasks are ready to use
-        if targets.iter().any(|t| matches!(t.status(), TaskStatus::Ready)) {
-            return Line::styled("  Ready  ", Style::default().fg(Color::White).bg(Color::Green));
-        }
-        // Success: all tasks have finished successfully
+        // All tasks should have finished successfully or become ready!
         Line::styled(" Success ", Style::default().fg(Color::White).bg(Color::Green))
     }
 }
