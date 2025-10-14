@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.1] - 2025-10-14
+
+### 🐛 Bug Fixes
+
+- Last line is not visible (#168)
+- Status summary (#169)
+
 ## [0.11.0] - 2025-10-10
 
 ### 🚀 Features
