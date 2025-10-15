@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.0] - 2025-10-15
+
+### 🚀 Features
+
+- [**breaking**] Remove --env option (#171)
+- [**breaking**] Pass variables via args instead of -v option (#172)
+- Support vars types (#173)
+
 ## [0.11.1] - 2025-10-14
 
 ### 🐛 Bug Fixes
