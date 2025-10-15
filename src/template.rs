@@ -30,8 +30,11 @@ impl ProjectConfig {
 
         // Render vars
         for (k, v) in self.vars.iter() {
-            let rendered = render_value(v, &mut tera, &context)?;
-            context.insert(k, &rendered);
+            let rk = tera.render_str(&k, &context)?;
+            if !rk.is_empty() {
+                let rv = render_value(v, &mut tera, &context)?;
+                context.insert(rk, &rv);
+            }
         }
 
         Ok(context)
@@ -86,8 +89,11 @@ impl TaskConfig {
 
         // Render vars
         for (k, v) in self.vars.iter() {
-            let rendered = render_value(v, &mut tera, &context)?;
-            context.insert(k, &rendered);
+            let rk = tera.render_str(&k, &context)?;
+            if !rk.is_empty() {
+                let rv = render_value(v, &mut tera, &context)?;
+                context.insert(rk, &rv);
+            }
         }
         Ok(context)
     }
