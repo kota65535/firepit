@@ -395,7 +395,7 @@ impl ConfigRenderer {
             variant_task.name = task_name.to_string();
 
             info!(
-                "{:?} depends on {:?} (variant: {:?})\tvars: {:?} + {:?} = {:?}",
+                "{} -> {} ({})\tvars: {:?} + {:?} = {:?}",
                 task_name,
                 dep_task.full_name(),
                 variant_task_name,
