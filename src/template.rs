@@ -486,7 +486,8 @@ fn render_value(value: &JsonValue, tera: &mut Tera, context: &tera::Context) -> 
             let str = tera
                 .render_str(s, context)
                 .context(format!("failed to render {:?}", s))?;
-            let yaml_value = serde_yaml::from_str::<Value>(&str)?;
+            let yaml_value =
+                serde_yaml::from_str::<Value>(&str).context(format!("failed to read YAML value {:?}", str))?;
             match yaml_value {
                 Value::Null => JsonValue::Null,
                 Value::Bool(b) => JsonValue::Bool(b),
@@ -521,7 +522,6 @@ fn yaml_number_to_json_number(yaml_num: &serde_yaml::Number) -> Option<serde_jso
     } else if let Some(u) = yaml_num.as_u64() {
         Some(serde_json::Value::Number(serde_json::Number::from(u)))
     } else if let Some(f) = yaml_num.as_f64() {
-        // serde_json::Number::from_f64 は NaN/Inf を None にする
         serde_json::Number::from_f64(f).map(serde_json::Value::Number)
     } else {
         None
