@@ -1,6 +1,7 @@
 vars:
   A: 1
-  "{% if A == '1' %}B{% endif %}": "{{ A | int + 1 }}"
+  B: "{{ A | int + 1 }}"
+  C: true
 
 tasks:
   foo:
@@ -8,7 +9,7 @@ tasks:
     depends_on:
       - bar
       - baz
-      - qux
+      - "{% if C %}qux{% endif %}"
 
   bar:
     env:

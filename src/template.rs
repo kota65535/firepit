@@ -4,6 +4,8 @@ use crate::config::{
 use crate::project::Task;
 use anyhow::Context;
 use indexmap::IndexMap;
+use serde_json::{Map, Value as JsonValue};
+use serde_yaml::Value;
 use std::collections::HashMap;
 use tera::Tera;
 use tracing::{debug, info};
@@ -30,7 +32,8 @@ impl ProjectConfig {
         for (k, v) in self.vars.iter() {
             let rk = tera.render_str(&k, &context)?;
             if !rk.is_empty() {
-                context.insert(rk, &tera.render_str(&v, &context)?);
+                let rv = render_value(v, &mut tera, &context)?;
+                context.insert(rk, &rv);
             }
         }
 
@@ -53,7 +56,7 @@ impl ProjectConfig {
         config.working_dir = tera.render_str(&config.working_dir, &context)?;
 
         // Render env
-        config.env = render_map(&config.env, &mut tera, context)?;
+        config.env = render_string_map(&config.env, &mut tera, context)?;
 
         // Render env_files
         config.env_files = config
@@ -88,7 +91,8 @@ impl TaskConfig {
         for (k, v) in self.vars.iter() {
             let rk = tera.render_str(&k, &context)?;
             if !rk.is_empty() {
-                context.insert(rk, &tera.render_str(&v, &context)?);
+                let rv = render_value(v, &mut tera, &context)?;
+                context.insert(rk, &rv);
             }
         }
         Ok(context)
@@ -99,7 +103,7 @@ impl TaskConfig {
         let mut tera = Tera::default();
 
         // Render vars
-        config.vars = render_map(&config.vars, &mut tera, context)?;
+        config.vars = render_value_map(&config.vars, &mut tera, context)?;
 
         // Render label
         if let Some(l) = config.label {
@@ -116,7 +120,7 @@ impl TaskConfig {
         };
 
         // Render env
-        config.env = render_map(&config.env, &mut tera, &context)?;
+        config.env = render_string_map(&config.env, &mut tera, &context)?;
 
         // Render env_files
         let mut rendered_env_files = Vec::new();
@@ -147,7 +151,7 @@ impl TaskConfig {
                             };
 
                             // Render env
-                            c.env = render_map(&c.env, &mut tera, context)?;
+                            c.env = render_string_map(&c.env, &mut tera, context)?;
 
                             // Render env_files
                             c.env_files = c
@@ -180,7 +184,7 @@ impl TaskConfig {
                     let task = tera.render_str(&dep.task, &context)?;
                     // Ignore if rendered task name is empty
                     if !task.ends_with("#") {
-                        let vars = render_map(&dep.vars, &mut tera, context)?;
+                        let vars = render_value_map(&dep.vars, &mut tera, context)?;
                         rendered_depends_on.push(DependsOnConfig::Struct(DependsOnConfigStruct {
                             task,
                             vars,
@@ -444,19 +448,82 @@ impl ConfigRenderer {
     }
 }
 
-fn render_map(
+fn render_string_map(
     map: &IndexMap<String, String>,
     tera: &mut Tera,
     context: &tera::Context,
 ) -> anyhow::Result<IndexMap<String, String>> {
     let mut ret = IndexMap::new();
     for (k, v) in map.iter() {
-        let rk = tera.render_str(&k, &context)?;
-        // Ignore if rendered value is empty
+        let rk = tera.render_str(k, context)?;
         if !rk.is_empty() {
-            let rv = tera.render_str(&v, &context)?;
+            let rv = tera.render_str(v, context)?;
             ret.insert(rk, rv);
         }
     }
     Ok(ret)
+}
+
+fn render_value_map(
+    map: &IndexMap<String, JsonValue>,
+    tera: &mut Tera,
+    context: &tera::Context,
+) -> anyhow::Result<IndexMap<String, JsonValue>> {
+    let mut ret = IndexMap::new();
+    for (k, v) in map.iter() {
+        let rk = tera.render_str(k, context)?;
+        if !rk.is_empty() {
+            let rv = render_value(v, tera, context)?;
+            ret.insert(rk, rv);
+        }
+    }
+    Ok(ret)
+}
+
+fn render_value(value: &JsonValue, tera: &mut Tera, context: &tera::Context) -> anyhow::Result<JsonValue> {
+    let rendered = match value {
+        JsonValue::String(s) => {
+            let str = tera
+                .render_str(s, context)
+                .context(format!("failed to render {:?}", s))?;
+            let yaml_value =
+                serde_yaml::from_str::<Value>(&str).context(format!("failed to read YAML value {:?}", str))?;
+            match yaml_value {
+                Value::Null => JsonValue::Null,
+                Value::Bool(b) => JsonValue::Bool(b),
+                Value::Number(n) => yaml_number_to_json_number(&n).unwrap_or(JsonValue::Null),
+                Value::String(s) => JsonValue::String(s),
+                _ => JsonValue::String(str),
+            }
+        }
+        JsonValue::Number(_) | JsonValue::Bool(_) | JsonValue::Null => value.clone(),
+        JsonValue::Array(items) => {
+            let mut rendered_items = Vec::with_capacity(items.len());
+            for item in items {
+                rendered_items.push(render_value(item, tera, context)?);
+            }
+            JsonValue::Array(rendered_items)
+        }
+        JsonValue::Object(map) => {
+            let mut rendered_map = Map::with_capacity(map.len());
+            for (k, v) in map.iter() {
+                rendered_map.insert(k.clone(), render_value(v, tera, context)?);
+            }
+            JsonValue::Object(rendered_map)
+        }
+    };
+    Ok(rendered)
+}
+
+/// Converts serde_yaml::Value::Number to serde_json::Value::Number
+fn yaml_number_to_json_number(yaml_num: &serde_yaml::Number) -> Option<serde_json::Value> {
+    if let Some(i) = yaml_num.as_i64() {
+        Some(serde_json::Value::Number(serde_json::Number::from(i)))
+    } else if let Some(u) = yaml_num.as_u64() {
+        Some(serde_json::Value::Number(serde_json::Number::from(u)))
+    } else if let Some(f) = yaml_num.as_f64() {
+        serde_json::Number::from_f64(f).map(serde_json::Value::Number)
+    } else {
+        None
+    }
 }

@@ -3,6 +3,7 @@ use crate::probe::{ExecProbe, LogLineProbe, Probe};
 use crate::template::ConfigRenderer;
 use anyhow::Context;
 use regex::Regex;
+use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use tracing::warn;
@@ -25,7 +26,7 @@ impl Workspace {
         child_configs: &HashMap<String, ProjectConfig>,
         tasks: &Vec<String>,
         current_dir: &Path,
-        vars: &HashMap<String, String>,
+        vars: &HashMap<String, Value>,
         force: bool,
         fail_fast: Option<bool>,
     ) -> anyhow::Result<Workspace> {

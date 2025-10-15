@@ -11,6 +11,7 @@ use firepit::config::ProjectConfig;
 use firepit::project::Workspace;
 use firepit::runner::command::RunnerCommandChannel;
 use rstest::rstest;
+use serde_json::Value;
 use std::sync::{LazyLock, Once};
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -265,11 +266,11 @@ async fn test_vars_and_env_from_cli() {
 
     let mut outputs = HashMap::new();
     outputs.insert(String::from("#foo"), String::from("foo 11"));
-    outputs.insert(String::from("#bar"), String::from("bar 2"));
+    outputs.insert(String::from("#bar"), String::from("bar 2.2"));
     outputs.insert(String::from("#baz"), String::from("baz 3"));
     outputs.insert(String::from("#qux"), String::from("qux 13001"));
 
-    let vars = HashMap::from([("A".to_string(), "11".to_string())]);
+    let vars = HashMap::from([("A".to_string(), Value::from(11))]);
 
     run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
         .await
@@ -431,7 +432,7 @@ async fn run_task_with_vars(
     tasks: Vec<String>,
     status_expected: HashMap<String, String>,
     outputs_expected: Option<HashMap<String, String>>,
-    vars: HashMap<String, String>,
+    vars: HashMap<String, Value>,
     force: bool,
 ) -> anyhow::Result<()> {
     run_task_inner(
@@ -456,7 +457,7 @@ async fn run_task_inner(
     restarts_expected: Option<HashMap<String, u64>>,
     runs_expected: Option<HashMap<String, u64>>,
     timeout_seconds: Option<u64>,
-    vars: HashMap<String, String>,
+    vars: HashMap<String, Value>,
     force: bool,
 ) -> anyhow::Result<()> {
     let path = path::absolute(path)?;

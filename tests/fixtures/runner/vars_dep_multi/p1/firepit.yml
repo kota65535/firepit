@@ -7,14 +7,14 @@ tasks:
     depends_on:
       - task: bar
         vars:
-          C: "4"
+          C: 4
       - task: p2#baz
         vars:
-          C: "5"
+          C: 5
 
   bar:
     vars:
-      C: "3"
+      C: 3
     command: echo "bar {{ B }}"
     depends_on:
       - task: p2#baz

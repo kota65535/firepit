@@ -8,6 +8,7 @@ use crate::runner::TaskRunner;
 use crate::tokio_spawn;
 use clap::Parser;
 use itertools::Itertools;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
@@ -170,18 +171,24 @@ pub async fn run() -> anyhow::Result<i32> {
     app_fut.await?
 }
 
-fn parse_tasks_or_vars(items: &Vec<String>) -> anyhow::Result<(Vec<String>, HashMap<String, String>)> {
+fn parse_tasks_or_vars(items: &Vec<String>) -> anyhow::Result<(Vec<String>, HashMap<String, Value>)> {
     let mut tasks = Vec::new();
     let mut vars = HashMap::new();
     for item in items.iter() {
         match item.split_once('=') {
             Some((k, v)) => {
-                let unquoted = if let Some(stripped) = strip_matching_quotes(v) {
-                    stripped
-                } else {
-                    v
+                let value = match serde_json::from_str::<Value>(v) {
+                    Ok(parsed) => parsed,
+                    Err(_) => {
+                        let unquoted = if let Some(stripped) = strip_matching_quotes(v) {
+                            stripped
+                        } else {
+                            v
+                        };
+                        Value::String(unquoted.to_string())
+                    }
                 };
-                vars.insert(k.to_string(), unquoted.to_string());
+                vars.insert(k.to_string(), value);
             }
             None => tasks.push(item.to_string()),
         }
@@ -234,6 +241,7 @@ fn save_gantt_chart(gantt: &str, path: &str) {
 #[cfg(test)]
 mod tests {
     use super::parse_tasks_or_vars;
+    use serde_json::json;
 
     #[test]
     fn parse_tasks_and_vars_handles_strings_and_json() {
@@ -249,10 +257,10 @@ mod tests {
         let (tasks, vars) = parse_tasks_or_vars(&inputs).unwrap();
 
         assert_eq!(tasks, vec!["build".to_string()]);
-        assert_eq!(vars.get("count"), Some(&"10".to_string()));
-        assert_eq!(vars.get("quoted"), Some(&"foo=bar".to_string()));
-        assert_eq!(vars.get("raw"), Some(&"foo=bar".to_string()));
-        assert_eq!(vars.get("single"), Some(&"baz=qux".to_string()));
-        assert_eq!(vars.get("flag"), Some(&"true".to_string()));
+        assert_eq!(vars.get("count"), Some(&json!(10)));
+        assert_eq!(vars.get("quoted"), Some(&json!("foo=bar")));
+        assert_eq!(vars.get("raw"), Some(&json!("foo=bar")));
+        assert_eq!(vars.get("single"), Some(&json!("baz=qux")));
+        assert_eq!(vars.get("flag"), Some(&json!(true)));
     }
 }
