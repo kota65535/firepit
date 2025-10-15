@@ -72,7 +72,6 @@ async fn test_basic_empty() {
     statuses.insert(String::from("#baz"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#foo"), String::from(""));
     outputs.insert(String::from("#bar"), String::from("bar"));
     outputs.insert(String::from("#baz"), String::from("baz"));
 
