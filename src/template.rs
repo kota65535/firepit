@@ -508,7 +508,7 @@ fn render_value(value: &JsonValue, tera: &mut Tera, context: &tera::Context) -> 
     Ok(rendered)
 }
 
-/// serde_yaml::Value::Number → serde_json::Value::Number に変換
+/// Converts serde_yaml::Value::Number to serde_json::Value::Number
 fn yaml_number_to_json_number(yaml_num: &serde_yaml::Number) -> Option<serde_json::Value> {
     if let Some(i) = yaml_num.as_i64() {
         Some(serde_json::Value::Number(serde_json::Number::from(i)))
