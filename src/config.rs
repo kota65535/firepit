@@ -7,6 +7,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use schemars::JsonSchema;
 use serde::{de, Deserialize, Deserializer, Serialize};
+use serde_json::Value as JsonValue;
 use serde_yaml::Value;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -41,7 +42,7 @@ pub struct ProjectConfig {
     /// Template variables.
     /// Can be used at `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}` and `tasks`.
     #[serde(default)]
-    pub vars: IndexMap<String, String>,
+    pub vars: IndexMap<String, JsonValue>,
 
     /// Environment variables for all tasks.
     #[serde(default)]
@@ -379,7 +380,7 @@ pub struct TaskConfig {
     /// Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`,
     /// `service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`
     #[serde(default)]
-    pub vars: IndexMap<String, String>,
+    pub vars: IndexMap<String, JsonValue>,
 
     /// Environment variables.
     /// Merged with the project's env.
@@ -477,8 +478,8 @@ pub enum DependsOnConfig {
 pub struct DependsOnConfigStruct {
     pub task: String,
 
-    #[serde(default, deserialize_with = "deserialize_hash_map")]
-    pub vars: IndexMap<String, String>,
+    #[serde(default)]
+    pub vars: IndexMap<String, JsonValue>,
 
     #[serde(default = "default_cascade")]
     pub cascade: bool,
