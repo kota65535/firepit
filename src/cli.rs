@@ -19,8 +19,7 @@ use tracing::info;
 #[command(version, about, long_about = None)]
 pub struct Args {
     /// Task names or variables.
-    /// If in the format "Name=Value", it is treated as a variable.
-    /// Otherwise, treated as a task name.
+    /// Variable are in "Name=Value" format (e.g. ENV=prod, DEBUG=true)
     #[arg(required = false)]
     pub tasks_or_vars: Vec<String>,
 
