@@ -496,6 +496,7 @@ fn render_value(value: &JsonValue, tera: &mut Tera, context: &tera::Context) -> 
                 _ => JsonValue::String(str),
             }
         }
+        JsonValue::Number(_) | JsonValue::Bool(_) | JsonValue::Null => value.clone(),
         JsonValue::Array(items) => {
             let mut rendered_items = Vec::with_capacity(items.len());
             for item in items {
@@ -503,7 +504,6 @@ fn render_value(value: &JsonValue, tera: &mut Tera, context: &tera::Context) -> 
             }
             JsonValue::Array(rendered_items)
         }
-        JsonValue::Number(_) | JsonValue::Bool(_) | JsonValue::Null => value.clone(),
         JsonValue::Object(map) => {
             let mut rendered_map = Map::with_capacity(map.len());
             for (k, v) in map.iter() {
