@@ -11,20 +11,17 @@ use itertools::Itertools;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
-use std::{env, path};
+use std::path;
 use tracing::info;
 
 /// Firepit: Simple task & service runner with a comfortable TUI
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Args {
-    /// Task names
+    /// Task names or variables.
+    /// Variable are in "Name=Value" format (e.g. ENV=prod, DEBUG=true)
     #[arg(required = false)]
-    pub tasks: Vec<String>,
-
-    /// Variables in format: {Name}={Value}
-    #[arg(short, long)]
-    pub var: Vec<String>,
+    pub tasks_or_vars: Vec<String>,
 
     /// Working directory
     #[arg(short, long, default_value = ".")]
@@ -93,7 +90,7 @@ pub async fn run() -> anyhow::Result<i32> {
     // Arguments
     let args = Args::parse();
     let dir = path::absolute(&args.dir)?;
-    let var = parse_var_and_env(&args.var)?;
+    let (tasks, vars) = parse_tasks_or_vars(&args.tasks_or_vars)?;
     let fail_fast = args.fail_fast();
 
     // Load config files
@@ -113,26 +110,19 @@ pub async fn run() -> anyhow::Result<i32> {
 
     init_logger(&root.log, args.tokio_console)?;
 
-    info!("Tasks: {:?}", args.tasks);
+    info!("Tasks: {:?}", tasks);
+    info!("Vars: {:?}", vars);
     info!("Root project config: {:?}", root);
     info!("Child project config: {:?}", children);
 
     // Print workspace information if no task specified
-    if args.tasks.is_empty() {
+    if tasks.is_empty() {
         print_summary(&root, &children);
         return Ok(0);
     }
 
     // Aggregate information in config files into a more workable form
-    let ws = Workspace::new(
-        &root,
-        &children,
-        &args.tasks,
-        dir.as_path(),
-        &var,
-        args.force,
-        fail_fast,
-    )?;
+    let ws = Workspace::new(&root, &children, &tasks, dir.as_path(), &vars, args.force, fail_fast)?;
 
     // Create runner
     let mut runner = TaskRunner::new(&ws)?;
@@ -180,15 +170,35 @@ pub async fn run() -> anyhow::Result<i32> {
     app_fut.await?
 }
 
-fn parse_var_and_env(env: &Vec<String>) -> anyhow::Result<HashMap<String, String>> {
-    env.iter()
-        .map(|pair| match pair.split_once('=') {
-            Some((k, v)) => Ok((k.to_string(), v.to_string())),
-            None => Ok((pair.to_string(), env::var(pair)?)),
-        })
-        .collect()
+fn parse_tasks_or_vars(items: &Vec<String>) -> anyhow::Result<(Vec<String>, HashMap<String, String>)> {
+    let mut tasks = Vec::new();
+    let mut vars = HashMap::new();
+    for item in items.iter() {
+        match item.split_once('=') {
+            Some((k, v)) => {
+                let unquoted = if let Some(stripped) = strip_matching_quotes(v) {
+                    stripped
+                } else {
+                    v
+                };
+                vars.insert(k.to_string(), unquoted.to_string());
+            }
+            None => tasks.push(item.to_string()),
+        }
+    }
+    Ok((tasks, vars))
 }
 
+fn strip_matching_quotes(input: &str) -> Option<&str> {
+    if input.len() >= 2 {
+        let first = input.as_bytes().first()?;
+        let last = input.as_bytes().last()?;
+        if (first == &b'"' && last == &b'"') || (first == &b'\'' && last == &b'\'') {
+            return Some(&input[1..input.len() - 1]);
+        }
+    }
+    None
+}
 fn print_summary(root: &ProjectConfig, children: &HashMap<String, ProjectConfig>) {
     let mut lines = Vec::new();
     lines.push(format!(
@@ -218,5 +228,31 @@ fn save_gantt_chart(gantt: &str, path: &str) {
     };
     if let Err(e) = file.write_all(gantt.as_bytes()) {
         eprintln!("failed to write gantt chart file");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_tasks_or_vars;
+
+    #[test]
+    fn parse_tasks_and_vars_handles_strings_and_json() {
+        let inputs = vec![
+            "build".to_string(),
+            "count=10".to_string(),
+            r#"quoted="foo=bar""#.to_string(),
+            "raw=foo=bar".to_string(),
+            r#"single='baz=qux'"#.to_string(),
+            "flag=true".to_string(),
+        ];
+
+        let (tasks, vars) = parse_tasks_or_vars(&inputs).unwrap();
+
+        assert_eq!(tasks, vec!["build".to_string()]);
+        assert_eq!(vars.get("count"), Some(&"10".to_string()));
+        assert_eq!(vars.get("quoted"), Some(&"foo=bar".to_string()));
+        assert_eq!(vars.get("raw"), Some(&"foo=bar".to_string()));
+        assert_eq!(vars.get("single"), Some(&"baz=qux".to_string()));
+        assert_eq!(vars.get("flag"), Some(&"true".to_string()));
     }
 }
