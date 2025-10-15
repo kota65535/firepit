@@ -254,7 +254,7 @@ mod tests {
             "flag=true".to_string(),
         ];
 
-        let (tasks, vars) = parse_tasks_or_vars(&inputs).expect("should parse");
+        let (tasks, vars) = parse_tasks_or_vars(&inputs).unwrap();
 
         assert_eq!(tasks, vec!["build".to_string()]);
         assert_eq!(vars.get("count"), Some(&json!(10)));
