@@ -6,7 +6,7 @@ use regex::Regex;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use tracing::warn;
+use tracing::{info, warn};
 
 #[derive(Debug, Clone)]
 pub struct Workspace {
@@ -271,7 +271,7 @@ impl Task {
         // 6. Task env
         let project_env = Self::merge_env(
             // Ignore if env file not found
-            Self::load_env_files(&config.env_files_paths()).unwrap_or(HashMap::new()),
+            Self::load_env_files(&config.env_files_paths())?,
             config.env.clone().into_iter().collect(),
         )?;
         let task_env = Self::merge_env(
@@ -387,7 +387,15 @@ impl Task {
     fn load_env_files(files: &Vec<PathBuf>) -> anyhow::Result<HashMap<String, String>> {
         let mut ret = HashMap::new();
         for f in files.iter() {
-            for item in dotenvy::from_path_iter(f).with_context(|| format!("cannot read env file {:?}", f))? {
+            let iter = match dotenvy::from_path_iter(f) {
+                Ok(it) => it,
+                Err(e) => {
+                    // Ignore if env file not found
+                    info!("cannot read env file {:?}: {:?}", f, e);
+                    continue;
+                }
+            };
+            for item in iter {
                 let (key, value) = item.with_context(|| format!("cannot parse env file {:?}", f))?;
                 ret.insert(key, value);
             }
