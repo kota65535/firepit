@@ -82,6 +82,7 @@ pub enum AppCommand {
     UpdateSelection {
         rows: u16,
         cols: u16,
+        edge: Option<Direction>,
     },
     LineSelection {
         rows: u16,

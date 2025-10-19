@@ -1,4 +1,4 @@
-use crate::app::command::{AppCommand, ScrollSize};
+use crate::app::command::{AppCommand, Direction, ScrollSize};
 use crate::app::tui::lib::RingBuffer;
 use crate::app::tui::LayoutSections;
 use crate::app::DOUBLE_CLICK_DURATION;
@@ -23,6 +23,7 @@ pub struct InputOptions<'a> {
     pub task: String,
     pub has_sidebar: bool,
     pub sidebar_width: u16,
+    pub pane_rows: u16,
 }
 
 impl InputOptions<'_> {
@@ -87,31 +88,52 @@ impl InputHandler {
         }
     }
 
-    fn translate_mouse_event(&mut self, options: InputOptions, mut mouse_event: MouseEvent) -> Option<AppCommand> {
-        // Subtract header height
-        mouse_event.row = mouse_event.row.saturating_sub(2);
+    fn translate_mouse_event(&mut self, options: InputOptions, mouse_event: MouseEvent) -> Option<AppCommand> {
+        const HEADER_HEIGHT: i32 = 2;
+
+        let kind = mouse_event.kind;
+        let mut row = i32::from(mouse_event.row) - HEADER_HEIGHT;
+        let mut column = i32::from(mouse_event.column);
 
         // Check if the mouse event is within the sidebar area
         let on_sidebar = if options.has_sidebar {
             // To make it easier to select log ranges, treat the border and some margin as part of the pane
-            let within_sidebar = mouse_event.column < options.sidebar_width - 2;
+            let cutoff = options.sidebar_width.saturating_sub(2);
+            let within_sidebar = mouse_event.column < cutoff;
             if !within_sidebar {
                 // Adjust column to be relative to the pane area
-                mouse_event.column = mouse_event.column.saturating_sub(options.sidebar_width);
+                column -= i32::from(options.sidebar_width);
             }
+            column = column.max(0);
             within_sidebar
         } else {
             false
         };
 
-        match (mouse_event.kind, on_sidebar) {
+        let mut edge = None;
+        let pane_rows = i32::from(options.pane_rows);
+        if !on_sidebar && pane_rows > 0 {
+            if row < 0 {
+                edge = Some(Direction::Up);
+                row = 0;
+            } else if row >= pane_rows - 1 {
+                edge = Some(Direction::Down);
+                row = pane_rows - 1;
+            }
+        }
+
+        row = row.max(0);
+        column = column.max(0);
+
+        let row = row.clamp(0, i32::from(u16::MAX)) as u16;
+        let column = column.clamp(0, i32::from(u16::MAX)) as u16;
+
+        match (kind, on_sidebar) {
             (MouseEventKind::ScrollDown, true) => Some(AppCommand::Down),
             (MouseEventKind::ScrollDown, false) => Some(AppCommand::ScrollDown(ScrollSize::One)),
             (MouseEventKind::ScrollUp, true) => Some(AppCommand::Up),
             (MouseEventKind::ScrollUp, false) => Some(AppCommand::ScrollUp(ScrollSize::One)),
-            (MouseEventKind::Down(MouseButton::Left), true) => Some(AppCommand::Select {
-                index: mouse_event.row as usize,
-            }),
+            (MouseEventKind::Down(MouseButton::Left), true) => Some(AppCommand::Select { index: row as usize }),
             (MouseEventKind::Down(MouseButton::Left), false) => {
                 self.click_times.push(Instant::now());
                 let num_clicks = self.num_of_multiple_clicks();
@@ -119,12 +141,13 @@ impl InputHandler {
                     Some(AppCommand::ClearSelection)
                 } else {
                     debug!("Clicked {} times", num_clicks);
-                    Some(AppCommand::LineSelection { rows: mouse_event.row })
+                    Some(AppCommand::LineSelection { rows: row })
                 }
             }
             (MouseEventKind::Drag(MouseButton::Left), _) => Some(AppCommand::UpdateSelection {
-                rows: mouse_event.row,
-                cols: mouse_event.column,
+                rows: row,
+                cols: column,
+                edge,
             }),
             _ => None,
         }
