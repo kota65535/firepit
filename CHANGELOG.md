@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.1] - 2025-10-19
+
+### 🐛 Bug Fixes
+
+- Enable scrolling on selection (#174)
+
 ## [0.12.0] - 2025-10-15
 
 ### 🚀 Features
