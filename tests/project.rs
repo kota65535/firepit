@@ -1,4 +1,4 @@
-use assertables::assert_ok;
+use assertables::{assert_err, assert_ok};
 use firepit::config::ProjectConfig;
 use firepit::project::Workspace;
 use std::collections::HashMap;
@@ -53,7 +53,7 @@ fn test_bad_env_file() {
         false,
         Some(false),
     );
-    assert_ok!(result);
+    assert_err!(result);
 }
 
 #[test]

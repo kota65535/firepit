@@ -10,9 +10,6 @@ env:
   A: a-{{ X }}
   B: b-{{ XX }}
 
-env_files:
-  - .env.root
-
 shell:
   command: shell-root
   args:

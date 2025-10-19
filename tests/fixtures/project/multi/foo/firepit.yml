@@ -4,6 +4,7 @@ env:
 
 env_files:
   - .env.foo
+  - .env.root
 
 shell:
   command: shell-foo
