@@ -62,9 +62,9 @@ impl TaskTable<'_> {
                         // Append `\u{FE0F}` (Variation Selector-16) so that the terminal treat the emoji as full-width
                         match r {
                             TaskResult::Success => Cell::new(Text::raw("\u{2705}\u{FE0F}")), // ✅
-                            TaskResult::Failure(_) => Cell::new(Text::raw("\u{274C}\u{FE0F}")), // ❌
-                            TaskResult::UpToDate => Cell::new(Text::raw("\u{1F96C}")),       // 🥬
-                            TaskResult::BadDeps | TaskResult::NotReady | TaskResult::Stopped => {
+                            TaskResult::Failure(_) | TaskResult::NotReady => Cell::new(Text::raw("\u{274C}\u{FE0F}")), // ❌
+                            TaskResult::UpToDate => Cell::new(Text::raw("\u{1F96C}")), // 🥬
+                            TaskResult::BadDeps | TaskResult::Stopped => {
                                 Cell::new(Text::raw("\u{1F6AB}")) // 🚫
                             }
                             TaskResult::Reloading => Cell::new(Text::raw("\u{267B}\u{FE0F}")), // ♻️
