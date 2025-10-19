@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.2] - 2025-10-19
+
+### 🐛 Bug Fixes
+
+- Load env files correctly (#175)
+- Change "not ready" status icon (#176)
+
 ## [0.12.1] - 2025-10-19
 
 ### 🐛 Bug Fixes
