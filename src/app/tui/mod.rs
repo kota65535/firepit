@@ -290,6 +290,7 @@ impl TuiAppState {
             task: task.name.clone(),
             has_sidebar: self.has_sidebar,
             sidebar_width: self.size.task_list_width(),
+            pane_rows: self.size.pane_rows(),
         })
     }
 
@@ -527,7 +528,11 @@ impl TuiAppState {
         Ok(())
     }
 
-    pub fn update_selection(&mut self, rows: u16, cols: u16) -> anyhow::Result<()> {
+    pub fn update_selection(&mut self, rows: u16, cols: u16, edge: Option<Direction>) -> anyhow::Result<()> {
+        if let Some(direction) = edge {
+            // Scroll the terminal when dragging selection beyond the visible viewport.
+            self.scroll_terminal_output(direction, 1)?;
+        }
         let task = self.active_task_mut()?;
         task.output.update_selection(rows, cols);
         Ok(())
@@ -865,8 +870,8 @@ impl TuiAppState {
             AppCommand::LineSelection { rows } => {
                 self.line_selection(rows)?;
             }
-            AppCommand::UpdateSelection { rows, cols } => {
-                self.update_selection(rows, cols)?;
+            AppCommand::UpdateSelection { rows, cols, edge } => {
+                self.update_selection(rows, cols, edge)?;
             }
             AppCommand::CopySelection => {
                 self.copy_selection()?;
