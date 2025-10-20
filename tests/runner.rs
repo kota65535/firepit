@@ -10,6 +10,7 @@ use firepit::app::command::{AppCommand, AppCommandChannel};
 use firepit::config::ProjectConfig;
 use firepit::project::Workspace;
 use firepit::runner::command::RunnerCommandChannel;
+use indexmap::IndexMap;
 use rstest::rstest;
 use serde_json::Value;
 use std::sync::{LazyLock, Once};
@@ -151,7 +152,10 @@ async fn test_vars() {
     outputs.insert(String::from("#baz"), String::from("baz 3"));
     outputs.insert(String::from("#qux"), String::from("qux 12001"));
 
-    run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
+    let vars = IndexMap::from([("offset".to_string(), Value::from(10))]);
+    run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -217,14 +221,18 @@ async fn test_vars_dep_multi() {
     stats.insert(String::from("p2#qux-1"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("p1#foo"), String::from("foo 1"));
+    outputs.insert(String::from("p1#foo"), String::from("foo 2"));
     outputs.insert(String::from("p1#bar-1"), String::from("bar 3"));
     outputs.insert(String::from("p2#baz-1"), String::from("baz 4"));
     outputs.insert(String::from("p2#baz-2"), String::from("baz 5"));
     outputs.insert(String::from("p2#qux"), String::from("qux 5"));
     outputs.insert(String::from("p2#qux-1"), String::from("qux 4"));
 
-    run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
+    let vars = IndexMap::from([("A".to_string(), Value::from(2))]);
+
+    run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -270,7 +278,7 @@ async fn test_vars_and_env_from_cli() {
     outputs.insert(String::from("#baz"), String::from("baz 3"));
     outputs.insert(String::from("#qux"), String::from("qux 13001"));
 
-    let vars = HashMap::from([("A".to_string(), Value::from(11))]);
+    let vars = IndexMap::from([("A".to_string(), Value::from(11))]);
 
     run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
         .await
@@ -421,7 +429,7 @@ async fn run_task(
         None,
         None,
         None,
-        HashMap::new(),
+        IndexMap::new(),
         force,
     )
     .await
@@ -432,7 +440,7 @@ async fn run_task_with_vars(
     tasks: Vec<String>,
     status_expected: HashMap<String, String>,
     outputs_expected: Option<HashMap<String, String>>,
-    vars: HashMap<String, Value>,
+    vars: IndexMap<String, Value>,
     force: bool,
 ) -> anyhow::Result<()> {
     run_task_inner(
@@ -457,7 +465,7 @@ async fn run_task_inner(
     restarts_expected: Option<HashMap<String, u64>>,
     runs_expected: Option<HashMap<String, u64>>,
     timeout_seconds: Option<u64>,
-    vars: HashMap<String, Value>,
+    vars: IndexMap<String, Value>,
     force: bool,
 ) -> anyhow::Result<()> {
     let path = path::absolute(path)?;
@@ -509,7 +517,7 @@ async fn run_task_with_watch<F>(
         &HashMap::new(),
         &tasks,
         &path,
-        &HashMap::new(),
+        &IndexMap::new(),
         force,
         Some(false),
     )
