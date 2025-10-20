@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.3] - 2025-10-20
+
+### 🐛 Bug Fixes
+
+- Arg vars should be project-level context (#177)
+
 ## [0.12.2] - 2025-10-19
 
 ### 🐛 Bug Fixes
