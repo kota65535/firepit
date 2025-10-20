@@ -13,6 +13,7 @@ use tracing::{debug, info};
 pub struct ConfigRenderer {
     root_config: ProjectConfig,
     child_configs: HashMap<String, ProjectConfig>,
+    vars: IndexMap<String, JsonValue>,
 }
 
 pub const ROOT_DIR_CONTEXT_KEY: &str = "root_dir";
@@ -22,14 +23,18 @@ pub const PROJECT_CONTEXT_KEY: &str = "project";
 pub const TASK_CONTEXT_KEY: &str = "task";
 
 impl ProjectConfig {
-    pub fn context(&self, context: &tera::Context) -> anyhow::Result<tera::Context> {
+    pub fn context(
+        &self,
+        context: &tera::Context,
+        vars: &IndexMap<String, JsonValue>,
+    ) -> anyhow::Result<tera::Context> {
         let mut tera = Tera::default();
         let mut context = context.clone();
         context.insert(PROJECT_CONTEXT_KEY, &self.name);
         context.insert(PROJECT_DIR_CONTEXT_KEY, &self.dir.as_os_str().to_str().unwrap_or(""));
 
         // Render vars
-        for (k, v) in self.vars.iter() {
+        for (k, v) in self.vars.iter().chain(vars.iter()) {
             let rk = tera.render_str(&k, &context)?;
             if !rk.is_empty() {
                 let rv = render_value(v, &mut tera, &context)?;
@@ -40,7 +45,7 @@ impl ProjectConfig {
         Ok(context)
     }
 
-    pub fn render(&self, context: &tera::Context, render_task: bool) -> anyhow::Result<ProjectConfig> {
+    pub fn render(&self, context: &tera::Context) -> anyhow::Result<ProjectConfig> {
         let mut tera = Tera::default();
 
         let mut config = self.clone();
@@ -66,16 +71,14 @@ impl ProjectConfig {
             .collect::<anyhow::Result<Vec<_>, _>>()?;
 
         // Render tasks
-        if render_task {
-            let mut rendered_tasks = HashMap::new();
+        let mut rendered_tasks = HashMap::new();
 
-            for (task_name, task_config) in config.tasks.iter_mut() {
-                let task_context = task_config.context(context)?;
-                let task_config = task_config.render(&task_context)?;
-                rendered_tasks.insert(task_name.clone(), task_config);
-            }
-            config.tasks = rendered_tasks;
+        for (task_name, task_config) in config.tasks.iter_mut() {
+            let task_context = task_config.context(context)?;
+            let task_config = task_config.render(&task_context)?;
+            rendered_tasks.insert(task_name.clone(), task_config);
         }
+        config.tasks = rendered_tasks;
 
         Ok(config)
     }
@@ -205,10 +208,15 @@ impl TaskConfig {
 }
 
 impl ConfigRenderer {
-    pub fn new(root_config: &ProjectConfig, child_config: &HashMap<String, ProjectConfig>) -> Self {
+    pub fn new(
+        root_config: &ProjectConfig,
+        child_config: &HashMap<String, ProjectConfig>,
+        vars: &IndexMap<String, JsonValue>,
+    ) -> Self {
         Self {
             root_config: root_config.clone(),
             child_configs: child_config.clone(),
+            vars: vars.clone(),
         }
     }
 
@@ -236,10 +244,10 @@ impl ConfigRenderer {
         let mut num_variants = HashMap::new();
 
         // Root project task contexts
-        let root_context = self.root_config.context(&context)?;
+        let root_context = self.root_config.context(&context, &self.vars)?;
         let mut root_config = self
             .root_config
-            .render(&root_context, false)
+            .render(&root_context)
             .with_context(|| "failed to render config of project root")?;
         for t in self.root_config.tasks.values() {
             tasks.push(t.full_name());
@@ -249,10 +257,10 @@ impl ConfigRenderer {
         // Project task contexts
         let mut child_configs = HashMap::new();
         for (k, c) in self.child_configs.iter_mut() {
-            let project_context = c.context(&root_context)?;
+            let project_context = c.context(&context, &self.vars)?;
             child_configs.insert(
                 k.clone(),
-                c.render(&project_context, false)
+                c.render(&project_context)
                     .with_context(|| format!("failed to render config of project {:?}", c.name))?,
             );
             for t in c.tasks.values() {

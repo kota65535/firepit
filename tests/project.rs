@@ -1,6 +1,7 @@
 use assertables::{assert_err, assert_ok};
 use firepit::config::ProjectConfig;
 use firepit::project::Workspace;
+use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Once;
@@ -33,7 +34,7 @@ fn test_env_file_not_found() {
         &children,
         &Vec::new(),
         &std::env::current_dir().unwrap(),
-        &HashMap::new(),
+        &IndexMap::new(),
         false,
         Some(false),
     );
@@ -49,7 +50,7 @@ fn test_bad_env_file() {
         &children,
         &Vec::new(),
         &std::env::current_dir().unwrap(),
-        &HashMap::new(),
+        &IndexMap::new(),
         false,
         Some(false),
     );
@@ -65,7 +66,7 @@ fn test_multi() {
         &children,
         &Vec::new(),
         &std::env::current_dir().unwrap(),
-        &HashMap::new(),
+        &IndexMap::new(),
         false,
         Some(false),
     )

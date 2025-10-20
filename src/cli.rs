@@ -7,6 +7,7 @@ use crate::project::Workspace;
 use crate::runner::TaskRunner;
 use crate::tokio_spawn;
 use clap::Parser;
+use indexmap::IndexMap;
 use itertools::Itertools;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -171,9 +172,9 @@ pub async fn run() -> anyhow::Result<i32> {
     app_fut.await?
 }
 
-fn parse_tasks_or_vars(items: &Vec<String>) -> anyhow::Result<(Vec<String>, HashMap<String, Value>)> {
+fn parse_tasks_or_vars(items: &Vec<String>) -> anyhow::Result<(Vec<String>, IndexMap<String, Value>)> {
     let mut tasks = Vec::new();
-    let mut vars = HashMap::new();
+    let mut vars = IndexMap::new();
     for item in items.iter() {
         match item.split_once('=') {
             Some((k, v)) => {

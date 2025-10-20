@@ -2,6 +2,7 @@ use crate::config::{DependsOnConfig, HealthCheckConfig, ProjectConfig, Restart, 
 use crate::probe::{ExecProbe, LogLineProbe, Probe};
 use crate::template::ConfigRenderer;
 use anyhow::Context;
+use indexmap::IndexMap;
 use regex::Regex;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -26,7 +27,7 @@ impl Workspace {
         child_configs: &HashMap<String, ProjectConfig>,
         tasks: &Vec<String>,
         current_dir: &Path,
-        vars: &HashMap<String, Value>,
+        vars: &IndexMap<String, Value>,
         force: bool,
         fail_fast: Option<bool>,
     ) -> anyhow::Result<Workspace> {
@@ -71,25 +72,7 @@ impl Workspace {
             }
         }
 
-        let mut root_config = root_config.clone();
-        let mut child_configs = child_configs.clone();
-
-        for t in target_tasks.iter() {
-            let (project_name, task_name) = Task::split_name(t);
-            if let Some(project_name) = project_name {
-                let task = if project_name.is_empty() {
-                    root_config.task_mut(task_name)?
-                } else {
-                    child_configs
-                        .get_mut(project_name)
-                        .with_context(|| format!("project {:?} is not defined", project_name))?
-                        .task_mut(task_name)?
-                };
-                task.vars.extend(vars.clone());
-            }
-        }
-
-        let mut renderer = ConfigRenderer::new(&root_config, &child_configs);
+        let mut renderer = ConfigRenderer::new(&root_config, &child_configs, &vars);
         let (root_config, child_configs) = renderer.render()?;
         ProjectConfig::validate_multi(&root_config, &child_configs)?;
 
