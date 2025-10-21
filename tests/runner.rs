@@ -240,18 +240,18 @@ async fn test_vars_dep_same() {
     setup();
 
     let path = BASE_PATH.join("vars_dep_same");
-    let tasks = vec![String::from("foo")];
+    let tasks = vec![String::from("foo"), String::from("bar")];
 
     let mut stats = HashMap::new();
     stats.insert(String::from("#foo"), String::from("Finished: Success"));
-    stats.insert(String::from("#bar-1"), String::from("Finished: Success"));
+    stats.insert(String::from("#bar"), String::from("Finished: Success"));
     stats.insert(String::from("#baz-1"), String::from("Finished: Success"));
     stats.insert(String::from("#qux-1"), String::from("Finished: Success"));
     stats.insert(String::from("#qux-2"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
     outputs.insert(String::from("#foo"), String::from("foo"));
-    outputs.insert(String::from("#bar-1"), String::from("bar 2"));
+    outputs.insert(String::from("#bar"), String::from("bar 2"));
     outputs.insert(String::from("#baz-1"), String::from("baz 4"));
     outputs.insert(String::from("#qux-1"), String::from("qux 6"));
     outputs.insert(String::from("#qux-2"), String::from("qux 5"));

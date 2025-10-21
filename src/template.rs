@@ -33,7 +33,8 @@ impl ProjectConfig {
         context.insert(PROJECT_CONTEXT_KEY, &self.name);
         context.insert(PROJECT_DIR_CONTEXT_KEY, &self.dir.as_os_str().to_str().unwrap_or(""));
 
-        // Render vars
+        // Render project-level vars.
+        // Argument vars override project-level vars.
         for (k, v) in self.vars.iter().chain(vars.iter()) {
             let rk = tera.render_str(&k, &context)?;
             if !rk.is_empty() {
@@ -90,7 +91,7 @@ impl TaskConfig {
         let mut context = context.clone();
         context.insert(TASK_CONTEXT_KEY, &self.full_orig_name());
 
-        // Render vars
+        // Render task-level vars
         for (k, v) in self.vars.iter() {
             let rk = tera.render_str(&k, &context)?;
             if !rk.is_empty() {
@@ -105,7 +106,7 @@ impl TaskConfig {
         let mut config = self.clone();
         let mut tera = Tera::default();
 
-        // Render vars
+        // Render task-level vars
         config.vars = render_value_map(&config.vars, &mut tera, context)?;
 
         // Render label
@@ -202,8 +203,8 @@ impl TaskConfig {
         Ok(config)
     }
 
-    pub fn same_variant(&self, other: &TaskConfig) -> bool {
-        self.project == other.project && self.orig_name == other.orig_name && self.vars == other.vars
+    pub fn is_variant(&self, other: &TaskConfig) -> bool {
+        self.project == other.project && self.orig_name == other.orig_name
     }
 }
 
@@ -271,7 +272,7 @@ impl ConfigRenderer {
 
         tasks.sort();
         for t in tasks.iter() {
-            Self::render_tasks(
+            Self::render_variant_tasks(
                 t,
                 &mut root_config,
                 &mut child_configs,
@@ -337,7 +338,7 @@ impl ConfigRenderer {
         Vec::new()
     }
 
-    fn render_tasks(
+    fn render_variant_tasks(
         task_name: &str,
         root_config: &mut ProjectConfig,
         child_configs: &mut HashMap<String, ProjectConfig>,
@@ -347,15 +348,17 @@ impl ConfigRenderer {
         contexts: &mut HashMap<String, tera::Context>,
     ) -> anyhow::Result<()> {
         // Get task config
-        let task_config = Self::get_task(task_name, raw_root_config, raw_child_configs)
-            .context(format!("unknown task {:?}", task_name))?;
+        let task_config =
+            Self::get_task(task_name, root_config, child_configs).context(format!("unknown task {:?}", task_name))?;
         let context = contexts
             .get(task_name)
             .context(format!("unknown task {:?}", task_name))?;
-        debug!("Task: {}, context: {:?}", task_name, context);
+        debug!(
+            "Task: {:?}\ncontext: {:#?}\nvars: {:#?}",
+            task_name, context, task_config.vars
+        );
 
-        // Render task config
-        let mut task_config = task_config.render(context)?;
+        let mut task_config = task_config.clone();
 
         // Render task variants.
         // When a dependency task is specified with vars, it is considered as a different task.
@@ -370,7 +373,7 @@ impl ConfigRenderer {
                 continue;
             };
 
-            // Get dependency task config
+            // Get raw dependency task config
             let dep_task = Self::get_task(&depends_on.task, raw_root_config, raw_child_configs).context(format!(
                 "unknown dependency task {:?} for {:?}",
                 depends_on.task, task_name
@@ -378,15 +381,39 @@ impl ConfigRenderer {
 
             let mut variant_task = dep_task.clone();
 
-            // Vars
-            let mut variant_task_vars = dep_task.vars.clone();
-            variant_task_vars.extend(depends_on.vars.clone());
-            variant_task.vars = variant_task_vars.clone();
+            // Merge depends_on vars into dependency task vars.
+            // Only the vars that already exist in the dependency task are merged to avoid unnecessary variant tasks.
+            for (k, v) in depends_on.vars.iter().filter(|(k, _)| dep_task.vars.contains_key(*k)) {
+                variant_task.vars.insert(k.clone(), v.clone());
+            }
 
-            // Two variants are equal when the original name and vars are the same
-            if let Some(same_variant) = Self::get_variant_tasks(&dep_task.full_name(), root_config, child_configs)
-                .iter()
-                .find(|t| t.same_variant(&variant_task))
+            // Create context from dependency task
+            let dep_context = contexts
+                .get(&dep_task.full_name())
+                .context(format!("unknown task {:?}", dep_task.full_name()))?;
+            let variant_context = variant_task.context(dep_context)?;
+
+            // Render
+            let mut rendered_variant_task = variant_task.render(&variant_context)?;
+
+            debug!(
+                "Variant?: {:?}, dependent: {:?}\ncontext: {:#?}\nvars: {:#?}",
+                rendered_variant_task.full_name(),
+                task_name,
+                variant_context,
+                rendered_variant_task.vars,
+            );
+
+            // Two variants are equal when their original names and contexts are same
+            if let Some(same_variant) =
+                Self::get_variant_tasks(&rendered_variant_task.full_name(), root_config, child_configs)
+                    .iter()
+                    .find(|t| {
+                        contexts
+                            .get(&t.full_name())
+                            .map(|c| *c == variant_context)
+                            .unwrap_or(false)
+                    })
             {
                 // Replace the depends_on task name with the variant with the same vars
                 depends_on.task = same_variant.full_name();
@@ -399,35 +426,15 @@ impl ConfigRenderer {
                 .and_modify(|v| *v += 1)
                 .or_insert(1);
             let variant_task_name = format!("{}-{}", dep_task.full_name(), suffix);
-            let (_, task_name) = Task::split_name(&variant_task_name);
-            variant_task.name = task_name.to_string();
+            rendered_variant_task.name = Task::split_name(&variant_task_name).1.to_string();
 
             info!(
-                "{} -> {} ({})\tvars: {:?} + {:?} = {:?}",
+                "Variant: {:?}, dependent: {:?}\ncontext: {:#?}\nvars: {:#?}",
+                rendered_variant_task.full_name(),
                 task_name,
-                dep_task.full_name(),
-                variant_task_name,
-                dep_task.vars,
-                depends_on.vars,
-                variant_task_vars
+                variant_context,
+                rendered_variant_task.vars
             );
-
-            // Create context from dependency task
-            let dep_context = contexts
-                .get(&dep_task.full_name())
-                .context(format!("unknown task {:?}", dep_task.full_name()))?;
-            let variant_context = variant_task.context(dep_context)?;
-
-            info!(
-                "{} -> {} ({})\tcontext: {:?}",
-                task_name,
-                dep_task.full_name(),
-                variant_task_name,
-                variant_context
-            );
-
-            // Render
-            let rendered_variant_task = variant_task.render(&variant_context)?;
 
             contexts.insert(variant_task_name.clone(), variant_context);
 
@@ -439,7 +446,7 @@ impl ConfigRenderer {
             depends_on.task = variant_task_name.clone();
 
             // Render dependency tasks recursively
-            Self::render_tasks(
+            Self::render_variant_tasks(
                 &variant_task_name,
                 root_config,
                 child_configs,

@@ -16,6 +16,7 @@ clap = { version = "4.5.20", features = ["derive"] }
 console = "0.16.0"
 console-subscriber = "0.4.1"
 crossterm = { version = "0.29.0", features = ["event-stream"] }
+derivative = "2.2.0"
 dotenvy = "0.15.7"
 futures = "0.3.31"
 globmatch = "0.3.0"

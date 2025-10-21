@@ -114,8 +114,8 @@ pub async fn run() -> anyhow::Result<i32> {
 
     info!("Tasks: {:?}", tasks);
     info!("Vars: {:?}", vars);
-    info!("Root project config: {:?}", root);
-    info!("Child project config: {:?}", children);
+    info!("Raw root project config:\n{:#?}", root);
+    info!("Raw child project config:\n{:#?}", children);
 
     // Print workspace information if no task specified
     if tasks.is_empty() {

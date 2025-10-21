@@ -2,6 +2,7 @@ use crate::project::Task;
 use crate::template::ROOT_DIR_CONTEXT_KEY;
 use crate::util::merge_yaml;
 use anyhow::Context;
+use derivative::Derivative;
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -20,7 +21,8 @@ use tracing::info;
 
 const CONFIG_FILE: [&str; 2] = ["firepit.yml", "firepit.yaml"];
 
-#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Deserialize, Serialize, JsonSchema, Derivative)]
+#[derivative(Debug)]
 pub struct ProjectConfig {
     /// Project name
     #[serde(skip)]
@@ -93,6 +95,7 @@ pub struct ProjectConfig {
 
     /// Raw YAML data
     #[serde(skip)]
+    #[derivative(Debug = "ignore")]
     pub raw: Value,
 }
 
