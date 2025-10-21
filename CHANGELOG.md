@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.5] - 2025-10-21
+
+### 🐛 Bug Fixes
+
+- Duplicate variant tasks (#180)
+
 ## [0.12.4] - 2025-10-21
 
 ### 🐛 Bug Fixes
