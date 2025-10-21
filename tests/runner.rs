@@ -274,11 +274,14 @@ async fn test_vars_and_env_from_cli() {
 
     let mut outputs = HashMap::new();
     outputs.insert(String::from("#foo"), String::from("foo 11"));
-    outputs.insert(String::from("#bar"), String::from("bar 2.2"));
+    outputs.insert(String::from("#bar"), String::from("bar 11 2.2"));
     outputs.insert(String::from("#baz"), String::from("baz 3"));
     outputs.insert(String::from("#qux"), String::from("qux 13001"));
 
-    let vars = IndexMap::from([("A".to_string(), Value::from(11))]);
+    let vars = IndexMap::from([
+        ("A".to_string(), Value::from(11)),
+        ("D".to_string(), Value::from(13002)),
+    ]);
 
     run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
         .await

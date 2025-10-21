@@ -72,6 +72,28 @@ impl Workspace {
             }
         }
 
+        let mut root_config = root_config.clone();
+        let mut child_configs = child_configs.clone();
+        for t in target_tasks.iter() {
+            let (project_name, task_name) = Task::split_name(t);
+            if let Some(project_name) = project_name {
+                let task = if project_name.is_empty() {
+                    root_config.task_mut(task_name)?
+                } else {
+                    child_configs
+                        .get_mut(project_name)
+                        .with_context(|| format!("project {:?} is not defined", project_name))?
+                        .task_mut(task_name)?
+                };
+                let vars_override = vars
+                    .clone()
+                    .into_iter()
+                    .filter(|(k, _)| task.vars.contains_key(k))
+                    .collect::<IndexMap<_, _>>();
+                task.vars.extend(vars_override);
+            }
+        }
+
         let mut renderer = ConfigRenderer::new(&root_config, &child_configs, &vars);
         let (root_config, child_configs) = renderer.render()?;
         ProjectConfig::validate_multi(&root_config, &child_configs)?;
