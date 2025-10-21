@@ -1,3 +1,6 @@
+vars:
+  X: 10
+
 tasks:
   foo:
     command: echo "foo"
@@ -15,11 +18,12 @@ tasks:
   bar:
     vars:
       B: 2
+      E: "{{ X }}"
     command: echo "bar {{ B }}"
     depends_on:
       - task: baz
         vars:
-          C: 4
+          C: "{{ B + 2 }}"
       - task: qux
         vars:
           D: 6
