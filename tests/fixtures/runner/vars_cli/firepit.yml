@@ -11,9 +11,11 @@ tasks:
       - qux
 
   bar:
+    vars:
+      A: 3
     env:
       B: "{{ B }}"
-    command: echo "bar ${B}"
+    command: echo "bar {{ A }} ${B}"
 
   baz:
     vars:
