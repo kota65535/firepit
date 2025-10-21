@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.4] - 2025-10-21
+
+### 🐛 Bug Fixes
+
+- Arg vars should override target task vars (#179)
+
 ## [0.12.3] - 2025-10-20
 
 ### 🐛 Bug Fixes
