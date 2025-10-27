@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.13.0] - 2025-10-27
+
+### 🚀 Features
+
+- Task description (#181)
+
 ## [0.12.5] - 2025-10-21
 
 ### 🐛 Bug Fixes
