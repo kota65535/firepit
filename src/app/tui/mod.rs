@@ -38,7 +38,7 @@ use std::collections::HashMap;
 use std::io::{self, Stdout, Write};
 use tokio::{
     sync::mpsc,
-    time::{Duration, Instant},
+    time::Instant,
 };
 use tracing::{debug, error, info};
 

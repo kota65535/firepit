@@ -31,7 +31,7 @@ pub struct ProjectConfig {
     /// Child projects.
     /// Valid only in root project config.
     #[serde(default)]
-    pub projects: HashMap<String, String>,
+    pub projects: IndexMap<String, String>,
 
     /// Shell configuration for all tasks.
     #[serde(default = "default_shell")]
@@ -61,7 +61,7 @@ pub struct ProjectConfig {
 
     /// Task definitions
     #[serde(default)]
-    pub tasks: HashMap<String, TaskConfig>,
+    pub tasks: IndexMap<String, TaskConfig>,
 
     /// Task concurrency.
     /// Valid only in root project config.
@@ -142,10 +142,10 @@ pub fn default_ui() -> UI {
 }
 
 impl ProjectConfig {
-    pub fn new_multi(dir: &Path) -> anyhow::Result<(ProjectConfig, HashMap<String, ProjectConfig>)> {
+    pub fn new_multi(dir: &Path) -> anyhow::Result<(ProjectConfig, IndexMap<String, ProjectConfig>)> {
         let dir = path::absolute(dir)?;
         let mut root_config = ProjectConfig::find_root(&dir)?;
-        let mut children = HashMap::new();
+        let mut children = IndexMap::new();
 
         // Tera context is used for merge
         let mut context = tera::Context::new();
@@ -177,7 +177,7 @@ impl ProjectConfig {
         Ok((root_config, children))
     }
 
-    pub fn validate_multi(root: &ProjectConfig, children: &HashMap<String, ProjectConfig>) -> anyhow::Result<()> {
+    pub fn validate_multi(root: &ProjectConfig, children: &IndexMap<String, ProjectConfig>) -> anyhow::Result<()> {
         let mut tasks = root.tasks.values().map(|t| t.full_name()).collect::<HashSet<_>>();
         for p in children.values() {
             tasks.extend(p.tasks.values().map(|t| t.full_name()).collect::<HashSet<_>>());
@@ -350,6 +350,10 @@ impl ProjectConfig {
             .get_mut(name)
             .with_context(|| anyhow::anyhow!("task {:?} is not defined", name))
     }
+
+    pub fn relative_path_from(&self, path: &Path) -> PathBuf {
+        self.dir.strip_prefix(path).unwrap_or(&self.dir).to_path_buf()
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
@@ -369,6 +373,9 @@ pub struct TaskConfig {
 
     /// Label for display
     pub label: Option<String>,
+
+    /// Description
+    pub description: Option<String>,
 
     /// Command to run
     pub command: Option<String>,

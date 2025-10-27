@@ -79,6 +79,7 @@ pub static BOLD_YELLOW_REVERSE: Lazy<Style> = Lazy::new(|| Style::new().yellow()
 pub static UNDERLINE: Lazy<Style> = Lazy::new(|| Style::new().underlined());
 pub static BOLD_CYAN: Lazy<Style> = Lazy::new(|| Style::new().cyan().bold());
 pub static BOLD_GREY: Lazy<Style> = Lazy::new(|| Style::new().dim().bold());
+pub static BOLD_YELLOW: Lazy<Style> = Lazy::new(|| Style::new().yellow().bold());
 pub static BOLD_GREEN: Lazy<Style> = Lazy::new(|| Style::new().green().bold());
 pub static BOLD_RED: Lazy<Style> = Lazy::new(|| Style::new().red().bold());
 

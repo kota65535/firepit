@@ -24,7 +24,7 @@ pub struct Workspace {
 impl Workspace {
     pub fn new(
         root_config: &ProjectConfig,
-        child_configs: &HashMap<String, ProjectConfig>,
+        child_configs: &IndexMap<String, ProjectConfig>,
         tasks: &Vec<String>,
         current_dir: &Path,
         vars: &IndexMap<String, Value>,
