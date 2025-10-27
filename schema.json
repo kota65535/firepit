@@ -373,6 +373,13 @@
             "$ref": "#/definitions/DependsOnConfig"
           }
         },
+        "description": {
+          "description": "Description",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "env": {
           "description": "Environment variables. Merged with the project's env.",
           "default": {},
