@@ -1,4 +1,4 @@
-use crate::app::cui::lib::BOLD;
+use crate::app::cui::lib::{BOLD, BOLD_YELLOW};
 use crate::app::cui::CuiApp;
 use crate::app::tui::TuiApp;
 use crate::config::{ProjectConfig, UI};
@@ -9,6 +9,7 @@ use crate::tokio_spawn;
 use clap::Parser;
 use indexmap::IndexMap;
 use itertools::Itertools;
+use nix::unistd::getcwd;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::File;
@@ -207,23 +208,74 @@ fn strip_matching_quotes(input: &str) -> Option<&str> {
     }
     None
 }
-fn print_summary(root: &ProjectConfig, children: &HashMap<String, ProjectConfig>) {
+fn print_summary(root: &ProjectConfig, children: &IndexMap<String, ProjectConfig>) -> anyhow::Result<()> {
+    let (term_width, _) = crossterm::terminal::size()?;
     let mut lines = Vec::new();
-    lines.push(format!(
-        "{}:\n  dir: {:?}\n  tasks: {:?}",
-        BOLD.apply_to("root").to_string(),
-        root.dir,
-        root.tasks.keys().sorted().collect::<Vec<_>>()
-    ));
-    for (k, v) in children.iter() {
-        lines.push(format!(
-            "{}:\n  dir: {:?}\n  tasks: {:?}",
-            BOLD.apply_to(k).to_string(),
-            v.dir,
-            v.tasks.keys().sorted().collect::<Vec<_>>()
-        ))
+    if children.is_empty() {
+        // Show single project tasks
+        lines.extend(project_task_lines(root));
+    } else {
+        // Show multi project tasks
+        let cwd = getcwd().unwrap_or(path::PathBuf::new());
+        if cwd == root.dir {
+            // Show all projects' tasks
+            lines.push(format!("{} {}", BOLD.apply_to("Project:").to_string(), "root"));
+            lines.extend(project_task_lines(root));
+            lines.push("".to_string());
+            for c in children.values() {
+                let dir = root.projects.get(&c.name).cloned().unwrap_or_default();
+                lines.push("─".to_string());
+                lines.push(format!("{} {}", BOLD.apply_to("Project:  ").to_string(), c.name));
+                lines.push(format!("{} {}", BOLD.apply_to("Directory:").to_string(), dir));
+                lines.extend(project_task_lines(c));
+                lines.push("".to_string());
+            }
+        } else {
+            // Show the current project's tasks only
+            if let Some(c) = children.values().find(|v| cwd == v.dir) {
+                let dir = root.projects.get(&c.name).cloned().unwrap_or_default();
+                lines.push(format!("{} {}", BOLD.apply_to("Project:  ").to_string(), c.name));
+                lines.push(format!("{} {}", BOLD.apply_to("Directory:").to_string(), dir));
+                lines.extend(project_task_lines(c));
+                lines.push("".to_string());
+            }
+        }
     }
-    eprintln!("{}", lines.join("\n"));
+    let max_width = lines.iter().map(|l| l.len()).max().unwrap_or(0);
+    let lines = lines
+        .iter()
+        .map(|line| {
+            if line.starts_with("─") {
+                "─".repeat(max_width.min(usize::from(term_width)))
+            } else {
+                line.clone()
+            }
+        })
+        .collect_vec();
+    for line in lines.iter() {
+        eprintln!("{}", line);
+    }
+
+    Ok(())
+}
+
+fn project_task_lines(project: &ProjectConfig) -> Vec<String> {
+    let mut ret = Vec::new();
+    ret.push(BOLD.apply_to("Tasks:").to_string());
+    // Show tasks with description first
+    for v in project.tasks.values().filter(|v| v.description.is_some()) {
+        ret.push(format!("  • {}", BOLD_YELLOW.apply_to(v.name.clone())));
+        if let Some(description) = v.description.clone() {
+            for line in description.trim_end().split("\n") {
+                ret.push(format!("      {}", line));
+            }
+        }
+    }
+    // Then show tasks without description
+    for v in project.tasks.values().filter(|v| v.description.is_none()) {
+        ret.push(format!("  • {}", BOLD_YELLOW.apply_to(v.name.clone())));
+    }
+    ret
 }
 
 fn save_gantt_chart(gantt: &str, path: &str) {

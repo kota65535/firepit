@@ -517,7 +517,7 @@ async fn run_task_with_watch<F>(
     let path = path::absolute(path).unwrap();
     let ws = Workspace::new(
         &ProjectConfig::new("", &path).unwrap(),
-        &HashMap::new(),
+        &IndexMap::new(),
         &tasks,
         &path,
         &IndexMap::new(),

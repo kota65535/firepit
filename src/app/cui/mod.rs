@@ -6,7 +6,7 @@ pub mod output;
 pub mod prefixed;
 
 use crate::app::command::AppCommand;
-use crate::app::command::{AppCommandChannel, TaskResult};
+use crate::app::command::AppCommandChannel;
 use crate::app::cui::color::ColorSelector;
 use crate::app::cui::lib::{ColorConfig, BOLD_RED, RED};
 use crate::app::cui::output::{OutputClient, OutputClientBehavior, OutputSink};

@@ -12,7 +12,7 @@ use tracing::{debug, info};
 
 pub struct ConfigRenderer {
     root_config: ProjectConfig,
-    child_configs: HashMap<String, ProjectConfig>,
+    child_configs: IndexMap<String, ProjectConfig>,
     vars: IndexMap<String, JsonValue>,
 }
 
@@ -72,7 +72,7 @@ impl ProjectConfig {
             .collect::<anyhow::Result<Vec<_>, _>>()?;
 
         // Render tasks
-        let mut rendered_tasks = HashMap::new();
+        let mut rendered_tasks = IndexMap::new();
 
         for (task_name, task_config) in config.tasks.iter_mut() {
             let task_context = task_config.context(context)?;
@@ -211,7 +211,7 @@ impl TaskConfig {
 impl ConfigRenderer {
     pub fn new(
         root_config: &ProjectConfig,
-        child_config: &HashMap<String, ProjectConfig>,
+        child_config: &IndexMap<String, ProjectConfig>,
         vars: &IndexMap<String, JsonValue>,
     ) -> Self {
         Self {
@@ -238,7 +238,7 @@ impl ConfigRenderer {
         context
     }
 
-    pub fn render(&mut self) -> anyhow::Result<(ProjectConfig, HashMap<String, ProjectConfig>)> {
+    pub fn render(&mut self) -> anyhow::Result<(ProjectConfig, IndexMap<String, ProjectConfig>)> {
         let context = self.base_context();
         let mut task_contexts = HashMap::new();
         let mut tasks = Vec::new();
@@ -256,7 +256,7 @@ impl ConfigRenderer {
         }
 
         // Project task contexts
-        let mut child_configs = HashMap::new();
+        let mut child_configs = IndexMap::new();
         for (k, c) in self.child_configs.iter_mut() {
             let project_context = c.context(&context, &self.vars)?;
             child_configs.insert(
@@ -289,7 +289,7 @@ impl ConfigRenderer {
     fn set_task<'a>(
         task_config: TaskConfig,
         root_config: &'a mut ProjectConfig,
-        child_configs: &'a mut HashMap<String, ProjectConfig>,
+        child_configs: &'a mut IndexMap<String, ProjectConfig>,
     ) {
         if task_config.project.is_empty() {
             root_config.tasks.insert(task_config.name.clone(), task_config);
@@ -301,7 +301,7 @@ impl ConfigRenderer {
     fn get_task<'a>(
         task_name: &str,
         root_config: &'a ProjectConfig,
-        child_configs: &'a HashMap<String, ProjectConfig>,
+        child_configs: &'a IndexMap<String, ProjectConfig>,
     ) -> Option<&'a TaskConfig> {
         if let Some((p, t)) = task_name.split_once("#") {
             if p.is_empty() {
@@ -317,7 +317,7 @@ impl ConfigRenderer {
     fn get_variant_tasks<'a>(
         orig_name: &str,
         root_config: &'a ProjectConfig,
-        child_configs: &'a HashMap<String, ProjectConfig>,
+        child_configs: &'a IndexMap<String, ProjectConfig>,
     ) -> Vec<&'a TaskConfig> {
         if let Some((p, orig_name)) = orig_name.split_once("#") {
             if p.is_empty() {
@@ -341,9 +341,9 @@ impl ConfigRenderer {
     fn render_variant_tasks(
         task_name: &str,
         root_config: &mut ProjectConfig,
-        child_configs: &mut HashMap<String, ProjectConfig>,
+        child_configs: &mut IndexMap<String, ProjectConfig>,
         raw_root_config: &mut ProjectConfig,
-        raw_child_configs: &mut HashMap<String, ProjectConfig>,
+        raw_child_configs: &mut IndexMap<String, ProjectConfig>,
         num_variants: &mut HashMap<String, usize>,
         contexts: &mut HashMap<String, tera::Context>,
     ) -> anyhow::Result<()> {
