@@ -1,5 +1,9 @@
 $schema: https://raw.githubusercontent.com/kota65535/firepit/refs/heads/main/schema.json
 
 projects:
-  client: client
-  server: server
+  client: packages/client
+  server: packages/server
+
+tasks:
+  install:
+    command: bun install
