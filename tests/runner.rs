@@ -473,7 +473,7 @@ async fn run_task_inner(
 ) -> anyhow::Result<()> {
     let path = path::absolute(path)?;
     let (root, children) = ProjectConfig::new_multi(&path)?;
-    let ws = Workspace::new(&root, &children, &tasks, &path, &vars, force, Some(false))?;
+    let ws = Workspace::new(&root, &children, &tasks, &path, &vars, force, false, Some(false))?;
     // Create runner
     let mut runner = TaskRunner::new(&ws)?;
     let (app_tx, app_rx) = AppCommandChannel::new();
@@ -522,6 +522,7 @@ async fn run_task_with_watch<F>(
         &path,
         &IndexMap::new(),
         force,
+        true,
         Some(false),
     )
     .unwrap();
@@ -635,6 +636,12 @@ fn handle_events(
             }
         }
         runner_tx.quit();
+
+        let outputs = outputs
+            .into_iter()
+            .filter(|(_, v)| !v.is_empty())
+            .collect::<HashMap<_, _>>();
+
         assert_eq!(statuses_expected, statuses);
         if let Some(outputs_expected) = outputs_expected {
             assert_eq!(outputs_expected, outputs);

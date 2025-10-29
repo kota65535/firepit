@@ -125,7 +125,16 @@ pub async fn run() -> anyhow::Result<i32> {
     }
 
     // Aggregate information in config files into a more workable form
-    let ws = Workspace::new(&root, &children, &tasks, dir.as_path(), &vars, args.force, fail_fast)?;
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &tasks,
+        dir.as_path(),
+        &vars,
+        args.force,
+        args.watch,
+        fail_fast,
+    )?;
 
     // Create runner
     let mut runner = TaskRunner::new(&ws)?;

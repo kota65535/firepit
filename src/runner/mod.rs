@@ -31,8 +31,8 @@ pub struct TaskRunner {
     pub target_tasks: Vec<String>,
     pub tasks: Vec<Task>,
     pub task_graph: TaskGraph,
-    pub watcher: FileWatcher,
     pub manager: ProcessManager,
+    pub watcher: Option<FileWatcher>,
     pub concurrency: usize,
 
     pub command_tx: RunnerCommandChannel,
@@ -54,7 +54,11 @@ impl TaskRunner {
         let tasks = task_graph.sort()?;
         debug!("Task graph:\n{:?}", task_graph);
 
-        let file_watcher = FileWatcher::new(&all_tasks, &ws.dir, WATCHER_DEBOUNCE_DURATION);
+        let file_watcher = if ws.watch {
+            Some(FileWatcher::new(&all_tasks, &ws.dir, WATCHER_DEBOUNCE_DURATION))
+        } else {
+            None
+        };
 
         let manager = ProcessManager::new(ws.use_pty);
 
@@ -112,10 +116,11 @@ impl TaskRunner {
             .context("error while visiting task graph")?;
 
         // Run file watcher
-        let FileWatcherHandle {
-            watcher_tx,
-            future: watcher_fut,
-        } = self.watcher.run(&self.command_tx)?;
+        let watcher_handle = if let Some(watcher) = &mut self.watcher {
+            Some(watcher.run(&self.command_tx)?)
+        } else {
+            None
+        };
 
         // Task futures
         let mut task_fut = FuturesUnordered::new();
@@ -395,12 +400,18 @@ impl TaskRunner {
         Self::join(&mut task_fut).await?;
         debug!("Tasks finished");
 
-        if let Err(err) = watcher_tx.send(WatcherCommand::Stop) {
-            warn!("Failed to send cancel watcher: {:?}", err);
+        if let Some(FileWatcherHandle {
+            watcher_tx,
+            future: watcher_fut,
+        }) = watcher_handle
+        {
+            if let Err(err) = watcher_tx.send(WatcherCommand::Stop) {
+                warn!("Failed to send cancel watcher: {:?}", err);
+            }
+            debug!("Waiting watcher to finish...");
+            watcher_fut.await?;
+            debug!("Watcher finished");
         }
-        debug!("Waiting watcher to finish...");
-        watcher_fut.await?;
-        debug!("Watcher finished");
 
         // Notify app the runner finished
         app_tx.done().await;
