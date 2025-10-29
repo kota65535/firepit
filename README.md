@@ -16,6 +16,7 @@
 - [Variables and Templating](#variables-and-templating)
 - [Environments](#environments)
 - [Merging Config Files](#merging-config-files)
+- [Watch Mode](#watch-mode)
 - [Incremental Build](#incremental-build)
 - [Terminal UI](#terminal-ui)
   - [Sidebar](#sidebar)
