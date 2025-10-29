@@ -32,6 +32,8 @@
 
 ## Installation
 
+Firepit is supported on macOS and Linux.
+
 ```bash
 curl -LsSf https://github.com/kota65535/firepit/releases/latest/download/firepit-installer.sh | sh
 ```
