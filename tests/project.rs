@@ -36,6 +36,7 @@ fn test_env_file_not_found() {
         &std::env::current_dir().unwrap(),
         &IndexMap::new(),
         false,
+        false,
         Some(false),
     );
     assert_ok!(result);
@@ -52,6 +53,7 @@ fn test_bad_env_file() {
         &std::env::current_dir().unwrap(),
         &IndexMap::new(),
         false,
+        false,
         Some(false),
     );
     assert_err!(result);
@@ -67,6 +69,7 @@ fn test_multi() {
         &Vec::new(),
         &std::env::current_dir().unwrap(),
         &IndexMap::new(),
+        false,
         false,
         Some(false),
     )

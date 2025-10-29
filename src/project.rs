@@ -16,6 +16,7 @@ pub struct Workspace {
     pub target_tasks: Vec<String>,
     pub concurrency: usize,
     pub force: bool,
+    pub watch: bool,
     pub use_pty: bool,
     pub fail_fast: bool,
     pub dir: PathBuf,
@@ -29,6 +30,7 @@ impl Workspace {
         current_dir: &Path,
         vars: &IndexMap<String, Value>,
         force: bool,
+        watch: bool,
         fail_fast: Option<bool>,
     ) -> anyhow::Result<Workspace> {
         let mut target_tasks = Vec::new();
@@ -123,6 +125,7 @@ impl Workspace {
             target_tasks,
             concurrency: root_config.concurrency,
             force,
+            watch,
             use_pty,
             fail_fast,
             dir: current_dir.to_owned(),
