@@ -1,0 +1,53 @@
+$schema: https://raw.githubusercontent.com/kota65535/firepit/refs/heads/main/schema.json
+
+includes:
+  - "{{ root_dir }}/firepit-base.yml"
+
+depends_on:
+  - "#install"
+
+tasks:
+  dev:
+    description: Run development server
+    command: bunx vite
+    vars:
+      port: 5173
+    depends_on:
+      - server#dev
+    service:
+      healthcheck:
+        command: nc -z localhost {{ port }}
+        interval: 2
+
+  check:
+    description: Run typecheck, lint & format
+    depends_on:
+      - typecheck
+      - lint
+      - format
+
+  typecheck:
+    description: Check TypeScript types
+    command: bunx tsc --noEmit
+
+  lint:
+    description: Lint the codebase
+    vars:
+      write: true
+    command: bunx biome lint {% if write %}--write{% endif %}
+
+  format:
+    description: Format the codebase
+    vars:
+      write: true
+    command: bunx biome format {% if write %}--write{% endif %}
+
+  build:
+    description: Build frontend bundle
+    command: |
+      bunx tsc -b
+      bunx vite build
+
+  publish:
+    description: Publish to GitHub Packages
+    command: # TODO: Implement publish command

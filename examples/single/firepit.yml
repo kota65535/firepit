@@ -1,25 +1,88 @@
 $schema: https://raw.githubusercontent.com/kota65535/firepit/refs/heads/main/schema.json
 
+# Use bash with -eux flags for better debugging
+shell:
+  command: bash
+  args:
+    - -eux
+    - -c
+
+vars:
+  app_name: single
+  aws_account_id: 123456789012
+  aws_region: ap-northeast-1
+  ecr_registry: "{{ aws_account_id }}.dkr.ecr.{{ aws_region }}.amazonaws.com"
+
+env:
+  TZ: Asia/Tokyo
+
 tasks:
-  # Install dependencies
   install:
+    description: Install dependencies
     command: bun install
 
-  # Run Hono server
   dev:
-    command: bun run dev
+    description: Run development server
+    command: bun run --hot src/index.ts
+    env:
+      PORT: 3000
+      REDIS_URL: redis://localhost:6379
     depends_on:
       - install
       - db
     service:
       healthcheck:
         command: nc -z localhost 3000
-        start_period: 1
+        interval: 2
 
-  # Run Redis server
   db:
+    description: Run redis server
     command: redis-server
     service:
       healthcheck:
         command: nc -z localhost 6379
-        start_period: 1
+        interval: 2
+
+  lint:
+    description: Lint the codebase
+    vars:
+      write: true
+    command: bunx biome lint {% if write %}--write{% endif %}
+
+  format:
+    description: Format the codebase
+    vars:
+      write: true
+    command: bunx biome format {% if write %}--write{% endif %}
+
+  check:
+    description: Run lint & format
+    depends_on:
+      - lint
+      - format
+
+  compile:
+    description: Generate standalone executable
+    command: bun build src/index.ts --compile --outfile dist/app
+    inputs:
+      - src/**
+    outputs:
+      - dist/app
+    depends_on:
+      - install
+
+  build:
+    description: Build Docker image
+    vars:
+      ecr_repository: "{{ ecr_registry }}/{{ app_name }}"
+    command: docker build -t {{ ecr_repository }}:latest .
+    depends_on:
+      - compile
+
+  publish:
+    description: Publish Docker image to AWS ECR
+    vars:
+      ecr_repository: "{{ ecr_registry }}/{{ app_name }}"
+    command: docker push {{ ecr_repository }}:latest
+    depends_on:
+      - build

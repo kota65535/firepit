@@ -1,0 +1,93 @@
+$schema: https://raw.githubusercontent.com/kota65535/firepit/refs/heads/main/schema.json
+
+includes:
+  - "{{ root_dir }}/firepit-base.yml"
+
+vars:
+  ecr_repository: "{{ ecr_registry }}/{{ project }}"
+  db_url_base: postgresql://postgres:postgres@localhost
+
+depends_on:
+  - "#install"
+
+tasks:
+  dev:
+    description: Run development server
+    command: bun run --hot src/index.ts
+    vars:
+      port: 3000
+      db_port: 5432
+    env:
+      PORT: "{{ port }}"
+      DATABASE_URL: "{{ db_url_base }}:{{ db_port }}/example"
+    depends_on:
+      - task: db
+        vars:
+          port: "{{ db_port }}"
+    service:
+      healthcheck:
+        command: nc -z localhost {{ port }}
+        interval: 2
+
+  db:
+    description: Push PostgreSQL table schema
+    vars:
+      port: 5432
+    env:
+      DATABASE_URL: "{{ db_url_base }}:{{ port }}/example"
+    command: bunx drizzle-kit push
+    depends_on:
+      - task: raw-db
+        vars:
+          port: "{{ port }}"
+
+  raw-db:
+    description: Run PostgreSQL server
+    vars:
+      port: 5432
+    env:
+      PORT: "{{ port }}"
+    command: docker-compose up
+    service:
+      healthcheck:
+        command: nc -z localhost {{ port }}
+        interval: 2
+
+  check:
+    description: Run typecheck, lint & format
+    depends_on:
+      - typecheck
+      - lint
+      - format
+
+  typecheck:
+    description: Check TypeScript types
+    command: bunx tsc --noEmit
+
+  lint:
+    description: Lint the codebase
+    vars:
+      write: true
+    command: bunx biome lint {% if write %}--write{% endif %}
+
+  format:
+    description: Format the codebase
+    vars:
+      write: true
+    command: bunx biome format {% if write %}--write{% endif %}
+
+  build:
+    description: Build Docker image
+    command: docker build -t {{ ecr_repository }}:latest .
+    depends_on:
+      - compile
+
+  compile:
+    description: Generate standalone executable
+    command: bun build src/index.ts --compile --outfile dist/app
+
+  publish:
+    description: Publish Docker image to AWS ECR
+    command: docker push {{ ecr_repository }}:latest
+    depends_on:
+      - build

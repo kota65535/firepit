@@ -1,0 +1,15 @@
+vars:
+  aws_account_id: 100648708022
+  aws_region: ap-northeast-1
+  ecr_registry: "{{ aws_account_id }}.dkr.ecr.{{ aws_region }}.amazonaws.com"
+
+env:
+  TZ: Asia/Tokyo
+
+shell:
+  command: bash
+  args:
+    - -eux
+    - -o
+    - pipefail
+    - -c
