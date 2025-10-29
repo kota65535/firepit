@@ -4,6 +4,21 @@
 
 ![img.png](imgs/img.png)
 
+- [Features](#features)
+- [Installation](#installation)
+- [Getting Started](#getting-started)
+- [Project Structure](#project-structure)
+  - [Single project](#single-project)
+  - [Multi project (monorepo)](#multi-project-monorepo)
+- [Tasks and Services](#tasks-and-services)
+- [Dependencies](#dependencies)
+- [Service Readiness](#service-readiness)
+- [Variables and Templating](#variables-and-templating)
+- [Environments](#environments)
+- [Merging Config Files](#merging-config-files)
+- [Incremental Build](#incremental-build)
+- [Terminal UI](#terminal-ui)
+
 ## Features
 
 - Individual task logs
