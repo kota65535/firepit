@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.13.1] - 2025-10-29
+
+### 🐛 Bug Fixes
+
+- Watch mode was always enabled (#185)
+
+### 📚 Documentation
+
+- Add README (#183)
+- Update images
+- Supported OS
+- Watch mode
+
 ## [0.13.0] - 2025-10-27
 
 ### 🚀 Features
