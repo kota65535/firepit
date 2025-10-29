@@ -1,5 +1,8 @@
 $schema: https://raw.githubusercontent.com/kota65535/firepit/refs/heads/main/schema.json
 
+includes:
+  - "{{ root_dir }}/firepit-base.yml"
+
 depends_on:
   - "#install"
 

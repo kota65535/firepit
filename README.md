@@ -18,6 +18,10 @@
 - [Merging Config Files](#merging-config-files)
 - [Incremental Build](#incremental-build)
 - [Terminal UI](#terminal-ui)
+  - [Sidebar](#sidebar)
+  - [Main View](#main-view)
+  - [Log Search](#log-search)
+  - [Interaction](#interaction)
 
 ## Features
 

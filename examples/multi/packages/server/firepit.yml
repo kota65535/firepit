@@ -53,6 +53,17 @@ tasks:
         command: nc -z localhost {{ port }}
         interval: 2
 
+  check:
+    description: Run typecheck, lint & format
+    depends_on:
+      - typecheck
+      - lint
+      - format
+
+  typecheck:
+    description: Check TypeScript types
+    command: bunx tsc --noEmit
+
   lint:
     description: Lint the codebase
     vars:
@@ -65,21 +76,15 @@ tasks:
       write: true
     command: bunx biome format {% if write %}--write{% endif %}
 
-  check:
-    description: Run lint & format
-    depends_on:
-      - lint
-      - format
-
-  compile:
-    description: Generate standalone executable
-    command: bun build src/index.ts --compile --outfile dist/app
-
   build:
     description: Build Docker image
     command: docker build -t {{ ecr_repository }}:latest .
     depends_on:
       - compile
+
+  compile:
+    description: Generate standalone executable
+    command: bun build src/index.ts --compile --outfile dist/app
 
   publish:
     description: Publish Docker image to AWS ECR

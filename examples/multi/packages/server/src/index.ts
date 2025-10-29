@@ -1,13 +1,23 @@
-import type {ValidationTargets} from 'hono'
-import {Hono} from "hono";
-import {z, ZodSchema} from "zod";
-import {HTTPException} from "hono/http-exception";
-import {drizzle} from "drizzle-orm/node-postgres";
-import {greetingsTable} from "./db/schema";
-import {eq} from "drizzle-orm";
-import {zValidator as zv} from '@hono/zod-validator'
+import type { ValidationTargets } from "hono";
+import { Hono } from "hono";
+import { z, type ZodSchema } from "zod";
+import { HTTPException } from "hono/http-exception";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { greetingsTable } from "./db/schema";
+import { eq } from "drizzle-orm";
+import { zValidator as zv } from "@hono/zod-validator";
+import { Client } from "pg";
 
-const db = drizzle(process.env.DATABASE_URL!);
+const databaseUrl = process.env.DATABASE_URL;
+
+if (!databaseUrl) {
+	throw new Error("DATABASE_URL is not set");
+}
+
+const client = new Client({ connectionString: databaseUrl });
+await client.connect();
+
+const db = drizzle(client);
 
 const app = new Hono();
 
@@ -22,17 +32,26 @@ const greetingQuerySchema = z.object({
 	limit: z.coerce.number().int().min(1).max(100).default(10),
 });
 
-export const zValidator = <T extends ZodSchema, Target extends keyof ValidationTargets>(
+export const zValidator = <
+	T extends ZodSchema,
+	Target extends keyof ValidationTargets,
+>(
 	target: Target,
-	schema: T
+	schema: T,
 ) =>
 	zv(target, schema, (result, c) => {
 		if (!result.success) {
 			const error = result.error.issues[0];
-			const res = c.json({ error: { message: error.message, path: error.path }});
-			throw new HTTPException(400, { cause: result.error, message: error.message, res })
+			const res = c.json({
+				error: { message: error.message, path: error.path },
+			});
+			throw new HTTPException(400, {
+				cause: result.error,
+				message: error.message,
+				res,
+			});
 		}
-	})
+	});
 
 app.onError((error, c) => {
 	console.error(error);
@@ -40,14 +59,14 @@ app.onError((error, c) => {
 		if (error.res) {
 			return error.getResponse();
 		} else {
-			return c.json({ error: { message: error.message }}, error.status);
+			return c.json({ error: { message: error.message } }, error.status);
 		}
 	}
-	return c.json({ error: { message: error.message }}, 500);
+	return c.json({ error: { message: error.message } }, 500);
 });
 
 app
-    .get("/", zValidator("query", greetingQuerySchema), async (c) => {
+	.get("/", zValidator("query", greetingQuerySchema), async (c) => {
 		const { offset, limit } = c.req.valid("query");
 		const items = await (async () => {
 			try {
