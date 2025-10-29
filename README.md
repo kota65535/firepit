@@ -424,6 +424,15 @@ The task will be skipped if the following conditions are met:
 - There is at least one file matching the patterns specified in the `inputs` and `outputs` fields
 - All files listed in `inputs` are older than the files listed in `outputs`.
 
+## Watch Mode
+
+In watch mode, Firepit monitors the files specified in the `inputs` field and automatically re-runs the task and dependents when changes are detected.
+To enable watch mode, add `-w` or `--watch` option.
+
+```bash
+firepit -w build
+```
+
 ## Terminal UI
 
 Firepit provides a terminal user interface (TUI) to monitor and interact with running tasks and services.
