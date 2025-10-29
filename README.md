@@ -2,7 +2,7 @@
 
 🏕 Simple task & service runner with comfy terminal UI.
 
-![img.png](imgs/img.png)
+<img src="imgs/img.png" alt="img" style="margin: 20px;">
 
 - [Features](#features)
 - [Installation](#installation)
@@ -54,7 +54,7 @@ Run `firepit` in the terminal.
 firepit hello
 ```
 
-![hello.png](imgs/hello.png)
+<img src="imgs/hello.png" alt="hello" style="margin: 20px;">
 
 Press `q` key to quit the TUI. The task logs are preserved and also printed to standard output after TUI exits.
 
