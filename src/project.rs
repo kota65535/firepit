@@ -206,7 +206,7 @@ pub struct Task {
     /// Shell command arguments
     pub shell_args: Vec<String>,
 
-    /// Env
+    /// Environment variables
     pub env: Env,
 
     /// Dependency task names
@@ -240,34 +240,30 @@ pub struct DependsOn {
 
 #[derive(Debug, Clone)]
 pub struct Env {
-    env_configs: Vec<EnvConfig>,
+    configs: Vec<EnvConfig>,
 }
 
 impl Env {
     pub fn new() -> Self {
-        Self {
-            env_configs: Vec::new(),
-        }
+        Self { configs: Vec::new() }
     }
 
     pub fn with(&self, env_files: &Vec<PathBuf>, env: &IndexMap<String, String>) -> Self {
-        let mut env_configs = self.env_configs.clone();
-        env_configs.push(EnvConfig {
+        let mut configs = self.configs.clone();
+        configs.push(EnvConfig {
             env_files: env_files.clone(),
             env: env.clone(),
         });
-        Self { env_configs }
+        Self { configs }
     }
 
     pub fn verify(self) -> anyhow::Result<Self> {
-        self.env_configs
-            .iter()
-            .try_for_each(|e| e.load_env_files().map(|_| ()))?;
+        self.configs.iter().try_for_each(|e| e.load_env_files().map(|_| ()))?;
         Ok(self)
     }
 
     pub fn load(&self) -> anyhow::Result<HashMap<String, String>> {
-        self.env_configs.iter().fold(Ok(HashMap::new()), |acc, config| {
+        self.configs.iter().fold(Ok(HashMap::new()), |acc, config| {
             Ok(acc?
                 .into_iter()
                 .chain(config.merged_env()?.into_iter())
