@@ -1,4 +1,5 @@
 use crate::process::{Child, ChildExit, Command, ProcessManager};
+use crate::project::Env;
 use crate::PROBE_STOP_TIMEOUT;
 use anyhow::Context;
 use regex::Regex;
@@ -75,7 +76,7 @@ pub struct ExecProbe {
     working_dir: PathBuf,
     shell: String,
     shell_args: Vec<String>,
-    env: HashMap<String, String>,
+    env: Env,
     interval: u64,
     timeout: u64,
     retries: u64,
@@ -90,7 +91,7 @@ impl ExecProbe {
         shell: &str,
         shell_args: Vec<String>,
         working_dir: PathBuf,
-        env: HashMap<String, String>,
+        env: Env,
         interval: u64,
         timeout: u64,
         retries: u64,
@@ -112,9 +113,10 @@ impl ExecProbe {
     }
 
     pub async fn run(&self, mut cancel_rx: watch::Receiver<()>) -> anyhow::Result<bool> {
+        let env = self.env.load()?;
         debug!(
             "Probe started (ExecProbe).\ncommand: {:?}\nshell: {:?}\nenv: {:?}\n\nworking_dir: {:?}\ninterval: {:?}\ntimeout: {:?}\nretries: {:?}\nstart_period: {:?}",
-            self.command, self.shell, self.env, self.working_dir, self.interval, self.timeout, self.retries, self.start_period
+            self.command, self.shell, env, self.working_dir, self.interval, self.timeout, self.retries, self.start_period
         );
         let start = Instant::now();
 
@@ -125,7 +127,7 @@ impl ExecProbe {
         loop {
             debug!("Probe try ({}/{})", retries, self.retries);
 
-            let mut process = match self.exec().await {
+            let mut process = match self.exec(&env).await {
                 Ok(p) => p,
                 Err(e) => {
                     warn!("Probe failed to exec: {:?}", e);
@@ -179,13 +181,13 @@ impl ExecProbe {
         }
     }
 
-    async fn exec(&self) -> anyhow::Result<Child> {
+    async fn exec(&self, env: &HashMap<String, String>) -> anyhow::Result<Child> {
         let mut args = Vec::new();
         args.extend(self.shell_args.clone());
         args.push(self.command.clone());
         let cmd = Command::new(self.shell.clone())
             .with_args(args)
-            .with_envs(self.env.clone())
+            .with_envs(env.clone())
             .with_current_dir(self.working_dir.clone())
             .with_label(&format!("{} probe", self.name))
             .to_owned();
@@ -266,7 +268,7 @@ mod test {
             "bash",
             vec![String::from("-c")],
             PathBuf::from("./"),
-            HashMap::new(),
+            Env::new(),
             1,
             1,
             1,
@@ -288,7 +290,7 @@ mod test {
             "bash",
             vec![String::from("-c")],
             PathBuf::from("./"),
-            HashMap::new(),
+            Env::new(),
             1,
             1,
             1,
@@ -310,7 +312,7 @@ mod test {
             "bash",
             vec![String::from("-c")],
             PathBuf::from("./"),
-            HashMap::new(),
+            Env::new(),
             1,
             1,
             1,
@@ -332,7 +334,7 @@ mod test {
             "bash",
             vec![String::from("-c")],
             PathBuf::from("./"),
-            HashMap::new(),
+            Env::new(),
             1,
             1,
             1,

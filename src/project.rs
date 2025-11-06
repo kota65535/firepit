@@ -206,8 +206,8 @@ pub struct Task {
     /// Shell command arguments
     pub shell_args: Vec<String>,
 
-    /// Environment variables
-    pub env: HashMap<String, String>,
+    /// Env
+    pub env: Env,
 
     /// Dependency task names
     pub depends_on: Vec<DependsOn>,
@@ -236,6 +236,79 @@ pub struct DependsOn {
     pub task: String,
 
     pub cascade: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct Env {
+    env_configs: Vec<EnvConfig>,
+}
+
+impl Env {
+    pub fn new() -> Self {
+        Self {
+            env_configs: Vec::new(),
+        }
+    }
+
+    pub fn with(&self, env_files: &Vec<PathBuf>, env: &IndexMap<String, String>) -> Self {
+        let mut env_configs = self.env_configs.clone();
+        env_configs.push(EnvConfig {
+            env_files: env_files.clone(),
+            env: env.clone(),
+        });
+        Self { env_configs }
+    }
+
+    pub fn verify(self) -> anyhow::Result<Self> {
+        self.env_configs
+            .iter()
+            .try_for_each(|e| e.load_env_files().map(|_| ()))?;
+        Ok(self)
+    }
+
+    pub fn load(&self) -> anyhow::Result<HashMap<String, String>> {
+        self.env_configs.iter().fold(Ok(HashMap::new()), |acc, config| {
+            Ok(acc?
+                .into_iter()
+                .chain(config.merged_env()?.into_iter())
+                .collect::<HashMap<_, _>>())
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct EnvConfig {
+    pub env_files: Vec<PathBuf>,
+    pub env: IndexMap<String, String>,
+}
+
+impl EnvConfig {
+    pub fn merged_env(&self) -> anyhow::Result<HashMap<String, String>> {
+        Ok(self
+            .load_env_files()?
+            .into_iter()
+            .chain(self.env.clone().into_iter())
+            .collect::<HashMap<_, _>>())
+    }
+
+    fn load_env_files(&self) -> anyhow::Result<HashMap<String, String>> {
+        let mut ret = HashMap::new();
+        for f in self.env_files.iter() {
+            let iter = match dotenvy::from_path_iter(f) {
+                Ok(it) => it,
+                Err(e) => {
+                    // Ignore if env file not found
+                    info!("cannot read env file {:?}: {:?}", f, e);
+                    continue;
+                }
+            };
+            for item in iter {
+                let (key, value) = item.with_context(|| format!("cannot parse env file {:?}", f))?;
+                ret.insert(key, value);
+            }
+        }
+        Ok(ret)
+    }
 }
 
 impl Task {
@@ -277,16 +350,10 @@ impl Task {
         // 4. Project env
         // 5. Task env file
         // 6. Task env
-        let project_env = Self::merge_env(
-            // Ignore if env file not found
-            Self::load_env_files(&config.env_files_paths())?,
-            config.env.clone().into_iter().collect(),
-        )?;
-        let task_env = Self::merge_env(
-            Self::load_env_files(&task_config.env_file_paths(&config.dir))?,
-            task_config.env.clone().into_iter().collect(),
-        )?;
-        let merged_task_env = Self::merge_env(project_env, task_env)?;
+        let env = Env::new()
+            .with(&config.env_file_paths(), &config.env.clone())
+            .with(&task_config.env_file_paths(&config.dir), &task_config.env.clone())
+            .verify()?;
 
         // Depends On
         let depends_on = task_config
@@ -330,11 +397,7 @@ impl Task {
                                 let hc_working_dir =
                                     c.working_dir_path(&config.dir).unwrap_or(task_working_dir.clone());
                                 // Environment variables
-                                let hc_env = Self::merge_env(
-                                    Self::load_env_files(&c.env_files_paths(&config.dir))?,
-                                    c.env.clone().into_iter().collect(),
-                                )?;
-                                let merged_hc_env = Self::merge_env(merged_task_env.clone(), hc_env)?;
+                                let env = env.with(&c.env_files_paths(&config.dir), &c.env).verify()?;
 
                                 Probe::Exec(ExecProbe::new(
                                     &task_name,
@@ -342,7 +405,7 @@ impl Task {
                                     &hc_shell.command,
                                     hc_shell.args,
                                     hc_working_dir,
-                                    merged_hc_env,
+                                    env,
                                     c.interval,
                                     c.timeout,
                                     c.retries,
@@ -365,7 +428,7 @@ impl Task {
             shell: task_shell.command,
             shell_args: task_shell.args,
             working_dir: task_working_dir,
-            env: merged_task_env,
+            env,
             depends_on: depends_on
                 .iter()
                 .map(|s| match s {
@@ -386,29 +449,6 @@ impl Task {
             inputs,
             outputs,
         })
-    }
-
-    fn merge_env(a: HashMap<String, String>, b: HashMap<String, String>) -> anyhow::Result<HashMap<String, String>> {
-        Ok(a.into_iter().chain(b.into_iter()).collect::<HashMap<_, _>>())
-    }
-
-    fn load_env_files(files: &Vec<PathBuf>) -> anyhow::Result<HashMap<String, String>> {
-        let mut ret = HashMap::new();
-        for f in files.iter() {
-            let iter = match dotenvy::from_path_iter(f) {
-                Ok(it) => it,
-                Err(e) => {
-                    // Ignore if env file not found
-                    info!("cannot read env file {:?}: {:?}", f, e);
-                    continue;
-                }
-            };
-            for item in iter {
-                let (key, value) = item.with_context(|| format!("cannot parse env file {:?}", f))?;
-                ret.insert(key, value);
-            }
-        }
-        Ok(ret)
     }
 
     pub fn split_name(task_name: &str) -> (Option<&str>, &str) {

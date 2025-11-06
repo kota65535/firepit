@@ -330,7 +330,7 @@ impl ProjectConfig {
         absolute_or_join(&self.working_dir, &self.dir)
     }
 
-    pub fn env_files_paths(&self) -> Vec<PathBuf> {
+    pub fn env_file_paths(&self) -> Vec<PathBuf> {
         self.env_files.iter().map(|f| absolute_or_join(f, &self.dir)).collect()
     }
 

@@ -13,7 +13,7 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use indexmap::IndexMap;
 use petgraph::Direction;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -228,17 +228,26 @@ impl TaskRunner {
                             return Ok::<(), anyhow::Error>(());
                         }
 
+                        // Load environment variables
+                        let env = task.env.load()?;
+
                         info!(
                             "Task is starting.\nrun: {:?}\nrestart: {:?}\nshell: {:?} {:?}\ncommand: {:?}\nenv: {:?}\nworking_dir: {:?}",
-                            num_runs, num_restart, task.shell, &task.shell_args, task.command, task.env, task.working_dir
+                            num_runs, num_restart, task.shell, &task.shell_args, task.command, env, task.working_dir
                         );
 
                         app_tx = app_tx.clone();
 
-                        let process = match Self::spawn_process(task.clone(), manager.clone()).await {
+                        let process = match Self::spawn_process(task.clone(), env, manager.clone()).await {
                             Ok(Some(process)) => process,
-                            Err(e) => anyhow::bail!("failed to spawn task {:?}: {:?}", task.name, e),
-                            _ => anyhow::bail!("failed to spawn task {:?}", task.name),
+                            Err(e) => {
+                                app_tx.finish_task(TaskResult::Error, None);
+                                anyhow::bail!("failed to spawn task {:?}: {:?}", task.name, e)
+                            }
+                            _ => {
+                                app_tx.finish_task(TaskResult::Error, None);
+                                anyhow::bail!("failed to spawn task {:?}", task.name)
+                            }
                         };
                         let pid = process.pid().unwrap_or(0);
                         let start_time = Local::now();
@@ -445,14 +454,18 @@ impl TaskRunner {
         }
     }
 
-    async fn spawn_process(task: Task, manager: ProcessManager) -> anyhow::Result<Option<Child>> {
+    async fn spawn_process(
+        task: Task,
+        env: HashMap<String, String>,
+        manager: ProcessManager,
+    ) -> anyhow::Result<Option<Child>> {
         let mut args = Vec::new();
         args.extend(task.shell_args.clone());
         args.push(task.command.clone());
 
         let cmd = Command::new(task.shell.clone())
             .with_args(args)
-            .with_envs(task.env.clone())
+            .with_envs(env)
             .with_current_dir(task.working_dir.clone())
             .with_label(&task.name)
             .to_owned();

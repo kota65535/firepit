@@ -315,6 +315,9 @@ pub enum TaskResult {
     /// Task is restarting due to the change of input
     Reloading,
 
+    /// Error occurred during task execution
+    Error,
+
     /// Unknown status
     Unknown,
 }
@@ -327,7 +330,11 @@ impl TaskResult {
     pub fn is_failure(&self) -> bool {
         matches!(
             self,
-            TaskResult::Failure(_) | TaskResult::Stopped | TaskResult::NotReady | TaskResult::Unknown
+            TaskResult::Failure(_)
+                | TaskResult::Stopped
+                | TaskResult::NotReady
+                | TaskResult::Error
+                | TaskResult::Unknown
         )
     }
 
@@ -340,6 +347,7 @@ impl TaskResult {
             TaskResult::Stopped => format!("Stopped"),
             TaskResult::NotReady => format!("Service not ready"),
             TaskResult::Reloading => format!("Service is reloading..."),
+            TaskResult::Error => format!("Error"),
             TaskResult::Unknown => format!("Unknown"),
         }
     }
@@ -353,6 +361,7 @@ impl TaskResult {
             TaskResult::Stopped => format!("Task {:?} is terminated", name),
             TaskResult::NotReady => format!("Service task {:?} is terminated because it did not become ready", name),
             TaskResult::Reloading => format!("Service task {:?} is reloading...", name),
+            TaskResult::Error => format!("Task {:?} in not run because of an error during execution", name),
             TaskResult::Unknown => format!("Unknown"),
         }
     }
