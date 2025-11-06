@@ -76,7 +76,10 @@ fn test_multi() {
     .unwrap();
 
     let root = ws.root.task("root").unwrap();
-    assert_eq_env(&root.env, &HashMap::from([("A", "a-x"), ("B", "b-x-x")]));
+    assert_eq_env(
+        &root.env.load().unwrap(),
+        &HashMap::from([("A", "a-x"), ("B", "b-x-x")]),
+    );
     assert_eq!(
         root.depends_on.iter().map(|s| s.task.clone()).collect::<Vec<_>>(),
         vec!["#install".to_string()]
@@ -84,7 +87,10 @@ fn test_multi() {
     assert_eq!(root.command, "echo \"root x\"".to_string());
 
     let install = ws.root.task("install").unwrap();
-    assert_eq_env(&install.env, &HashMap::from([("A", "a-x"), ("B", "b-x-x"), ("C", "c")]));
+    assert_eq_env(
+        &install.env.load().unwrap(),
+        &HashMap::from([("A", "a-x"), ("B", "b-x-x"), ("C", "c")]),
+    );
     assert!(install.depends_on.is_empty());
 
     let foo = ws.children.get("foo").unwrap().task("foo").unwrap();

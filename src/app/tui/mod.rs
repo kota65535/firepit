@@ -36,10 +36,7 @@ use ratatui::{
 };
 use std::collections::HashMap;
 use std::io::{self, Stdout, Write};
-use tokio::{
-    sync::mpsc,
-    time::Instant,
-};
+use tokio::{sync::mpsc, time::Instant};
 use tracing::{debug, error, info};
 
 #[derive(Debug, Clone)]
