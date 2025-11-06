@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.14.0] - 2025-11-06
+
+### 🚀 Features
+
+- Reloadable env files (#188)
+
+### 📚 Documentation
+
+- Fix toc
+
+### 🎨 Styling
+
+- Simplify var name
+
+### ⚙️ Miscellaneous Tasks
+
+- Update rust to v1.91.0 (#189)
+
 ## [0.13.1] - 2025-10-29
 
 ### 🐛 Bug Fixes
