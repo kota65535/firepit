@@ -1,35 +1,35 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "ProjectConfig",
   "type": "object",
   "properties": {
     "concurrency": {
-      "description": "Task concurrency. Valid only in root project config.",
-      "default": 4,
+      "description": "Task concurrency.\nValid only in root project config.",
       "type": "integer",
       "format": "uint",
-      "minimum": 0.0
+      "default": 4,
+      "minimum": 0
     },
     "depends_on": {
       "description": "Dependency tasks for all tasks.",
-      "default": [],
       "type": "array",
+      "default": [],
       "items": {
-        "$ref": "#/definitions/DependsOnConfig"
+        "$ref": "#/$defs/DependsOnConfig"
       }
     },
     "env": {
       "description": "Environment variables for all tasks.",
-      "default": {},
       "type": "object",
       "additionalProperties": {
         "type": "string"
-      }
+      },
+      "default": {}
     },
     "env_files": {
-      "description": "Dotenv files for all tasks. If environment variable duplicates, the later one wins.",
-      "default": [],
+      "description": "Dotenv files for all tasks.\nIf environment variable duplicates, the later one wins.",
       "type": "array",
+      "default": [],
       "items": {
         "type": "string"
       }
@@ -43,149 +43,134 @@
     },
     "includes": {
       "description": "Additional config files to be included.",
-      "default": [],
       "type": "array",
+      "default": [],
       "items": {
         "type": "string"
       }
     },
     "log": {
-      "description": "Log configuration. Valid only in root project config.",
+      "description": "Log configuration.\nValid only in root project config.",
+      "$ref": "#/$defs/LogConfig",
       "default": {
         "file": null,
         "level": "info"
-      },
-      "allOf": [
-        {
-          "$ref": "#/definitions/LogConfig"
-        }
-      ]
+      }
     },
     "projects": {
-      "description": "Child projects. Valid only in root project config.",
-      "default": {},
+      "description": "Child projects.\nValid only in root project config.",
       "type": "object",
       "additionalProperties": {
         "type": "string"
-      }
+      },
+      "default": {}
     },
     "shell": {
       "description": "Shell configuration for all tasks.",
+      "$ref": "#/$defs/ShellConfig",
       "default": {
         "args": [
           "-c"
         ],
         "command": "bash"
-      },
-      "allOf": [
-        {
-          "$ref": "#/definitions/ShellConfig"
-        }
-      ]
+      }
     },
     "tasks": {
       "description": "Task definitions",
-      "default": {},
       "type": "object",
       "additionalProperties": {
-        "$ref": "#/definitions/TaskConfig"
-      }
+        "$ref": "#/$defs/TaskConfig"
+      },
+      "default": {}
     },
     "ui": {
-      "description": "UI configuration. Valid only in root project config.",
-      "default": "cui",
-      "allOf": [
-        {
-          "$ref": "#/definitions/UI"
-        }
-      ]
+      "description": "UI configuration.\nValid only in root project config.",
+      "$ref": "#/$defs/UI",
+      "default": "cui"
     },
     "vars": {
-      "description": "Template variables. Can be used at `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}` and `tasks`.",
-      "default": {},
+      "description": "Template variables.\nCan be used at `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}` and `tasks`.",
       "type": "object",
-      "additionalProperties": true
+      "additionalProperties": true,
+      "default": {}
     },
     "working_dir": {
       "description": "Working directory for all tasks.",
-      "default": ".",
-      "type": "string"
+      "type": "string",
+      "default": "."
     }
   },
-  "definitions": {
+  "$defs": {
     "DependsOnConfig": {
       "anyOf": [
         {
           "type": "string"
         },
         {
-          "$ref": "#/definitions/DependsOnConfigStruct"
+          "$ref": "#/$defs/DependsOnConfigStruct"
         }
       ]
     },
     "DependsOnConfigStruct": {
       "type": "object",
-      "required": [
-        "task"
-      ],
       "properties": {
         "cascade": {
-          "default": true,
-          "type": "boolean"
+          "type": "boolean",
+          "default": true
         },
         "task": {
           "type": "string"
         },
         "vars": {
-          "default": {},
           "type": "object",
-          "additionalProperties": true
+          "additionalProperties": true,
+          "default": {}
         }
-      }
+      },
+      "required": [
+        "task"
+      ]
     },
     "ExecProbeConfig": {
       "type": "object",
-      "required": [
-        "command"
-      ],
       "properties": {
         "command": {
           "description": "Command to run",
           "type": "string"
         },
         "env": {
-          "description": "Environment variables. Merged with the task's env.",
-          "default": {},
+          "description": "Environment variables.\nMerged with the task's env.",
           "type": "object",
           "additionalProperties": {
             "type": "string"
-          }
+          },
+          "default": {}
         },
         "env_files": {
-          "description": "Dotenv files Merged with the task's env.",
-          "default": [],
+          "description": "Dotenv files\nMerged with the task's env.",
           "type": "array",
+          "default": [],
           "items": {
             "type": "string"
           }
         },
         "interval": {
-          "default": 5,
           "type": "integer",
           "format": "uint64",
-          "minimum": 0.0
+          "default": 5,
+          "minimum": 0
         },
         "retries": {
-          "default": 3,
           "type": "integer",
           "format": "uint64",
-          "minimum": 0.0
+          "default": 3,
+          "minimum": 0
         },
         "shell": {
           "description": "Shell configuration",
           "anyOf": [
             {
-              "$ref": "#/definitions/ShellConfig"
+              "$ref": "#/$defs/ShellConfig"
             },
             {
               "type": "null"
@@ -193,16 +178,16 @@
           ]
         },
         "start_period": {
-          "default": 0,
           "type": "integer",
           "format": "uint64",
-          "minimum": 0.0
+          "default": 0,
+          "minimum": 0
         },
         "timeout": {
-          "default": 5,
           "type": "integer",
           "format": "uint64",
-          "minimum": 0.0
+          "default": 5,
+          "minimum": 0
         },
         "working_dir": {
           "description": "Working directory",
@@ -211,15 +196,18 @@
             "null"
           ]
         }
-      }
+      },
+      "required": [
+        "command"
+      ]
     },
     "HealthCheckConfig": {
       "anyOf": [
         {
-          "$ref": "#/definitions/LogProbeConfig"
+          "$ref": "#/$defs/LogProbeConfig"
         },
         {
-          "$ref": "#/definitions/ExecProbeConfig"
+          "$ref": "#/$defs/ExecProbeConfig"
         }
       ]
     },
@@ -235,28 +223,28 @@
         },
         "level": {
           "description": "Log level: error, warn, info, debug, trace",
-          "default": "info",
-          "type": "string"
+          "type": "string",
+          "default": "info"
         }
       }
     },
     "LogProbeConfig": {
       "type": "object",
-      "required": [
-        "log"
-      ],
       "properties": {
         "log": {
           "description": "Log regex pattern to determine the task service is ready",
           "type": "string"
         },
         "timeout": {
-          "default": 20,
           "type": "integer",
           "format": "uint64",
-          "minimum": 0.0
+          "default": 20,
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "log"
+      ]
     },
     "Restart": {
       "oneOf": [
@@ -268,9 +256,6 @@
         },
         {
           "type": "object",
-          "required": [
-            "Always"
-          ],
           "properties": {
             "Always": {
               "type": [
@@ -278,16 +263,16 @@
                 "null"
               ],
               "format": "uint64",
-              "minimum": 0.0
+              "minimum": 0
             }
           },
-          "additionalProperties": false
+          "additionalProperties": false,
+          "required": [
+            "Always"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "OnFailure"
-          ],
           "properties": {
             "OnFailure": {
               "type": [
@@ -295,10 +280,13 @@
                 "null"
               ],
               "format": "uint64",
-              "minimum": 0.0
+              "minimum": 0
             }
           },
-          "additionalProperties": false
+          "additionalProperties": false,
+          "required": [
+            "OnFailure"
+          ]
         }
       ]
     },
@@ -308,7 +296,7 @@
           "type": "boolean"
         },
         {
-          "$ref": "#/definitions/ServiceConfigStruct"
+          "$ref": "#/$defs/ServiceConfigStruct"
         }
       ]
     },
@@ -318,7 +306,7 @@
         "healthcheck": {
           "anyOf": [
             {
-              "$ref": "#/definitions/HealthCheckConfig"
+              "$ref": "#/$defs/HealthCheckConfig"
             },
             {
               "type": "null"
@@ -326,12 +314,8 @@
           ]
         },
         "restart": {
-          "default": "never",
-          "allOf": [
-            {
-              "$ref": "#/definitions/Restart"
-            }
-          ]
+          "$ref": "#/$defs/Restart",
+          "default": "never"
         }
       }
     },
@@ -340,18 +324,18 @@
       "properties": {
         "args": {
           "description": "Arguments of the shell command.",
+          "type": "array",
           "default": [
             "-c"
           ],
-          "type": "array",
           "items": {
             "type": "string"
           }
         },
         "command": {
           "description": "Shell command.",
-          "default": "bash",
-          "type": "string"
+          "type": "string",
+          "default": "bash"
         }
       }
     },
@@ -367,10 +351,10 @@
         },
         "depends_on": {
           "description": "Dependency task names",
-          "default": [],
           "type": "array",
+          "default": [],
           "items": {
-            "$ref": "#/definitions/DependsOnConfig"
+            "$ref": "#/$defs/DependsOnConfig"
           }
         },
         "description": {
@@ -381,25 +365,25 @@
           ]
         },
         "env": {
-          "description": "Environment variables. Merged with the project's env.",
-          "default": {},
+          "description": "Environment variables.\nMerged with the project's env.",
           "type": "object",
           "additionalProperties": {
             "type": "string"
-          }
+          },
+          "default": {}
         },
         "env_files": {
-          "description": "Dotenv files Merged with the project's env.",
-          "default": [],
+          "description": "Dotenv files\nMerged with the project's env.",
           "type": "array",
+          "default": [],
           "items": {
             "type": "string"
           }
         },
         "inputs": {
           "description": "Inputs file glob patterns",
-          "default": [],
           "type": "array",
+          "default": [],
           "items": {
             "type": "string"
           }
@@ -413,8 +397,8 @@
         },
         "outputs": {
           "description": "Output file glob patterns",
-          "default": [],
           "type": "array",
+          "default": [],
           "items": {
             "type": "string"
           }
@@ -423,7 +407,7 @@
           "description": "Service configuration",
           "anyOf": [
             {
-              "$ref": "#/definitions/ServiceConfig"
+              "$ref": "#/$defs/ServiceConfig"
             },
             {
               "type": "null"
@@ -434,7 +418,7 @@
           "description": "Shell configuration",
           "anyOf": [
             {
-              "$ref": "#/definitions/ShellConfig"
+              "$ref": "#/$defs/ShellConfig"
             },
             {
               "type": "null"
@@ -442,10 +426,10 @@
           ]
         },
         "vars": {
-          "description": "Template variables. Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`, `service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`",
-          "default": {},
+          "description": "Template variables.\nCan be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`,\n`service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`",
           "type": "object",
-          "additionalProperties": true
+          "additionalProperties": true,
+          "default": {}
         },
         "working_dir": {
           "description": "Working directory",
