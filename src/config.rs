@@ -6,11 +6,12 @@ use derivative::Derivative;
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
-use schemars::JsonSchema;
+use schemars::{json_schema, JsonSchema, Schema, SchemaGenerator};
 use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::Value as JsonValue;
 use serde_yaml::Value;
-use std::collections::{HashMap, HashSet};
+use std::borrow::Cow;
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -611,7 +612,7 @@ pub struct ServiceConfigStruct {
     pub restart: Restart,
 }
 
-#[derive(Debug, Clone, JsonSchema)]
+#[derive(Debug, Clone)]
 pub enum Restart {
     Always(Option<u64>),
     OnFailure(Option<u64>),
@@ -677,6 +678,38 @@ impl Serialize for Restart {
 
 pub fn default_service_restart() -> Restart {
     Restart::Never
+}
+
+// cf. https://graham.cool/schemars/implementing/
+impl JsonSchema for Restart {
+    fn schema_name() -> Cow<'static, str> {
+        "Restart".into()
+    }
+
+    fn schema_id() -> Cow<'static, str> {
+        concat!(module_path!(), "::Restart").into()
+    }
+
+    // JSON Schema designed to improve editor autocompletion.
+    // Provide enum candidates for completion and allow numeric variants via pattern matching.
+    fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "always",
+                    "on-failure",
+                    "never"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(always(:\\d+)?|on-failure(:\\d+)?|never)$"
+                }
+            ]
+        })
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, strum::EnumString)]
