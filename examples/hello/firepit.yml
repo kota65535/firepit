@@ -5,4 +5,4 @@ tasks:
   # Task name
   hello:
     # The command content is executed in shell
-    command: npx cowsay "hello,firepit"
+    command: npx -y cowsay "hello,firepit"

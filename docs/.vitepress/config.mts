@@ -1,29 +1,67 @@
-import { defineConfig } from 'vitepress'
+import {withMermaid} from 'vitepress-plugin-mermaid';
+import {readFileSync} from 'fs';
+import {resolve} from 'path';
+
+const cargoToml = readFileSync(
+    resolve(__dirname, '../../Cargo.toml'),
+    'utf8'
+);
+const version = cargoToml.match(/version = "(.*)"/)[1];
 
 // https://vitepress.dev/reference/site-config
-export default defineConfig({
+export default withMermaid({
   title: "Firepit",
   description: "Firepit",
   base: "/firepit/",
   themeConfig: {
-    // https://vitepress.dev/reference/default-theme-config
+    logo: '/public/logo.png',
     nav: [
       { text: 'Home', link: '/' },
-      { text: 'Examples', link: '/markdown-examples' }
-    ],
-
-    sidebar: [
-      {
-        text: 'Examples',
+      { text: 'Docs', link: '/configuration' },
+      { text: `v${version}`,
         items: [
-          { text: 'Markdown Examples', link: '/markdown-examples' },
-          { text: 'Runtime API Examples', link: '/api-examples' }
+          {
+            text: `v${version}`,
+            link: `https://github.com/kota65535/firepit/releases/tag/${version}`
+          },
+          {
+            text: 'ChangeLog',
+            link: 'https://github.com/kota65535/firepit/blob/main/CHANGELOG.md'
+          },
         ]
       }
     ],
 
+    sidebar: [
+      {
+        text: 'Installation',
+        link: '/installation'
+      },
+      {
+        text: 'Getting Started',
+        link: '/getting-started'
+      },
+      {
+        text: 'Configuration',
+        link: '/configuration'
+      },
+      {
+        text: 'TUI',
+        link: '/tui'
+      },
+      {
+        text: 'CLI',
+        link: '/cli'
+      },
+      {
+        text: 'Schema',
+        link: '/schema'
+      },
+    ],
+
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/vuejs/vitepress' }
+      { icon: 'github', link: 'https://github.com/kota65535/firepit' }
     ]
-  }
+  },
+  mermaid: { theme: 'forest' },
 })
