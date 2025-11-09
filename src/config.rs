@@ -652,7 +652,7 @@ impl<'de> Deserialize<'de> for Restart {
                     .captures(s.as_str())
                     .and_then(|c| c.get(2))
                     .and_then(|m| m.as_str().parse::<u64>().ok());
-                Restart::Always(num)
+                Restart::OnFailure(num)
             }
             s if s == "never" => Restart::Never,
             _ => return Err(serde::de::Error::custom(format!("invalid restart value: {}", s))),
