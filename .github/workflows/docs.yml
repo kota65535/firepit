@@ -45,7 +45,7 @@ jobs:
         if: steps.diff.outcome == 'failure'
         run: |
           git add .
-          git commit --author=. -m 'generate schema'
+          git commit --author=. -m 'docs: build VitePress site'
           git pull --rebase --autostash
           git push origin HEAD
         working-directory: docs
