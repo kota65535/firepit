@@ -247,46 +247,18 @@
       ]
     },
     "Restart": {
-      "oneOf": [
+      "anyOf": [
         {
           "type": "string",
           "enum": [
-            "Never"
+            "always",
+            "on-failure",
+            "never"
           ]
         },
         {
-          "type": "object",
-          "properties": {
-            "Always": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0
-            }
-          },
-          "additionalProperties": false,
-          "required": [
-            "Always"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "OnFailure": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0
-            }
-          },
-          "additionalProperties": false,
-          "required": [
-            "OnFailure"
-          ]
+          "type": "string",
+          "pattern": "^(always(:\\d+)?|on-failure(:\\d+)?|never)$"
         }
       ]
     },
