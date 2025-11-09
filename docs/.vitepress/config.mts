@@ -4,6 +4,7 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: "Firepit",
   description: "Firepit",
+  base: "/firepit/",
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
     nav: [
