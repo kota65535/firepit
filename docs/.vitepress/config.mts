@@ -11,11 +11,14 @@ if (!version) {
   throw new Error('Version not found in Cargo.toml');
 }
 
+const base = '/firepit/';
+
 // https://vitepress.dev/reference/site-config
 export default withMermaid({
   title: "Firepit",
   description: "🏕 A simple, powerful task runner with service management and a comfy terminal UI",
-  base: "/firepit/",
+  base,
+  head: [['link', { rel: 'icon', href: `${base}favicon.ico` }]],
   themeConfig: {
     logo: 'logo.png',
     nav: [
