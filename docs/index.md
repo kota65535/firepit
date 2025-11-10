@@ -4,8 +4,9 @@ layout: home
 
 hero:
   name: Firepit
+  text: The Task Runner for Your Terminal
   tagline: |
-    Simple task & service runner with comfy terminal UI.
+    A simple, powerful task runner with service management and comfy terminal UI
   image:
     src: logo.png
   actions:
