@@ -17,7 +17,7 @@ export default withMermaid({
   description: "Firepit",
   base: "/firepit/",
   themeConfig: {
-    logo: '/public/logo.png',
+    logo: 'logo.png',
     nav: [
       { text: 'Home', link: '/' },
       { text: 'Docs', link: '/configuration' },
