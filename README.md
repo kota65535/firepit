@@ -1,6 +1,6 @@
 # Firepit
 
-🏕 A simple, powerful task runner with service management and comfy terminal UI.
+🏕 A simple, powerful task runner with service management and a comfy terminal UI.
 
 ![tui](docs/public/tui.png)
 

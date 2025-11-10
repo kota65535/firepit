@@ -14,7 +14,7 @@ if (!version) {
 // https://vitepress.dev/reference/site-config
 export default withMermaid({
   title: "Firepit",
-  description: "Firepit",
+  description: "🏕 A simple, powerful task runner with service management and a comfy terminal UI",
   base: "/firepit/",
   themeConfig: {
     logo: 'logo.png',
