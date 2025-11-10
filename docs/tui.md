@@ -9,19 +9,27 @@ import {onMounted, onBeforeUnmount} from 'vue';
 
 let scriptEl = null;
 
+const recs = {
+  'search': 'JjlPUW2EcaYg0RcrK6vcNgkSl',
+  'interaction': 'YPW4jkcATvn6E6zMQxVgoEmhL'
+};
+
+// Using asciinema's inline player for video playback.
+// Since script tags cannot be directly embedded in Markdown, 
+// we dynamically generate and embed script tags in onMounted
 onMounted(() => {
-  scriptEl = document.createElement('script');
-  scriptEl.src = `https://asciinema.org/a/xoSqYsOVdsTiXo08S29EAEjcV.js`;
-  scriptEl.id = `asciicast-xoSqYsOVdsTiXo08S29EAEjcV`;
-  scriptEl.async = true;
-  scriptEl.setAttribute('data-start-at', '19');
-  scriptEl.setAttribute('data-loop', 'true');
-  document.getElementById('asciinema-search').appendChild(scriptEl);
+  for (const [k, v] of Object.entries(recs)) {
+    console.log(k, v);
+    let el = document.createElement('script');
+    el.src = `https://asciinema.org/a/${v}.js`;
+    el.id = `asciicast-${v}`;
+    el.async = true;
+    el.setAttribute('data-autoplay', 'true');
+    el.setAttribute('data-loop', 'true');
+    document.getElementById(`asciinema-${k}`).appendChild(el);
+  }
 });
 
-onBeforeUnmount(() => {
-  if (scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl)
-})
 </script>
 
 # TUI
@@ -67,6 +75,7 @@ You can switch to "Interaction mode" and enter the shell of the currently select
 At this time, keyboard inputs are sent directly to the task's standard input.
 To exit interaction mode, press `Ctrl-Z`.
 
+<div id="asciinema-interaction"/>
 
 ## TUI vs CUI
 
