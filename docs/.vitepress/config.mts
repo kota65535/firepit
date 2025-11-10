@@ -6,7 +6,10 @@ const cargoToml = readFileSync(
     resolve(__dirname, '../../Cargo.toml'),
     'utf8'
 );
-const version = cargoToml.match(/version = "(.*)"/)[1];
+const version = cargoToml.match(/version = "(.*?)"/)[1];
+if (!version) {
+  throw new Error('Version not found in Cargo.toml');
+}
 
 // https://vitepress.dev/reference/site-config
 export default withMermaid({
