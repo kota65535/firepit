@@ -21,8 +21,14 @@ jobs:
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Run
+      - name: Setup other tools
+        uses: jdx/mise-action@v3
+
+      - name: Generate schema.json
         run: cargo run --bin firepit-schema
+
+      - name: Generate schema-body.md
+        run: ./scripts/schema-to-md.js schema.json docs/schema-body.md
 
       - name: Configure git
         uses: kota65535/github-git-config-action@v2
