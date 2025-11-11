@@ -4,53 +4,57 @@
   "type": "object",
   "properties": {
     "concurrency": {
-      "description": "Task concurrency.\nValid only in root project config.",
+      "description": "Task concurrency.\nValid only in a root project config.\n```yaml\nconcurrency: 4\n```",
       "type": "integer",
       "format": "uint",
       "default": 4,
       "minimum": 0
     },
     "depends_on": {
-      "description": "Dependency tasks for all tasks.",
+      "description": "Dependency tasks for all the project tasks.\n```yaml\ndepends_on:\n  - '#install'\n```",
       "type": "array",
       "default": [],
       "items": {
         "$ref": "#/$defs/DependsOnConfig"
-      }
+      },
+      "x-template": true
     },
     "env": {
-      "description": "Environment variables for all tasks.",
+      "description": "Environment variables for all the project tasks.\n```yaml\nenv:\n  TZ: Asia/Tokyo\n```",
       "type": "object",
       "additionalProperties": {
         "type": "string"
       },
-      "default": {}
+      "default": {},
+      "x-template": true
     },
     "env_files": {
-      "description": "Dotenv files for all tasks.\nIf environment variable duplicates, the later one wins.",
+      "description": "Dotenv files for all the project tasks.\nIn case of duplicated environment variables, the latter one takes precedence.\n```yaml\nenv_files:\n  - .env\n  - .env.local\n```",
       "type": "array",
       "default": [],
       "items": {
         "type": "string"
-      }
+      },
+      "x-template": true
     },
     "gantt_file": {
-      "description": "Gantt chart output file path.",
+      "description": "Gantt chart output file path.\nValid only in a root project config.\n```yaml\ngantt_file: gantt.svg\n```",
       "type": [
         "string",
         "null"
       ]
     },
     "includes": {
-      "description": "Additional config files to be included.",
+      "description": "Additional config files to be included.\n```yaml\nincludes:\n  - common-vars.yml\n  - common-tasks.yml\n```",
       "type": "array",
       "default": [],
       "items": {
         "type": "string"
-      }
+      },
+      "x-template": true
     },
     "log": {
-      "description": "Log configuration.\nValid only in root project config.",
+      "description": "Log configuration.\nValid only in a root project config.\n```yaml\nlog:\n  level: debug\n  file: \"{{ root_dir }}/firepit.log\"\n```",
       "$ref": "#/$defs/LogConfig",
       "default": {
         "file": null,
@@ -58,7 +62,7 @@
       }
     },
     "projects": {
-      "description": "Child projects.\nValid only in root project config.",
+      "description": "Child projects.\nValid only in a root project config.\n```yaml\nprojects:\n  client: packages/client\n  server: packages/server\n```",
       "type": "object",
       "additionalProperties": {
         "type": "string"
@@ -66,7 +70,7 @@
       "default": {}
     },
     "shell": {
-      "description": "Shell configuration for all tasks.",
+      "description": "Shell configuration for all the project tasks.\n```yaml\nshell:\n  command: \"bash\"\n  args: [\"-eux\", \"-c\"]\n```",
       "$ref": "#/$defs/ShellConfig",
       "default": {
         "args": [
@@ -76,7 +80,7 @@
       }
     },
     "tasks": {
-      "description": "Task definitions",
+      "description": "Task definitions.",
       "type": "object",
       "additionalProperties": {
         "$ref": "#/$defs/TaskConfig"
@@ -84,20 +88,22 @@
       "default": {}
     },
     "ui": {
-      "description": "UI configuration.\nValid only in root project config.",
+      "description": "UI configuration.\nValid only in a root project config.\n```yaml\nui: cui\n```",
       "$ref": "#/$defs/UI",
       "default": "cui"
     },
     "vars": {
-      "description": "Template variables.\nCan be used at `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}` and `tasks`.",
+      "description": "Template variables for all the project tasks.\n```yaml\nvars:\n  aws_account_id: 123456789012\n  aws_region: ap-northeast-1\n  ecr_registry: \"{{ aws_account_id }}.dkr.ecr.{{ aws_region }}.amazonaws.com\"\n```",
       "type": "object",
       "additionalProperties": true,
-      "default": {}
+      "default": {},
+      "x-template": true
     },
     "working_dir": {
-      "description": "Working directory for all tasks.",
+      "description": "Working directory for all the project tasks.\n```yaml\nworking_dir: src\n```",
       "type": "string",
-      "default": "."
+      "default": ".",
+      "x-template": true
     }
   },
   "$defs": {
@@ -109,22 +115,28 @@
         {
           "$ref": "#/$defs/DependsOnConfigStruct"
         }
-      ]
+      ],
+      "x-template": true
     },
     "DependsOnConfigStruct": {
       "type": "object",
       "properties": {
         "cascade": {
+          "description": "Whether the task restarts if this dependency task restarts.",
           "type": "boolean",
           "default": true
         },
         "task": {
-          "type": "string"
+          "description": "Dependency task name",
+          "type": "string",
+          "x-template": true
         },
         "vars": {
+          "description": "Variables to override the dependency task vars.",
           "type": "object",
           "additionalProperties": true,
-          "default": {}
+          "default": {},
+          "x-template": true
         }
       },
       "required": [
@@ -135,32 +147,37 @@
       "type": "object",
       "properties": {
         "command": {
-          "description": "Command to run",
-          "type": "string"
+          "description": "Command to check if the service is ready",
+          "type": "string",
+          "x-template": true
         },
         "env": {
-          "description": "Environment variables.\nMerged with the task's env.",
+          "description": "Environment variables. Merged with the task `env`.",
           "type": "object",
           "additionalProperties": {
             "type": "string"
           },
-          "default": {}
+          "default": {},
+          "x-template": true
         },
         "env_files": {
-          "description": "Dotenv files\nMerged with the task's env.",
+          "description": "Dotenv files. Merged with the task `env_files`.",
           "type": "array",
           "default": [],
           "items": {
             "type": "string"
-          }
+          },
+          "x-template": true
         },
         "interval": {
+          "description": "Interval in seconds.\nThe command will run interval seconds after the task is started,\nand then again interval seconds after each previous check completes.",
           "type": "integer",
           "format": "uint64",
           "default": 5,
           "minimum": 0
         },
         "retries": {
+          "description": "Number of consecutive readiness-check failures allowed before giving up.",
           "type": "integer",
           "format": "uint64",
           "default": 3,
@@ -178,12 +195,14 @@
           ]
         },
         "start_period": {
+          "description": "Initialization period in seconds.\nProbe failure during that period will not be counted towards the maximum number of retries.",
           "type": "integer",
           "format": "uint64",
           "default": 0,
           "minimum": 0
         },
         "timeout": {
+          "description": "Timeout in seconds",
           "type": "integer",
           "format": "uint64",
           "default": 5,
@@ -194,7 +213,8 @@
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "x-template": true
         }
       },
       "required": [
@@ -222,7 +242,7 @@
           ]
         },
         "level": {
-          "description": "Log level: error, warn, info, debug, trace",
+          "description": "Log level. Valid values: error, warn, info, debug, trace",
           "type": "string",
           "default": "info"
         }
@@ -233,9 +253,11 @@
       "properties": {
         "log": {
           "description": "Log regex pattern to determine the task service is ready",
-          "type": "string"
+          "type": "string",
+          "x-template": true
         },
         "timeout": {
+          "description": "Timeout in seconds",
           "type": "integer",
           "format": "uint64",
           "default": 20,
@@ -276,6 +298,7 @@
       "type": "object",
       "properties": {
         "healthcheck": {
+          "description": "Readiness probe configuration",
           "anyOf": [
             {
               "$ref": "#/$defs/HealthCheckConfig"
@@ -286,6 +309,7 @@
           ]
         },
         "restart": {
+          "description": "Restart policy",
           "$ref": "#/$defs/Restart",
           "default": "never"
         }
@@ -319,15 +343,17 @@
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "x-template": true
         },
         "depends_on": {
-          "description": "Dependency task names",
+          "description": "Dependency tasks",
           "type": "array",
           "default": [],
           "items": {
             "$ref": "#/$defs/DependsOnConfig"
-          }
+          },
+          "x-template": true
         },
         "description": {
           "description": "Description",
@@ -337,20 +363,22 @@
           ]
         },
         "env": {
-          "description": "Environment variables.\nMerged with the project's env.",
+          "description": "Environment variables. Merged with the project `env`.",
           "type": "object",
           "additionalProperties": {
             "type": "string"
           },
-          "default": {}
+          "default": {},
+          "x-template": true
         },
         "env_files": {
-          "description": "Dotenv files\nMerged with the project's env.",
+          "description": "Dotenv files. Merged with the project `env_files`.",
           "type": "array",
           "default": [],
           "items": {
             "type": "string"
-          }
+          },
+          "x-template": true
         },
         "inputs": {
           "description": "Inputs file glob patterns",
@@ -361,11 +389,12 @@
           }
         },
         "label": {
-          "description": "Label for display",
+          "description": "Label to display instead of the task name.",
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "x-template": true
         },
         "outputs": {
           "description": "Output file glob patterns",
@@ -376,7 +405,7 @@
           }
         },
         "service": {
-          "description": "Service configuration",
+          "description": "Service configurations",
           "anyOf": [
             {
               "$ref": "#/$defs/ServiceConfig"
@@ -398,17 +427,19 @@
           ]
         },
         "vars": {
-          "description": "Template variables.\nCan be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`,\n`service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`",
+          "description": "Template variables. Merged with the project `vars`.\nCan be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`,\n`service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`",
           "type": "object",
           "additionalProperties": true,
-          "default": {}
+          "default": {},
+          "x-template": true
         },
         "working_dir": {
-          "description": "Working directory",
+          "description": "Working directory\n```yaml\nworking_dir: dist\n```",
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "x-template": true
         }
       }
     },
