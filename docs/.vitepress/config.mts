@@ -1,4 +1,5 @@
 import {withMermaid} from 'vitepress-plugin-mermaid';
+import llmstxt from 'vitepress-plugin-llms'
 import {readFileSync} from 'fs';
 import {resolve} from 'path';
 
@@ -63,6 +64,10 @@ export default withMermaid({
         text: 'Schema',
         link: '/schema'
       },
+      {
+        text: 'Full Docs (for LLM)',
+        link: `${base}llms-full.txt`
+      },
     ],
 
     socialLinks: [
@@ -70,4 +75,7 @@ export default withMermaid({
     ]
   },
   mermaid: { theme: 'forest' },
+  vite: {
+    plugins: [llmstxt()]
+  }
 })
