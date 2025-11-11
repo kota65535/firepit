@@ -13,7 +13,7 @@ concurrency: 4
 
 ### depends_on
 
-- **Type:** <code>Array<<a href="#DependsOnConfig">DependsOnConfig</a>></code>
+- **Type:** <code>Array&lt;<a href="#DependsOnConfig">DependsOnConfig</a>&gt;</code>
 - **Required:** no
 - **Default:** `[]`
 - **Description:** Dependency tasks for all the project tasks.
@@ -24,7 +24,7 @@ depends_on:
 
 ### env
 
-- **Type:** <code>Map<string, string></code>
+- **Type:** <code>Map&lt;string, string&gt;</code>
 - **Required:** no
 - **Default:** `{}`
 - **Template:** yes
@@ -36,7 +36,7 @@ env:
 
 ### env_files
 
-- **Type:** <code>Array<string></code>
+- **Type:** <code>Array&lt;string&gt;</code>
 - **Required:** no
 - **Default:** `[]`
 - **Template:** yes
@@ -61,7 +61,7 @@ gantt_file: gantt.svg
 
 ### includes
 
-- **Type:** <code>Array<string></code>
+- **Type:** <code>Array&lt;string&gt;</code>
 - **Required:** no
 - **Default:** `[]`
 - **Template:** yes
@@ -87,7 +87,7 @@ log:
 
 ### projects
 
-- **Type:** <code>Map<string, string></code>
+- **Type:** <code>Map&lt;string, string&gt;</code>
 - **Required:** no
 - **Default:** `{}`
 - **Template:** no
@@ -113,7 +113,7 @@ shell:
 
 ### tasks
 
-- **Type:** <code>Map<string, <a href="#TaskConfig">TaskConfig</a>></code>
+- **Type:** <code>Map&lt;string, <a href="#TaskConfig">TaskConfig</a>&gt;</code>
 - **Required:** no
 - **Default:** `{}`
 - **Template:** no
@@ -132,7 +132,7 @@ ui: cui
 
 ### vars
 
-- **Type:** <code>Map<string, any></code>
+- **Type:** <code>Map&lt;string, any&gt;</code>
 - **Required:** no
 - **Default:** `{}`
 - **Template:** yes
@@ -178,7 +178,7 @@ working_dir: src
 
 ### vars
 
-- **Type:** <code>Map<string, any></code>
+- **Type:** <code>Map&lt;string, any&gt;</code>
 - **Required:** no
 - **Default:** `{}`
 - **Template:** yes
@@ -195,7 +195,7 @@ working_dir: src
 
 ### env
 
-- **Type:** <code>Map<string, string></code>
+- **Type:** <code>Map&lt;string, string&gt;</code>
 - **Required:** no
 - **Default:** `{}`
 - **Template:** yes
@@ -203,7 +203,7 @@ working_dir: src
 
 ### env_files
 
-- **Type:** <code>Array<string></code>
+- **Type:** <code>Array&lt;string&gt;</code>
 - **Required:** no
 - **Default:** `[]`
 - **Template:** yes
@@ -319,7 +319,7 @@ Probe failure during that period will not be counted towards the maximum number 
 
 ### args
 
-- **Type:** <code>Array<string></code>
+- **Type:** <code>Array&lt;string&gt;</code>
 - **Required:** no
 - **Default:** `["-c"]`
 - **Template:** no
@@ -344,7 +344,7 @@ Probe failure during that period will not be counted towards the maximum number 
 
 ### depends_on
 
-- **Type:** <code>Array<<a href="#DependsOnConfig">DependsOnConfig</a>></code>
+- **Type:** <code>Array&lt;<a href="#DependsOnConfig">DependsOnConfig</a>&gt;</code>
 - **Required:** no
 - **Default:** `[]`
 - **Description:** Dependency tasks
@@ -358,7 +358,7 @@ Probe failure during that period will not be counted towards the maximum number 
 
 ### env
 
-- **Type:** <code>Map<string, string></code>
+- **Type:** <code>Map&lt;string, string&gt;</code>
 - **Required:** no
 - **Default:** `{}`
 - **Template:** yes
@@ -366,7 +366,7 @@ Probe failure during that period will not be counted towards the maximum number 
 
 ### env_files
 
-- **Type:** <code>Array<string></code>
+- **Type:** <code>Array&lt;string&gt;</code>
 - **Required:** no
 - **Default:** `[]`
 - **Template:** yes
@@ -374,7 +374,7 @@ Probe failure during that period will not be counted towards the maximum number 
 
 ### inputs
 
-- **Type:** <code>Array<string></code>
+- **Type:** <code>Array&lt;string&gt;</code>
 - **Required:** no
 - **Default:** `[]`
 - **Template:** no
@@ -389,7 +389,7 @@ Probe failure during that period will not be counted towards the maximum number 
 
 ### outputs
 
-- **Type:** <code>Array<string></code>
+- **Type:** <code>Array&lt;string&gt;</code>
 - **Required:** no
 - **Default:** `[]`
 - **Template:** no
@@ -409,7 +409,7 @@ Probe failure during that period will not be counted towards the maximum number 
 
 ### vars
 
-- **Type:** <code>Map<string, any></code>
+- **Type:** <code>Map&lt;string, any&gt;</code>
 - **Required:** no
 - **Default:** `{}`
 - **Template:** yes

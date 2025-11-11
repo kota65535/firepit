@@ -48,14 +48,14 @@ function typeValue(schema) {
     }
 
     if (schema.type === 'array') {
-        return `Array<${typeValue(schema.items)}>`;
+        return `Array&lt;${typeValue(schema.items)}&gt;`;
     }
 
     if (schema.type === 'object') {
         if (typeof schema.additionalProperties === 'boolean') {
-            return `Map<string, any>`
+            return `Map&lt;string, any&gt;`
         } else {
-            return `Map<string, ${typeValue(schema.additionalProperties)}>`
+            return `Map&lt;string, ${typeValue(schema.additionalProperties)}&gt;`
         }
     }
 
