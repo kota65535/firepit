@@ -1,4 +1,5 @@
 import {withMermaid} from 'vitepress-plugin-mermaid';
+import llmstxt from 'vitepress-plugin-llms'
 import {readFileSync} from 'fs';
 import {resolve} from 'path';
 
@@ -11,14 +12,14 @@ if (!version) {
   throw new Error('Version not found in Cargo.toml');
 }
 
-const base = '/firepit/';
+const base = '/firepit';
 
 // https://vitepress.dev/reference/site-config
 export default withMermaid({
   title: "Firepit",
   description: "🏕 A simple, powerful task runner with service management and a comfy terminal UI",
   base,
-  head: [['link', { rel: 'icon', href: `${base}favicon.ico` }]],
+  head: [['link', { rel: 'icon', href: `${base}/favicon.ico` }]],
   themeConfig: {
     logo: 'logo.png',
     nav: [
@@ -63,6 +64,10 @@ export default withMermaid({
         text: 'Schema',
         link: '/schema'
       },
+      {
+        text: 'Full Docs (for LLM)',
+        link: `${base}/llms-full.txt`
+      },
     ],
 
     socialLinks: [
@@ -70,4 +75,7 @@ export default withMermaid({
     ]
   },
   mermaid: { theme: 'forest' },
+  vite: {
+    plugins: [llmstxt()]
+  }
 })
