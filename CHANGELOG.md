@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.14.1] - 2025-11-11
+
+### 🐛 Bug Fixes
+
+- *(deps)* Update rust crate schemars to v1 (#99)
+- *(deps)* Update rust crate console-subscriber to 0.5.0 (#187)
+- `restart: on-failure` was treated as `always` (#191)
+
+### 📚 Documentation
+
+- Improve `restart` field autocompletion (#190)
+- Initialize VitePress (#192)
+- Fix .gitignore
+- Build VitePress site
+- Setup pages by GitHub Action
+- Revert gitignore
+- Set base for VitePress
+- Migrate to vitepress (#195)
+- Fix logo path
+- Fix text and tagline
+- Update README
+- Fix tagline
+- Add favicon
+
 ## [0.14.0] - 2025-11-06
 
 ### 🚀 Features
