@@ -30,67 +30,124 @@ pub struct ProjectConfig {
     pub name: String,
 
     /// Child projects.
-    /// Valid only in root project config.
+    /// Valid only in a root project config.
+    /// ```yaml
+    /// projects:
+    ///   client: packages/client
+    ///   server: packages/server
+    /// ```
     #[serde(default)]
     pub projects: IndexMap<String, String>,
 
-    /// Shell configuration for all tasks.
+    /// Shell configuration for all the project tasks.
+    /// ```yaml
+    /// shell:
+    ///   command: "bash"
+    ///   args: ["-eux", "-c"]
+    /// ```
     #[serde(default = "default_shell")]
     pub shell: ShellConfig,
 
-    /// Working directory for all tasks.
+    /// Working directory for all the project tasks.
+    /// ```yaml
+    /// working_dir: src
+    /// ```
     #[serde(default = "default_working_dir")]
+    #[schemars(extend("x-template" = true))]
     pub working_dir: String,
 
-    /// Template variables.
-    /// Can be used at `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}` and `tasks`.
+    /// Template variables for all the project tasks.
+    /// ```yaml
+    /// vars:
+    ///   aws_account_id: 123456789012
+    ///   aws_region: ap-northeast-1
+    ///   ecr_registry: "{{ aws_account_id }}.dkr.ecr.{{ aws_region }}.amazonaws.com"
+    /// ```
     #[serde(default)]
+    #[schemars(extend("x-template" = true))]
     pub vars: IndexMap<String, JsonValue>,
 
-    /// Environment variables for all tasks.
+    /// Environment variables for all the project tasks.
+    /// ```yaml
+    /// env:
+    ///   TZ: Asia/Tokyo
+    /// ```
     #[serde(default)]
+    #[schemars(extend("x-template" = true))]
     pub env: IndexMap<String, String>,
 
-    /// Dotenv files for all tasks.
-    /// If environment variable duplicates, the later one wins.
+    /// Dotenv files for all the project tasks.
+    /// In case of duplicated environment variables, the latter one takes precedence.
+    /// ```yaml
+    /// env_files:
+    ///   - .env
+    ///   - .env.local
+    /// ```
     #[serde(default)]
+    #[schemars(extend("x-template" = true))]
     pub env_files: Vec<String>,
 
-    /// Dependency tasks for all tasks.
+    /// Dependency tasks for all the project tasks.
+    /// ```yaml
+    /// depends_on:
+    ///   - '#install'
+    /// ```
     #[serde(default)]
+    #[schemars(extend("x-template" = true))]
     pub depends_on: Vec<DependsOnConfig>,
 
-    /// Task definitions
+    /// Task definitions.
     #[serde(default)]
     pub tasks: IndexMap<String, TaskConfig>,
 
     /// Task concurrency.
-    /// Valid only in root project config.
+    /// Valid only in a root project config.
+    /// ```yaml
+    /// concurrency: 4
+    /// ```
     #[serde(default = "default_concurrency")]
     pub concurrency: usize,
 
     /// Log configuration.
-    /// Valid only in root project config.
+    /// Valid only in a root project config.
+    /// ```yaml
+    /// log:
+    ///   level: debug
+    ///   file: "{{ root_dir }}/firepit.log"
+    /// ```
     #[serde(default = "default_log")]
     pub log: LogConfig,
 
     /// Gantt chart output file path.
+    /// Valid only in a root project config.
+    /// ```yaml
+    /// gantt_file: gantt.svg
+    /// ```
     pub gantt_file: Option<String>,
 
     /// UI configuration.
-    /// Valid only in root project config.
+    /// Valid only in a root project config.
+    /// ```yaml
+    /// ui: cui
+    /// ```
     #[serde(default = "default_ui")]
     pub ui: UI,
 
     /// Additional config files to be included.
+    /// ```yaml
+    /// includes:
+    ///   - common-vars.yml
+    ///   - common-tasks.yml
+    /// ```
     #[serde(default)]
+    #[schemars(extend("x-template" = true))]
     pub includes: Vec<String>,
 
-    /// project file path (absolute)
+    /// Project file path (absolute)
     #[serde(skip)]
     pub path: PathBuf,
 
-    /// project directory path (absolute)
+    /// Project directory path (absolute)
     #[serde(skip)]
     pub dir: PathBuf,
 
@@ -372,42 +429,50 @@ pub struct TaskConfig {
     #[serde(skip)]
     pub project: String,
 
-    /// Label for display
+    /// Label to display instead of the task name.
+    #[schemars(extend("x-template" = true))]
     pub label: Option<String>,
 
     /// Description
     pub description: Option<String>,
 
     /// Command to run
+    #[schemars(extend("x-template" = true))]
     pub command: Option<String>,
 
     /// Shell configuration
     pub shell: Option<ShellConfig>,
 
     /// Working directory
+    /// ```yaml
+    /// working_dir: dist
+    /// ```
+    #[schemars(extend("x-template" = true))]
     pub working_dir: Option<String>,
 
-    /// Template variables.
+    /// Template variables. Merged with the project `vars`.
     /// Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`,
     /// `service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`
     #[serde(default)]
+    #[schemars(extend("x-template" = true))]
     pub vars: IndexMap<String, JsonValue>,
 
-    /// Environment variables.
-    /// Merged with the project's env.
+    /// Environment variables. Merged with the project `env`.
     #[serde(default)]
+    #[schemars(extend("x-template" = true))]
     pub env: IndexMap<String, String>,
 
-    /// Dotenv files
-    /// Merged with the project's env.
+    /// Dotenv files. Merged with the project `env_files`.
     #[serde(default)]
+    #[schemars(extend("x-template" = true))]
     pub env_files: Vec<String>,
 
-    /// Dependency task names
+    /// Dependency tasks
     #[serde(default)]
+    #[schemars(extend("x-template" = true))]
     pub depends_on: Vec<DependsOnConfig>,
 
-    /// Service configuration
+    /// Service configurations
     pub service: Option<ServiceConfig>,
 
     /// Inputs file glob patterns
@@ -471,7 +536,7 @@ pub struct ShellConfig {
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct LogConfig {
     #[serde(default = "default_log_level")]
-    /// Log level: error, warn, info, debug, trace
+    /// Log level. Valid values: error, warn, info, debug, trace
     pub level: String,
 
     /// Log file path.
@@ -480,6 +545,7 @@ pub struct LogConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[serde(untagged)]
+#[schemars(extend("x-template" = true))]
 pub enum DependsOnConfig {
     String(String),
     Struct(DependsOnConfigStruct),
@@ -487,11 +553,16 @@ pub enum DependsOnConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct DependsOnConfigStruct {
+    /// Dependency task name
+    #[schemars(extend("x-template" = true))]
     pub task: String,
 
+    /// Variables to override the dependency task vars.
     #[serde(default)]
+    #[schemars(extend("x-template" = true))]
     pub vars: IndexMap<String, JsonValue>,
 
+    /// Whether the task restarts if this dependency task restarts.
     #[serde(default = "default_cascade")]
     pub cascade: bool,
 }
@@ -510,8 +581,10 @@ pub enum HealthCheckConfig {
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct LogProbeConfig {
     /// Log regex pattern to determine the task service is ready
+    #[schemars(extend("x-template" = true))]
     pub log: String,
 
+    /// Timeout in seconds
     #[serde(default = "default_log_healthcheck_timeout")]
     pub timeout: u64,
 }
@@ -522,34 +595,43 @@ pub fn default_log_healthcheck_timeout() -> u64 {
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct ExecProbeConfig {
-    /// Command to run
+    /// Command to check if the service is ready
+    #[schemars(extend("x-template" = true))]
     pub command: String,
 
     /// Shell configuration
     pub shell: Option<ShellConfig>,
 
     /// Working directory
+    #[schemars(extend("x-template" = true))]
     pub working_dir: Option<String>,
 
-    /// Environment variables.
-    /// Merged with the task's env.
+    /// Environment variables. Merged with the task `env`.
     #[serde(default, deserialize_with = "deserialize_hash_map")]
+    #[schemars(extend("x-template" = true))]
     pub env: IndexMap<String, String>,
 
-    /// Dotenv files
-    /// Merged with the task's env.
+    /// Dotenv files. Merged with the task `env_files`.
     #[serde(default)]
+    #[schemars(extend("x-template" = true))]
     pub env_files: Vec<String>,
 
+    /// Interval in seconds.
+    /// The command will run interval seconds after the task is started,
+    /// and then again interval seconds after each previous check completes.
     #[serde(default = "default_healthcheck_interval")]
     pub interval: u64,
 
+    /// Timeout in seconds
     #[serde(default = "default_healthcheck_timeout")]
     pub timeout: u64,
 
+    /// Number of consecutive readiness-check failures allowed before giving up.
     #[serde(default = "default_healthcheck_retries")]
     pub retries: u64,
 
+    /// Initialization period in seconds.
+    /// Probe failure during that period will not be counted towards the maximum number of retries.
     #[serde(default = "default_healthcheck_start_period")]
     pub start_period: u64,
 }
@@ -606,8 +688,10 @@ pub enum ServiceConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct ServiceConfigStruct {
+    /// Readiness probe configuration
     pub healthcheck: Option<HealthCheckConfig>,
 
+    /// Restart policy
     #[serde(default = "default_service_restart")]
     pub restart: Restart,
 }
@@ -721,7 +805,7 @@ pub enum UI {
     Tui,
 }
 
-/// Deserializes hash map while converting number to string, which is the default behavior.
+/// Deserializes IndexMap while converting number to string, which is the default behavior.
 /// This is necessary when using serde(untagged), as it strictly checks types.
 fn deserialize_hash_map<'de, D>(deserializer: D) -> Result<IndexMap<String, String>, D::Error>
 where
