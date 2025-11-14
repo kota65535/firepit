@@ -439,7 +439,6 @@ impl ConfigRenderer {
             contexts.insert(variant_task_name.clone(), variant_context);
 
             // Add task variant config
-            Self::set_task(variant_task, raw_root_config, raw_child_configs);
             Self::set_task(rendered_variant_task, root_config, child_configs);
 
             // Replace the depends_on task name with the variant name
