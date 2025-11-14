@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.14.2] - 2025-11-14
+
+### 🐛 Bug Fixes
+
+- Incorrect vars in a variant task (#200)
+
+### 📚 Documentation
+
+- Update schema (#196)
+- Fix broken HTML tags (#197)
+- Provide llms-full.txt (#198)
+
 ## [0.14.1] - 2025-11-11
 
 ### 🐛 Bug Fixes
