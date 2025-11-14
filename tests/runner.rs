@@ -189,7 +189,8 @@ async fn test_vars_dep() {
     stats.insert(String::from("#bar"), String::from("Finished: Success"));
     stats.insert(String::from("#baz"), String::from("Finished: Success"));
     stats.insert(String::from("#baz-1"), String::from("Finished: Success"));
-    stats.insert(String::from("#qux"), String::from("Finished: Success"));
+    stats.insert(String::from("#qux-1"), String::from("Finished: Success"));
+    stats.insert(String::from("#qux-2"), String::from("Finished: Success"));
     stats.insert(String::from("#quux-1"), String::from("Finished: Success"));
     stats.insert(String::from("#quux-2"), String::from("Finished: Success"));
 
@@ -198,7 +199,8 @@ async fn test_vars_dep() {
     outputs.insert(String::from("#bar"), String::from("bar 2"));
     outputs.insert(String::from("#baz"), String::from("baz 3"));
     outputs.insert(String::from("#baz-1"), String::from("baz 4"));
-    outputs.insert(String::from("#qux"), String::from("qux 4"));
+    outputs.insert(String::from("#qux-1"), String::from("qux 4 6"));
+    outputs.insert(String::from("#qux-2"), String::from("qux 5 5"));
     outputs.insert(String::from("#quux-1"), String::from("quux 3"));
     outputs.insert(String::from("#quux-2"), String::from("quux 4"));
 

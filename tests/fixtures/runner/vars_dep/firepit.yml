@@ -12,7 +12,7 @@ tasks:
           C: 4
       - task: qux
         vars:
-          D: 4
+          D: 5
 
   bar:
     env:
@@ -20,6 +20,9 @@ tasks:
     command: echo "bar ${B}"
     depends_on:
       - baz
+      - task: qux
+        vars:
+          E: 6
 
   baz:
     label: "{{ task }} {{ C }}"
@@ -29,16 +32,17 @@ tasks:
     depends_on:
       - task: "{% if C == 3 or C == 4 %}quux{% endif %}"
         vars:
-          E: "{{ C }}"
+          F: "{{ C }}"
       - "{% if A != 1 %}qux{% endif %}"
 
   qux:
     vars:
       D: 4
+      E: 5
     command: |
-      echo "qux {{ D }}"
+      echo "qux {{ D }} {{ E }}"
 
   quux:
     vars:
-      E: 5
-    command: echo "quux {{ E }}"
+      F: 6
+    command: echo "quux {{ F }}"
