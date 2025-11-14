@@ -218,7 +218,10 @@ fn strip_matching_quotes(input: &str) -> Option<&str> {
     None
 }
 fn print_summary(root: &ProjectConfig, children: &IndexMap<String, ProjectConfig>) -> anyhow::Result<()> {
-    let (term_width, _) = crossterm::terminal::size()?;
+    // Fall back to unlimited length when not a TTY
+    let term_width = crossterm::terminal::size()
+        .map(|(width, _)| usize::from(width))
+        .unwrap_or(usize::MAX);
     let mut lines = Vec::new();
     if children.is_empty() {
         // Show single project tasks
@@ -255,7 +258,7 @@ fn print_summary(root: &ProjectConfig, children: &IndexMap<String, ProjectConfig
         .iter()
         .map(|line| {
             if line.starts_with("─") {
-                "─".repeat(max_width.min(usize::from(term_width)))
+                "─".repeat(max_width.min(term_width))
             } else {
                 line.clone()
             }
