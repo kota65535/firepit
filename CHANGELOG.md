@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.14.3] - 2025-11-14
+
+### 🐛 Bug Fixes
+
+- Print summary when not a TTY (#201)
+
 ## [0.14.2] - 2025-11-14
 
 ### 🐛 Bug Fixes
