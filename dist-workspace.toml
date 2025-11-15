@@ -18,6 +18,8 @@ install-updater = false
 
 github-build-setup = "build-workaround"
 
+allow-dirty = ["ci"]
+
 [dist.bin-aliases]
 firepit = ["fire"]
 
