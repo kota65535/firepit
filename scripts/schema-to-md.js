@@ -36,8 +36,8 @@ function typeValue(schema) {
     // - object -> Map<string, <additional properties type>>
 
     if (schema.$ref) {
-        const ref = refName(schema.$ref)
-        return `<a href="#${ref}">${ref}</a>`;
+        const ref = refName(schema.$ref);
+        return `<a href="#${ref.toLowerCase()}">${ref}</a>`;
     }
 
     if (schema.anyOf || schema.oneOf) {

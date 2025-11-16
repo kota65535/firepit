@@ -13,7 +13,7 @@ concurrency: 4
 
 ### depends_on
 
-- **Type:** <code>Array&lt;<a href="#DependsOnConfig">DependsOnConfig</a>&gt;</code>
+- **Type:** <code>Array&lt;<a href="#dependsonconfig">DependsOnConfig</a>&gt;</code>
 - **Required:** no
 - **Default:** `[]`
 - **Description:** Dependency tasks for all the project tasks.
@@ -74,7 +74,7 @@ includes:
 
 ### log
 
-- **Type:** <code><a href="#LogConfig">LogConfig</a></code>
+- **Type:** <code><a href="#logconfig">LogConfig</a></code>
 - **Required:** no
 - **Default:** `{"file":null,"level":"info"}`
 - **Description:** Log configuration.
@@ -101,7 +101,7 @@ projects:
 
 ### shell
 
-- **Type:** <code><a href="#ShellConfig">ShellConfig</a></code>
+- **Type:** <code><a href="#shellconfig">ShellConfig</a></code>
 - **Required:** no
 - **Default:** `{"args":["-c"],"command":"bash"}`
 - **Description:** Shell configuration for all the project tasks.
@@ -113,7 +113,7 @@ shell:
 
 ### tasks
 
-- **Type:** <code>Map&lt;string, <a href="#TaskConfig">TaskConfig</a>&gt;</code>
+- **Type:** <code>Map&lt;string, <a href="#taskconfig">TaskConfig</a>&gt;</code>
 - **Required:** no
 - **Default:** `{}`
 - **Template:** no
@@ -121,7 +121,7 @@ shell:
 
 ### ui
 
-- **Type:** <code><a href="#UI">UI</a></code>
+- **Type:** <code><a href="#ui">UI</a></code>
 - **Required:** no
 - **Default:** `cui`
 - **Description:** UI configuration.
@@ -157,7 +157,7 @@ working_dir: src
 
 ## DependsOnConfig
 
-- **Type:** <code>string | <a href="#DependsOnConfigStruct">DependsOnConfigStruct</a></code>
+- **Type:** <code>string | <a href="#dependsonconfigstruct">DependsOnConfigStruct</a></code>
 - **Template:** yes
 
 ## DependsOnConfigStruct
@@ -227,7 +227,7 @@ and then again interval seconds after each previous check completes.
 
 ### shell
 
-- **Type:** <code><a href="#ShellConfig">ShellConfig</a></code>
+- **Type:** <code><a href="#shellconfig">ShellConfig</a></code>
 - **Required:** no
 - **Description:** Shell configuration
 
@@ -255,7 +255,7 @@ Probe failure during that period will not be counted towards the maximum number 
 
 ## HealthCheckConfig
 
-- **Type:** <code><a href="#LogProbeConfig">LogProbeConfig</a> | <a href="#ExecProbeConfig">ExecProbeConfig</a></code>
+- **Type:** <code><a href="#logprobeconfig">LogProbeConfig</a> | <a href="#execprobeconfig">ExecProbeConfig</a></code>
 
 ## LogConfig
 
@@ -298,19 +298,19 @@ Probe failure during that period will not be counted towards the maximum number 
 
 ## ServiceConfig
 
-- **Type:** <code>boolean | <a href="#ServiceConfigStruct">ServiceConfigStruct</a></code>
+- **Type:** <code>boolean | <a href="#serviceconfigstruct">ServiceConfigStruct</a></code>
 
 ## ServiceConfigStruct
 
 ### healthcheck
 
-- **Type:** <code><a href="#HealthCheckConfig">HealthCheckConfig</a></code>
+- **Type:** <code><a href="#healthcheckconfig">HealthCheckConfig</a></code>
 - **Required:** no
 - **Description:** Readiness probe configuration
 
 ### restart
 
-- **Type:** <code><a href="#Restart">Restart</a></code>
+- **Type:** <code><a href="#restart">Restart</a></code>
 - **Required:** no
 - **Default:** `never`
 - **Description:** Restart policy
@@ -344,7 +344,7 @@ Probe failure during that period will not be counted towards the maximum number 
 
 ### depends_on
 
-- **Type:** <code>Array&lt;<a href="#DependsOnConfig">DependsOnConfig</a>&gt;</code>
+- **Type:** <code>Array&lt;<a href="#dependsonconfig">DependsOnConfig</a>&gt;</code>
 - **Required:** no
 - **Default:** `[]`
 - **Description:** Dependency tasks
@@ -397,13 +397,13 @@ Probe failure during that period will not be counted towards the maximum number 
 
 ### service
 
-- **Type:** <code><a href="#ServiceConfig">ServiceConfig</a></code>
+- **Type:** <code><a href="#serviceconfig">ServiceConfig</a></code>
 - **Required:** no
 - **Description:** Service configurations
 
 ### shell
 
-- **Type:** <code><a href="#ShellConfig">ShellConfig</a></code>
+- **Type:** <code><a href="#shellconfig">ShellConfig</a></code>
 - **Required:** no
 - **Description:** Shell configuration
 
