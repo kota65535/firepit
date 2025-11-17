@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.15.0] - 2025-11-17
+
+### 🚀 Features
+
+- `fire` alias script (#208)
+
 ## [0.14.3] - 2025-11-17
 
 ### 🐛 Bug Fixes
