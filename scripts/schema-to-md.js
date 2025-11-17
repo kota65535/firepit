@@ -37,7 +37,7 @@ function typeValue(schema) {
 
     if (schema.$ref) {
         const ref = refName(schema.$ref)
-        return `<a href="#${ref}">${ref}</a>`;
+        return `<a href="#${ref.toLowerCase()}">${ref}</a>`;
     }
 
     if (schema.anyOf || schema.oneOf) {
