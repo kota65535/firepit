@@ -18,10 +18,10 @@ tasks:
     command: npx -y cowsay "hello,firepit"
 ```
 
-Run `firepit` in the terminal.
+Run `firepit` in the terminal. You can use the alias `fire`.
 
 ```bash
-firepit hello
+fire hello
 ```
 
 <img src="/hello.png" alt="hello">

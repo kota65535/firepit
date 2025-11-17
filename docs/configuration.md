@@ -74,20 +74,20 @@ Note that the root project name is treated as an empty string, so you can refere
 For example, to run client's dev task:
 
 ```bash
-firepit client#dev
+fire client#dev
 ```
 
 Move to the client directory and run the dev task directly:
 
 ```bash
 cd packages/client
-firepit dev
+fire dev
 ```
 
 Run client & server dev tasks (because root project does not have dev task)
 
 ```bash
-firepit dev
+fire dev
 ```
 
 This is how Firepit resolves which task to run:
@@ -370,5 +370,5 @@ In watch mode, Firepit monitors the files specified in the `inputs` field and au
 To enable watch mode, add `-w` or `--watch` option.
 
 ```bash
-firepit -w build
+fire -w build
 ```
