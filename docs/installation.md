@@ -25,19 +25,9 @@ curl -LsSf https://github.com/kota65535/firepit/releases/download/{version}/fire
 [Mise](https://mise.jdx.dev/) is a cross-platform package manager that acts as a "frontend" to a variety
 of other package managers "backends" such as `asdf`, `ubi` and `github`.
 
-If using Mise, we recommend using the `github` or `ubi` backends to install Task
-as these install directly from our GitHub releases.
-
-::: code-group
+If using Mise, we recommend using the `github` backend to install Firepit.
 
 ```shell [github]
 mise use -g github:kota65535/firepit@latest
 mise install
 ```
-
-```shell [ubi]
-mise use -g ubi:kota65535/firepit@latest
-mise install
-```
-
-:::
