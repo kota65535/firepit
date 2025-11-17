@@ -9,7 +9,7 @@ outline: deep
 ## Usage
 
 ```
-firepit [OPTIONS] [TASKS]... [VARS]...
+fire [OPTIONS] [TASKS]... [VARS]...
 ```
 
 ## Arguments
