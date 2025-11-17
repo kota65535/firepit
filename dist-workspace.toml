@@ -18,5 +18,4 @@ install-updater = false
 
 github-build-setup = "build-workaround"
 
-[dist.bin-aliases]
-firepit = ["fire"]
+include = ["scripts/fire"]
