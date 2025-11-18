@@ -38,7 +38,6 @@ export default withMermaid({
         ]
       }
     ],
-
     sidebar: [
       {
         text: 'Installation',
@@ -69,10 +68,12 @@ export default withMermaid({
         link: `${base}llms-full.txt`
       },
     ],
-
     socialLinks: [
       { icon: 'github', link: 'https://github.com/kota65535/firepit' }
-    ]
+    ],
+    search: {
+      provider: 'local'
+    }
   },
   mermaid: { theme: 'forest' },
   vite: {
