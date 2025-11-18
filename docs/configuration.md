@@ -233,11 +233,11 @@ There are also some built-in variables available for use in templates.
 
 | Name           | Type                | Description                                                            |
 | -------------- | ------------------- | ---------------------------------------------------------------------- |
-| `root_dir`     | &str                | The absolute path of the root project dir. Multi-projects only.        |
-| `project_dirs` | HashMap<&str, &str> | Map of all project names to their absolute paths. Multi-projects only. |
-| `project_dir`  | &str                | The absolute path of the current project directory.                    |
-| `project`      | &str                | The project name. Multi-projects only.                                 |
-| `task`         | &str                | The task name.                                                         |
+| `root_dir`     | string              | The absolute path of the root project dir. Multi-projects only.        |
+| `project_dirs` | Map<string, string> | Map of all project names to their absolute paths. Multi-projects only. |
+| `project_dir`  | string              | The absolute path of the current project directory.                    |
+| `project`      | string              | The project name. Multi-projects only.                                 |
+| `task`         | string              | The task name.                                                         |
 
 ## Environment Variables
 
