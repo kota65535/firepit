@@ -13,7 +13,7 @@ use std::fmt;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{broadcast, mpsc, watch};
 use tokio::task::JoinHandle;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 #[derive(Clone)]
 pub struct TaskGraph {
@@ -197,11 +197,11 @@ impl TaskGraph {
                                 Ok(command) = visitor_rx.recv() => {
                                     match command {
                                         VisitorCommand::Stop => {
-                                            info!("Visitor stopped");
+                                            debug!("Visitor stopped");
                                             return Ok(())
                                         }
                                         VisitorCommand::Restart { task: task_name, force } => {
-                                            info!("Visitor restarted");
+                                            debug!("Visitor restarted");
                                             if task.name == task_name {
                                                 ignore_deps = force;
                                                 num_runs += 1;
@@ -241,11 +241,11 @@ impl TaskGraph {
                                         Ok(command) = visitor_rx.recv() => {
                                             match command {
                                                 VisitorCommand::Stop => {
-                                                    info!("Visitor stopped");
+                                                    debug!("Visitor stopped");
                                                     return Ok(())
                                                 }
                                                 VisitorCommand::Restart { task: task_name, force } => {
-                                                    info!("Visitor restarted");
+                                                    debug!("Visitor restarted");
                                                     if task.name == task_name {
                                                         ignore_deps = force;
                                                         num_runs += 1;
@@ -269,16 +269,16 @@ impl TaskGraph {
                                                             // Service task should continue recv loop so that it can restart
                                                             // even after reaching the READY state
                                                             if result.success() && task.is_service {
-                                                                info!("Result: {:?}, still waiting for callback", result);
+                                                                debug!("Result: {:?}, still waiting for callback", result);
                                                                 continue 'recv;
                                                             }
                                                             // Finish the visitor
-                                                            info!("Result: {:?}", result);
+                                                            debug!("Result: {:?}", result);
                                                             break 'send;
                                                         }
                                                         NodeResult::None => {
                                                             // No result means we should restart the task
-                                                            info!("Result is empty, restarting");
+                                                            debug!("Result is empty, restarting");
                                                             num_restart += 1;
                                                             continue 'send;
                                                         }
@@ -306,14 +306,14 @@ impl TaskGraph {
                         };
                     }
 
-                    info!("Visitor finished");
+                    debug!("Visitor finished");
                     let targets_done = {
                         let mut t = targets_remaining_cloned.lock().expect("not poisoned");
                         t.remove(&task.name);
                         t.is_empty()
                     };
                     if quit_on_done && targets_done {
-                        info!("All target node done, stopping visitors");
+                        debug!("All target node done, stopping visitors");
                         visitor_tx_cloned.send(VisitorCommand::Stop).ok();
                     }
 
@@ -321,12 +321,12 @@ impl TaskGraph {
                         match visitor_rx.recv().await {
                             Ok(command) => match command {
                                 VisitorCommand::Stop => {
-                                    info!("Visitor stopped");
+                                    debug!("Visitor stopped");
                                     return Ok(());
                                 }
                                 VisitorCommand::Restart { task: task_name, force } => {
                                     if task.name == task_name {
-                                        info!("Visitor restarted");
+                                        debug!("Visitor restarted");
                                         num_runs += 1;
                                         ignore_deps = force;
                                         tx.send(NodeResult::None).ok();
@@ -335,7 +335,7 @@ impl TaskGraph {
                                 }
                             },
                             Err(broadcast::error::RecvError::Closed) => {
-                                info!("Visitor command channel closed");
+                                debug!("Visitor command channel closed");
                                 return Ok(());
                             }
                             Err(err) => {
