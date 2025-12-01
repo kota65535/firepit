@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
-use tracing::{info, trace, warn};
+use tracing::{debug, info, trace, warn};
 
 #[derive(Clone)]
 pub struct FileWatcher {
@@ -58,7 +58,7 @@ impl FileWatcher {
             while let Ok(event) = watcher_rx.recv().await {
                 match event {
                     WatcherCommand::Stop => {
-                        info!("Stopping watcher");
+                        debug!("Stopping watcher");
                         let mut state = state.lock().expect("not poisoned");
                         state.is_closing = true;
                         break;
@@ -109,7 +109,7 @@ impl FileWatcher {
                         }
                     }
                     Err(RecvTimeoutError::Disconnected) => {
-                        info!("Stopping watcher since sender dropped");
+                        debug!("Stopping watcher since sender dropped");
                         break;
                     }
                 }
@@ -117,7 +117,7 @@ impl FileWatcher {
                     return;
                 }
             }
-            info!("Watcher finished");
+            debug!("Watcher finished");
         });
 
         let wrapped_future = tokio::task::spawn_blocking(move || future.join().expect("thread panicked"));
