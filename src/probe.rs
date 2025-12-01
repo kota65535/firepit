@@ -4,10 +4,12 @@ use crate::PROBE_STOP_TIMEOUT;
 use anyhow::Context;
 use regex::Regex;
 use std::collections::HashMap;
+use std::io::{self, Write};
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 #[derive(Debug, Clone)]
 pub enum Probe {
@@ -114,10 +116,7 @@ impl ExecProbe {
 
     pub async fn run(&self, mut cancel_rx: watch::Receiver<()>) -> anyhow::Result<bool> {
         let env = self.env.load()?;
-        debug!(
-            "Probe started (ExecProbe).\ncommand: {:?}\nshell: {:?}\nenv: {:?}\n\nworking_dir: {:?}\ninterval: {:?}\ntimeout: {:?}\nretries: {:?}\nstart_period: {:?}",
-            self.command, self.shell, env, self.working_dir, self.interval, self.timeout, self.retries, self.start_period
-        );
+        info!("Probe started (ExecProbe). command: {:?}", self.command);
         let start = Instant::now();
 
         // Wait `interval` seconds before the first health check
@@ -125,7 +124,7 @@ impl ExecProbe {
 
         let mut retries = 0;
         loop {
-            debug!("Probe try ({}/{})", retries, self.retries);
+            info!("Probe try ({}/{})", retries, self.retries);
 
             let mut process = match self.exec(&env).await {
                 Ok(p) => p,
@@ -135,28 +134,33 @@ impl ExecProbe {
                 }
             };
 
+            let output_collector = OutputCollector::new();
             tokio::select! {
                 // Cancelling branch, kill the process and quits immediately
                 _ = cancel_rx.changed() => {
-                    debug!("Probe cancelled");
+                    info!("Probe cancelled. output: {:?}", output_collector.take_output());
                     if let Some(pid) = process.pid() { self.manager.stop_by_pid(pid).await; }
                     return Ok(false);
                 },
                 // Timeout branch
                 _ = tokio::time::sleep(Duration::from_secs(self.timeout)) => {
-                    debug!("Probe timed-out");
+                    info!("Probe timed-out. output: {:?}", output_collector.take_output());
                 },
                 // Normal branch, success if finished with code 0
-                exit = process.wait() => {
+                exit = process.wait_with_piped_outputs(output_collector.clone()) => {
                     let success = match exit {
-                        Some(exit_status) => match exit_status {
-                            ChildExit::Finished(Some(code)) if code == 0 => true,
-                            _ => false
+                        Ok(Some(exit_status)) => {
+                            info!("Probe finished with exit code {:?}.\noutput: {:?}", exit_status, output_collector.take_output());
+                            match exit_status {
+                                ChildExit::Finished(Some(code)) if code == 0 => true,
+                                _ => false
+                            }
                         },
-                        None => false
+                        Ok(None) => anyhow::bail!("unable to determine why probe exited"),
+                        Err(e) => anyhow::bail!("error while waiting probe: {:?}", e),
                     };
                     if success {
-                        debug!("Probe succeeded");
+                        info!("Probe succeeded");
                         return Ok(true);
                     }
                 }
@@ -164,7 +168,7 @@ impl ExecProbe {
 
             // Retry up to `self.retries` times when timeout or finished with non-zero code
             if retries >= self.retries {
-                debug!("Probe failed");
+                info!("Probe failed");
                 return Ok(false);
             }
 
@@ -173,7 +177,7 @@ impl ExecProbe {
                 retries += 1;
             }
 
-            debug!(
+            info!(
                 "Probe next retry {}/{} after {} sec",
                 retries, self.retries, self.interval
             );
@@ -197,6 +201,38 @@ impl ExecProbe {
             Some(Err(e)) => Err(e).with_context(|| "unable to spawn task"),
             _ => anyhow::bail!("unable to spawn task"),
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct OutputCollector {
+    buffer: Arc<Mutex<Vec<u8>>>,
+}
+
+impl OutputCollector {
+    fn new() -> Self {
+        Self {
+            buffer: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    fn take_output(&self) -> String {
+        let mut buf = self.buffer.lock().expect("buffer poisoned");
+        let contents = String::from_utf8_lossy(&buf).into_owned();
+        buf.clear();
+        contents
+    }
+}
+
+impl Write for OutputCollector {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let mut buffer = self.buffer.lock().expect("buffer poisoned");
+        buffer.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }
 
