@@ -1,19 +1,25 @@
 use crate::config::{
-    DependsOnConfig, DependsOnConfigStruct, HealthCheckConfig, ProjectConfig, ServiceConfig, TaskConfig,
+    DependsOnConfig, DependsOnConfigStruct, DynamicVarsInner, HealthCheckConfig, ProjectConfig, ServiceConfig,
+    TaskConfig, VarsConfig,
 };
-use crate::project::Task;
+use crate::log::OutputCollector;
+use crate::process::{ChildExit, Command, ProcessManager};
+use crate::project::{Env, Task};
+use crate::DYNAMIC_VAR_STOP_TIMEOUT;
 use anyhow::Context;
+use async_recursion::async_recursion;
 use indexmap::IndexMap;
 use serde_json::{Map, Value as JsonValue};
 use serde_yaml::Value;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use tera::Tera;
 use tracing::{debug, info};
 
 pub struct ConfigRenderer {
     root_config: ProjectConfig,
     child_configs: IndexMap<String, ProjectConfig>,
-    vars: IndexMap<String, JsonValue>,
+    vars: IndexMap<String, VarsConfig>,
 }
 
 pub const ROOT_DIR_CONTEXT_KEY: &str = "root_dir";
@@ -23,10 +29,10 @@ pub const PROJECT_CONTEXT_KEY: &str = "project";
 pub const TASK_CONTEXT_KEY: &str = "task";
 
 impl ProjectConfig {
-    pub fn context(
-        &self,
+    pub async fn context(
+        &mut self,
         context: &tera::Context,
-        vars: &IndexMap<String, JsonValue>,
+        vars: &IndexMap<String, VarsConfig>,
     ) -> anyhow::Result<tera::Context> {
         let mut tera = Tera::default();
         let mut context = context.clone();
@@ -38,7 +44,21 @@ impl ProjectConfig {
         for (k, v) in self.vars.iter().chain(vars.iter()) {
             let rk = tera.render_str(&k, &context)?;
             if !rk.is_empty() {
-                let rv = render_value(v, &mut tera, &context)?;
+                let v = match v {
+                    VarsConfig::Dynamic(s) => {
+                        let mut s = s.clone();
+                        s.inner = Some(DynamicVarsInner {
+                            name: k.clone(),
+                            command: tera.render_str(&s.command, &context)?,
+                            shell: s.shell.clone().unwrap_or(self.shell.clone()),
+                            env: Env::new().with(&s.env_file_paths(&self.dir), &s.env).load()?,
+                            working_dir: s.working_dir_path(&self.dir).unwrap_or(self.working_dir_path()),
+                        });
+                        VarsConfig::Dynamic(s)
+                    }
+                    VarsConfig::Static(_) => v.clone(),
+                };
+                let rv = render_value(&v, &mut tera, &context).await?;
                 context.insert(rk, &rv);
             }
         }
@@ -46,7 +66,7 @@ impl ProjectConfig {
         Ok(context)
     }
 
-    pub fn render(&self, context: &tera::Context) -> anyhow::Result<ProjectConfig> {
+    pub async fn render(&self, context: &tera::Context) -> anyhow::Result<ProjectConfig> {
         let mut tera = Tera::default();
 
         let mut config = self.clone();
@@ -75,8 +95,8 @@ impl ProjectConfig {
         let mut rendered_tasks = IndexMap::new();
 
         for (task_name, task_config) in config.tasks.iter_mut() {
-            let task_context = task_config.context(context)?;
-            let task_config = task_config.render(&task_context)?;
+            let task_context = task_config.context(context).await?;
+            let task_config = task_config.render(&task_context).await?;
             rendered_tasks.insert(task_name.clone(), task_config);
         }
         config.tasks = rendered_tasks;
@@ -86,7 +106,7 @@ impl ProjectConfig {
 }
 
 impl TaskConfig {
-    pub fn context(&self, context: &tera::Context) -> anyhow::Result<tera::Context> {
+    pub async fn context(&self, context: &tera::Context) -> anyhow::Result<tera::Context> {
         let mut tera = Tera::default();
         let mut context = context.clone();
         context.insert(TASK_CONTEXT_KEY, &self.full_orig_name());
@@ -95,19 +115,19 @@ impl TaskConfig {
         for (k, v) in self.vars.iter() {
             let rk = tera.render_str(&k, &context)?;
             if !rk.is_empty() {
-                let rv = render_value(v, &mut tera, &context)?;
+                let rv = render_value(v, &mut tera, &context).await?;
                 context.insert(rk, &rv);
             }
         }
         Ok(context)
     }
 
-    pub fn render(&self, context: &tera::Context) -> anyhow::Result<TaskConfig> {
+    pub async fn render(&self, context: &tera::Context) -> anyhow::Result<TaskConfig> {
         let mut config = self.clone();
         let mut tera = Tera::default();
 
         // Render task-level vars
-        config.vars = render_value_map(&config.vars, &mut tera, context)?;
+        config.vars = render_value_map(&config.vars, &mut tera, context).await?;
 
         // Render label
         if let Some(l) = config.label {
@@ -188,7 +208,7 @@ impl TaskConfig {
                     let task = tera.render_str(&dep.task, &context)?;
                     // Ignore if rendered task name is empty
                     if !task.ends_with("#") {
-                        let vars = render_value_map(&dep.vars, &mut tera, context)?;
+                        let vars = render_value_map(&dep.vars, &mut tera, context).await?;
                         rendered_depends_on.push(DependsOnConfig::Struct(DependsOnConfigStruct {
                             task,
                             vars,
@@ -212,7 +232,7 @@ impl ConfigRenderer {
     pub fn new(
         root_config: &ProjectConfig,
         child_config: &IndexMap<String, ProjectConfig>,
-        vars: &IndexMap<String, JsonValue>,
+        vars: &IndexMap<String, VarsConfig>,
     ) -> Self {
         Self {
             root_config: root_config.clone(),
@@ -238,35 +258,37 @@ impl ConfigRenderer {
         context
     }
 
-    pub fn render(&mut self) -> anyhow::Result<(ProjectConfig, IndexMap<String, ProjectConfig>)> {
+    pub async fn render(&mut self) -> anyhow::Result<(ProjectConfig, IndexMap<String, ProjectConfig>)> {
         let context = self.base_context();
         let mut task_contexts = HashMap::new();
         let mut tasks = Vec::new();
         let mut num_variants = HashMap::new();
 
         // Root project task contexts
-        let root_context = self.root_config.context(&context, &self.vars)?;
+        let root_context = self.root_config.context(&context, &self.vars).await?;
         let mut root_config = self
             .root_config
             .render(&root_context)
+            .await
             .with_context(|| "failed to render config of project root")?;
         for t in self.root_config.tasks.values() {
             tasks.push(t.full_name());
-            task_contexts.insert(t.full_name(), t.context(&root_context)?);
+            task_contexts.insert(t.full_name(), t.context(&root_context).await?);
         }
 
         // Project task contexts
         let mut child_configs = IndexMap::new();
         for (k, c) in self.child_configs.iter_mut() {
-            let project_context = c.context(&context, &self.vars)?;
+            let project_context = c.context(&context, &self.vars).await?;
             child_configs.insert(
                 k.clone(),
                 c.render(&project_context)
+                    .await
                     .with_context(|| format!("failed to render config of project {:?}", c.name))?,
             );
             for t in c.tasks.values() {
                 tasks.push(t.full_name());
-                task_contexts.insert(t.full_name(), t.context(&project_context)?);
+                task_contexts.insert(t.full_name(), t.context(&project_context).await?);
             }
         }
 
@@ -280,7 +302,8 @@ impl ConfigRenderer {
                 &mut self.child_configs,
                 &mut num_variants,
                 &mut task_contexts,
-            )?;
+            )
+            .await?;
         }
 
         Ok((root_config.clone(), child_configs.clone()))
@@ -338,7 +361,8 @@ impl ConfigRenderer {
         Vec::new()
     }
 
-    fn render_variant_tasks(
+    #[async_recursion]
+    async fn render_variant_tasks(
         task_name: &str,
         root_config: &mut ProjectConfig,
         child_configs: &mut IndexMap<String, ProjectConfig>,
@@ -391,10 +415,10 @@ impl ConfigRenderer {
             let dep_context = contexts
                 .get(&dep_task.full_name())
                 .context(format!("unknown task {:?}", dep_task.full_name()))?;
-            let variant_context = variant_task.context(dep_context)?;
+            let variant_context = variant_task.context(dep_context).await?;
 
             // Render
-            let mut rendered_variant_task = variant_task.render(&variant_context)?;
+            let mut rendered_variant_task = variant_task.render(&variant_context).await?;
 
             debug!(
                 "Variant?: {:?}, dependent: {:?}\ncontext: {:#?}\nvars: {:#?}",
@@ -453,7 +477,8 @@ impl ConfigRenderer {
                 raw_child_configs,
                 num_variants,
                 contexts,
-            )?;
+            )
+            .await?;
         }
 
         Self::set_task(task_config, root_config, child_configs);
@@ -478,55 +503,103 @@ fn render_string_map(
     Ok(ret)
 }
 
-fn render_value_map(
-    map: &IndexMap<String, JsonValue>,
+async fn render_value_map(
+    map: &IndexMap<String, VarsConfig>,
     tera: &mut Tera,
     context: &tera::Context,
-) -> anyhow::Result<IndexMap<String, JsonValue>> {
+) -> anyhow::Result<IndexMap<String, VarsConfig>> {
     let mut ret = IndexMap::new();
     for (k, v) in map.iter() {
         let rk = tera.render_str(k, context)?;
         if !rk.is_empty() {
-            let rv = render_value(v, tera, context)?;
+            let rv = VarsConfig::Static(render_value(v, tera, context).await?);
             ret.insert(rk, rv);
         }
     }
     Ok(ret)
 }
 
-fn render_value(value: &JsonValue, tera: &mut Tera, context: &tera::Context) -> anyhow::Result<JsonValue> {
+#[async_recursion]
+async fn render_value(value: &VarsConfig, tera: &mut Tera, context: &tera::Context) -> anyhow::Result<JsonValue> {
     let rendered = match value {
-        JsonValue::String(s) => {
-            let str = tera
-                .render_str(s, context)
-                .context(format!("failed to render {:?}", s))?;
-            let yaml_value =
-                serde_yaml::from_str::<Value>(&str).context(format!("failed to read YAML value {:?}", str))?;
-            match yaml_value {
-                Value::Null => JsonValue::Null,
-                Value::Bool(b) => JsonValue::Bool(b),
-                Value::Number(n) => yaml_number_to_json_number(&n).unwrap_or(JsonValue::Null),
-                Value::String(s) => JsonValue::String(s),
-                _ => JsonValue::String(str),
+        VarsConfig::Static(s) => match s {
+            JsonValue::String(s) => {
+                let str = tera
+                    .render_str(s, context)
+                    .context(format!("failed to render {:?}", s))?;
+                let yaml_value =
+                    serde_yaml::from_str::<Value>(&str).context(format!("failed to read YAML value {:?}", str))?;
+                match yaml_value {
+                    Value::Null => JsonValue::Null,
+                    Value::Bool(b) => JsonValue::Bool(b),
+                    Value::Number(n) => yaml_number_to_json_number(&n).unwrap_or(JsonValue::Null),
+                    Value::String(s) => JsonValue::String(s),
+                    _ => JsonValue::String(str),
+                }
             }
-        }
-        JsonValue::Number(_) | JsonValue::Bool(_) | JsonValue::Null => value.clone(),
-        JsonValue::Array(items) => {
-            let mut rendered_items = Vec::with_capacity(items.len());
-            for item in items {
-                rendered_items.push(render_value(item, tera, context)?);
+            JsonValue::Number(_) | JsonValue::Bool(_) | JsonValue::Null => s.clone(),
+            JsonValue::Array(items) => {
+                let mut rendered_items = Vec::with_capacity(items.len());
+                for item in items {
+                    rendered_items.push(render_value(&VarsConfig::Static(item.clone()), tera, context).await?);
+                }
+                JsonValue::Array(rendered_items)
             }
-            JsonValue::Array(rendered_items)
-        }
-        JsonValue::Object(map) => {
-            let mut rendered_map = Map::with_capacity(map.len());
-            for (k, v) in map.iter() {
-                rendered_map.insert(k.clone(), render_value(v, tera, context)?);
+            JsonValue::Object(map) => {
+                let mut rendered_map = Map::with_capacity(map.len());
+                for (k, v) in map.iter() {
+                    rendered_map.insert(
+                        k.clone(),
+                        render_value(&VarsConfig::Static(v.clone()), tera, context).await?,
+                    );
+                }
+                JsonValue::Object(rendered_map)
             }
-            JsonValue::Object(rendered_map)
+        },
+        VarsConfig::Dynamic(s) => {
+            let inner = s.inner.clone().context("dynamic vars inner value should be present")?;
+            let name = inner.name;
+            let command = inner.command;
+            let shell = inner.shell;
+            let working_dir = inner.working_dir;
+            let mut args = Vec::new();
+            args.extend(shell.args);
+            args.push(command);
+            let command = Command::new(shell.command)
+                .with_args(args)
+                .with_current_dir(PathBuf::from(working_dir))
+                .to_owned();
+            let output = execute_command(&command)
+                .await
+                .context(format!("failed to render dynamic var {:?}", name))?;
+            let trimmed = output.trim().to_string();
+            render_value(&VarsConfig::Static(JsonValue::from(trimmed)), tera, context).await?
         }
     };
     Ok(rendered)
+}
+
+/// Executes a command and returns the output as a string.
+async fn execute_command(command: &Command) -> anyhow::Result<String> {
+    let manager = ProcessManager::infer();
+    let mut process = match manager.spawn(command.clone(), DYNAMIC_VAR_STOP_TIMEOUT).await {
+        Some(Ok(child)) => child,
+        Some(Err(e)) => anyhow::bail!("failed to spawn process: {:?}", e),
+        _ => anyhow::bail!("failed to spawn process"),
+    };
+    let output_collector = OutputCollector::new();
+    let exit = process.wait_with_piped_outputs(output_collector.clone()).await;
+    Ok(match exit {
+        Ok(Some(exit_status)) => match exit_status {
+            ChildExit::Finished(Some(code)) if code == 0 => output_collector.take_output(),
+            ChildExit::Finished(Some(code)) => anyhow::bail!("process exited with non-zero code {:?}", code),
+            ChildExit::Finished(None) => anyhow::bail!("process exited with unknown exit code"),
+            ChildExit::Killed | ChildExit::KilledExternal => anyhow::bail!("process is killed by signal"),
+            ChildExit::Failed => anyhow::bail!("process failed"),
+        },
+        Ok(None) => anyhow::bail!("failed to get the exit code"),
+        Err(e) => anyhow::bail!("error while waiting process: {:?}", e),
+    })
 }
 
 /// Converts serde_yaml::Value::Number to serde_json::Value::Number

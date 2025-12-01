@@ -1,10 +1,11 @@
-use crate::config::{DependsOnConfig, HealthCheckConfig, ProjectConfig, Restart, ServiceConfig, TaskConfig, UI};
+use crate::config::{
+    DependsOnConfig, HealthCheckConfig, ProjectConfig, Restart, ServiceConfig, TaskConfig, VarsConfig, UI,
+};
 use crate::probe::{ExecProbe, LogLineProbe, Probe};
 use crate::template::ConfigRenderer;
 use anyhow::Context;
 use indexmap::IndexMap;
 use regex::Regex;
-use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
@@ -23,12 +24,12 @@ pub struct Workspace {
 }
 
 impl Workspace {
-    pub fn new(
+    pub async fn new(
         root_config: &ProjectConfig,
         child_configs: &IndexMap<String, ProjectConfig>,
         tasks: &Vec<String>,
         current_dir: &Path,
-        vars: &IndexMap<String, Value>,
+        vars: &IndexMap<String, VarsConfig>,
         force: bool,
         watch: bool,
         fail_fast: Option<bool>,
@@ -97,7 +98,7 @@ impl Workspace {
         }
 
         let mut renderer = ConfigRenderer::new(&root_config, &child_configs, &vars);
-        let (root_config, child_configs) = renderer.render()?;
+        let (root_config, child_configs) = renderer.render().await?;
         ProjectConfig::validate_multi(&root_config, &child_configs)?;
 
         let root = Project::new("", &root_config)?;

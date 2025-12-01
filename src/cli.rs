@@ -1,7 +1,7 @@
 use crate::app::cui::lib::{BOLD, BOLD_YELLOW};
 use crate::app::cui::CuiApp;
 use crate::app::tui::TuiApp;
-use crate::config::{ProjectConfig, UI};
+use crate::config::{ProjectConfig, VarsConfig, UI};
 use crate::log::init_logger;
 use crate::project::Workspace;
 use crate::runner::TaskRunner;
@@ -11,7 +11,6 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use nix::unistd::getcwd;
 use serde_json::Value;
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use std::path;
@@ -124,6 +123,11 @@ pub async fn run() -> anyhow::Result<i32> {
         return Ok(0);
     }
 
+    let vars = vars
+        .into_iter()
+        .map(|(k, v)| (k, VarsConfig::Static(v)))
+        .collect::<IndexMap<_, _>>();
+
     // Aggregate information in config files into a more workable form
     let ws = Workspace::new(
         &root,
@@ -134,7 +138,8 @@ pub async fn run() -> anyhow::Result<i32> {
         args.force,
         args.watch,
         fail_fast,
-    )?;
+    )
+    .await?;
 
     // Create runner
     let mut runner = TaskRunner::new(&ws)?;

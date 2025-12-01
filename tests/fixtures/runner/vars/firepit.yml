@@ -2,6 +2,10 @@ vars:
   A: 1
   B: "{{ A | int + 1 }}"
   C: true
+  D: [1, 2]
+  E:
+    a: 1
+    b: 2
 
 tasks:
   foo:
@@ -10,6 +14,7 @@ tasks:
       - bar
       - baz
       - "{% if C %}qux{% endif %}"
+      - quux
 
   bar:
     env:
@@ -24,12 +29,7 @@ tasks:
     command: echo "baz ${C}"
 
   qux:
-    vars:
-      D: 12001
-    command: |
-      echo "qux {{ D }}"
-      nc -kl 12001
-    service:
-      healthcheck:
-        command: "nc -z localhost {{ D }}"
-        start_period: 1
+    command: echo "qux {{ D[0] }},{{ D[1] }}"
+
+  quux:
+    command: echo "quux {{ E['a'] }},{{ E['b'] }}"
