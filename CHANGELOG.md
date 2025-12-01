@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.16.0] - 2025-12-01
+
+### 🚀 Features
+
+- Log probe output (#218)
+
+### 🐛 Bug Fixes
+
+- [**breaking**] Change `env_files` precedence (#215)
+
+### 🚜 Refactor
+
+- Delete unused codes (#217)
+
+### 📚 Documentation
+
+- Prefer aliases
+- Prefer aliases
+- Recommend github backend
+- Fix type
+- Add search box
+
+### ⚙️ Miscellaneous Tasks
+
+- Fix log level (#216)
+
 ## [0.15.0] - 2025-11-17
 
 ### 🚀 Features
