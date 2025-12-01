@@ -29,7 +29,7 @@
       "x-template": true
     },
     "env_files": {
-      "description": "Dotenv files for all the project tasks.\nIn case of duplicated environment variables, the latter one takes precedence.\n```yaml\nenv_files:\n  - .env\n  - .env.local\n```",
+      "description": "Dotenv files for all the project tasks.\nIn case of duplicated environment variables, the former one takes precedence.\n```yaml\nenv_files:\n  - .env.local\n  - .env\n```",
       "type": "array",
       "default": [],
       "items": {

@@ -1,0 +1,9 @@
+env_files:
+  - .env.1
+  - .env.2
+
+tasks:
+  foo:
+    env:
+      key2: env2
+    command: echo "${key1} ${key2} ${key3}"

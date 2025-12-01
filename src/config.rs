@@ -77,11 +77,11 @@ pub struct ProjectConfig {
     pub env: IndexMap<String, String>,
 
     /// Dotenv files for all the project tasks.
-    /// In case of duplicated environment variables, the latter one takes precedence.
+    /// In case of duplicated environment variables, the former one takes precedence.
     /// ```yaml
     /// env_files:
-    ///   - .env
     ///   - .env.local
+    ///   - .env
     /// ```
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
