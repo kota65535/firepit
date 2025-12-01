@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::future::Future;
 use std::io::Write;
-use std::path;
 use std::path::Path;
+use std::{env, path};
 
 use firepit::app::command::{AppCommand, AppCommandChannel};
 use firepit::config::ProjectConfig;
@@ -417,6 +417,26 @@ async fn test_up_to_date() {
     stats.insert(String::from("#baz"), String::from("Finished: Success"));
 
     run_task(&path, tasks, stats, None, false).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_env_precedence() {
+    env::set_var("key1", "os1");
+    env::set_var("key2", "os2");
+    env::set_var("key3", "os3");
+
+    setup();
+
+    let path = BASE_PATH.join("env");
+    let tasks = vec![String::from("foo")];
+
+    let mut stats = HashMap::new();
+    stats.insert(String::from("#foo"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#foo"), String::from("file1 env2 os3"));
+
+    run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
 }
 
 async fn run_task(

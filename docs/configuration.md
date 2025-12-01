@@ -43,7 +43,7 @@ tasks:
     command: bun install
 ```
 
-The each `firepit.yml` in subprojects defines its own tasks and services.
+Each `firepit.yml` in subprojects defines its own tasks.
 
 ::: code-group
 
@@ -241,9 +241,15 @@ There are also some built-in variables available for use in templates.
 
 ## Environment Variables
 
-You can define environment variables for tasks and services using the `env` field.
-Dotenv files can be also loaded using the `env_files` field.
-Note that environment variables are not inherited by dependency tasks.
+Environment variables can be defined in the `env` field.
+You can also specify [dotenv](https://github.com/motdotla/dotenv) files in the `env_files` field.
+The precedence of environment variables is as follows:
+
+1. Environment variables in the `env` field
+2. Environment variables from each dotenv file listed in the `env_files` field. If a variable is duplicated, the one from the file with the smaller index takes precedence.
+3. OS environment variables
+
+Note that dependency tasks do not inherit the environment variables of their parent task.
 
 ```yaml
 # Project level environment variables
