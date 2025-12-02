@@ -482,10 +482,6 @@ pub struct TaskConfig {
     /// Output file glob patterns
     #[serde(default)]
     pub outputs: Vec<String>,
-
-    /// Project directory path (absolute)
-    #[serde(skip)]
-    pub dir: PathBuf,
 }
 
 impl TaskConfig {
