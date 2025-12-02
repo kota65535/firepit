@@ -132,7 +132,7 @@ ui: cui
 
 ### vars
 
-- **Type:** <code>Map&lt;string, any&gt;</code>
+- **Type:** <code>Map&lt;string, <a href="#varsconfig">VarsConfig</a>&gt;</code>
 - **Required:** no
 - **Default:** `{}`
 - **Template:** yes
@@ -178,11 +178,49 @@ working_dir: src
 
 ### vars
 
-- **Type:** <code>Map&lt;string, any&gt;</code>
+- **Type:** <code>Map&lt;string, <a href="#varsconfig">VarsConfig</a>&gt;</code>
 - **Required:** no
 - **Default:** `{}`
 - **Template:** yes
 - **Description:** Variables to override the dependency task vars.
+
+## DynamicVars
+
+### command
+
+- **Type:** <code>string</code>
+- **Required:** yes
+- **Template:** yes
+- **Description:** Command
+
+### env
+
+- **Type:** <code>Map&lt;string, string&gt;</code>
+- **Required:** no
+- **Default:** `{}`
+- **Template:** yes
+- **Description:** Environment variables
+
+### env_files
+
+- **Type:** <code>Array&lt;string&gt;</code>
+- **Required:** no
+- **Default:** `[]`
+- **Template:** yes
+- **Description:** Dotenv files
+
+### shell
+
+- **Type:** <code><a href="#shellconfig">ShellConfig</a></code>
+- **Required:** no
+- **Description:** Shell configuration
+
+### working_dir
+
+- **Type:** <code>string</code>
+- **Required:** no
+- **Template:** yes
+- **Description:** Working directory
 
 ## ExecProbeConfig
 
@@ -409,7 +447,7 @@ Probe failure during that period will not be counted towards the maximum number 
 
 ### vars
 
-- **Type:** <code>Map&lt;string, any&gt;</code>
+- **Type:** <code>Map&lt;string, <a href="#varsconfig">VarsConfig</a>&gt;</code>
 - **Required:** no
 - **Default:** `{}`
 - **Template:** yes
@@ -432,3 +470,8 @@ working_dir: dist
 - **Type:** <code>string</code>
 - **Options:** `cui`, `tui`
 - **Template:** no
+
+## VarsConfig
+
+- **Type:** <code><a href="#dynamicvars">DynamicVars</a> | </code>
+- **Description:** Vars config
