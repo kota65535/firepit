@@ -47,9 +47,17 @@ impl ProjectConfig {
                 let v = match v {
                     VarsConfig::Dynamic(s) => {
                         let mut s = s.clone();
+                        s.command = tera.render_str(&s.command, &context)?;
+                        s.env = render_string_map(&s.env, &mut tera, &context)?;
+                        s.env_files = s
+                            .env_files
+                            .iter()
+                            .map(|f| tera.render_str(f, &context))
+                            .collect::<anyhow::Result<Vec<_>, _>>()?;
+                        s.working_dir = s.working_dir.map(|w| tera.render_str(&w, &context)).transpose()?;
                         s.inner = Some(DynamicVarsInner {
                             name: k.clone(),
-                            command: tera.render_str(&s.command, &context)?,
+                            command: s.command.clone(),
                             shell: s.shell.clone().unwrap_or(self.shell.clone()),
                             env: Env::new().with(&s.env_file_paths(&self.dir), &s.env).load()?,
                             working_dir: s.working_dir_path(&self.dir).unwrap_or(self.working_dir_path()),
@@ -95,7 +103,7 @@ impl ProjectConfig {
         let mut rendered_tasks = IndexMap::new();
 
         for (task_name, task_config) in config.tasks.iter_mut() {
-            let task_context = task_config.context(context).await?;
+            let task_context = task_config.context(self, context).await?;
             let task_config = task_config.render(&task_context).await?;
             rendered_tasks.insert(task_name.clone(), task_config);
         }
@@ -106,7 +114,7 @@ impl ProjectConfig {
 }
 
 impl TaskConfig {
-    pub async fn context(&self, context: &tera::Context) -> anyhow::Result<tera::Context> {
+    pub async fn context(&self, config: &ProjectConfig, context: &tera::Context) -> anyhow::Result<tera::Context> {
         let mut tera = Tera::default();
         let mut context = context.clone();
         context.insert(TASK_CONTEXT_KEY, &self.full_orig_name());
@@ -115,7 +123,34 @@ impl TaskConfig {
         for (k, v) in self.vars.iter() {
             let rk = tera.render_str(&k, &context)?;
             if !rk.is_empty() {
-                let rv = render_value(v, &mut tera, &context).await?;
+                let v = match v {
+                    VarsConfig::Dynamic(s) => {
+                        let mut s = s.clone();
+                        s.command = tera.render_str(&s.command, &context)?;
+                        s.env = render_string_map(&s.env, &mut tera, &context)?;
+                        s.env_files = s
+                            .env_files
+                            .iter()
+                            .map(|f| tera.render_str(f, &context))
+                            .collect::<anyhow::Result<Vec<_>, _>>()?;
+                        s.working_dir = s.working_dir.map(|w| tera.render_str(&w, &context)).transpose()?;
+                        s.inner = Some(DynamicVarsInner {
+                            name: k.clone(),
+                            command: s.command.clone(),
+                            shell: s
+                                .shell
+                                .clone()
+                                .unwrap_or(self.shell.clone().unwrap_or(config.shell.clone())),
+                            env: Env::new().with(&s.env_file_paths(&self.dir), &s.env).load()?,
+                            working_dir: s
+                                .working_dir_path(&self.dir)
+                                .unwrap_or(self.working_dir_path(&self.dir).unwrap_or(config.working_dir_path())),
+                        });
+                        VarsConfig::Dynamic(s)
+                    }
+                    VarsConfig::Static(_) => v.clone(),
+                };
+                let rv = render_value(&v, &mut tera, &context).await?;
                 context.insert(rk, &rv);
             }
         }
@@ -273,7 +308,7 @@ impl ConfigRenderer {
             .with_context(|| "failed to render config of project root")?;
         for t in self.root_config.tasks.values() {
             tasks.push(t.full_name());
-            task_contexts.insert(t.full_name(), t.context(&root_context).await?);
+            task_contexts.insert(t.full_name(), t.context(&root_config, &root_context).await?);
         }
 
         // Project task contexts
@@ -288,7 +323,7 @@ impl ConfigRenderer {
             );
             for t in c.tasks.values() {
                 tasks.push(t.full_name());
-                task_contexts.insert(t.full_name(), t.context(&project_context).await?);
+                task_contexts.insert(t.full_name(), t.context(c, &project_context).await?);
             }
         }
 
@@ -325,13 +360,19 @@ impl ConfigRenderer {
         task_name: &str,
         root_config: &'a ProjectConfig,
         child_configs: &'a IndexMap<String, ProjectConfig>,
-    ) -> Option<&'a TaskConfig> {
+    ) -> (Option<(&'a TaskConfig, &'a ProjectConfig)>) {
         if let Some((p, t)) = task_name.split_once("#") {
             if p.is_empty() {
-                return root_config.tasks.get(t);
+                return match root_config.tasks.get(t) {
+                    Some(t) => Some((t, root_config)),
+                    None => None,
+                };
             }
             if let Some(c) = child_configs.get(p) {
-                return c.tasks.get(t);
+                return match c.tasks.get(t) {
+                    Some(t) => Some((t, c)),
+                    None => None,
+                };
             }
         }
         None
@@ -372,7 +413,7 @@ impl ConfigRenderer {
         contexts: &mut HashMap<String, tera::Context>,
     ) -> anyhow::Result<()> {
         // Get task config
-        let task_config =
+        let (task_config, project_config) =
             Self::get_task(task_name, root_config, child_configs).context(format!("unknown task {:?}", task_name))?;
         let context = contexts
             .get(task_name)
@@ -398,10 +439,11 @@ impl ConfigRenderer {
             };
 
             // Get raw dependency task config
-            let dep_task = Self::get_task(&depends_on.task, raw_root_config, raw_child_configs).context(format!(
-                "unknown dependency task {:?} for {:?}",
-                depends_on.task, task_name
-            ))?;
+            let (dep_task, dep_project) = Self::get_task(&depends_on.task, raw_root_config, raw_child_configs)
+                .context(format!(
+                    "unknown dependency task {:?} for {:?}",
+                    depends_on.task, task_name
+                ))?;
 
             let mut variant_task = dep_task.clone();
 
@@ -415,7 +457,7 @@ impl ConfigRenderer {
             let dep_context = contexts
                 .get(&dep_task.full_name())
                 .context(format!("unknown task {:?}", dep_task.full_name()))?;
-            let variant_context = variant_task.context(dep_context).await?;
+            let variant_context = variant_task.context(dep_project, dep_context).await?;
 
             // Render
             let mut rendered_variant_task = variant_task.render(&variant_context).await?;
@@ -567,6 +609,7 @@ async fn render_value(value: &VarsConfig, tera: &mut Tera, context: &tera::Conte
             args.push(command);
             let command = Command::new(shell.command)
                 .with_args(args)
+                .with_envs(inner.env)
                 .with_current_dir(PathBuf::from(working_dir))
                 .to_owned();
             let output = execute_command(&command)
