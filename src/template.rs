@@ -30,7 +30,7 @@ pub const TASK_CONTEXT_KEY: &str = "task";
 
 impl ProjectConfig {
     pub async fn context(
-        &mut self,
+        &self,
         context: &tera::Context,
         vars: &IndexMap<String, VarsConfig>,
     ) -> anyhow::Result<tera::Context> {
@@ -360,7 +360,7 @@ impl ConfigRenderer {
         task_name: &str,
         root_config: &'a ProjectConfig,
         child_configs: &'a IndexMap<String, ProjectConfig>,
-    ) -> (Option<(&'a TaskConfig, &'a ProjectConfig)>) {
+    ) -> Option<(&'a TaskConfig, &'a ProjectConfig)> {
         if let Some((p, t)) = task_name.split_once("#") {
             if p.is_empty() {
                 return match root_config.tasks.get(t) {
