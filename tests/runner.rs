@@ -7,7 +7,7 @@ use std::path::Path;
 use std::{env, path};
 
 use firepit::app::command::{AppCommand, AppCommandChannel};
-use firepit::config::ProjectConfig;
+use firepit::config::{ProjectConfig, VarsConfig};
 use firepit::project::Workspace;
 use firepit::runner::command::RunnerCommandChannel;
 use indexmap::IndexMap;
@@ -144,18 +144,36 @@ async fn test_vars() {
     stats.insert(String::from("#foo"), String::from("Finished: Success"));
     stats.insert(String::from("#bar"), String::from("Finished: Success"));
     stats.insert(String::from("#baz"), String::from("Finished: Success"));
-    stats.insert(String::from("#qux"), String::from("Ready"));
+    stats.insert(String::from("#qux"), String::from("Finished: Success"));
+    stats.insert(String::from("#quux"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
     outputs.insert(String::from("#foo"), String::from("foo 1"));
     outputs.insert(String::from("#bar"), String::from("bar 3"));
     outputs.insert(String::from("#baz"), String::from("baz 3"));
-    outputs.insert(String::from("#qux"), String::from("qux 12001"));
+    outputs.insert(String::from("#qux"), String::from("qux 1,2"));
+    outputs.insert(String::from("#quux"), String::from("quux 1,2"));
 
-    let vars = IndexMap::from([("offset".to_string(), Value::from(10))]);
+    let vars = IndexMap::from([("offset".to_string(), VarsConfig::Static(Value::from(10)))]);
     run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn test_vars_dynamic() {
+    setup();
+
+    let path = BASE_PATH.join("vars_dynamic");
+    let tasks = vec![String::from("foo")];
+
+    let mut stats = HashMap::new();
+    stats.insert(String::from("#foo"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#foo"), String::from("12345 workflows true fooABCD"));
+
+    run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
 }
 
 #[tokio::test]
@@ -230,7 +248,7 @@ async fn test_vars_dep_multi() {
     outputs.insert(String::from("p2#qux"), String::from("qux 5"));
     outputs.insert(String::from("p2#qux-1"), String::from("qux 4"));
 
-    let vars = IndexMap::from([("A".to_string(), Value::from(2))]);
+    let vars = IndexMap::from([("A".to_string(), VarsConfig::Static(Value::from(2)))]);
 
     run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
         .await
@@ -281,8 +299,8 @@ async fn test_vars_and_env_from_cli() {
     outputs.insert(String::from("#qux"), String::from("qux 13001"));
 
     let vars = IndexMap::from([
-        ("A".to_string(), Value::from(11)),
-        ("D".to_string(), Value::from(13002)),
+        ("A".to_string(), VarsConfig::Static(Value::from(11))),
+        ("D".to_string(), VarsConfig::Static(Value::from(13002))),
     ]);
 
     run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
@@ -465,7 +483,7 @@ async fn run_task_with_vars(
     tasks: Vec<String>,
     status_expected: HashMap<String, String>,
     outputs_expected: Option<HashMap<String, String>>,
-    vars: IndexMap<String, Value>,
+    vars: IndexMap<String, VarsConfig>,
     force: bool,
 ) -> anyhow::Result<()> {
     run_task_inner(
@@ -490,12 +508,12 @@ async fn run_task_inner(
     restarts_expected: Option<HashMap<String, u64>>,
     runs_expected: Option<HashMap<String, u64>>,
     timeout_seconds: Option<u64>,
-    vars: IndexMap<String, Value>,
+    vars: IndexMap<String, VarsConfig>,
     force: bool,
 ) -> anyhow::Result<()> {
     let path = path::absolute(path)?;
     let (root, children) = ProjectConfig::new_multi(&path)?;
-    let ws = Workspace::new(&root, &children, &tasks, &path, &vars, force, false, Some(false))?;
+    let ws = Workspace::new(&root, &children, &tasks, &path, &vars, force, false, Some(false)).await?;
     // Create runner
     let mut runner = TaskRunner::new(&ws)?;
     let (app_tx, app_rx) = AppCommandChannel::new();
@@ -547,6 +565,7 @@ async fn run_task_with_watch<F>(
         true,
         Some(false),
     )
+    .await
     .unwrap();
 
     // Create runner

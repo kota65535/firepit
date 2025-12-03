@@ -1,0 +1,22 @@
+vars:
+  A:
+    command: echo "12345"
+  B:
+    command: ls
+    working_dir: ../../../../.github
+  C:
+    command: echo "true"
+  D:
+    command: print "foo"
+    shell:
+      command: /usr/bin/perl
+      args: ["-e"]
+
+tasks:
+  foo:
+    command: |
+      echo "{{ A }} {{ B }} {{ C }} {{ D }}"
+      echo "{% if A is number %}A{% endif %}"
+      echo "{% if B is string %}B{% endif %}"
+      echo "{% if C %}C{% endif %}"
+      echo "{% if D is string %}D{% endif %}"

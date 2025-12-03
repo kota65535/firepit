@@ -1,7 +1,9 @@
 use crate::config::LogConfig;
 use anyhow::Context;
 use std::fs::File;
-use std::sync::Mutex;
+use std::io;
+use std::io::Write;
+use std::sync::{Arc, Mutex};
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::fmt::writer::BoxMakeWriter;
 use tracing_subscriber::layer::SubscriberExt;
@@ -29,4 +31,36 @@ pub fn init_logger(log: &LogConfig, tokio_console: bool) -> anyhow::Result<()> {
             .init();
     }
     Ok(())
+}
+
+#[derive(Debug, Clone)]
+pub struct OutputCollector {
+    buffer: Arc<Mutex<Vec<u8>>>,
+}
+
+impl OutputCollector {
+    pub fn new() -> Self {
+        Self {
+            buffer: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    pub fn take_output(&self) -> String {
+        let mut buf = self.buffer.lock().expect("buffer poisoned");
+        let contents = String::from_utf8_lossy(&buf).into_owned();
+        buf.clear();
+        contents
+    }
+}
+
+impl Write for OutputCollector {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let mut buffer = self.buffer.lock().expect("buffer poisoned");
+        buffer.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }

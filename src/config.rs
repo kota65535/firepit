@@ -1,4 +1,4 @@
-use crate::project::Task;
+use crate::project::{Env, Task};
 use crate::template::ROOT_DIR_CONTEXT_KEY;
 use crate::util::merge_yaml;
 use anyhow::Context;
@@ -11,7 +11,7 @@ use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::Value as JsonValue;
 use serde_yaml::Value;
 use std::borrow::Cow;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -65,7 +65,7 @@ pub struct ProjectConfig {
     /// ```
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
-    pub vars: IndexMap<String, JsonValue>,
+    pub vars: IndexMap<String, VarsConfig>,
 
     /// Environment variables for all the project tasks.
     /// ```yaml
@@ -455,7 +455,7 @@ pub struct TaskConfig {
     /// `service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
-    pub vars: IndexMap<String, JsonValue>,
+    pub vars: IndexMap<String, VarsConfig>,
 
     /// Environment variables. Merged with the project `env`.
     #[serde(default)]
@@ -522,6 +522,63 @@ fn absolute_or_join(path: &str, dir: &Path) -> PathBuf {
     }
 }
 
+/// Vars config
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(untagged)]
+pub enum VarsConfig {
+    Dynamic(DynamicVars),
+    Static(JsonValue),
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct DynamicVars {
+    /// Command
+    #[schemars(extend("x-template" = true))]
+    pub command: String,
+
+    /// Shell configuration
+    pub shell: Option<ShellConfig>,
+
+    /// Environment variables
+    #[serde(default, deserialize_with = "deserialize_hash_map")]
+    #[schemars(extend("x-template" = true))]
+    pub env: IndexMap<String, String>,
+
+    /// Dotenv files
+    #[serde(default)]
+    #[schemars(extend("x-template" = true))]
+    pub env_files: Vec<String>,
+
+    /// Working directory
+    #[schemars(extend("x-template" = true))]
+    pub working_dir: Option<String>,
+
+    #[serde(skip)]
+    pub inner: Option<DynamicVarsInner>,
+}
+
+impl DynamicVars {
+    pub fn env_file_paths(&self, dir: &PathBuf) -> Vec<PathBuf> {
+        self.env_files.iter().map(|f| absolute_or_join(f, dir)).collect()
+    }
+
+    pub fn working_dir_path(&self, dir: &PathBuf) -> Option<PathBuf> {
+        match self.working_dir.clone() {
+            Some(wd) => Some(absolute_or_join(&wd, dir)),
+            None => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DynamicVarsInner {
+    pub name: String,
+    pub command: String,
+    pub shell: ShellConfig,
+    pub working_dir: PathBuf,
+    pub env: HashMap<String, String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
 pub struct ShellConfig {
     /// Shell command.
@@ -560,7 +617,7 @@ pub struct DependsOnConfigStruct {
     /// Variables to override the dependency task vars.
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
-    pub vars: IndexMap<String, JsonValue>,
+    pub vars: IndexMap<String, VarsConfig>,
 
     /// Whether the task restarts if this dependency task restarts.
     #[serde(default = "default_cascade")]

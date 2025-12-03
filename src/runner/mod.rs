@@ -472,8 +472,8 @@ impl TaskRunner {
 
         let process = match manager.spawn(cmd, TASK_STOP_TIMEOUT).await {
             Some(Ok(child)) => child,
-            Some(Err(e)) => anyhow::bail!("failed to spawn task {:?}: {:?}", task.name, e),
-            _ => return Ok(None),
+            Some(Err(e)) => anyhow::bail!("failed to spawn task process {:?}: {:?}", task.name, e),
+            _ => anyhow::bail!("failed to spawn task process {:?}", task.name),
         };
 
         info!("Task started. PID={}", process.pid().unwrap_or(0));
