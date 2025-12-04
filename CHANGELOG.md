@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.16.1] - 2025-12-04
+
+### 🐛 Bug Fixes
+
+- CLI vars evaluation order (#221)
+
 ## [0.16.0] - 2025-12-01
 
 ### 🚀 Features
