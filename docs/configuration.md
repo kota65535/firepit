@@ -246,7 +246,7 @@ You can also specify [dotenv](https://github.com/motdotla/dotenv) files in the `
 The precedence of environment variables is as follows:
 
 1. Environment variables in the `env` field
-2. Environment variables from each dotenv file listed in the `env_files` field. If a variable is duplicated, the one from the file with the smaller index takes precedence.
+2. Environment variables from each dotenv file listed in the `env_files` field. Files with earlier order have higher priority.
 3. OS environment variables
 
 Note that dependency tasks do not inherit the environment variables of their parent task.
@@ -267,9 +267,11 @@ tasks:
     env:
       PORT: 3000
       REDIS_URL: redis://localhost:6379
-    # Task level dotenv files
+    # Task level dotenv files.
+    # .env.local has a higher priority than .env
     env_files:
-      - .env.dev
+      - .env.local
+      - .env
     depends_on:
       - install
       - db
