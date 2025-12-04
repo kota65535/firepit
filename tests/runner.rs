@@ -202,6 +202,26 @@ async fn test_vars_from_cli() {
 }
 
 #[tokio::test]
+async fn test_vars_builtin() {
+    setup();
+
+    let path = BASE_PATH.join("vars_builtin");
+    let tasks = vec![String::from("foo"), String::from("p1#bar"), String::from("p2#baz")];
+
+    let mut stats = HashMap::new();
+    stats.insert(String::from("#foo"), String::from("Finished: Success"));
+    stats.insert(String::from("p1#bar"), String::from("Finished: Success"));
+    stats.insert(String::from("p2#baz"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#foo"), String::from("\n\n#foo\ntrue"));
+    outputs.insert(String::from("p1#bar"), String::from("p1\np1\np1#bar"));
+    outputs.insert(String::from("p2#baz"), String::from("p2\np2\np2#baz"));
+
+    run_task_with_watch(&path, tasks, stats, Some(outputs), None, None, None, false, async {}).await
+}
+
+#[tokio::test]
 async fn test_vars_multi() {
     setup();
     let path = BASE_PATH.join("vars_multi");
@@ -551,9 +571,10 @@ async fn run_task_with_watch<F>(
     F: Future<Output = ()> + Send + 'static,
 {
     let path = path::absolute(path).unwrap();
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
     let ws = Workspace::new(
-        &ProjectConfig::new("", &path).unwrap(),
-        &IndexMap::new(),
+        &root,
+        &children,
         &tasks,
         &path,
         &IndexMap::new(),

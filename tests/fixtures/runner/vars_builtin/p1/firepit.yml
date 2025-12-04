@@ -1,0 +1,7 @@
+tasks:
+  bar:
+    command: |
+      project_dir="{{ project_dir }}"
+      echo "${project_dir#{{ root_dir }}/}"
+      echo "{{ project }}"
+      echo "{{ task }}"

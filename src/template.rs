@@ -14,6 +14,7 @@ pub struct ConfigRenderer {
     root_config: ProjectConfig,
     child_configs: IndexMap<String, ProjectConfig>,
     vars: IndexMap<String, JsonValue>,
+    watch: bool,
 }
 
 pub const ROOT_DIR_CONTEXT_KEY: &str = "root_dir";
@@ -21,6 +22,7 @@ pub const PROJECT_DIRS_CONTEXT_KEY: &str = "project_dirs";
 pub const PROJECT_DIR_CONTEXT_KEY: &str = "project_dir";
 pub const PROJECT_CONTEXT_KEY: &str = "project";
 pub const TASK_CONTEXT_KEY: &str = "task";
+pub const WATCH_CONTEXT_KEY: &str = "watch";
 
 impl ProjectConfig {
     pub fn context(
@@ -216,11 +218,13 @@ impl ConfigRenderer {
         root_config: &ProjectConfig,
         child_config: &IndexMap<String, ProjectConfig>,
         vars: &IndexMap<String, JsonValue>,
+        watch: bool,
     ) -> Self {
         Self {
             root_config: root_config.clone(),
             child_configs: child_config.clone(),
             vars: vars.clone(),
+            watch,
         }
     }
 
@@ -238,6 +242,7 @@ impl ConfigRenderer {
                 .collect::<HashMap<_, _>>();
             context.insert(PROJECT_DIRS_CONTEXT_KEY, &project_dirs);
         }
+        context.insert(WATCH_CONTEXT_KEY, &self.watch);
         context
     }
 
