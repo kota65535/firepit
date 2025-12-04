@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.17.0] - 2025-12-04
+
+### 🚀 Features
+
+- Add `watch` as a built-in var (#222)
+
+### 📚 Documentation
+
+- Env precedence
+
 ## [0.16.1] - 2025-12-04
 
 ### 🐛 Bug Fixes
