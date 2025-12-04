@@ -34,8 +34,11 @@ impl ProjectConfig {
         context.insert(PROJECT_DIR_CONTEXT_KEY, &self.dir.as_os_str().to_str().unwrap_or(""));
 
         // Render project-level vars.
-        // Argument vars override project-level vars.
-        for (k, v) in self.vars.iter().chain(vars.iter()) {
+        // CLI Argument vars override project-level vars.
+        for (k, v) in vars
+            .iter()
+            .chain(self.vars.iter().filter(|(k, _)| !vars.contains_key(*k)))
+        {
             let rk = tera.render_str(&k, &context)?;
             if !rk.is_empty() {
                 let rv = render_value(v, &mut tera, &context)?;

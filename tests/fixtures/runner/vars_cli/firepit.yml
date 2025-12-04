@@ -1,36 +1,31 @@
 vars:
-  A: 1
-  B: 2.2
+  # CLI vars should be evaluated before all vars
+  number: "{{ cli_number + 1 | int }}"
+  string: foo
+  boolean: true
 
+# Test that CLI vars have correct types and override project vars and task vars
 tasks:
-  foo:
-    command: echo "foo {{ A }}"
-    depends_on:
-      - bar
-      - baz
-      - qux
-
-  bar:
-    vars:
-      A: 3
-    env:
-      B: "{{ B }}"
-    command: echo "bar {{ A }} ${B}"
-
-  baz:
-    vars:
-      C: baz
-    env_files:
-      - .env.{{ C }}
-    command: echo "baz ${C}"
-
-  qux:
-    vars:
-      D: 13001
+  number:
     command: |
-      echo "qux {{ D }}"
-      nc -kl 13001
-    service:
-      healthcheck:
-        command: "nc -z localhost {{ D }}"
-        start_period: 1
+      echo "{{ number }}"
+      echo "{% if number is number %}ok{% endif %}"
+
+  string:
+    vars:
+      string: bar
+    command: |
+      echo "{{ string }}"
+      echo "{% if string is string %}ok{% endif %}"
+
+  string2:
+    vars:
+      string2: hoge
+    command: |
+      echo "{{ string2 }}"
+      echo "{% if string2 is string %}ok{% endif %}"
+
+  boolean:
+    command: |
+      echo "{{ boolean }}"
+      echo "{% if not boolean %}ok{% endif %}"
