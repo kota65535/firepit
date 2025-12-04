@@ -138,21 +138,64 @@ async fn test_vars() {
     setup();
 
     let path = BASE_PATH.join("vars");
-    let tasks = vec![String::from("foo")];
+    let tasks = vec![
+        String::from("number"),
+        String::from("string"),
+        String::from("boolean"),
+        String::from("array"),
+        String::from("map"),
+    ];
 
     let mut stats = HashMap::new();
-    stats.insert(String::from("#foo"), String::from("Finished: Success"));
-    stats.insert(String::from("#bar"), String::from("Finished: Success"));
-    stats.insert(String::from("#baz"), String::from("Finished: Success"));
-    stats.insert(String::from("#qux"), String::from("Ready"));
+    stats.insert(String::from("#number"), String::from("Finished: Success"));
+    stats.insert(String::from("#string"), String::from("Finished: Success"));
+    stats.insert(String::from("#boolean"), String::from("Finished: Success"));
+    stats.insert(String::from("#array"), String::from("Finished: Success"));
+    stats.insert(String::from("#map"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#foo"), String::from("foo 1"));
-    outputs.insert(String::from("#bar"), String::from("bar 3"));
-    outputs.insert(String::from("#baz"), String::from("baz 3"));
-    outputs.insert(String::from("#qux"), String::from("qux 12001"));
+    outputs.insert(String::from("#number"), String::from("1\nok"));
+    outputs.insert(String::from("#string"), String::from("bar\nok"));
+    outputs.insert(String::from("#boolean"), String::from("true\nok"));
+    outputs.insert(String::from("#array"), String::from("1,2\nok"));
+    outputs.insert(String::from("#map"), String::from("1,2\nok"));
 
     let vars = IndexMap::from([("offset".to_string(), Value::from(10))]);
+    run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn test_vars_from_cli() {
+    setup();
+
+    let path = BASE_PATH.join("vars_cli");
+    let tasks = vec![
+        String::from("number"),
+        String::from("string"),
+        String::from("string2"),
+        String::from("boolean"),
+    ];
+
+    let mut stats = HashMap::new();
+    stats.insert(String::from("#number"), String::from("Finished: Success"));
+    stats.insert(String::from("#string"), String::from("Finished: Success"));
+    stats.insert(String::from("#string2"), String::from("Finished: Success"));
+    stats.insert(String::from("#boolean"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#number"), String::from("2\nok"));
+    outputs.insert(String::from("#string"), String::from("baz\nok"));
+    outputs.insert(String::from("#string2"), String::from("piyo\nok"));
+    outputs.insert(String::from("#boolean"), String::from("false\nok"));
+
+    let vars = IndexMap::from([
+        ("cli_number".to_string(), Value::from(1)),
+        ("string".to_string(), Value::from("baz")),
+        ("string2".to_string(), Value::from("piyo")),
+        ("boolean".to_string(), Value::from(false)),
+    ]);
     run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
         .await
         .unwrap();
@@ -170,9 +213,9 @@ async fn test_vars_multi() {
     stats.insert(String::from("#baz"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("foo#foo"), String::from("foo 10root"));
-    outputs.insert(String::from("bar#bar"), String::from("bar 2foo"));
-    outputs.insert(String::from("#baz"), String::from("baz 3bar"));
+    outputs.insert(String::from("foo#foo"), String::from("foo 10\nroot"));
+    outputs.insert(String::from("bar#bar"), String::from("bar 2\nfoo"));
+    outputs.insert(String::from("#baz"), String::from("baz 3\nbar"));
 
     run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
 }
@@ -262,35 +305,6 @@ async fn test_vars_dep_same() {
 }
 
 #[tokio::test]
-async fn test_vars_and_env_from_cli() {
-    setup();
-
-    let path = BASE_PATH.join("vars_cli");
-    let tasks = vec![String::from("foo"), String::from("bar")];
-
-    let mut stats = HashMap::new();
-    stats.insert(String::from("#foo"), String::from("Finished: Success"));
-    stats.insert(String::from("#bar"), String::from("Finished: Success"));
-    stats.insert(String::from("#baz"), String::from("Finished: Success"));
-    stats.insert(String::from("#qux"), String::from("Ready"));
-
-    let mut outputs = HashMap::new();
-    outputs.insert(String::from("#foo"), String::from("foo 11"));
-    outputs.insert(String::from("#bar"), String::from("bar 11 2.2"));
-    outputs.insert(String::from("#baz"), String::from("baz 3"));
-    outputs.insert(String::from("#qux"), String::from("qux 13001"));
-
-    let vars = IndexMap::from([
-        ("A".to_string(), Value::from(11)),
-        ("D".to_string(), Value::from(13002)),
-    ]);
-
-    run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
-        .await
-        .unwrap();
-}
-
-#[tokio::test]
 async fn test_cyclic() {
     setup();
     let path = BASE_PATH.join("cyclic");
@@ -344,10 +358,10 @@ async fn test_watch() {
     stats.insert(String::from("#qux"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#foo"), String::from("foofoo"));
-    outputs.insert(String::from("#bar"), String::from("barbar"));
+    outputs.insert(String::from("#foo"), String::from("foo\nfoo"));
+    outputs.insert(String::from("#bar"), String::from("bar\nbar"));
     outputs.insert(String::from("#baz"), String::from("baz"));
-    outputs.insert(String::from("#qux"), String::from("quxqux"));
+    outputs.insert(String::from("#qux"), String::from("qux\nqux"));
 
     let mut runs = HashMap::new();
     runs.insert(String::from("#foo"), 1);
@@ -593,6 +607,7 @@ fn handle_events(
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut statuses = HashMap::new();
+        let mut raw_outputs = HashMap::<String, String>::new();
         let mut outputs = HashMap::<String, String>::new();
         let mut restarts = HashMap::new();
         let mut runs = HashMap::new();
@@ -626,13 +641,17 @@ fn handle_events(
                         }
                         AppCommand::TaskOutput { task, output } => {
                             let str = String::from_utf8(output.clone()).unwrap();
-                            match outputs.get(&task) {
+                            let str_trimmed = str.trim().to_string();
+                            match raw_outputs.get(&task) {
                                 Some(t) => {
                                     let s = format!("{}{}", t, str);
-                                    outputs.insert(task.clone(), normalize_str(&s));
+                                    let st = format!("{}{}", t, str_trimmed);
+                                    raw_outputs.insert(task.clone(), s);
+                                    outputs.insert(task.clone(), st);
                                 }
                                 None => {
-                                    outputs.insert(task.clone(), normalize_str(&str));
+                                    raw_outputs.insert(task.clone(), str);
+                                    outputs.insert(task.clone(), str_trimmed);
                                 }
                             }
                         }
@@ -640,6 +659,7 @@ fn handle_events(
                     }
                 }
             }
+
             if statuses_expected == statuses
                 && match outputs_expected.clone() {
                     Some(expected) => expected == outputs,
@@ -659,11 +679,6 @@ fn handle_events(
         }
         runner_tx.quit();
 
-        let outputs = outputs
-            .into_iter()
-            .filter(|(_, v)| !v.is_empty())
-            .collect::<HashMap<_, _>>();
-
         assert_eq!(statuses_expected, statuses);
         if let Some(outputs_expected) = outputs_expected {
             assert_eq!(outputs_expected, outputs);
@@ -675,8 +690,4 @@ fn handle_events(
             assert_eq!(runs_expected, runs);
         }
     })
-}
-
-fn normalize_str(s: &str) -> String {
-    s.trim().chars().filter(|&c| !c.is_control()).collect()
 }
