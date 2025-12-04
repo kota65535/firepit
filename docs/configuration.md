@@ -238,6 +238,7 @@ There are also some built-in variables available for use in templates.
 | `project_dir`  | string              | The absolute path of the current project directory.                    |
 | `project`      | string              | The project name. Multi-projects only.                                 |
 | `task`         | string              | The task name.                                                         |
+| `watch`        | boolean             | `true` if running in watch mode, `false` otherwise.                    |
 
 ## Environment Variables
 
