@@ -243,7 +243,7 @@ impl ProjectConfig {
         for config in iter::once(root).chain(children.values()) {
             config
                 .validate(&tasks)
-                .context(format!("invalid config file: {:?}", root.path))?;
+                .context(format!("invalid config file: {:?}", config.path))?;
         }
         Ok(())
     }
