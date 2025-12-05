@@ -1,0 +1,7 @@
+env_files:
+  - .env.1
+
+tasks:
+  foo:
+    env_files:
+      - .env.4
