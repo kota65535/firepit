@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.18.0] - 2025-12-05
+
+### 🐛 Bug Fixes
+
+- Error message for invalid config files (#223)
+- [**breaking**] Reverse `env_files` precedence (#224)
+
+### ⚙️ Miscellaneous Tasks
+
+- Add license
+
 ## [0.17.0] - 2025-12-04
 
 ### 🚀 Features
