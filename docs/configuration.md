@@ -247,7 +247,8 @@ You can also specify [dotenv](https://github.com/motdotla/dotenv) files in the `
 The precedence of environment variables is as follows:
 
 1. Environment variables in the `env` field
-2. Environment variables from each dotenv file listed in the `env_files` field. Files with earlier order have higher priority.
+2. Environment variables from each dotenv file listed in the `env_files` field.
+   If the same environment variable is defined in multiple files, the later file takes precedence.
 3. OS environment variables
 
 Note that dependency tasks do not inherit the environment variables of their parent task.

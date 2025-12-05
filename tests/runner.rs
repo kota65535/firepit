@@ -455,9 +455,13 @@ async fn test_up_to_date() {
 
 #[tokio::test]
 async fn test_env_precedence() {
-    env::set_var("key1", "os1");
-    env::set_var("key2", "os2");
-    env::set_var("key3", "os3");
+    env::set_var("key0", "os0");
+    env::set_var("key1", "os0");
+    env::set_var("key2", "os0");
+    env::set_var("key3", "os0");
+    env::set_var("key4", "os0");
+    env::set_var("key5", "os0");
+    env::set_var("key6", "os0");
 
     setup();
 
@@ -468,7 +472,10 @@ async fn test_env_precedence() {
     stats.insert(String::from("#foo"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#foo"), String::from("file1 env2 os3"));
+    outputs.insert(
+        String::from("#foo"),
+        String::from("os0 file1 file2 pj3 file4 file5 task6"),
+    );
 
     run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
 }

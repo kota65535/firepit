@@ -289,7 +289,7 @@ impl EnvConfig {
 
     fn load_env_files(&self) -> anyhow::Result<HashMap<String, String>> {
         let mut ret = HashMap::new();
-        for f in self.env_files.iter().rev() {
+        for f in self.env_files.iter() {
             let iter = match dotenvy::from_path_iter(f) {
                 Ok(it) => it,
                 Err(e) => {
