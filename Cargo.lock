@@ -1060,9 +1060,9 @@ checksum = "a8d1add55171497b4705a648c6b583acafb01d58050a51727785f0b2c8e0a2b2"
 
 [[package]]
 name = "globmatch"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c5d4150c6e70e3bce79303d8959fbb11533398b883464f71b5d8db8e880a20d8"
+checksum = "bf4cf9d4e3df89b090e97170a3d6776519027e3a9f4d80e53541bc22a6158c36"
 dependencies = [
  "globset",
  "walkdir",
@@ -3590,7 +3590,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
