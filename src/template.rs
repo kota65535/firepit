@@ -642,7 +642,8 @@ async fn execute_command(command: &Command) -> anyhow::Result<String> {
     let exit = process.wait_with_piped_outputs(output_collector.clone()).await;
     Ok(match exit {
         Ok(Some(exit_status)) => match exit_status {
-            ChildExit::Finished(Some(code)) if code == 0 => output_collector.take_output(),
+            // Trim trailing newline
+            ChildExit::Finished(Some(code)) if code == 0 => output_collector.take_output().trim().to_string(),
             ChildExit::Finished(Some(code)) => anyhow::bail!("process exited with non-zero code {:?}", code),
             ChildExit::Finished(None) => anyhow::bail!("process exited with unknown exit code"),
             ChildExit::Killed | ChildExit::KilledExternal => anyhow::bail!("process is killed by signal"),
