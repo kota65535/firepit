@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.19.0] - 2026-02-03
+
+### 🚀 Features
+
+- Dynamic vars (#219)
+
+### 🐛 Bug Fixes
+
+- Stop timeout too long (#245)
+- Working_dir inheritance (#246)
+
 ## [0.18.0] - 2025-12-05
 
 ### 🐛 Bug Fixes
