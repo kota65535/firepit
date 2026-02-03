@@ -53,6 +53,11 @@ impl OutputCollector {
     }
 }
 
+impl Default for OutputCollector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl Write for OutputCollector {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let mut buffer = self.buffer.lock().expect("buffer poisoned");
