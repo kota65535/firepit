@@ -12,7 +12,7 @@ vars:
       command: /usr/bin/perl
       args: ["-e"]
   E:
-    command: git branch --show-current
+    command: git rev-parse --abbrev-ref HEAD
 
 tasks:
   foo:
