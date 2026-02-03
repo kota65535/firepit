@@ -562,10 +562,10 @@ impl DynamicVars {
         self.env_files.iter().map(|f| absolute_or_join(f, dir)).collect()
     }
 
-    pub fn working_dir_path(&self, dir: &PathBuf) -> Option<PathBuf> {
+    pub fn working_dir_path(&self, dir: &PathBuf) -> PathBuf {
         match self.working_dir.clone() {
-            Some(wd) => Some(absolute_or_join(&wd, dir)),
-            None => None,
+            Some(wd) => absolute_or_join(&wd, dir),
+            None => dir.clone(),
         }
     }
 }
@@ -694,17 +694,17 @@ pub struct ExecProbeConfig {
 }
 
 impl ExecProbeConfig {
-    pub fn working_dir_path(&self, dir: &PathBuf) -> Option<PathBuf> {
+    pub fn working_dir_path(&self, dir: &PathBuf) -> PathBuf {
         match self.working_dir.clone() {
             Some(wd) => {
                 let wd = Path::new(&wd);
                 if wd.is_absolute() {
-                    Some(wd.to_path_buf())
+                    wd.to_path_buf()
                 } else {
-                    Some(dir.join(wd))
+                    dir.join(wd)
                 }
             }
-            None => None,
+            None => dir.clone(),
         }
     }
 

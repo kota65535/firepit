@@ -65,9 +65,7 @@ impl ProjectConfig {
                             command: s.command.clone(),
                             shell: s.shell.clone().unwrap_or(self.shell.clone()),
                             env: Env::new().with(&s.env_file_paths(&self.dir), &s.env).load()?,
-                            working_dir: s
-                                .working_dir_path(&self.working_dir_path())
-                                .unwrap_or(self.working_dir_path()),
+                            working_dir: s.working_dir_path(&self.working_dir_path()),
                         });
                         VarsConfig::Dynamic(s)
                     }
@@ -149,9 +147,7 @@ impl TaskConfig {
                                 .clone()
                                 .unwrap_or(self.shell.clone().unwrap_or(config.shell.clone())),
                             env: Env::new().with(&s.env_file_paths(&config.dir), &s.env).load()?,
-                            working_dir: s
-                                .working_dir_path(&config.dir)
-                                .unwrap_or(self.working_dir_path(&config.dir).unwrap_or(config.working_dir_path())),
+                            working_dir: s.working_dir_path(&self.working_dir_path(&config.working_dir_path())),
                         });
                         VarsConfig::Dynamic(s)
                     }
