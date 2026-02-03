@@ -25,8 +25,8 @@ fn assert_eq_env(actual: &HashMap<String, String>, expected: &HashMap<&str, &str
     }
 }
 
-#[test]
-fn test_env_file_not_found() {
+#[tokio::test]
+async fn test_env_file_not_found() {
     let path = Path::new("tests/fixtures/project/no_env_file");
     let (root, children) = ProjectConfig::new_multi(path).unwrap();
     let result = Workspace::new(
@@ -38,12 +38,13 @@ fn test_env_file_not_found() {
         false,
         false,
         Some(false),
-    );
+    )
+    .await;
     assert_ok!(result);
 }
 
-#[test]
-fn test_bad_env_file() {
+#[tokio::test]
+async fn test_bad_env_file() {
     let path = Path::new("tests/fixtures/project/bad_env_file");
     let (root, children) = ProjectConfig::new_multi(path).unwrap();
     let result = Workspace::new(
@@ -55,12 +56,13 @@ fn test_bad_env_file() {
         false,
         false,
         Some(false),
-    );
+    )
+    .await;
     assert_err!(result);
 }
 
-#[test]
-fn test_multi() {
+#[tokio::test]
+async fn test_multi() {
     let path = Path::new("tests/fixtures/project/multi");
     let (root, children) = ProjectConfig::new_multi(path).unwrap();
     let ws = Workspace::new(
@@ -73,6 +75,7 @@ fn test_multi() {
         false,
         Some(false),
     )
+    .await
     .unwrap();
 
     let root = ws.root.task("root").unwrap();

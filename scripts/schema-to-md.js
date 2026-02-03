@@ -30,6 +30,12 @@ function defaultValue(schema) {
 }
 
 function typeValue(schema) {
+    // Handle boolean schemas (true / false)
+    if (typeof schema === 'boolean') {
+        // true -> accept any value, false -> accept no value
+        return schema ? 'any' : 'none';
+    }
+
     // - $ref -> [RefName](#refname)
     // - anyOf/oneOf -> join using ' or '
     // - array -> []<item type>
@@ -42,7 +48,13 @@ function typeValue(schema) {
 
     if (schema.anyOf || schema.oneOf) {
         let anyOf = schema.anyOf || schema.oneOf
-        const parts = anyOf.filter(s => s.type !== 'null').map(s => typeValue(s));
+        // keep boolean schemas (true/false) and other schema entries
+        const parts = anyOf
+            .filter(s => {
+                if (typeof s === 'boolean') return true;
+                return s.type !== 'null';
+            })
+            .map(s => typeValue(s));
         const uniq = [...new Set(parts)];
         return uniq.join(' | ');
     }
@@ -64,9 +76,10 @@ function typeValue(schema) {
         if (schema.type.length === 1) {
             return schema.type[0];
         }
+        return schema.type.join(' | ');
     }
 
-    return schema.type
+    return schema.type || 'any'
 }
 
 function renderProperty(schema, name, required) {

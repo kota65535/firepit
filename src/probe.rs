@@ -1,12 +1,11 @@
+use crate::log::OutputCollector;
 use crate::process::{Child, ChildExit, Command, ProcessManager};
 use crate::project::Env;
 use crate::PROBE_STOP_TIMEOUT;
 use anyhow::Context;
 use regex::Regex;
 use std::collections::HashMap;
-use std::io::{self, Write};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};
 use tracing::{debug, info, warn};
@@ -198,41 +197,9 @@ impl ExecProbe {
 
         match self.manager.spawn(cmd, PROBE_STOP_TIMEOUT).await {
             Some(Ok(child)) => Ok(child),
-            Some(Err(e)) => Err(e).with_context(|| "unable to spawn task"),
-            _ => anyhow::bail!("unable to spawn task"),
+            Some(Err(e)) => anyhow::bail!("failed to spawn probe process: {:?}", e),
+            _ => anyhow::bail!("failed to spawn probe process"),
         }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct OutputCollector {
-    buffer: Arc<Mutex<Vec<u8>>>,
-}
-
-impl OutputCollector {
-    fn new() -> Self {
-        Self {
-            buffer: Arc::new(Mutex::new(Vec::new())),
-        }
-    }
-
-    fn take_output(&self) -> String {
-        let mut buf = self.buffer.lock().expect("buffer poisoned");
-        let contents = String::from_utf8_lossy(&buf).into_owned();
-        buf.clear();
-        contents
-    }
-}
-
-impl Write for OutputCollector {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let mut buffer = self.buffer.lock().expect("buffer poisoned");
-        buffer.extend_from_slice(buf);
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
     }
 }
 

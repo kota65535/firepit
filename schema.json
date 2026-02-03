@@ -95,7 +95,9 @@
     "vars": {
       "description": "Template variables for all the project tasks.\n```yaml\nvars:\n  aws_account_id: 123456789012\n  aws_region: ap-northeast-1\n  ecr_registry: \"{{ aws_account_id }}.dkr.ecr.{{ aws_region }}.amazonaws.com\"\n```",
       "type": "object",
-      "additionalProperties": true,
+      "additionalProperties": {
+        "$ref": "#/$defs/VarsConfig"
+      },
       "default": {},
       "x-template": true
     },
@@ -134,13 +136,65 @@
         "vars": {
           "description": "Variables to override the dependency task vars.",
           "type": "object",
-          "additionalProperties": true,
+          "additionalProperties": {
+            "$ref": "#/$defs/VarsConfig"
+          },
           "default": {},
           "x-template": true
         }
       },
       "required": [
         "task"
+      ]
+    },
+    "DynamicVars": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "description": "Command",
+          "type": "string",
+          "x-template": true
+        },
+        "env": {
+          "description": "Environment variables",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "x-template": true
+        },
+        "env_files": {
+          "description": "Dotenv files",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "x-template": true
+        },
+        "shell": {
+          "description": "Shell configuration",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ShellConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "working_dir": {
+          "description": "Working directory",
+          "type": [
+            "string",
+            "null"
+          ],
+          "x-template": true
+        }
+      },
+      "required": [
+        "command"
       ]
     },
     "ExecProbeConfig": {
@@ -429,7 +483,9 @@
         "vars": {
           "description": "Template variables. Merged with the project `vars`.\nCan be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`,\n`service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`",
           "type": "object",
-          "additionalProperties": true,
+          "additionalProperties": {
+            "$ref": "#/$defs/VarsConfig"
+          },
           "default": {},
           "x-template": true
         },
@@ -448,6 +504,15 @@
       "enum": [
         "cui",
         "tui"
+      ]
+    },
+    "VarsConfig": {
+      "description": "Vars config",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DynamicVars"
+        },
+        true
       ]
     }
   }
