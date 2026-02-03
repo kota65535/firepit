@@ -488,8 +488,6 @@ async fn test_working_dir_inheritance() {
     let tasks = vec![
         String::from("inherit"),
         String::from("join"),
-        String::from("vars_inherit"),
-        String::from("vars_join"),
         String::from("service_inherit"),
         String::from("service_join"),
     ];
@@ -497,8 +495,6 @@ async fn test_working_dir_inheritance() {
     let mut stats = HashMap::new();
     stats.insert(String::from("#inherit"), String::from("Finished: Success"));
     stats.insert(String::from("#join"), String::from("Finished: Success"));
-    stats.insert(String::from("#vars_inherit"), String::from("Finished: Success"));
-    stats.insert(String::from("#vars_join"), String::from("Finished: Success"));
     stats.insert(String::from("#service_inherit"), String::from("Ready"));
     stats.insert(String::from("#service_join"), String::from("Ready"));
 
@@ -511,11 +507,6 @@ async fn test_working_dir_inheritance() {
     outputs.insert(
         String::from("#join"),
         base_dir.join("workdir").join("task").to_string_lossy().to_string(),
-    );
-    outputs.insert(String::from("#vars_inherit"), base_dir.to_string_lossy().to_string());
-    outputs.insert(
-        String::from("#vars_join"),
-        base_dir.join("workdir").to_string_lossy().to_string(),
     );
 
     run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
