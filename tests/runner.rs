@@ -1,20 +1,20 @@
+use firepit::app::command::{AppCommand, AppCommandChannel};
+use firepit::config::{ProjectConfig, VarsConfig};
+use firepit::project::Workspace;
+use firepit::runner::command::RunnerCommandChannel;
 use firepit::runner::TaskRunner;
+use indexmap::IndexMap;
+use rstest::rstest;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::File;
 use std::future::Future;
 use std::io::Write;
 use std::path::Path;
-use std::{env, path};
-
-use firepit::app::command::{AppCommand, AppCommandChannel};
-use firepit::config::{ProjectConfig, VarsConfig};
-use firepit::project::Workspace;
-use firepit::runner::command::RunnerCommandChannel;
-use indexmap::IndexMap;
-use rstest::rstest;
-use serde_json::Value;
+use std::process::Command;
 use std::sync::{LazyLock, Once};
 use std::time::Duration;
+use std::{env, path};
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
@@ -320,6 +320,31 @@ async fn test_vars_dep_same() {
     outputs.insert(String::from("#baz-1"), String::from("baz 4"));
     outputs.insert(String::from("#qux-1"), String::from("qux 6"));
     outputs.insert(String::from("#qux-2"), String::from("qux 5"));
+
+    run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_vars_dynamic() {
+    setup();
+
+    let path = BASE_PATH.join("vars_dynamic");
+    let tasks = vec![String::from("foo")];
+
+    let mut stats = HashMap::new();
+    stats.insert(String::from("#foo"), String::from("Finished: Success"));
+
+    let output = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .unwrap();
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    let mut outputs = HashMap::new();
+    outputs.insert(
+        String::from("#foo"),
+        String::from(format!("12345 workflows true foo {}\nA\nB\nC\nD\nE", branch)),
+    );
 
     run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
 }

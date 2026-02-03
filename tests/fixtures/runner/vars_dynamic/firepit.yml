@@ -3,7 +3,7 @@ vars:
     command: echo "12345"
   B:
     command: ls
-    working_dir: ../../../../.github
+    working_dir: ../../../.github
   C:
     command: echo "true"
   D:
@@ -11,12 +11,17 @@ vars:
     shell:
       command: /usr/bin/perl
       args: ["-e"]
+  E:
+    command: git branch --show-current
 
 tasks:
   foo:
     command: |
-      echo "{{ A }} {{ B }} {{ C }} {{ D }}"
+      echo "{{ A }} {{ B }} {{ C }} {{ D }} {{ E }}"
       echo "{% if A is number %}A{% endif %}"
       echo "{% if B is string %}B{% endif %}"
       echo "{% if C %}C{% endif %}"
       echo "{% if D is string %}D{% endif %}"
+      echo "{% if E is string %}E{% endif %}"
+
+working_dir: ../
