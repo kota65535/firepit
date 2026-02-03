@@ -98,7 +98,7 @@ impl Workspace {
         }
 
         let mut renderer = ConfigRenderer::new(&root_config, &child_configs, &vars, watch);
-        let (root_config, child_configs) = renderer.render()?.await?;
+        let (root_config, child_configs) = renderer.render().await?;
         ProjectConfig::validate_multi(&root_config, &child_configs)?;
 
         let root = Project::new("", &root_config)?;
