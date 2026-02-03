@@ -334,10 +334,7 @@ impl Task {
         let task_shell = task_config.clone().shell.unwrap_or(config.shell.clone());
 
         // Working directory
-        let project_working_dir = config.working_dir_path();
-        let task_working_dir = task_config
-            .working_dir_path(&project_working_dir)
-            .unwrap_or(project_working_dir.clone());
+        let task_working_dir = task_config.working_dir_path(&config.working_dir_path());
 
         // Environment variables
         // Priority:

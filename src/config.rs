@@ -493,10 +493,10 @@ impl TaskConfig {
         format!("{}#{}", self.project, self.orig_name)
     }
 
-    pub fn working_dir_path(&self, dir: &PathBuf) -> Option<PathBuf> {
+    pub fn working_dir_path(&self, dir: &PathBuf) -> PathBuf {
         match self.working_dir.clone() {
-            Some(wd) => Some(absolute_or_join(&wd, dir)),
-            None => None,
+            Some(wd) => absolute_or_join(&wd, dir),
+            None => dir.clone(),
         }
     }
 

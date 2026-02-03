@@ -470,6 +470,19 @@ impl ConfigRenderer {
     }
 }
 
+fn render_dynamic_vars(s: &DynamicVars, tera: &mut Tera, context: &tera::Context) -> anyhow::Result<DynamicVars> {
+    let mut s = s.clone();
+    s.command = tera.render_str(&s.command, &context)?;
+    s.env = render_string_map(&s.env, tera, &context)?;
+    s.env_files = s
+        .env_files
+        .iter()
+        .map(|f| tera.render_str(f, &context))
+        .collect::<anyhow::Result<Vec<_>, _>>()?;
+    s.working_dir = s.working_dir.map(|w| tera.render_str(&w, &context)).transpose()?;
+    Ok(s)
+}
+
 fn render_string_map(
     map: &IndexMap<String, String>,
     tera: &mut Tera,
