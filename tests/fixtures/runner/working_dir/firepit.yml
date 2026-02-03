@@ -1,0 +1,36 @@
+working_dir: workdir
+
+vars:
+  inherit:
+    command: pwd
+  join:
+    command: pwd
+    working_dir: ../
+
+tasks:
+  inherit:
+    command: pwd
+
+  join:
+    command: pwd
+    working_dir: task
+
+  service_inherit:
+    command: sleep 10
+    service:
+      healthcheck:
+        command: '[ $(cat probe.txt) == "inherit" ]'
+        interval: 1
+        timeout: 1
+        retries: 0
+
+  service_join:
+    command: sleep 10
+    working_dir: task
+    service:
+      healthcheck:
+        command: '[ $(cat probe.txt) == "join" ]'
+        working_dir: probe
+        interval: 1
+        timeout: 1
+        retries: 0
