@@ -7,7 +7,7 @@ use std::path::Path;
 use std::{env, path};
 
 use firepit::app::command::{AppCommand, AppCommandChannel};
-use firepit::config::ProjectConfig;
+use firepit::config::{ProjectConfig, VarsConfig};
 use firepit::project::Workspace;
 use firepit::runner::command::RunnerCommandChannel;
 use indexmap::IndexMap;
@@ -160,7 +160,7 @@ async fn test_vars() {
     outputs.insert(String::from("#array"), String::from("1,2\nok"));
     outputs.insert(String::from("#map"), String::from("1,2\nok"));
 
-    let vars = IndexMap::from([("offset".to_string(), Value::from(10))]);
+    let vars = IndexMap::from([("offset".to_string(), VarsConfig::Static(Value::from(10)))]);
     run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
         .await
         .unwrap();
@@ -191,10 +191,10 @@ async fn test_vars_from_cli() {
     outputs.insert(String::from("#boolean"), String::from("false\nok"));
 
     let vars = IndexMap::from([
-        ("cli_number".to_string(), Value::from(1)),
-        ("string".to_string(), Value::from("baz")),
-        ("string2".to_string(), Value::from("piyo")),
-        ("boolean".to_string(), Value::from(false)),
+        ("cli_number".to_string(), VarsConfig::Static(Value::from(1))),
+        ("string".to_string(), VarsConfig::Static(Value::from("baz"))),
+        ("string2".to_string(), VarsConfig::Static(Value::from("piyo"))),
+        ("boolean".to_string(), VarsConfig::Static(Value::from(false))),
     ]);
     run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
         .await
@@ -293,7 +293,7 @@ async fn test_vars_dep_multi() {
     outputs.insert(String::from("p2#qux"), String::from("qux 5"));
     outputs.insert(String::from("p2#qux-1"), String::from("qux 4"));
 
-    let vars = IndexMap::from([("A".to_string(), Value::from(2))]);
+    let vars = IndexMap::from([("A".to_string(), VarsConfig::Static(Value::from(2)))]);
 
     run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
         .await
@@ -506,7 +506,7 @@ async fn run_task_with_vars(
     tasks: Vec<String>,
     status_expected: HashMap<String, String>,
     outputs_expected: Option<HashMap<String, String>>,
-    vars: IndexMap<String, Value>,
+    vars: IndexMap<String, VarsConfig>,
     force: bool,
 ) -> anyhow::Result<()> {
     run_task_inner(
@@ -531,12 +531,12 @@ async fn run_task_inner(
     restarts_expected: Option<HashMap<String, u64>>,
     runs_expected: Option<HashMap<String, u64>>,
     timeout_seconds: Option<u64>,
-    vars: IndexMap<String, Value>,
+    vars: IndexMap<String, VarsConfig>,
     force: bool,
 ) -> anyhow::Result<()> {
     let path = path::absolute(path)?;
     let (root, children) = ProjectConfig::new_multi(&path)?;
-    let ws = Workspace::new(&root, &children, &tasks, &path, &vars, force, false, Some(false))?;
+    let ws = Workspace::new(&root, &children, &tasks, &path, &vars, force, false, Some(false)).await?;
     // Create runner
     let mut runner = TaskRunner::new(&ws)?;
     let (app_tx, app_rx) = AppCommandChannel::new();
@@ -589,6 +589,7 @@ async fn run_task_with_watch<F>(
         true,
         Some(false),
     )
+    .await
     .unwrap();
 
     // Create runner
