@@ -20,6 +20,7 @@ pub struct ConfigRenderer {
     root_config: ProjectConfig,
     child_configs: IndexMap<String, ProjectConfig>,
     vars: IndexMap<String, VarsConfig>,
+    watch: bool,
 }
 
 pub const ROOT_DIR_CONTEXT_KEY: &str = "root_dir";
@@ -27,6 +28,7 @@ pub const PROJECT_DIRS_CONTEXT_KEY: &str = "project_dirs";
 pub const PROJECT_DIR_CONTEXT_KEY: &str = "project_dir";
 pub const PROJECT_CONTEXT_KEY: &str = "project";
 pub const TASK_CONTEXT_KEY: &str = "task";
+pub const WATCH_CONTEXT_KEY: &str = "watch";
 
 impl ProjectConfig {
     pub async fn context(
@@ -40,8 +42,11 @@ impl ProjectConfig {
         context.insert(PROJECT_DIR_CONTEXT_KEY, &self.dir.as_os_str().to_str().unwrap_or(""));
 
         // Render project-level vars.
-        // Argument vars override project-level vars.
-        for (k, v) in self.vars.iter().chain(vars.iter()) {
+        // CLI Argument vars override project-level vars.
+        for (k, v) in vars
+            .iter()
+            .chain(self.vars.iter().filter(|(k, _)| !vars.contains_key(*k)))
+        {
             let rk = tera.render_str(&k, &context)?;
             if !rk.is_empty() {
                 let v = match v {
@@ -268,11 +273,13 @@ impl ConfigRenderer {
         root_config: &ProjectConfig,
         child_config: &IndexMap<String, ProjectConfig>,
         vars: &IndexMap<String, VarsConfig>,
+        watch: bool,
     ) -> Self {
         Self {
             root_config: root_config.clone(),
             child_configs: child_config.clone(),
             vars: vars.clone(),
+            watch,
         }
     }
 
@@ -290,6 +297,7 @@ impl ConfigRenderer {
                 .collect::<HashMap<_, _>>();
             context.insert(PROJECT_DIRS_CONTEXT_KEY, &project_dirs);
         }
+        context.insert(WATCH_CONTEXT_KEY, &self.watch);
         context
     }
 

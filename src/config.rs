@@ -77,11 +77,11 @@ pub struct ProjectConfig {
     pub env: IndexMap<String, String>,
 
     /// Dotenv files for all the project tasks.
-    /// In case of duplicated environment variables, the former one takes precedence.
+    /// In case of duplicated environment variables, the latter one takes precedence.
     /// ```yaml
     /// env_files:
-    ///   - .env.local
     ///   - .env
+    ///   - .env.local
     /// ```
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
@@ -243,7 +243,7 @@ impl ProjectConfig {
         for config in iter::once(root).chain(children.values()) {
             config
                 .validate(&tasks)
-                .context(format!("invalid config file: {:?}", root.path))?;
+                .context(format!("invalid config file: {:?}", config.path))?;
         }
         Ok(())
     }

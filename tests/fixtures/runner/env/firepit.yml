@@ -1,9 +1,30 @@
+# Base env
+includes:
+  - base.yml
+
+# Override base env_files
 env_files:
-  - .env.1
   - .env.2
 
+# Override project env_files
+env:
+  key3: pj3
+
 tasks:
+  # Test the precedence of env vars:
+  #
+  # key0: from OS
+  # key1: project env file .env.1
+  # key2: project env file .env.2
+  # key3: project env
+  # key4: task env file .env.4
+  # key5: task env file .env.5
+  # key6: task env
   foo:
+    # Override project env
+    env_files:
+      - .env.5
+    # Override task env_files
     env:
-      key2: env2
-    command: echo "${key1} ${key2} ${key3}"
+      key6: task6
+    command: echo "${key0} ${key1} ${key2} ${key3} ${key4} ${key5} ${key6}"

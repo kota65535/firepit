@@ -1,35 +1,39 @@
+# Project vars with all types
 vars:
-  A: 1
-  B: "{{ A | int + 1 }}"
-  C: true
-  D: [1, 2]
-  E:
+  number: 1
+  string: foo
+  boolean: true
+  array: [1, 2]
+  map:
     a: 1
     b: 2
 
+# Test that vars are interpolated and have correct types
 tasks:
-  foo:
-    command: echo "foo {{ A }}"
-    depends_on:
-      - bar
-      - baz
-      - "{% if C %}qux{% endif %}"
-      - quux
+  number:
+    command: |
+      echo "{{ number }}"
+      echo "{% if number is number %}ok{% endif %}"
 
-  bar:
-    env:
-      B: "{{ B | int + 1 }}"
-    command: echo "bar ${B}"
-
-  baz:
+  string:
     vars:
-      C: baz
-    env_files:
-      - .env.{{ C }}
-    command: echo "baz ${C}"
+      # Task vars should override project vars
+      string: bar
+    command: |
+      echo "{{ string }}"
+      echo "{% if string is string %}ok{% endif %}"
 
-  qux:
-    command: echo "qux {{ D[0] }},{{ D[1] }}"
+  boolean:
+    command: |
+      echo "{{ boolean }}"
+      echo "{% if boolean %}ok{% endif %}"
 
-  quux:
-    command: echo "quux {{ E['a'] }},{{ E['b'] }}"
+  array:
+    command: |
+      echo "{{ array[0] }},{{ array[1] }}"
+      echo "{% if array is iterable %}ok{% endif %}"
+
+  map:
+    command: |
+      echo "{{ map['a'] }},{{ map['b'] }}"
+      echo "{% if map is object %}ok{% endif %}"

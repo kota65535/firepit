@@ -238,6 +238,7 @@ There are also some built-in variables available for use in templates.
 | `project_dir`  | string              | The absolute path of the current project directory.                    |
 | `project`      | string              | The project name. Multi-projects only.                                 |
 | `task`         | string              | The task name.                                                         |
+| `watch`        | boolean             | `true` if running in watch mode, `false` otherwise.                    |
 
 ## Environment Variables
 
@@ -246,7 +247,8 @@ You can also specify [dotenv](https://github.com/motdotla/dotenv) files in the `
 The precedence of environment variables is as follows:
 
 1. Environment variables in the `env` field
-2. Environment variables from each dotenv file listed in the `env_files` field. If a variable is duplicated, the one from the file with the smaller index takes precedence.
+2. Environment variables from each dotenv file listed in the `env_files` field.
+   If the same environment variable is defined in multiple files, the later file takes precedence.
 3. OS environment variables
 
 Note that dependency tasks do not inherit the environment variables of their parent task.
@@ -267,9 +269,11 @@ tasks:
     env:
       PORT: 3000
       REDIS_URL: redis://localhost:6379
-    # Task level dotenv files
+    # Task level dotenv files.
+    # .env.local has a higher priority than .env
     env_files:
-      - .env.dev
+      - .env.local
+      - .env
     depends_on:
       - install
       - db

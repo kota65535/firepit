@@ -7,7 +7,7 @@ use std::path::Path;
 use std::{env, path};
 
 use firepit::app::command::{AppCommand, AppCommandChannel};
-use firepit::config::{ProjectConfig, VarsConfig};
+use firepit::config::ProjectConfig;
 use firepit::project::Workspace;
 use firepit::runner::command::RunnerCommandChannel;
 use indexmap::IndexMap;
@@ -138,42 +138,87 @@ async fn test_vars() {
     setup();
 
     let path = BASE_PATH.join("vars");
-    let tasks = vec![String::from("foo")];
+    let tasks = vec![
+        String::from("number"),
+        String::from("string"),
+        String::from("boolean"),
+        String::from("array"),
+        String::from("map"),
+    ];
 
     let mut stats = HashMap::new();
-    stats.insert(String::from("#foo"), String::from("Finished: Success"));
-    stats.insert(String::from("#bar"), String::from("Finished: Success"));
-    stats.insert(String::from("#baz"), String::from("Finished: Success"));
-    stats.insert(String::from("#qux"), String::from("Finished: Success"));
-    stats.insert(String::from("#quux"), String::from("Finished: Success"));
+    stats.insert(String::from("#number"), String::from("Finished: Success"));
+    stats.insert(String::from("#string"), String::from("Finished: Success"));
+    stats.insert(String::from("#boolean"), String::from("Finished: Success"));
+    stats.insert(String::from("#array"), String::from("Finished: Success"));
+    stats.insert(String::from("#map"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#foo"), String::from("foo 1"));
-    outputs.insert(String::from("#bar"), String::from("bar 3"));
-    outputs.insert(String::from("#baz"), String::from("baz 3"));
-    outputs.insert(String::from("#qux"), String::from("qux 1,2"));
-    outputs.insert(String::from("#quux"), String::from("quux 1,2"));
+    outputs.insert(String::from("#number"), String::from("1\nok"));
+    outputs.insert(String::from("#string"), String::from("bar\nok"));
+    outputs.insert(String::from("#boolean"), String::from("true\nok"));
+    outputs.insert(String::from("#array"), String::from("1,2\nok"));
+    outputs.insert(String::from("#map"), String::from("1,2\nok"));
 
-    let vars = IndexMap::from([("offset".to_string(), VarsConfig::Static(Value::from(10)))]);
+    let vars = IndexMap::from([("offset".to_string(), Value::from(10))]);
     run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
         .await
         .unwrap();
 }
 
 #[tokio::test]
-async fn test_vars_dynamic() {
+async fn test_vars_from_cli() {
     setup();
 
-    let path = BASE_PATH.join("vars_dynamic");
-    let tasks = vec![String::from("foo")];
+    let path = BASE_PATH.join("vars_cli");
+    let tasks = vec![
+        String::from("number"),
+        String::from("string"),
+        String::from("string2"),
+        String::from("boolean"),
+    ];
+
+    let mut stats = HashMap::new();
+    stats.insert(String::from("#number"), String::from("Finished: Success"));
+    stats.insert(String::from("#string"), String::from("Finished: Success"));
+    stats.insert(String::from("#string2"), String::from("Finished: Success"));
+    stats.insert(String::from("#boolean"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#number"), String::from("2\nok"));
+    outputs.insert(String::from("#string"), String::from("baz\nok"));
+    outputs.insert(String::from("#string2"), String::from("piyo\nok"));
+    outputs.insert(String::from("#boolean"), String::from("false\nok"));
+
+    let vars = IndexMap::from([
+        ("cli_number".to_string(), Value::from(1)),
+        ("string".to_string(), Value::from("baz")),
+        ("string2".to_string(), Value::from("piyo")),
+        ("boolean".to_string(), Value::from(false)),
+    ]);
+    run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn test_vars_builtin() {
+    setup();
+
+    let path = BASE_PATH.join("vars_builtin");
+    let tasks = vec![String::from("foo"), String::from("p1#bar"), String::from("p2#baz")];
 
     let mut stats = HashMap::new();
     stats.insert(String::from("#foo"), String::from("Finished: Success"));
+    stats.insert(String::from("p1#bar"), String::from("Finished: Success"));
+    stats.insert(String::from("p2#baz"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#foo"), String::from("12345 workflows true fooABCD"));
+    outputs.insert(String::from("#foo"), String::from("\n\n#foo\ntrue"));
+    outputs.insert(String::from("p1#bar"), String::from("p1\np1\np1#bar"));
+    outputs.insert(String::from("p2#baz"), String::from("p2\np2\np2#baz"));
 
-    run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
+    run_task_with_watch(&path, tasks, stats, Some(outputs), None, None, None, false, async {}).await
 }
 
 #[tokio::test]
@@ -188,9 +233,9 @@ async fn test_vars_multi() {
     stats.insert(String::from("#baz"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("foo#foo"), String::from("foo 10root"));
-    outputs.insert(String::from("bar#bar"), String::from("bar 2foo"));
-    outputs.insert(String::from("#baz"), String::from("baz 3bar"));
+    outputs.insert(String::from("foo#foo"), String::from("foo 10\nroot"));
+    outputs.insert(String::from("bar#bar"), String::from("bar 2\nfoo"));
+    outputs.insert(String::from("#baz"), String::from("baz 3\nbar"));
 
     run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
 }
@@ -248,7 +293,7 @@ async fn test_vars_dep_multi() {
     outputs.insert(String::from("p2#qux"), String::from("qux 5"));
     outputs.insert(String::from("p2#qux-1"), String::from("qux 4"));
 
-    let vars = IndexMap::from([("A".to_string(), VarsConfig::Static(Value::from(2)))]);
+    let vars = IndexMap::from([("A".to_string(), Value::from(2))]);
 
     run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
         .await
@@ -277,35 +322,6 @@ async fn test_vars_dep_same() {
     outputs.insert(String::from("#qux-2"), String::from("qux 5"));
 
     run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
-}
-
-#[tokio::test]
-async fn test_vars_and_env_from_cli() {
-    setup();
-
-    let path = BASE_PATH.join("vars_cli");
-    let tasks = vec![String::from("foo"), String::from("bar")];
-
-    let mut stats = HashMap::new();
-    stats.insert(String::from("#foo"), String::from("Finished: Success"));
-    stats.insert(String::from("#bar"), String::from("Finished: Success"));
-    stats.insert(String::from("#baz"), String::from("Finished: Success"));
-    stats.insert(String::from("#qux"), String::from("Ready"));
-
-    let mut outputs = HashMap::new();
-    outputs.insert(String::from("#foo"), String::from("foo 11"));
-    outputs.insert(String::from("#bar"), String::from("bar 11 2.2"));
-    outputs.insert(String::from("#baz"), String::from("baz 3"));
-    outputs.insert(String::from("#qux"), String::from("qux 13001"));
-
-    let vars = IndexMap::from([
-        ("A".to_string(), VarsConfig::Static(Value::from(11))),
-        ("D".to_string(), VarsConfig::Static(Value::from(13002))),
-    ]);
-
-    run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
-        .await
-        .unwrap();
 }
 
 #[tokio::test]
@@ -362,10 +378,10 @@ async fn test_watch() {
     stats.insert(String::from("#qux"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#foo"), String::from("foofoo"));
-    outputs.insert(String::from("#bar"), String::from("barbar"));
+    outputs.insert(String::from("#foo"), String::from("foo\nfoo"));
+    outputs.insert(String::from("#bar"), String::from("bar\nbar"));
     outputs.insert(String::from("#baz"), String::from("baz"));
-    outputs.insert(String::from("#qux"), String::from("quxqux"));
+    outputs.insert(String::from("#qux"), String::from("qux\nqux"));
 
     let mut runs = HashMap::new();
     runs.insert(String::from("#foo"), 1);
@@ -439,9 +455,13 @@ async fn test_up_to_date() {
 
 #[tokio::test]
 async fn test_env_precedence() {
-    env::set_var("key1", "os1");
-    env::set_var("key2", "os2");
-    env::set_var("key3", "os3");
+    env::set_var("key0", "os0");
+    env::set_var("key1", "os0");
+    env::set_var("key2", "os0");
+    env::set_var("key3", "os0");
+    env::set_var("key4", "os0");
+    env::set_var("key5", "os0");
+    env::set_var("key6", "os0");
 
     setup();
 
@@ -452,7 +472,10 @@ async fn test_env_precedence() {
     stats.insert(String::from("#foo"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#foo"), String::from("file1 env2 os3"));
+    outputs.insert(
+        String::from("#foo"),
+        String::from("os0 file1 file2 pj3 file4 file5 task6"),
+    );
 
     run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
 }
@@ -483,7 +506,7 @@ async fn run_task_with_vars(
     tasks: Vec<String>,
     status_expected: HashMap<String, String>,
     outputs_expected: Option<HashMap<String, String>>,
-    vars: IndexMap<String, VarsConfig>,
+    vars: IndexMap<String, Value>,
     force: bool,
 ) -> anyhow::Result<()> {
     run_task_inner(
@@ -508,12 +531,12 @@ async fn run_task_inner(
     restarts_expected: Option<HashMap<String, u64>>,
     runs_expected: Option<HashMap<String, u64>>,
     timeout_seconds: Option<u64>,
-    vars: IndexMap<String, VarsConfig>,
+    vars: IndexMap<String, Value>,
     force: bool,
 ) -> anyhow::Result<()> {
     let path = path::absolute(path)?;
     let (root, children) = ProjectConfig::new_multi(&path)?;
-    let ws = Workspace::new(&root, &children, &tasks, &path, &vars, force, false, Some(false)).await?;
+    let ws = Workspace::new(&root, &children, &tasks, &path, &vars, force, false, Some(false))?;
     // Create runner
     let mut runner = TaskRunner::new(&ws)?;
     let (app_tx, app_rx) = AppCommandChannel::new();
@@ -555,9 +578,10 @@ async fn run_task_with_watch<F>(
     F: Future<Output = ()> + Send + 'static,
 {
     let path = path::absolute(path).unwrap();
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
     let ws = Workspace::new(
-        &ProjectConfig::new("", &path).unwrap(),
-        &IndexMap::new(),
+        &root,
+        &children,
         &tasks,
         &path,
         &IndexMap::new(),
@@ -565,7 +589,6 @@ async fn run_task_with_watch<F>(
         true,
         Some(false),
     )
-    .await
     .unwrap();
 
     // Create runner
@@ -612,6 +635,7 @@ fn handle_events(
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut statuses = HashMap::new();
+        let mut raw_outputs = HashMap::<String, String>::new();
         let mut outputs = HashMap::<String, String>::new();
         let mut restarts = HashMap::new();
         let mut runs = HashMap::new();
@@ -645,13 +669,17 @@ fn handle_events(
                         }
                         AppCommand::TaskOutput { task, output } => {
                             let str = String::from_utf8(output.clone()).unwrap();
-                            match outputs.get(&task) {
+                            let str_trimmed = str.trim().to_string();
+                            match raw_outputs.get(&task) {
                                 Some(t) => {
                                     let s = format!("{}{}", t, str);
-                                    outputs.insert(task.clone(), normalize_str(&s));
+                                    let st = format!("{}{}", t, str_trimmed);
+                                    raw_outputs.insert(task.clone(), s);
+                                    outputs.insert(task.clone(), st);
                                 }
                                 None => {
-                                    outputs.insert(task.clone(), normalize_str(&str));
+                                    raw_outputs.insert(task.clone(), str);
+                                    outputs.insert(task.clone(), str_trimmed);
                                 }
                             }
                         }
@@ -659,6 +687,7 @@ fn handle_events(
                     }
                 }
             }
+
             if statuses_expected == statuses
                 && match outputs_expected.clone() {
                     Some(expected) => expected == outputs,
@@ -678,11 +707,6 @@ fn handle_events(
         }
         runner_tx.quit();
 
-        let outputs = outputs
-            .into_iter()
-            .filter(|(_, v)| !v.is_empty())
-            .collect::<HashMap<_, _>>();
-
         assert_eq!(statuses_expected, statuses);
         if let Some(outputs_expected) = outputs_expected {
             assert_eq!(outputs_expected, outputs);
@@ -694,8 +718,4 @@ fn handle_events(
             assert_eq!(runs_expected, runs);
         }
     })
-}
-
-fn normalize_str(s: &str) -> String {
-    s.trim().chars().filter(|&c| !c.is_control()).collect()
 }

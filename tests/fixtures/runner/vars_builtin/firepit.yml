@@ -1,0 +1,13 @@
+projects:
+  p1: p1
+  p2: p2
+
+# Test that built-in vars are interpolated
+tasks:
+  foo:
+    command: |
+      root_dir="{{ root_dir }}"
+      echo "${root_dir#$PWD}"
+      echo "{{ project }}"
+      echo "{{ task }}"
+      echo "{{ watch }}"

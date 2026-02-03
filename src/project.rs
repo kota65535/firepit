@@ -97,8 +97,8 @@ impl Workspace {
             }
         }
 
-        let mut renderer = ConfigRenderer::new(&root_config, &child_configs, &vars);
-        let (root_config, child_configs) = renderer.render().await?;
+        let mut renderer = ConfigRenderer::new(&root_config, &child_configs, &vars, watch);
+        let (root_config, child_configs) = renderer.render()?.await?;
         ProjectConfig::validate_multi(&root_config, &child_configs)?;
 
         let root = Project::new("", &root_config)?;
@@ -290,7 +290,7 @@ impl EnvConfig {
 
     fn load_env_files(&self) -> anyhow::Result<HashMap<String, String>> {
         let mut ret = HashMap::new();
-        for f in self.env_files.iter().rev() {
+        for f in self.env_files.iter() {
             let iter = match dotenvy::from_path_iter(f) {
                 Ok(it) => it,
                 Err(e) => {
