@@ -480,6 +480,47 @@ async fn test_env_precedence() {
     run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
 }
 
+#[tokio::test]
+async fn test_working_dir_inheritance() {
+    setup();
+
+    let path = BASE_PATH.join("working_dir");
+    let tasks = vec![
+        String::from("inherit"),
+        String::from("join"),
+        String::from("vars_inherit"),
+        String::from("vars_join"),
+        String::from("service_inherit"),
+        String::from("service_join"),
+    ];
+
+    let mut stats = HashMap::new();
+    stats.insert(String::from("#inherit"), String::from("Finished: Success"));
+    stats.insert(String::from("#join"), String::from("Finished: Success"));
+    stats.insert(String::from("#vars_inherit"), String::from("Finished: Success"));
+    stats.insert(String::from("#vars_join"), String::from("Finished: Success"));
+    stats.insert(String::from("#service_inherit"), String::from("Ready"));
+    stats.insert(String::from("#service_join"), String::from("Ready"));
+
+    let base_dir = path::absolute(&path).unwrap();
+    let mut outputs = HashMap::new();
+    outputs.insert(
+        String::from("#inherit"),
+        base_dir.join("workdir").to_string_lossy().to_string(),
+    );
+    outputs.insert(
+        String::from("#join"),
+        base_dir.join("workdir").join("task").to_string_lossy().to_string(),
+    );
+    outputs.insert(String::from("#vars_inherit"), base_dir.to_string_lossy().to_string());
+    outputs.insert(
+        String::from("#vars_join"),
+        base_dir.join("workdir").to_string_lossy().to_string(),
+    );
+
+    run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
+}
+
 async fn run_task(
     path: &Path,
     tasks: Vec<String>,
