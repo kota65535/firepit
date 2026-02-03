@@ -473,5 +473,5 @@ working_dir: dist
 
 ## VarsConfig
 
-- **Type:** <code><a href="#dynamicvars">DynamicVars</a> | </code>
+- **Type:** <code><a href="#dynamicvars">DynamicVars</a> | any</code>
 - **Description:** Vars config
