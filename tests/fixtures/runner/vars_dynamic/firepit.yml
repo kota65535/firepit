@@ -3,7 +3,6 @@ vars:
     command: echo "12345"
   B:
     command: ls
-    working_dir: ../../../.github
   C:
     command: echo "true"
   D:
@@ -23,5 +22,3 @@ tasks:
       echo "{% if C %}C{% endif %}"
       echo "{% if D is string %}D{% endif %}"
       echo "{% if E is string %}E{% endif %}"
-
-working_dir: ../
