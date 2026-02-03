@@ -3,6 +3,7 @@ vars:
     command: echo "12345"
   B:
     command: ls
+    working_dir: ../../../../.github
   C:
     command: echo "true"
   D:
