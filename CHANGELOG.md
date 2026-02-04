@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.19.2] - 2026-02-04
+
+### 🐛 Bug Fixes
+
+- Disable pty for dynamic vars (#250)
+
 ## [0.19.1] - 2026-02-04
 
 ### 🐛 Bug Fixes
