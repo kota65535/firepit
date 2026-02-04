@@ -563,13 +563,19 @@ impl Child {
         }
     }
 
-    /// Wait for the `Child` to exit and pipe any stdout and stderr to the
-    /// provided writer.
-    pub async fn wait_with_piped_outputs<W: Write>(&mut self, stdout_pipe: W) -> Result<Option<ChildExit>, io::Error> {
+    /// Wait for the `Child` to exit and pipe stdout/stderr to the provided writers.
+    ///
+    /// Note: PTY output is a single stream and will be written to `stdout_pipe`.
+    pub async fn wait_with_piped_outputs<W1: Write, W2: Write>(
+        &mut self,
+        stdout_pipe: W1,
+        stderr_pipe: W2,
+    ) -> Result<Option<ChildExit>, io::Error> {
         match self.outputs() {
             Some(ChildOutput::Std { stdout, stderr }) => {
                 self.wait_with_piped_async_outputs(
                     stdout_pipe,
+                    stderr_pipe,
                     Some(BufReader::new(stdout)),
                     Some(BufReader::new(stderr)),
                 )
@@ -640,6 +646,7 @@ impl Child {
     async fn wait_with_piped_async_outputs<R1: AsyncBufRead + Unpin, R2: AsyncBufRead + Unpin>(
         &mut self,
         mut stdout_pipe: impl Write,
+        mut stderr_pipe: impl Write,
         mut stdout_lines: Option<R1>,
         mut stderr_lines: Option<R2>,
     ) -> Result<Option<ChildExit>, std::io::Error> {
@@ -677,7 +684,7 @@ impl Child {
                     trace!("processing stderr line");
                     result?;
                     add_trailing_newline(&mut stderr_buffer);
-                    stdout_pipe.write_all(&stderr_buffer)?;
+                    stderr_pipe.write_all(&stderr_buffer)?;
                     stderr_buffer.clear();
                 }
                 status = self.wait(), if !is_exited => {
@@ -697,7 +704,7 @@ impl Child {
                     }
                     if !stderr_buffer.is_empty() {
                         add_trailing_newline(&mut stderr_buffer);
-                        stdout_pipe.write_all(&stderr_buffer)?;
+                        stderr_pipe.write_all(&stderr_buffer)?;
                         stderr_buffer.clear();
                     }
                     break;

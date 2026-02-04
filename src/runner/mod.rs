@@ -495,7 +495,7 @@ impl TaskRunner {
 
         // Wait until complete
         info!("Process is waiting for output. PID={}", pid);
-        let result = match process.wait_with_piped_outputs(app_tx.clone()).await {
+        let result = match process.wait_with_piped_outputs(app_tx.clone(), app_tx.clone()).await {
             Ok(Some(exit_status)) => match exit_status {
                 ChildExit::Finished(Some(code)) if code == 0 => TaskResult::Success,
                 ChildExit::Finished(Some(code)) => TaskResult::Failure(code),

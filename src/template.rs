@@ -636,9 +636,12 @@ async fn execute_command(command: &Command) -> anyhow::Result<String> {
         Some(Err(e)) => anyhow::bail!("failed to spawn process: {:?}", e),
         _ => anyhow::bail!("failed to spawn process"),
     };
-    let output_collector = OutputCollector::new();
-    let exit = process.wait_with_piped_outputs(output_collector.clone()).await;
-    let output = output_collector.take_output().trim().to_string();
+    let stdout_collector = OutputCollector::new();
+    let stderr_collector = OutputCollector::new();
+    let exit = process
+        .wait_with_piped_outputs(stdout_collector.clone(), stderr_collector)
+        .await;
+    let output = stdout_collector.take_output().trim().to_string();
     Ok(match exit {
         Ok(Some(exit_status)) => match exit_status {
             // Trim trailing newline
