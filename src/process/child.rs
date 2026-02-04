@@ -722,6 +722,38 @@ impl Child {
     }
 }
 
+struct SharedWriter<W> {
+    inner: Arc<Mutex<W>>,
+}
+
+impl<W> SharedWriter<W> {
+    fn new(writer: W) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(writer)),
+        }
+    }
+}
+
+impl<W> Clone for SharedWriter<W> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl<W: Write> Write for SharedWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let mut writer = self.inner.lock().expect("writer lock poisoned");
+        writer.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        let mut writer = self.inner.lock().expect("writer lock poisoned");
+        writer.flush()
+    }
+}
+
 // Adds a trailing newline if necessary to the buffer
 fn add_trailing_newline(buffer: &mut Vec<u8>) {
     // If the line doesn't end with a newline, that indicates we hit a EOF.
