@@ -1,6 +1,6 @@
 vars:
   A:
-    command: echo "12345"
+    command: echo "12345"; echo "67890" >&2
   B:
     command: ls
     working_dir: ../../../../.github

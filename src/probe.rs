@@ -146,7 +146,7 @@ impl ExecProbe {
                     info!("Probe timed-out. output: {:?}", output_collector.take_output());
                 },
                 // Normal branch, success if finished with code 0
-                exit = process.wait_with_piped_outputs(output_collector.clone()) => {
+                exit = process.wait_with_piped_outputs(output_collector.clone(), output_collector.clone()) => {
                     let success = match exit {
                         Ok(Some(exit_status)) => {
                             info!("Probe finished with exit code {:?}.\noutput: {:?}", exit_status, output_collector.take_output());
