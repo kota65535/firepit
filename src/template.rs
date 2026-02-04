@@ -630,7 +630,7 @@ async fn render_value(value: &VarsConfig, tera: &mut Tera, context: &tera::Conte
 
 /// Executes a command and returns the output as a string.
 async fn execute_command(command: &Command) -> anyhow::Result<String> {
-    let manager = ProcessManager::infer();
+    let manager = ProcessManager::new(false);
     let mut process = match manager.spawn(command.clone(), DYNAMIC_VAR_STOP_TIMEOUT).await {
         Some(Ok(child)) => child,
         Some(Err(e)) => anyhow::bail!("failed to spawn process: {:?}", e),
