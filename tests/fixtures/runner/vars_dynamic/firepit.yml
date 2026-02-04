@@ -1,6 +1,8 @@
 vars:
   A:
-    command: echo "12345"; echo "67890" >&2
+    command: |
+      echo "12345"
+      echo "67890" >&2
   B:
     command: ls
     working_dir: ../../../../.github
@@ -13,6 +15,9 @@ vars:
       args: ["-e"]
   E:
     command: git rev-parse --abbrev-ref HEAD
+    shell:
+      command: bash
+      args: ["-x", "-c"]
 
 tasks:
   foo:
