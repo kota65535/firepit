@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.19.1] - 2026-02-04
+
+### 🐛 Bug Fixes
+
+- Make dynamic vars ignore stderr (#249)
+- Make dynamic vars ignore stderr
+
 ## [0.19.0] - 2026-02-03
 
 ### 🚀 Features
