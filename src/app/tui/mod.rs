@@ -261,7 +261,7 @@ impl TuiApp {
 
 impl TuiAppState {
     const SEARCH_MATCH_BG: vt100::Color = vt100::Color::Idx(3); // Yellow
-    const CURRENT_SEARCH_MATCH_BG: vt100::Color = vt100::Color::Idx(0);
+    const CURRENT_MATCH_BG: vt100::Color = vt100::Color::Idx(7); // White
 
     pub fn active_task(&self) -> anyhow::Result<&Task> {
         self.nth_task(self.selected_task_index)
@@ -560,16 +560,6 @@ impl TuiAppState {
         Ok(())
     }
 
-    fn highlight_search_matches(&mut self, results: &SearchResults, color: vt100::Color) -> anyhow::Result<()> {
-        let active_task_name = self.active_task()?.name.clone();
-        if active_task_name != results.task {
-            return Ok(());
-        }
-        let query_len = results.query.len() as u16;
-        self.highlight_cell(&results.matches, query_len, color)?;
-        Ok(())
-    }
-
     pub fn run_search(&mut self) -> anyhow::Result<()> {
         let LayoutSections::Search { query, .. } = &mut self.focus else {
             return Ok(());
@@ -636,18 +626,25 @@ impl TuiAppState {
 
         self.highlight_search_matches(&search_results, Self::SEARCH_MATCH_BG)?;
         if let Some(m) = search_results.current() {
-            self.highlight_cell(&vec![m.clone()], query_len as u16, Self::CURRENT_SEARCH_MATCH_BG)?;
-            self.scroll_to_row(m.0)?;
+            let row = m.0;
+            self.highlight_matches(&[m], query_len as u16, Self::CURRENT_MATCH_BG)?;
+            self.scroll_to_row(row)?;
         }
 
         self.focus = LayoutSections::TaskList(Some(search_results));
         Ok(())
     }
 
-    fn highlight_cell(&mut self, matches: &Vec<Match>, length: u16, color: vt100::Color) -> anyhow::Result<()> {
+    fn highlight_search_matches(&mut self, results: &SearchResults, color: vt100::Color) -> anyhow::Result<()> {
+        let query_len = results.query.width() as u16;
+        self.highlight_matches(&results.matches, query_len, color)?;
+        Ok(())
+    }
+
+    fn highlight_matches(&mut self, matches: &[Match], length: u16, color: vt100::Color) -> anyhow::Result<()> {
         let task = self.active_task_mut()?;
         let screen = task.output.screen_mut();
-        let mut matches = matches.clone();
+        let mut matches = matches.to_vec();
         matches.sort_by_key(|m| (m.0, m.1));
         // Pending matches are sorted by row index
         let mut pending = matches.into_iter().peekable();
@@ -696,11 +693,13 @@ impl TuiAppState {
         let mut results = results.clone();
         let query_len = results.query.width();
 
-        self.remove_search_highlight()?;
-
+        if let Some(m) = results.current() {
+            self.highlight_matches(&[m], query_len as u16, Self::SEARCH_MATCH_BG)?;
+        }
         if let Some(m) = results.next() {
-            self.highlight_cell(m, query_len as u16, Self::CURRENT_SEARCH_MATCH_BG)?;
-            self.scroll_to_row(m.0)?;
+            let row = m.0;
+            self.highlight_matches(&[m], query_len as u16, Self::CURRENT_MATCH_BG)?;
+            self.scroll_to_row(row)?;
         }
 
         self.focus = LayoutSections::TaskList(Some(results));
@@ -715,11 +714,13 @@ impl TuiAppState {
         let mut results = results.clone();
         let query_len = results.query.width();
 
-        self.remove_search_highlight()?;
-
+        if let Some(m) = results.current() {
+            self.highlight_matches(&[m], query_len as u16, Self::SEARCH_MATCH_BG)?;
+        }
         if let Some(m) = results.previous() {
-            self.highlight_cell(m, query_len as u16, true)?;
-            self.scroll_to_row(m.0)?;
+            let row = m.0;
+            self.highlight_matches(&[m], query_len as u16, Self::CURRENT_MATCH_BG)?;
+            self.scroll_to_row(row)?;
         }
 
         self.focus = LayoutSections::TaskList(Some(results));
