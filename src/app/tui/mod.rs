@@ -38,6 +38,7 @@ use std::collections::HashMap;
 use std::io::{self, Stdout, Write};
 use tokio::{sync::mpsc, time::Instant};
 use tracing::{debug, error, info};
+use unicode_width::UnicodeWidthStr;
 
 #[derive(Debug, Clone)]
 pub enum LayoutSections {
@@ -552,7 +553,7 @@ impl TuiAppState {
             return Ok(());
         };
         let results = results.clone();
-        let query_len = results.query.len();
+        let query_len = results.query.width();
         let task = self.active_task_mut()?;
         if task.name != results.task {
             return Ok(());
@@ -567,6 +568,10 @@ impl TuiAppState {
         let LayoutSections::Search { query, .. } = &mut self.focus else {
             return Ok(());
         };
+        if query.is_empty() {
+            return Ok(());
+        }
+
         let query = query.clone();
         let task = self.active_task_mut()?;
         let screen = task.output.screen_mut();
@@ -574,42 +579,43 @@ impl TuiAppState {
 
         let mut matches = Vec::new();
         let mut line_buf = String::new();
-        let mut previous_rows = Vec::new();
+        let mut previous_row_widths = Vec::new();
         for (row_idx, row) in screen.grid_mut().all_rows_mut().enumerate() {
             let mut s = String::new();
             row.write_contents(&mut s, 0, size.1, true);
+            let current_row_width = s.width();
             line_buf.push_str(&s);
             if row.wrapped() {
-                previous_rows.push((row, s.len()));
+                previous_row_widths.push(current_row_width);
                 continue;
             }
             for (offset, _) in line_buf.match_indices(&query) {
-                // Convert byte offset to char index to handle multibyte chars properly
-                let mut col_idx = line_buf[..offset].chars().count();
-                if previous_rows.is_empty() {
+                // Convert byte offset to display width to handle wide chars properly
+                let mut col_idx = line_buf[..offset].width();
+                if previous_row_widths.is_empty() {
                     matches.push(Match(row_idx as u16, col_idx as u16));
                 } else {
                     // The line is wrapped
                     // Reset the current row index to the first line
-                    let mut row_idx = row_idx - previous_rows.len();
-                    for (_, len) in previous_rows.iter() {
-                        if col_idx <= size.1 as usize {
+                    let mut row_idx = row_idx - previous_row_widths.len();
+                    for width in previous_row_widths.iter() {
+                        if col_idx <= *width {
                             // The match exists in this line
                             matches.push(Match(row_idx as u16, col_idx as u16));
                             break;
                         } else {
                             // The match may be in the next line
-                            col_idx -= len;
+                            col_idx -= *width;
                         }
                         row_idx += 1;
                     }
                 }
             }
-            previous_rows.clear();
+            previous_row_widths.clear();
             line_buf.clear();
         }
 
-        let query_len = query.len();
+        let query_len = query.width();
 
         // Find the initial search result index
         let offset = screen.current_scrollback_len() - screen.scrollback();
@@ -673,7 +679,7 @@ impl TuiAppState {
             return Ok(());
         };
         let mut results = results.clone();
-        let query_len = results.query.len();
+        let query_len = results.query.width();
 
         self.remove_search_highlight()?;
 
@@ -692,7 +698,7 @@ impl TuiAppState {
             return Ok(());
         };
         let mut results = results.clone();
-        let query_len = results.query.len();
+        let query_len = results.query.width();
 
         self.remove_search_highlight()?;
 
