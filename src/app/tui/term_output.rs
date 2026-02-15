@@ -108,8 +108,31 @@ impl TerminalOutput {
     }
 
     pub fn line_selection(&mut self, row: u16) {
-        let size = self.size();
-        self.parser.screen_mut().set_selection(row, 0, row, size.1)
+        let (start_row, end_row, cols) = {
+            let screen = self.parser.screen();
+            let size = screen.size();
+            let wrapped_flags: Vec<bool> = screen.grid().visible_rows().map(|r| r.wrapped()).collect();
+            if wrapped_flags.is_empty() {
+                return;
+            }
+            let max_row = wrapped_flags.len().saturating_sub(1) as u16;
+            let row = row.min(max_row) as usize;
+
+            // Find the start row of the line if wrapped
+            let mut start = row;
+            while start > 0 && wrapped_flags[start - 1] {
+                start -= 1;
+            }
+            // Find the end row of the line of wrapped
+            let mut end = row;
+            while end + 1 < wrapped_flags.len() && wrapped_flags[end] {
+                end += 1;
+            }
+
+            (start as u16, end as u16, size.1)
+        };
+
+        self.parser.screen_mut().set_selection(start_row, 0, end_row, cols)
     }
 
     pub fn copy_selection(&self) -> Option<String> {
