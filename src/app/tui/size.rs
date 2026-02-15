@@ -53,8 +53,9 @@ impl SizeInfo {
     }
 
     pub fn output_cols(&self, has_sidebar: bool) -> u16 {
-        // Account for the pane scrollbar and ...what?
-        self.pane_cols(has_sidebar) - 2
+        // Account for the pane scrollbar width (2).
+        // Always allocate at least 2 columns in case of wide chars to avoid vt100 crashes
+        self.pane_cols(has_sidebar).saturating_sub(2).max(2)
     }
 
     /// Return the actual task table width.
