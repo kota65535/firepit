@@ -54,14 +54,15 @@ impl TerminalOutput {
     }
 
     pub fn resize(&mut self, rows: u16, cols: u16) {
-        if self.parser.screen().size() != (rows, cols) {
-            let scrollback = self.parser.screen().scrollback();
-            let mut new_parser = vt100::Parser::new(rows, cols, SCROLLBACK_LEN);
-            new_parser.process(&self.output);
-            new_parser.screen_mut().set_scrollback(scrollback);
-            // Completely swap out the old vterm with a new correctly sized one
-            mem::swap(&mut self.parser, &mut new_parser);
+        if rows == 0 || cols == 0 || self.parser.screen().size() == (rows, cols) {
+            return;
         }
+        let scrollback = self.parser.screen().scrollback();
+        let mut new_parser = vt100::Parser::new(rows, cols, SCROLLBACK_LEN);
+        new_parser.process(&self.output);
+        new_parser.screen_mut().set_scrollback(scrollback);
+        // Completely swap out the old vterm with a new correctly sized one
+        mem::swap(&mut self.parser, &mut new_parser);
     }
 
     pub fn scroll(&mut self, direction: Direction, stride: usize) -> anyhow::Result<(usize, usize)> {
