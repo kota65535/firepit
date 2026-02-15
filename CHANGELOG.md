@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.19.4] - 2026-02-15
+
+### 🐛 Bug Fixes
+
+- Handle zero-sized terminal dimensions (#259)
+- Select the entire wrapped lines by double-click (#260)
+
 ## [0.19.3] - 2026-02-13
 
 ### 🐛 Bug Fixes
