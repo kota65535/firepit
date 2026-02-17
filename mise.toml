@@ -1,5 +1,5 @@
 [tools]
 "node" = "24.11.1"
-"github:axodotdev/cargo-dist" = "0.30.3"
+"github:axodotdev/cargo-dist" = "0.30.4"
 "cargo:git-cliff" = "latest"
 "cargo:cargo-edit" = "latest"
