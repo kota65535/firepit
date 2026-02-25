@@ -10,7 +10,7 @@ description = "Simple task & service runner with comfortable TUI"
 anyhow = { version = "1.0.93", features = ["backtrace"] }
 async-recursion = "1.1.1"
 atty = "0.2.14"
-axoupdater = { version = "0.9.0", features = ["blocking"] }
+axoupdater = { version = "0.10.0", features = ["blocking"] }
 base64 = "0.22.1"
 chrono = "0.4.42"
 clap = { version = "4.5.20", features = ["derive"] }
