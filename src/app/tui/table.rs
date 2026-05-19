@@ -170,10 +170,10 @@ impl<'a> StatefulWidget for &'a TaskTable<'a> {
             }
         };
 
-        let header_sep = separator_line(if can_scroll_up { Some("\u{2303}") } else { None }); // ⌃
+        let header_sep = separator_line(if can_scroll_up { Some("\u{2227}") } else { None }); // ∧
         Widget::render(Paragraph::new(Text::from(header_sep)), header_line, buf);
 
-        let footer_sep = separator_line(if can_scroll_down { Some("\u{2304}") } else { None }); // ⌄
+        let footer_sep = separator_line(if can_scroll_down { Some("\u{2228}") } else { None }); // ∨
         Widget::render(Paragraph::new(Text::from(footer_sep)), footer_line, buf);
     }
 }
