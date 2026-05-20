@@ -153,18 +153,21 @@ impl<'a> StatefulWidget for &'a TaskTable<'a> {
         let can_scroll_down = offset + visible_rows < total_tasks;
         let width = usize::from(area.width);
 
-        let header_sep = if can_scroll_up {
-            format!("▲{}", "─".repeat(width.saturating_sub(1)))
-        } else {
-            "─".repeat(width)
+        let separator_with_indicator = |indicator: Option<&str>| -> String {
+            match indicator {
+                Some(ch) => {
+                    let left = width / 2;
+                    let right = width.saturating_sub(left + 1);
+                    format!("{}{}{}", "─".repeat(left), ch, "─".repeat(right))
+                }
+                None => "─".repeat(width),
+            }
         };
+
+        let header_sep = separator_with_indicator(if can_scroll_up { Some("▲") } else { None });
         Widget::render(Paragraph::new(Text::from(header_sep)), header_line, buf);
 
-        let footer_sep = if can_scroll_down {
-            format!("▼{}", "─".repeat(width.saturating_sub(1)))
-        } else {
-            "─".repeat(width)
-        };
+        let footer_sep = separator_with_indicator(if can_scroll_down { Some("▼") } else { None });
         Widget::render(Paragraph::new(Text::from(footer_sep)), footer_line, buf);
     }
 }
