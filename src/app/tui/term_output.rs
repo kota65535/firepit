@@ -5,6 +5,12 @@ use std::{io::Write, mem};
 // If the number of rows exceeds this, search highlights may not work properly.
 const SCROLLBACK_LEN: usize = 1024 * 1024;
 
+// Maximum size of the raw output buffer in bytes.
+// This buffer is replayed during terminal resize, so it must be bounded
+// to prevent unbounded memory growth and slow resize operations.
+// 64 MiB is roughly enough to reproduce ~1M rows of typical terminal output.
+const MAX_OUTPUT_BYTES: usize = 64 * 1024 * 1024;
+
 pub struct TerminalOutput {
     output: Vec<u8>,
     parser: vt100::Parser,
@@ -51,6 +57,12 @@ impl TerminalOutput {
     pub fn process(&mut self, bytes: &[u8]) {
         self.parser.process(bytes);
         self.output.extend_from_slice(bytes);
+        // Trim the output buffer when it exceeds the limit.
+        // We keep the tail so that resize replay reproduces recent output.
+        if self.output.len() > MAX_OUTPUT_BYTES {
+            let drain_to = self.output.len() - MAX_OUTPUT_BYTES;
+            self.output.drain(..drain_to);
+        }
     }
 
     pub fn resize(&mut self, rows: u16, cols: u16) {
@@ -89,10 +101,9 @@ impl TerminalOutput {
         Ok((new_scrollback, scrollback_len))
     }
 
-    pub fn scroll_to(&mut self, row: u16) {
+    pub fn scroll_to(&mut self, row: usize) {
         let screen = self.parser.screen_mut();
         let scrollback_len = screen.current_scrollback_len();
-        let row = row as usize;
         screen.set_scrollback(scrollback_len.saturating_sub(row));
     }
 

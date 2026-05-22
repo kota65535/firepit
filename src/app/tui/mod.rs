@@ -339,7 +339,7 @@ impl TuiAppState {
         Ok(())
     }
 
-    pub fn scroll_to_row(&mut self, row: u16) -> anyhow::Result<()> {
+    pub fn scroll_to_row(&mut self, row: usize) -> anyhow::Result<()> {
         self.active_task_mut()?.output.scroll_to(row);
         Ok(())
     }
@@ -593,7 +593,7 @@ impl TuiAppState {
                 // Convert byte offset to display width to handle wide chars properly
                 let mut col_idx = line_buf[..offset].width();
                 if previous_row_widths.is_empty() {
-                    matches.push(Match(row_idx as u16, col_idx as u16));
+                    matches.push(Match(row_idx, col_idx as u16));
                 } else {
                     // The line is wrapped
                     // Reset the current row index to the first line
@@ -601,7 +601,7 @@ impl TuiAppState {
                     for width in previous_row_widths.iter().chain(std::iter::once(&current_row_width)) {
                         if col_idx < *width {
                             // The match exists in this line
-                            matches.push(Match(row_idx as u16, col_idx as u16));
+                            matches.push(Match(row_idx, col_idx as u16));
                             break;
                         }
                         // The match may be in the next line
@@ -621,7 +621,7 @@ impl TuiAppState {
         let mut index = 0;
         for (i, m) in matches.iter().enumerate() {
             index = i;
-            if offset <= (m.0 as usize) {
+            if offset <= m.0 {
                 break;
             }
         }
@@ -639,7 +639,7 @@ impl TuiAppState {
 
     fn highlight_cell(
         &mut self,
-        mut num_row: u16,
+        mut num_row: usize,
         mut num_col: u16,
         length: u16,
         highlight: bool,
@@ -650,7 +650,7 @@ impl TuiAppState {
         let mut rest = length;
         while rest > 0 {
             // Stop if no rows left
-            let Some(row) = screen.grid_mut().all_rows_mut().nth(num_row as usize) else {
+            let Some(row) = screen.grid_mut().all_rows_mut().nth(num_row) else {
                 break;
             };
             for idx in num_col..num_col + length {

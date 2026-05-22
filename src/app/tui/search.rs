@@ -7,7 +7,7 @@ pub struct SearchResults {
 }
 
 #[derive(Debug, Clone)]
-pub struct Match(pub u16, pub u16);
+pub struct Match(pub usize, pub u16);
 
 impl SearchResults {
     pub fn new(task: &str, query: String, matches: Vec<Match>, index: usize) -> anyhow::Result<Self> {
