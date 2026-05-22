@@ -1,5 +1,5 @@
 use assertables::assert_starts_with;
-use firepit::config::{ProjectConfig, ShellConfig};
+use firepit::config::{DependsOnConfig, ProjectConfig, ShellConfig};
 use indexmap::IndexMap;
 use std::path::Path;
 use std::sync::Once;
@@ -146,4 +146,99 @@ fn test_bad_type() {
     let err = ProjectConfig::new_multi(path).expect_err("");
     println!("{:?}", err);
     assert_starts_with!(err.to_string(), "cannot parse config file");
+}
+
+fn depends_on_names(task: &firepit::config::TaskConfig) -> Vec<String> {
+    task.depends_on
+        .iter()
+        .map(|d| match d {
+            DependsOnConfig::String(s) => s.clone(),
+            DependsOnConfig::Struct(s) => s.task.clone(),
+        })
+        .collect()
+}
+
+#[test]
+fn test_defaults_regex() {
+    let path = Path::new("tests/fixtures/config/defaults_regex");
+    let (root, _) = ProjectConfig::new_multi(path).unwrap();
+
+    // build and test should match "^(build|test)" regex
+    let build = root.tasks.get("build").unwrap();
+    assert_eq!(
+        build.shell,
+        Some(ShellConfig {
+            command: "node".to_string(),
+            args: vec!["-e".to_string()],
+        })
+    );
+    assert_eq!(build.env.get("NODE_ENV"), Some(&"development".to_string()));
+    assert!(depends_on_names(build).iter().any(|d| d.contains("install")));
+
+    let test = root.tasks.get("test").unwrap();
+    // Task-specific env should override defaults
+    assert_eq!(test.env.get("NODE_ENV"), Some(&"test".to_string()));
+    assert!(depends_on_names(test).iter().any(|d| d.contains("install")));
+
+    // install and lint should NOT match
+    let install = root.tasks.get("install").unwrap();
+    assert_eq!(install.shell, None);
+    assert!(install.env.get("NODE_ENV").is_none());
+
+    let lint = root.tasks.get("lint").unwrap();
+    assert_eq!(lint.shell, None);
+    assert!(lint.env.get("NODE_ENV").is_none());
+}
+
+#[test]
+fn test_defaults_list() {
+    let path = Path::new("tests/fixtures/config/defaults_list");
+    let (root, _) = ProjectConfig::new_multi(path).unwrap();
+
+    // build and test should match the explicit list
+    let build = root.tasks.get("build").unwrap();
+    assert_eq!(build.env.get("NODE_ENV"), Some(&"development".to_string()));
+    assert!(depends_on_names(build).iter().any(|d| d.contains("install")));
+
+    let test = root.tasks.get("test").unwrap();
+    assert_eq!(test.env.get("NODE_ENV"), Some(&"development".to_string()));
+
+    // install and lint should NOT match
+    let install = root.tasks.get("install").unwrap();
+    assert!(install.env.get("NODE_ENV").is_none());
+
+    let lint = root.tasks.get("lint").unwrap();
+    assert!(lint.env.get("NODE_ENV").is_none());
+}
+
+#[test]
+fn test_defaults_multi() {
+    let path = Path::new("tests/fixtures/config/defaults_multi");
+    let (root, _) = ProjectConfig::new_multi(path).unwrap();
+
+    // All tasks should have LOG_LEVEL from ".*" defaults
+    for (_, task) in root.tasks.iter() {
+        assert_eq!(task.env.get("LOG_LEVEL"), Some(&"info".to_string()));
+    }
+
+    // build and build-storybook should match "^build" and have depends_on install + NODE_ENV
+    let build = root.tasks.get("build").unwrap();
+    assert_eq!(build.env.get("NODE_ENV"), Some(&"production".to_string()));
+    assert!(depends_on_names(build).iter().any(|d| d.contains("install")));
+
+    let build_sb = root.tasks.get("build-storybook").unwrap();
+    assert_eq!(build_sb.env.get("NODE_ENV"), Some(&"production".to_string()));
+    assert!(depends_on_names(build_sb).iter().any(|d| d.contains("install")));
+
+    // test should NOT have NODE_ENV or depends_on from "^build"
+    let test = root.tasks.get("test").unwrap();
+    assert!(test.env.get("NODE_ENV").is_none());
+    assert!(depends_on_names(test).iter().all(|d| !d.contains("install")));
+}
+
+#[test]
+fn test_defaults_bad_regex() {
+    let path = Path::new("tests/fixtures/config/defaults_bad_regex");
+    let err = ProjectConfig::new_multi(path).expect_err("");
+    assert!(err.to_string().contains("invalid regex pattern"));
 }

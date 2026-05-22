@@ -96,6 +96,16 @@ pub struct ProjectConfig {
     #[schemars(extend("x-template" = true))]
     pub depends_on: Vec<DependsOnConfig>,
 
+    /// Default settings applied to tasks matching a selector.
+    /// ```yaml
+    /// defaults:
+    ///   - tasks: "^(build|test)"
+    ///     depends_on:
+    ///       - install
+    /// ```
+    #[serde(default)]
+    pub defaults: Vec<DefaultsConfig>,
+
     /// Task definitions.
     #[serde(default)]
     pub tasks: IndexMap<String, TaskConfig>,
@@ -223,6 +233,7 @@ impl ProjectConfig {
                     t.project = name.clone();
                 }
                 child_config = child_config.merge(&context)?;
+                child_config.apply_defaults()?;
                 children.insert(name.clone(), child_config);
             }
         } else {
@@ -231,6 +242,7 @@ impl ProjectConfig {
         }
 
         root_config = root_config.merge(&context)?;
+        root_config.apply_defaults()?;
 
         Ok((root_config, children))
     }
@@ -412,6 +424,46 @@ impl ProjectConfig {
     pub fn relative_path_from(&self, path: &Path) -> PathBuf {
         self.dir.strip_prefix(path).unwrap_or(&self.dir).to_path_buf()
     }
+
+    /// Apply `defaults` entries to all matching tasks.
+    /// Defaults entries are processed in order; for each entry, matching tasks have the
+    /// default settings applied as a base layer (task-specific values take precedence).
+    /// `depends_on` entries from defaults are qualified with the project name.
+    pub fn apply_defaults(&mut self) -> anyhow::Result<()> {
+        for default in self.defaults.clone() {
+            // Validate the regex pattern
+            if let TaskSelector::Regex(ref pattern) = default.tasks {
+                Regex::new(pattern)
+                    .with_context(|| format!("defaults: invalid regex pattern {:?}", pattern))?;
+            }
+
+            // Qualify depends_on entries in the default
+            let qualified_default = DefaultsConfig {
+                depends_on: default
+                    .depends_on
+                    .iter()
+                    .map(|d| match d {
+                        DependsOnConfig::String(s) => {
+                            DependsOnConfig::String(Task::qualified_name(&self.name, s))
+                        }
+                        DependsOnConfig::Struct(s) => DependsOnConfig::Struct(DependsOnConfigStruct {
+                            task: Task::qualified_name(&self.name, &s.task),
+                            vars: s.vars.clone(),
+                            cascade: s.cascade,
+                        }),
+                    })
+                    .collect(),
+                ..default
+            };
+
+            for (task_name, task_config) in self.tasks.iter_mut() {
+                if qualified_default.tasks.matches(task_name) {
+                    task_config.apply_default(&qualified_default);
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
@@ -510,6 +562,47 @@ impl TaskConfig {
 
     pub fn output_paths(&self, dir: &PathBuf) -> Vec<PathBuf> {
         self.outputs.iter().map(|f| absolute_or_join(f, dir)).collect()
+    }
+
+    /// Apply a defaults entry to this task.
+    /// Default values are applied as a base layer: task-specific values take precedence.
+    fn apply_default(&mut self, defaults: &DefaultsConfig) {
+        // Scalar fields: use task value if set, otherwise default value
+        if self.shell.is_none() {
+            self.shell = defaults.shell.clone();
+        }
+        if self.working_dir.is_none() {
+            self.working_dir = defaults.working_dir.clone();
+        }
+        if self.service.is_none() {
+            self.service = defaults.service.clone();
+        }
+
+        // Map fields: merge defaults into task (task values win on key conflict)
+        let mut merged_vars = defaults.vars.clone();
+        merged_vars.extend(self.vars.clone());
+        self.vars = merged_vars;
+
+        let mut merged_env = defaults.env.clone();
+        merged_env.extend(self.env.clone());
+        self.env = merged_env;
+
+        // Sequence fields: prepend defaults entries before task entries
+        let mut merged_env_files = defaults.env_files.clone();
+        merged_env_files.append(&mut self.env_files);
+        self.env_files = merged_env_files;
+
+        let mut merged_depends_on = defaults.depends_on.clone();
+        merged_depends_on.append(&mut self.depends_on);
+        self.depends_on = merged_depends_on;
+
+        let mut merged_inputs = defaults.inputs.clone();
+        merged_inputs.append(&mut self.inputs);
+        self.inputs = merged_inputs;
+
+        let mut merged_outputs = defaults.outputs.clone();
+        merged_outputs.append(&mut self.outputs);
+        self.outputs = merged_outputs;
     }
 }
 
@@ -851,6 +944,88 @@ impl JsonSchema for Restart {
             ]
         })
     }
+}
+
+/// Task selector for `defaults`.
+/// A string value is treated as a regex pattern matched against the task name.
+/// An array value is treated as an explicit list of task names.
+/// ```yaml
+/// defaults:
+///   - tasks: "^build"        # regex
+///     env:
+///       NODE_ENV: production
+///   - tasks: [test, lint]    # explicit list
+///     depends_on:
+///       - install
+/// ```
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(untagged)]
+pub enum TaskSelector {
+    Regex(String),
+    List(Vec<String>),
+}
+
+impl TaskSelector {
+    /// Returns true if the given task name matches this selector.
+    pub fn matches(&self, task_name: &str) -> bool {
+        match self {
+            TaskSelector::Regex(pattern) => Regex::new(pattern).map(|re| re.is_match(task_name)).unwrap_or(false),
+            TaskSelector::List(names) => names.iter().any(|n| n == task_name),
+        }
+    }
+}
+
+/// Default settings applied to tasks matching the selector.
+/// ```yaml
+/// defaults:
+///   - tasks: "^(build|test)"
+///     depends_on:
+///       - install
+///     env:
+///       NODE_ENV: development
+/// ```
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct DefaultsConfig {
+    /// Task selector. A string is a regex pattern, an array is an explicit list of task names.
+    pub tasks: TaskSelector,
+
+    /// Shell configuration
+    pub shell: Option<ShellConfig>,
+
+    /// Working directory
+    #[schemars(extend("x-template" = true))]
+    pub working_dir: Option<String>,
+
+    /// Template variables
+    #[serde(default)]
+    #[schemars(extend("x-template" = true))]
+    pub vars: IndexMap<String, VarsConfig>,
+
+    /// Environment variables
+    #[serde(default)]
+    #[schemars(extend("x-template" = true))]
+    pub env: IndexMap<String, String>,
+
+    /// Dotenv files
+    #[serde(default)]
+    #[schemars(extend("x-template" = true))]
+    pub env_files: Vec<String>,
+
+    /// Dependency tasks
+    #[serde(default)]
+    #[schemars(extend("x-template" = true))]
+    pub depends_on: Vec<DependsOnConfig>,
+
+    /// Service configurations
+    pub service: Option<ServiceConfig>,
+
+    /// Inputs file glob patterns
+    #[serde(default)]
+    pub inputs: Vec<String>,
+
+    /// Output file glob patterns
+    #[serde(default)]
+    pub outputs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, strum::EnumString)]
