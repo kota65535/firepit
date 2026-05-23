@@ -1,5 +1,0 @@
-tasks:
-  aaa:
-    env:
-      LC_ALL: C
-    command: "seq 1 100000"
