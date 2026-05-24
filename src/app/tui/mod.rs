@@ -1,5 +1,6 @@
 mod clipboard;
 mod dialog;
+mod hyperlink;
 mod input;
 mod lib;
 mod pane;
@@ -30,8 +31,8 @@ use chrono::{DateTime, Local};
 use indexmap::IndexMap;
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Constraint, Layout},
-    widgets::{ScrollbarState, TableState},
+    layout::{Constraint, Layout, Rect},
+    widgets::{Block, Borders, Padding, ScrollbarState, TableState},
     Frame, Terminal,
 };
 use std::collections::HashMap;
@@ -69,6 +70,9 @@ pub struct TuiAppState {
     quitting: bool,
     force_quitting: bool,
     done: bool,
+    /// Inner area of the PseudoTerminal widget (after block borders/padding),
+    /// used for mapping vt100 cell coordinates to screen coordinates for OSC 8 hyperlinks.
+    pane_inner_area: Option<Rect>,
 }
 
 impl TuiApp {
@@ -135,6 +139,7 @@ impl TuiApp {
                 quitting: false,
                 force_quitting: false,
                 done: false,
+                pane_inner_area: None,
             },
         })
     }
@@ -191,6 +196,7 @@ impl TuiApp {
 
     pub async fn run_inner(&mut self, runner_tx: &RunnerCommandChannel) -> anyhow::Result<()> {
         self.terminal.draw(|f| self.state.view(f))?;
+        self.write_hyperlinks();
 
         let mut last_render = Instant::now();
         let mut needs_rerender = true;
@@ -208,12 +214,39 @@ impl TuiApp {
             }
             if FRAME_RATE <= last_render.elapsed() && needs_rerender {
                 self.terminal.draw(|f| self.state.view(f))?;
+                self.write_hyperlinks();
                 last_render = Instant::now();
                 needs_rerender = false;
             }
         }
 
         Ok(())
+    }
+
+    /// After each render, detect URLs in the active task's terminal output
+    /// and emit OSC 8 hyperlink sequences so the host terminal can make them clickable,
+    /// even when a URL wraps across multiple lines.
+    fn write_hyperlinks(&mut self) {
+        let Some(inner_area) = self.state.pane_inner_area else {
+            return;
+        };
+
+        let Ok(task) = self.state.active_task() else {
+            return;
+        };
+
+        let screen = task.output.screen();
+        let urls = hyperlink::detect_urls(screen);
+        if urls.is_empty() {
+            return;
+        }
+
+        let mut stdout = io::stdout();
+        if let Err(e) = hyperlink::write_hyperlinks(&mut stdout, &urls, screen, inner_area.x, inner_area.y) {
+            debug!("Failed to write hyperlinks: {}", e);
+            return;
+        }
+        let _ = stdout.flush();
     }
 
     /// Blocking poll for events, will only return None if app handle has been
@@ -435,6 +468,17 @@ impl TuiAppState {
             Layout::horizontal([Constraint::Max(0), Constraint::Length(cols)])
         };
         let [table, pane] = horizontal.areas(f.size());
+
+        // Compute pane inner area for OSC 8 hyperlink coordinate mapping.
+        // Must match the Block layout used in TerminalPane::render().
+        {
+            let [main_area, _] =
+                Layout::vertical([Constraint::Fill(1), Constraint::Length(2)]).areas(pane);
+            let block = Block::default()
+                .padding(Padding::top(1))
+                .borders(if self.has_sidebar { Borders::LEFT } else { Borders::NONE });
+            self.pane_inner_area = Some(block.inner(main_area));
+        }
 
         let active_task = match self.active_task() {
             Ok(task) => task,
