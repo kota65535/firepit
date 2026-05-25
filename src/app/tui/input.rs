@@ -16,8 +16,8 @@ use tracing::debug;
 pub struct InputHandler {
     click_times: RingBuffer<Instant>,
     /// Set on single-click Down, cleared on Drag or multi-click.
-    /// If still set on Up, we open the hovered URL.
-    may_open_url: bool,
+    /// If still set on Up, the click is dispatched as ClickPane.
+    click_not_dragged: bool,
 }
 
 pub struct InputOptions<'a> {
@@ -51,7 +51,7 @@ impl InputHandler {
     pub fn new() -> Self {
         Self {
             click_times: RingBuffer::new(3),
-            may_open_url: false,
+            click_not_dragged: false,
         }
     }
 
@@ -142,21 +142,21 @@ impl InputHandler {
                 self.click_times.push(Instant::now());
                 let num_clicks = self.num_of_multiple_clicks();
                 if num_clicks == 1 {
-                    self.may_open_url = true;
+                    self.click_not_dragged = true;
                     Some(AppCommand::ClearSelection)
                 } else if num_clicks == 2 {
-                    self.may_open_url = false;
+                    self.click_not_dragged = false;
                     debug!("Double-clicked: word selection");
                     Some(AppCommand::WordSelection { rows: row, cols: column })
                 } else {
-                    self.may_open_url = false;
+                    self.click_not_dragged = false;
                     debug!("Triple-clicked: line selection");
                     Some(AppCommand::LineSelection { rows: row })
                 }
             }
             (MouseEventKind::Up(MouseButton::Left), false) => {
-                if self.may_open_url {
-                    self.may_open_url = false;
+                if self.click_not_dragged {
+                    self.click_not_dragged = false;
                     Some(AppCommand::ClickPane { row, col: column })
                 } else {
                     None
@@ -164,7 +164,7 @@ impl InputHandler {
             }
             (MouseEventKind::Moved, false) => Some(AppCommand::HoverPane { row, col: column }),
             (MouseEventKind::Drag(MouseButton::Left), _) => {
-                self.may_open_url = false;
+                self.click_not_dragged = false;
                 Some(AppCommand::UpdateSelection {
                     rows: row,
                     cols: column,
