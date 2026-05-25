@@ -71,8 +71,8 @@ pub struct TuiAppState {
     force_quitting: bool,
     done: bool,
     /// Cached URL spans for the current active task's visible output.
-    cached_urls: Vec<hyperlink::UrlSpan>,
-    /// Index into `cached_urls` of the currently hovered URL, if any.
+    detected_urls: Vec<hyperlink::UrlSpan>,
+    /// Index into `detected_urls` of the currently hovered URL, if any.
     hovered_url_index: Option<usize>,
 }
 
@@ -140,7 +140,7 @@ impl TuiApp {
                 quitting: false,
                 force_quitting: false,
                 done: false,
-                cached_urls: Vec::new(),
+                detected_urls: Vec::new(),
                 hovered_url_index: None,
             },
         })
@@ -458,7 +458,7 @@ impl TuiAppState {
                 return;
             }
         };
-        self.cached_urls = new_urls;
+        self.detected_urls = new_urls;
 
         let active_task = match self.active_task() {
             Ok(task) => task,
@@ -474,7 +474,7 @@ impl TuiAppState {
         // Get hovered URL segments for visual overlay
         let hovered_segments = self
             .hovered_url_index
-            .and_then(|idx| self.cached_urls.get(idx))
+            .and_then(|idx| self.detected_urls.get(idx))
             .map(|span| span.segments.as_slice());
 
         // Render pane
@@ -556,7 +556,7 @@ impl TuiAppState {
     /// pane_row/pane_col from input.rs are already vt100 visible row/col
     /// (same coordinates used by line_selection/update_selection).
     fn update_hover(&mut self, pane_row: u16, pane_col: u16) {
-        self.hovered_url_index = hyperlink::find_url_at(&self.cached_urls, pane_row, pane_col);
+        self.hovered_url_index = hyperlink::find_url_at(&self.detected_urls, pane_row, pane_col);
     }
 
     fn open_url(&self, url: &str) {
@@ -923,7 +923,7 @@ impl TuiAppState {
             AppCommand::ClickPane { row, col } => {
                 self.update_hover(row, col);
                 if let Some(idx) = self.hovered_url_index {
-                    if let Some(url_span) = self.cached_urls.get(idx) {
+                    if let Some(url_span) = self.detected_urls.get(idx) {
                         let url = url_span.url.clone();
                         self.open_url(&url);
                     }
