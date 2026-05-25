@@ -244,7 +244,6 @@ impl ProjectConfig {
                     t.project = name.clone();
                 }
                 child_config = child_config.merge(&context)?;
-                child_config.warn_deprecated_fields();
                 child_config.apply_defaults()?;
                 children.insert(name.clone(), child_config);
             }
@@ -254,7 +253,6 @@ impl ProjectConfig {
         }
 
         root_config = root_config.merge(&context)?;
-        root_config.warn_deprecated_fields();
         root_config.apply_defaults()?;
 
         Ok((root_config, children))
@@ -438,25 +436,27 @@ impl ProjectConfig {
         self.dir.strip_prefix(path).unwrap_or(&self.dir).to_path_buf()
     }
 
-    /// Emit deprecation warnings for project-level task settings.
-    /// These should be migrated to the `defaults` section.
-    pub fn warn_deprecated_fields(&self) {
+    /// Collect deprecation warnings for project-level task settings.
+    /// Returns a list of warning messages for fields that should be migrated to `defaults`.
+    pub fn deprecated_warnings(&self) -> Vec<String> {
         let file = self.path.display();
-        if self.shell != default_shell() {
-            tracing::warn!("{}: project-level `shell` is deprecated. Use `defaults` with `tasks: \".*\"` instead.", file);
+        let mut warnings = Vec::new();
+        let fields: &[(&str, bool)] = &[
+            ("shell", self.shell != default_shell()),
+            ("working_dir", self.working_dir != default_working_dir()),
+            ("env", !self.env.is_empty()),
+            ("env_files", !self.env_files.is_empty()),
+            ("depends_on", !self.depends_on.is_empty()),
+        ];
+        for (field, used) in fields {
+            if *used {
+                warnings.push(format!(
+                    "{}: project-level `{}` is deprecated. Use `defaults` with `tasks: \".*\"` instead.",
+                    file, field
+                ));
+            }
         }
-        if self.working_dir != default_working_dir() {
-            tracing::warn!("{}: project-level `working_dir` is deprecated. Use `defaults` with `tasks: \".*\"` instead.", file);
-        }
-        if !self.env.is_empty() {
-            tracing::warn!("{}: project-level `env` is deprecated. Use `defaults` with `tasks: \".*\"` instead.", file);
-        }
-        if !self.env_files.is_empty() {
-            tracing::warn!("{}: project-level `env_files` is deprecated. Use `defaults` with `tasks: \".*\"` instead.", file);
-        }
-        if !self.depends_on.is_empty() {
-            tracing::warn!("{}: project-level `depends_on` is deprecated. Use `defaults` with `tasks: \".*\"` instead.", file);
-        }
+        warnings
     }
 
     /// Apply `defaults` entries to all matching tasks.
