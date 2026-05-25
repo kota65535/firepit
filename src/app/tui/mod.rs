@@ -31,8 +31,8 @@ use chrono::{DateTime, Local};
 use indexmap::IndexMap;
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Constraint, Layout, Rect},
-    widgets::{Block, Borders, Padding, ScrollbarState, TableState},
+    layout::{Constraint, Layout},
+    widgets::{ScrollbarState, TableState},
     Frame, Terminal,
 };
 use std::collections::HashMap;
