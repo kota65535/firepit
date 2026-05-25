@@ -1,4 +1,4 @@
-use crossterm::cursor::MoveTo;
+use crossterm::cursor::{MoveTo, RestorePosition, SavePosition};
 use crossterm::style::{
     Attribute, Color as CColor, SetAttribute, SetBackgroundColor, SetForegroundColor,
 };
@@ -151,9 +151,13 @@ pub fn write_hyperlinks<W: Write>(
         return Ok(());
     }
 
-    for url_span in urls {
-        let osc8_start = format!("\x1b]8;;{}\x07", url_span.url);
-        let osc8_end = "\x1b]8;;\x07";
+    // Save cursor position so ratatui's next draw starts from the right place
+    queue!(writer, SavePosition)?;
+
+    for (link_idx, url_span) in urls.iter().enumerate() {
+        // Use id parameter to group multi-segment links (OSC 8 spec recommendation)
+        let osc8_start = format!("\x1b]8;id=firepit-{};{}\x1b\\", link_idx, url_span.url);
+        let osc8_end = "\x1b]8;;\x1b\\";
 
         for segment in &url_span.segments {
             let screen_y = offset_y + segment.row;
@@ -210,12 +214,13 @@ pub fn write_hyperlinks<W: Write>(
         }
     }
 
-    // Reset styles
+    // Reset styles and restore cursor position
     queue!(
         writer,
         SetForegroundColor(CColor::Reset),
         SetBackgroundColor(CColor::Reset),
         SetAttribute(Attribute::Reset),
+        RestorePosition,
     )?;
 
     Ok(())
