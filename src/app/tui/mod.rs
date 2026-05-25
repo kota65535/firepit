@@ -70,9 +70,6 @@ pub struct TuiAppState {
     quitting: bool,
     force_quitting: bool,
     done: bool,
-    /// Inner area of the PseudoTerminal widget (after block borders/padding/title),
-    /// used for mapping mouse coordinates to vt100 cell coordinates.
-    pane_inner_area: Option<Rect>,
     /// Cached URL spans for the current active task's visible output.
     cached_urls: Vec<hyperlink::UrlSpan>,
     /// Index into `cached_urls` of the currently hovered URL, if any.
@@ -143,7 +140,6 @@ impl TuiApp {
                 quitting: false,
                 force_quitting: false,
                 done: false,
-                pane_inner_area: None,
                 cached_urls: Vec::new(),
                 hovered_url_index: None,
             },
@@ -456,16 +452,6 @@ impl TuiAppState {
         // Must match the Block layout used in TerminalPane::render().
         // The Block must include a title (even empty) because ratatui's Block::inner()
         // adds +1 to y when a title exists at Position::Top.
-        {
-            let [main_area, _] =
-                Layout::vertical([Constraint::Fill(1), Constraint::Length(2)]).areas(pane);
-            let block = Block::default()
-                .padding(Padding::top(1))
-                .borders(if self.has_sidebar { Borders::LEFT } else { Borders::NONE })
-                .title("");
-            self.pane_inner_area = Some(block.inner(main_area));
-        }
-
         // Update cached URLs for hover/click detection
         let new_urls = match self.active_task() {
             Ok(task) => hyperlink::detect_urls(task.output.screen()),
@@ -568,31 +554,11 @@ impl TuiAppState {
         Ok(())
     }
 
-    /// Map pane-relative mouse coordinates to vt100 visible row/col
-    /// and update the hovered URL index.
+    /// Update the hovered URL index from pane-relative mouse coordinates.
+    /// pane_row/pane_col from input.rs are already vt100 visible row/col
+    /// (same coordinates used by line_selection/update_selection).
     fn update_hover(&mut self, pane_row: u16, pane_col: u16) {
-        let Some(inner) = self.pane_inner_area else {
-            self.hovered_url_index = None;
-            return;
-        };
-        // pane_row/pane_col are already relative to the pane area (after HEADER_HEIGHT
-        // and sidebar offset subtracted in input.rs). We need to further subtract
-        // the Block's title and padding rows to get vt100 visible row coordinates.
-        // inner.y is the absolute y of the content area; the pane starts at
-        // inner.y - title(1) - padding(1) - footer is separate.
-        // But pane_row is relative to the pane top (after HEADER_HEIGHT=2).
-        // The Block title takes 1 row and padding takes 1 row, so vt100 row 0
-        // starts at pane_row = 2 (title + padding).
-        let title_and_padding = 2u16; // title(1) + padding.top(1)
-        if pane_col < (inner.x.saturating_sub(inner.x.saturating_sub(if self.has_sidebar { 1 } else { 0 }))) {
-            self.hovered_url_index = None;
-            return;
-        }
-        let vt100_row = pane_row.saturating_sub(title_and_padding);
-        let border_offset = if self.has_sidebar { 1u16 } else { 0 };
-        let vt100_col = pane_col.saturating_sub(border_offset);
-
-        self.hovered_url_index = hyperlink::find_url_at(&self.cached_urls, vt100_row, vt100_col);
+        self.hovered_url_index = hyperlink::find_url_at(&self.cached_urls, pane_row, pane_col);
     }
 
     fn open_url(&self, url: &str) {
