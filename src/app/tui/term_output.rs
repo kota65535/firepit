@@ -118,34 +118,29 @@ impl TerminalOutput {
             let cols = size.1;
             let col = col.min(cols.saturating_sub(1));
 
-            // Get the character class at the clicked position
-            let char_class = |c: u16| -> u8 {
+            // Classify each cell as whitespace or word (non-whitespace).
+            // Using only two classes allows double-click to select URLs, file paths, etc.
+            let is_word = |c: u16| -> bool {
                 match visible_row.get(c) {
                     Some(cell) => {
                         let contents = cell.contents();
-                        if contents.is_empty() || contents.chars().all(|c| c == ' ' || c == '\0') {
-                            0 // whitespace
-                        } else if contents.chars().all(|c| c.is_alphanumeric() || c == '_') {
-                            1 // word character
-                        } else {
-                            2 // punctuation / other
-                        }
+                        !contents.is_empty() && !contents.chars().all(|c| c == ' ' || c == '\0')
                     }
-                    None => 0,
+                    None => false,
                 }
             };
 
-            let target_class = char_class(col);
+            let target_is_word = is_word(col);
 
             // Expand left
             let mut start = col;
-            while start > 0 && char_class(start - 1) == target_class {
+            while start > 0 && is_word(start - 1) == target_is_word {
                 start -= 1;
             }
 
             // Expand right
             let mut end = col;
-            while end + 1 < cols && char_class(end + 1) == target_class {
+            while end + 1 < cols && is_word(end + 1) == target_is_word {
                 end += 1;
             }
 
