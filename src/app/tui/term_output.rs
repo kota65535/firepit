@@ -184,9 +184,6 @@ impl TerminalOutput {
         };
 
         let (start_row, start_col, end_row, end_col) = selection;
-        // vt100's selection_cells treats end_col as inclusive for single-row selections
-        // but exclusive for the last row of multi-row selections, so adjust accordingly.
-        let end_col = if start_row == end_row { end_col } else { end_col + 1 };
         self.parser.screen_mut().set_selection(start_row, start_col, end_row, end_col);
     }
 
