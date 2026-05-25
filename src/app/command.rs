@@ -84,6 +84,10 @@ pub enum AppCommand {
         cols: u16,
         edge: Option<Direction>,
     },
+    WordSelection {
+        rows: u16,
+        cols: u16,
+    },
     LineSelection {
         rows: u16,
     },

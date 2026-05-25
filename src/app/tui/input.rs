@@ -15,6 +15,9 @@ use tracing::debug;
 #[derive(Debug, Clone)]
 pub struct InputHandler {
     click_times: RingBuffer<Instant>,
+    /// Set on single-click Down, cleared on Drag or multi-click.
+    /// If still set on Up, the click is dispatched as ClickPane.
+    is_single_click: bool,
 }
 
 pub struct InputOptions<'a> {
@@ -48,6 +51,7 @@ impl InputHandler {
     pub fn new() -> Self {
         Self {
             click_times: RingBuffer::new(3),
+            is_single_click: false,
         }
     }
 
@@ -133,23 +137,43 @@ impl InputHandler {
             (MouseEventKind::ScrollDown, false) => Some(AppCommand::ScrollDown(ScrollSize::One)),
             (MouseEventKind::ScrollUp, true) => Some(AppCommand::Up),
             (MouseEventKind::ScrollUp, false) => Some(AppCommand::ScrollUp(ScrollSize::One)),
-            (MouseEventKind::Down(MouseButton::Left), true) => Some(AppCommand::Select { index: row as usize }),
+            (MouseEventKind::Down(MouseButton::Left), true) => {
+                self.is_single_click = false;
+                Some(AppCommand::Select { index: row as usize })
+            }
             (MouseEventKind::Down(MouseButton::Left), false) => {
                 self.click_times.push(Instant::now());
                 let num_clicks = self.num_of_multiple_clicks();
                 if num_clicks == 1 {
-                    Some(AppCommand::ClickPane { row, col: column })
+                    self.is_single_click = true;
+                    Some(AppCommand::ClearSelection)
+                } else if num_clicks == 2 {
+                    self.is_single_click = false;
+                    debug!("Double-clicked: word selection");
+                    Some(AppCommand::WordSelection { rows: row, cols: column })
                 } else {
-                    debug!("Clicked {} times", num_clicks);
+                    self.is_single_click = false;
+                    debug!("Triple-clicked: line selection");
                     Some(AppCommand::LineSelection { rows: row })
                 }
             }
+            (MouseEventKind::Up(MouseButton::Left), false) => {
+                if self.is_single_click {
+                    self.is_single_click = false;
+                    Some(AppCommand::ClickPane { row, col: column })
+                } else {
+                    None
+                }
+            }
             (MouseEventKind::Moved, false) => Some(AppCommand::HoverPane { row, col: column }),
-            (MouseEventKind::Drag(MouseButton::Left), _) => Some(AppCommand::UpdateSelection {
-                rows: row,
-                cols: column,
-                edge,
-            }),
+            (MouseEventKind::Drag(MouseButton::Left), _) => {
+                self.is_single_click = false;
+                Some(AppCommand::UpdateSelection {
+                    rows: row,
+                    cols: column,
+                    edge,
+                })
+            }
             _ => None,
         }
     }
