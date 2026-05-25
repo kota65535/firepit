@@ -39,6 +39,8 @@ pub struct ProjectConfig {
     #[serde(default)]
     pub projects: IndexMap<String, String>,
 
+    /// **Deprecated**: Use `defaults` with `tasks: ".*"` instead.
+    ///
     /// Shell configuration for all the project tasks.
     /// ```yaml
     /// shell:
@@ -46,14 +48,17 @@ pub struct ProjectConfig {
     ///   args: ["-eux", "-c"]
     /// ```
     #[serde(default = "default_shell")]
+    #[schemars(extend("deprecated" = true))]
     pub shell: ShellConfig,
 
+    /// **Deprecated**: Use `defaults` with `tasks: ".*"` instead.
+    ///
     /// Working directory for all the project tasks.
     /// ```yaml
     /// working_dir: src
     /// ```
     #[serde(default = "default_working_dir")]
-    #[schemars(extend("x-template" = true))]
+    #[schemars(extend("x-template" = true, "deprecated" = true))]
     pub working_dir: String,
 
     /// Template variables for all the project tasks.
@@ -67,15 +72,19 @@ pub struct ProjectConfig {
     #[schemars(extend("x-template" = true))]
     pub vars: IndexMap<String, VarsConfig>,
 
+    /// **Deprecated**: Use `defaults` with `tasks: ".*"` instead.
+    ///
     /// Environment variables for all the project tasks.
     /// ```yaml
     /// env:
     ///   TZ: Asia/Tokyo
     /// ```
     #[serde(default)]
-    #[schemars(extend("x-template" = true))]
+    #[schemars(extend("x-template" = true, "deprecated" = true))]
     pub env: IndexMap<String, String>,
 
+    /// **Deprecated**: Use `defaults` with `tasks: ".*"` instead.
+    ///
     /// Dotenv files for all the project tasks.
     /// In case of duplicated environment variables, the latter one takes precedence.
     /// ```yaml
@@ -84,16 +93,18 @@ pub struct ProjectConfig {
     ///   - .env.local
     /// ```
     #[serde(default)]
-    #[schemars(extend("x-template" = true))]
+    #[schemars(extend("x-template" = true, "deprecated" = true))]
     pub env_files: Vec<String>,
 
+    /// **Deprecated**: Use `defaults` with `tasks: ".*"` instead.
+    ///
     /// Dependency tasks for all the project tasks.
     /// ```yaml
     /// depends_on:
     ///   - '#install'
     /// ```
     #[serde(default)]
-    #[schemars(extend("x-template" = true))]
+    #[schemars(extend("x-template" = true, "deprecated" = true))]
     pub depends_on: Vec<DependsOnConfig>,
 
     /// Default settings applied to tasks matching a selector.
@@ -233,6 +244,7 @@ impl ProjectConfig {
                     t.project = name.clone();
                 }
                 child_config = child_config.merge(&context)?;
+                child_config.warn_deprecated_fields();
                 child_config.apply_defaults()?;
                 children.insert(name.clone(), child_config);
             }
@@ -242,6 +254,7 @@ impl ProjectConfig {
         }
 
         root_config = root_config.merge(&context)?;
+        root_config.warn_deprecated_fields();
         root_config.apply_defaults()?;
 
         Ok((root_config, children))
@@ -423,6 +436,27 @@ impl ProjectConfig {
 
     pub fn relative_path_from(&self, path: &Path) -> PathBuf {
         self.dir.strip_prefix(path).unwrap_or(&self.dir).to_path_buf()
+    }
+
+    /// Emit deprecation warnings for project-level task settings.
+    /// These should be migrated to the `defaults` section.
+    pub fn warn_deprecated_fields(&self) {
+        let file = self.path.display();
+        if self.shell != default_shell() {
+            tracing::warn!("{}: project-level `shell` is deprecated. Use `defaults` with `tasks: \".*\"` instead.", file);
+        }
+        if self.working_dir != default_working_dir() {
+            tracing::warn!("{}: project-level `working_dir` is deprecated. Use `defaults` with `tasks: \".*\"` instead.", file);
+        }
+        if !self.env.is_empty() {
+            tracing::warn!("{}: project-level `env` is deprecated. Use `defaults` with `tasks: \".*\"` instead.", file);
+        }
+        if !self.env_files.is_empty() {
+            tracing::warn!("{}: project-level `env_files` is deprecated. Use `defaults` with `tasks: \".*\"` instead.", file);
+        }
+        if !self.depends_on.is_empty() {
+            tracing::warn!("{}: project-level `depends_on` is deprecated. Use `defaults` with `tasks: \".*\"` instead.", file);
+        }
     }
 
     /// Apply `defaults` entries to all matching tasks.
