@@ -471,12 +471,15 @@ impl TuiAppState {
 
         // Compute pane inner area for OSC 8 hyperlink coordinate mapping.
         // Must match the Block layout used in TerminalPane::render().
+        // The Block must include a title (even empty) because ratatui's Block::inner()
+        // adds +1 to y when a title exists at Position::Top.
         {
             let [main_area, _] =
                 Layout::vertical([Constraint::Fill(1), Constraint::Length(2)]).areas(pane);
             let block = Block::default()
                 .padding(Padding::top(1))
-                .borders(if self.has_sidebar { Borders::LEFT } else { Borders::NONE });
+                .borders(if self.has_sidebar { Borders::LEFT } else { Borders::NONE })
+                .title("");
             self.pane_inner_area = Some(block.inner(main_area));
         }
 
