@@ -1,5 +1,6 @@
 mod clipboard;
 mod dialog;
+mod hyperlink;
 mod input;
 mod lib;
 mod pane;
@@ -37,8 +38,8 @@ use ratatui::{
 use std::collections::HashMap;
 use std::io::{self, Stdout, Write};
 use tokio::{sync::mpsc, time::Instant};
-use tracing::{debug, error, info};
 use unicode_width::UnicodeWidthStr;
+use tracing::{debug, error, info};
 
 #[derive(Debug, Clone)]
 pub enum LayoutSections {
@@ -69,6 +70,10 @@ pub struct TuiAppState {
     quitting: bool,
     force_quitting: bool,
     done: bool,
+    /// Cached URL spans for the current active task's visible output.
+    detected_urls: Vec<hyperlink::UrlSpan>,
+    /// Index into `detected_urls` of the currently hovered URL, if any.
+    hovered_url_index: Option<usize>,
 }
 
 impl TuiApp {
@@ -135,6 +140,8 @@ impl TuiApp {
                 quitting: false,
                 force_quitting: false,
                 done: false,
+                detected_urls: Vec::new(),
+                hovered_url_index: None,
             },
         })
     }
@@ -196,15 +203,20 @@ impl TuiApp {
         let mut needs_rerender = true;
         while let Some(event) = self.poll().await? {
             // For non-tick events, always set needs_rerender to true
-            if !matches!(event, AppCommand::Tick) {
+            if !matches!(event, AppCommand::Tick | AppCommand::HoverPane { .. }) {
                 needs_rerender = true;
             }
             if matches!(event, AppCommand::Resize { .. }) {
                 self.terminal.autoresize()?;
             }
+            let hover_changed = matches!(event, AppCommand::HoverPane { .. });
             self.state.update(event, runner_tx)?;
             if self.state.done {
                 break;
+            }
+            if hover_changed {
+                // Hover changes need immediate re-render for responsive feedback
+                needs_rerender = true;
             }
             if FRAME_RATE <= last_render.elapsed() && needs_rerender {
                 self.terminal.draw(|f| self.state.view(f))?;
@@ -436,6 +448,18 @@ impl TuiAppState {
         };
         let [table, pane] = horizontal.areas(f.size());
 
+        // Update cached URLs for hover/click detection.
+        // Separate borrow scope: detect_urls returns owned data, so the
+        // immutable borrow of self via active_task() ends before assignment.
+        let new_urls = match self.active_task() {
+            Ok(task) => hyperlink::detect_urls(task.output.screen()),
+            Err(e) => {
+                error!("Error on rendering: {}", e);
+                return;
+            }
+        };
+        self.detected_urls = new_urls;
+
         let active_task = match self.active_task() {
             Ok(task) => task,
             Err(e) => {
@@ -443,11 +467,19 @@ impl TuiAppState {
                 return;
             }
         };
+
         let content_length = active_task.output.screen().current_scrollback_len();
         let scrollback = active_task.output.screen().scrollback();
 
+        // Get hovered URL segments for visual overlay
+        let hovered_segments = self
+            .hovered_url_index
+            .and_then(|idx| self.detected_urls.get(idx))
+            .map(|span| span.segments.as_slice());
+
         // Render pane
-        let pane_to_render = TerminalPane::new(&active_task, &self.focus, self.has_sidebar);
+        let pane_to_render =
+            TerminalPane::new(&active_task, &self.focus, self.has_sidebar, hovered_segments);
         f.render_widget(&pane_to_render, pane);
 
         // Render pane scrollbar
@@ -518,6 +550,25 @@ impl TuiAppState {
         };
         copy_to_clipboard(&text);
         Ok(())
+    }
+
+    /// Update the hovered URL index from pane-relative mouse coordinates.
+    /// pane_row/pane_col from input.rs are already vt100 visible row/col
+    /// (same coordinates used by line_selection/update_selection).
+    fn update_hover(&mut self, pane_row: u16, pane_col: u16) {
+        self.hovered_url_index = hyperlink::find_url_at(&self.detected_urls, pane_row, pane_col);
+    }
+
+    fn open_url(&self, url: &str) {
+        debug!("Opening URL: {}", url);
+        #[cfg(target_os = "macos")]
+        {
+            let _ = std::process::Command::new("open").arg(url).spawn();
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+        }
     }
 
     pub fn clear_selection(&mut self) -> anyhow::Result<()> {
@@ -871,6 +922,23 @@ impl TuiAppState {
             }
             AppCommand::Input { bytes } => {
                 self.forward_input(&bytes)?;
+            }
+            AppCommand::HoverPane { row, col } => {
+                self.update_hover(row, col);
+            }
+            AppCommand::ClickPane { row, col } => {
+                self.update_hover(row, col);
+                if let Some(idx) = self.hovered_url_index {
+                    if let Some(url_span) = self.detected_urls.get(idx) {
+                        let url = url_span.url.clone();
+                        self.open_url(&url);
+                    }
+                } else {
+                    self.clear_selection()?;
+                }
+            }
+            AppCommand::OpenUrl { url } => {
+                self.open_url(&url);
             }
             AppCommand::ClearSelection => {
                 self.clear_selection()?;

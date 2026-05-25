@@ -1,8 +1,9 @@
+use crate::app::tui::hyperlink::UrlSegment;
 use crate::app::tui::lib::key_help_spans;
 use crate::app::tui::task::Task;
 use crate::app::tui::LayoutSections;
 use itertools::Itertools;
-use ratatui::prelude::{Color, Constraint, Layout, Rect, Span, Stylize, Text};
+use ratatui::prelude::{Color, Constraint, Layout, Modifier, Rect, Span, Stylize, Text};
 use ratatui::widgets::{Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget};
 use ratatui::{
     style::Style,
@@ -28,14 +29,21 @@ pub struct TerminalPane<'a> {
     task: &'a Task,
     section: &'a LayoutSections,
     has_sidebar: bool,
+    hovered_segments: Option<&'a [UrlSegment]>,
 }
 
 impl<'a> TerminalPane<'a> {
-    pub fn new(task: &'a Task, section: &'a LayoutSections, has_sidebar: bool) -> Self {
+    pub fn new(
+        task: &'a Task,
+        section: &'a LayoutSections,
+        has_sidebar: bool,
+        hovered_segments: Option<&'a [UrlSegment]>,
+    ) -> Self {
         Self {
             task,
             section,
             has_sidebar,
+            hovered_segments,
         }
     }
 
@@ -149,8 +157,27 @@ impl<'a> Widget for &TerminalPane<'a> {
             });
 
         // Terminal widget
+        let inner = terminal_block.inner(main_area);
         let term = PseudoTerminal::new(screen).block(terminal_block);
         term.render(main_area, buf);
+
+        // Hover highlight: overlay blue + underline on hovered URL segments
+        if let Some(segments) = self.hovered_segments {
+            for seg in segments {
+                for col in seg.start_col..seg.end_col {
+                    let x = inner.x + col;
+                    let y = inner.y + seg.row;
+                    if x < inner.right() && y < inner.bottom() {
+                        let cell = buf.get_mut(x, y);
+                        cell.set_style(
+                            Style::default()
+                                .fg(Color::Blue)
+                                .add_modifier(Modifier::UNDERLINED),
+                        );
+                    }
+                }
+            }
+        }
 
         // Footer widgets
         let left_footer_block = Block::default()

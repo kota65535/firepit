@@ -11,12 +11,27 @@ Valid only in a root project config.
 concurrency: 4
 ```
 
+### defaults
+
+- **Type:** <code>Array&lt;<a href="#defaultsconfig">DefaultsConfig</a>&gt;</code>
+- **Required:** no
+- **Default:** `[]`
+- **Description:** Default settings applied to tasks matching a selector.
+```yaml
+defaults:
+  - tasks: "^(build|test)"
+    depends_on:
+      - install
+```
+
 ### depends_on
 
 - **Type:** <code>Array&lt;<a href="#dependsonconfig">DependsOnConfig</a>&gt;</code>
 - **Required:** no
 - **Default:** `[]`
-- **Description:** Dependency tasks for all the project tasks.
+- **Description:** **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
+
+Dependency tasks for all the project tasks.
 ```yaml
 depends_on:
   - '#install'
@@ -28,7 +43,9 @@ depends_on:
 - **Required:** no
 - **Default:** `{}`
 - **Template:** yes
-- **Description:** Environment variables for all the project tasks.
+- **Description:** **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
+
+Environment variables for all the project tasks.
 ```yaml
 env:
   TZ: Asia/Tokyo
@@ -40,7 +57,9 @@ env:
 - **Required:** no
 - **Default:** `[]`
 - **Template:** yes
-- **Description:** Dotenv files for all the project tasks.
+- **Description:** **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
+
+Dotenv files for all the project tasks.
 In case of duplicated environment variables, the latter one takes precedence.
 ```yaml
 env_files:
@@ -104,7 +123,9 @@ projects:
 - **Type:** <code><a href="#shellconfig">ShellConfig</a></code>
 - **Required:** no
 - **Default:** `{"args":["-c"],"command":"bash"}`
-- **Description:** Shell configuration for all the project tasks.
+- **Description:** **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
+
+Shell configuration for all the project tasks.
 ```yaml
 shell:
   command: "bash"
@@ -150,10 +171,87 @@ vars:
 - **Required:** no
 - **Default:** `.`
 - **Template:** yes
-- **Description:** Working directory for all the project tasks.
+- **Description:** **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
+
+Working directory for all the project tasks.
 ```yaml
 working_dir: src
 ```
+
+## DefaultsConfig
+
+### depends_on
+
+- **Type:** <code>Array&lt;<a href="#dependsonconfig">DependsOnConfig</a>&gt;</code>
+- **Required:** no
+- **Default:** `[]`
+- **Description:** Dependency tasks
+
+### env
+
+- **Type:** <code>Map&lt;string, string&gt;</code>
+- **Required:** no
+- **Default:** `{}`
+- **Template:** yes
+- **Description:** Environment variables
+
+### env_files
+
+- **Type:** <code>Array&lt;string&gt;</code>
+- **Required:** no
+- **Default:** `[]`
+- **Template:** yes
+- **Description:** Dotenv files
+
+### inputs
+
+- **Type:** <code>Array&lt;string&gt;</code>
+- **Required:** no
+- **Default:** `[]`
+- **Template:** no
+- **Description:** Inputs file glob patterns
+
+### outputs
+
+- **Type:** <code>Array&lt;string&gt;</code>
+- **Required:** no
+- **Default:** `[]`
+- **Template:** no
+- **Description:** Output file glob patterns
+
+### service
+
+- **Type:** <code><a href="#serviceconfig">ServiceConfig</a></code>
+- **Required:** no
+- **Description:** Service configurations
+
+### shell
+
+- **Type:** <code><a href="#shellconfig">ShellConfig</a></code>
+- **Required:** no
+- **Description:** Shell configuration
+
+### tasks
+
+- **Type:** <code><a href="#taskselector">TaskSelector</a></code>
+- **Required:** no
+- **Description:** Task selector. A string is a regex pattern, an array is an explicit list of task names.
+If omitted, all tasks are matched.
+
+### vars
+
+- **Type:** <code>Map&lt;string, <a href="#varsconfig">VarsConfig</a>&gt;</code>
+- **Required:** no
+- **Default:** `{}`
+- **Template:** yes
+- **Description:** Template variables
+
+### working_dir
+
+- **Type:** <code>string</code>
+- **Required:** no
+- **Template:** yes
+- **Description:** Working directory
 
 ## DependsOnConfig
 
@@ -463,6 +561,26 @@ Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_o
 - **Description:** Working directory
 ```yaml
 working_dir: dist
+```
+
+## TaskSelector
+
+- **Type:** <code>string | Array&lt;string&gt;</code>
+- **Template:** no
+- **Description:** Task selector for `defaults`.
+A string value is treated as a regex pattern matched against the task name.
+An array value is treated as an explicit list of task names.
+If omitted, all tasks are matched.
+```yaml
+defaults:
+  - tasks: "^build"        # regex
+    env:
+      NODE_ENV: production
+  - tasks: [test, lint]    # explicit list
+    depends_on:
+      - install
+  - env:                   # no tasks field = all tasks
+      LOG_LEVEL: info
 ```
 
 ## UI

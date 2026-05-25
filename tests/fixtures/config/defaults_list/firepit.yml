@@ -1,0 +1,16 @@
+defaults:
+  - tasks: [build, test]
+    depends_on:
+      - install
+    env:
+      NODE_ENV: development
+
+tasks:
+  install:
+    command: echo install
+  build:
+    command: echo build
+  test:
+    command: echo test
+  lint:
+    command: echo lint

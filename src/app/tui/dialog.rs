@@ -54,7 +54,6 @@ pub fn render_quit_dialog(f: &mut Frame, force: bool) {
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .bg(Color::DarkGray)
         .padding(Padding::horizontal(2));
 
     let lines = if force {
