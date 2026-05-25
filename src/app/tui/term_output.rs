@@ -147,7 +147,7 @@ impl TerminalOutput {
             (start, end)
         };
 
-        self.parser.screen_mut().set_selection(row, start_col, row, end_col + 1);
+        self.parser.screen_mut().set_selection(row, start_col, row, end_col);
     }
 
     pub fn line_selection(&mut self, row: u16) {
