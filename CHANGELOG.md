@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.20.0] - 2026-05-25
+
+### 🚀 Features
+
+- *(tui)* Add scroll indicators to task list (#294)
+- *(config)* Add defaults section for shared task settings (#296)
+- *(tui)* Add in-TUI URL hover highlight and click-to-open (#299)
+- *(tui)* Word selection on double-click, line selection on triple-click (#297)
+
+### 🐛 Bug Fixes
+
+- *(tui)* Remove DarkGray background from quit dialog (#298)
+
 ## [0.19.4] - 2026-02-15
 
 ### 🐛 Bug Fixes
