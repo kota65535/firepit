@@ -169,7 +169,6 @@ impl<'a> Widget for &TerminalPane<'a> {
                     let y = inner.y + seg.row;
                     if x < inner.right() && y < inner.bottom() {
                         let cell = buf.get_mut(x, y);
-                        cell.set_fg(Color::Blue);
                         cell.set_style(
                             Style::default()
                                 .fg(Color::Blue)

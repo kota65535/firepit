@@ -448,11 +448,9 @@ impl TuiAppState {
         };
         let [table, pane] = horizontal.areas(f.size());
 
-        // Compute pane inner area for mouse-to-vt100 coordinate mapping.
-        // Must match the Block layout used in TerminalPane::render().
-        // The Block must include a title (even empty) because ratatui's Block::inner()
-        // adds +1 to y when a title exists at Position::Top.
-        // Update cached URLs for hover/click detection
+        // Update cached URLs for hover/click detection.
+        // Separate borrow scope: detect_urls returns owned data, so the
+        // immutable borrow of self via active_task() ends before assignment.
         let new_urls = match self.active_task() {
             Ok(task) => hyperlink::detect_urls(task.output.screen()),
             Err(e) => {
