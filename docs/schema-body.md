@@ -29,7 +29,7 @@ defaults:
 - **Type:** <code>Array&lt;<a href="#dependsonconfig">DependsOnConfig</a>&gt;</code>
 - **Required:** no
 - **Default:** `[]`
-- **Description:** **Deprecated**: Use `defaults` with `tasks: ".*"` instead.
+- **Description:** **Deprecated**: Use `defaults` instead.
 
 Dependency tasks for all the project tasks.
 ```yaml
@@ -43,7 +43,7 @@ depends_on:
 - **Required:** no
 - **Default:** `{}`
 - **Template:** yes
-- **Description:** **Deprecated**: Use `defaults` with `tasks: ".*"` instead.
+- **Description:** **Deprecated**: Use `defaults` instead.
 
 Environment variables for all the project tasks.
 ```yaml
@@ -57,7 +57,7 @@ env:
 - **Required:** no
 - **Default:** `[]`
 - **Template:** yes
-- **Description:** **Deprecated**: Use `defaults` with `tasks: ".*"` instead.
+- **Description:** **Deprecated**: Use `defaults` instead.
 
 Dotenv files for all the project tasks.
 In case of duplicated environment variables, the latter one takes precedence.
@@ -123,7 +123,7 @@ projects:
 - **Type:** <code><a href="#shellconfig">ShellConfig</a></code>
 - **Required:** no
 - **Default:** `{"args":["-c"],"command":"bash"}`
-- **Description:** **Deprecated**: Use `defaults` with `tasks: ".*"` instead.
+- **Description:** **Deprecated**: Use `defaults` instead.
 
 Shell configuration for all the project tasks.
 ```yaml
@@ -171,7 +171,7 @@ vars:
 - **Required:** no
 - **Default:** `.`
 - **Template:** yes
-- **Description:** **Deprecated**: Use `defaults` with `tasks: ".*"` instead.
+- **Description:** **Deprecated**: Use `defaults` instead.
 
 Working directory for all the project tasks.
 ```yaml
