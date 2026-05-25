@@ -39,7 +39,7 @@ pub struct ProjectConfig {
     #[serde(default)]
     pub projects: IndexMap<String, String>,
 
-    /// **Deprecated**: Use `defaults` instead.
+    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
     ///
     /// Shell configuration for all the project tasks.
     /// ```yaml
@@ -51,7 +51,7 @@ pub struct ProjectConfig {
     #[schemars(extend("deprecated" = true))]
     pub shell: ShellConfig,
 
-    /// **Deprecated**: Use `defaults` instead.
+    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
     ///
     /// Working directory for all the project tasks.
     /// ```yaml
@@ -72,7 +72,7 @@ pub struct ProjectConfig {
     #[schemars(extend("x-template" = true))]
     pub vars: IndexMap<String, VarsConfig>,
 
-    /// **Deprecated**: Use `defaults` instead.
+    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
     ///
     /// Environment variables for all the project tasks.
     /// ```yaml
@@ -83,7 +83,7 @@ pub struct ProjectConfig {
     #[schemars(extend("x-template" = true, "deprecated" = true))]
     pub env: IndexMap<String, String>,
 
-    /// **Deprecated**: Use `defaults` instead.
+    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
     ///
     /// Dotenv files for all the project tasks.
     /// In case of duplicated environment variables, the latter one takes precedence.
@@ -96,7 +96,7 @@ pub struct ProjectConfig {
     #[schemars(extend("x-template" = true, "deprecated" = true))]
     pub env_files: Vec<String>,
 
-    /// **Deprecated**: Use `defaults` instead.
+    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
     ///
     /// Dependency tasks for all the project tasks.
     /// ```yaml
@@ -451,7 +451,7 @@ impl ProjectConfig {
         for (field, used) in fields {
             if *used {
                 warnings.push(format!(
-                    "{}: project-level `{}` is deprecated. Use `defaults` with `tasks: \".*\"` instead.",
+                    "{}: project-level `{}` is deprecated. Use `defaults` instead. See https://kota65535.github.io/firepit/schema.html#defaults",
                     file, field
                 ));
             }
