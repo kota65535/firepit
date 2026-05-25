@@ -237,6 +237,59 @@ fn test_defaults_multi() {
 }
 
 #[test]
+fn test_defaults_override() {
+    let path = Path::new("tests/fixtures/config/defaults_override");
+    let (root, _) = ProjectConfig::new_multi(path).unwrap();
+
+    // install: only first defaults entry matches (all tasks)
+    let install = root.tasks.get("install").unwrap();
+    assert_eq!(install.env.get("LOG_LEVEL"), Some(&"info".to_string()));
+    assert_eq!(install.env.get("NODE_ENV"), Some(&"development".to_string()));
+    assert_eq!(
+        install.shell,
+        Some(ShellConfig {
+            command: "bash".to_string(),
+            args: vec!["-c".to_string()],
+        })
+    );
+    assert_eq!(install.env_files, vec![".env.base"]);
+    assert!(depends_on_names(install).iter().any(|d| d.contains("install")));
+    assert!(!depends_on_names(install).iter().any(|d| d.contains("lint")));
+
+    // build: both defaults entries match; second overrides scalar/map values
+    let build = root.tasks.get("build").unwrap();
+    assert_eq!(build.env.get("LOG_LEVEL"), Some(&"info".to_string()));
+    // NODE_ENV should be "production" from 2nd entry, NOT "development" from 1st
+    assert_eq!(build.env.get("NODE_ENV"), Some(&"production".to_string()));
+    // shell should be node from 2nd entry, NOT bash from 1st
+    assert_eq!(
+        build.shell,
+        Some(ShellConfig {
+            command: "node".to_string(),
+            args: vec!["-e".to_string()],
+        })
+    );
+    // env_files should be concatenated: base + build
+    assert_eq!(build.env_files, vec![".env.base", ".env.build"]);
+    // depends_on should be concatenated: install + lint
+    assert!(depends_on_names(build).iter().any(|d| d.contains("install")));
+    assert!(depends_on_names(build).iter().any(|d| d.contains("lint")));
+
+    // test: only first defaults entry matches, task-level env overrides
+    let test = root.tasks.get("test").unwrap();
+    assert_eq!(test.env.get("LOG_LEVEL"), Some(&"info".to_string()));
+    // task-level NODE_ENV: test overrides defaults NODE_ENV: development
+    assert_eq!(test.env.get("NODE_ENV"), Some(&"test".to_string()));
+    assert_eq!(
+        test.shell,
+        Some(ShellConfig {
+            command: "bash".to_string(),
+            args: vec!["-c".to_string()],
+        })
+    );
+}
+
+#[test]
 fn test_defaults_bad_regex() {
     let path = Path::new("tests/fixtures/config/defaults_bad_regex");
     let err = ProjectConfig::new_multi(path).expect_err("");

@@ -460,42 +460,114 @@ impl ProjectConfig {
     }
 
     /// Apply `defaults` entries to all matching tasks.
-    /// Defaults entries are processed in order; for each entry, matching tasks have the
-    /// default settings applied as a base layer (task-specific values take precedence).
-    /// `depends_on` entries from defaults are qualified with the project name.
+    /// For each task, all matching defaults are merged in order (later entries override earlier
+    /// for scalars and maps, arrays are concatenated), then the merged result is applied to the
+    /// task as a base layer (task-specific values take precedence).
     pub fn apply_defaults(&mut self) -> anyhow::Result<()> {
-        for default in self.defaults.clone() {
-            // Validate the regex pattern
-            if let Some(TaskSelector::Regex(ref pattern)) = default.tasks {
-                Regex::new(pattern)
-                    .with_context(|| format!("defaults: invalid regex pattern {:?}", pattern))?;
-            }
-
-            // Qualify depends_on entries in the default
-            let qualified_default = DefaultsConfig {
-                depends_on: default
-                    .depends_on
-                    .iter()
-                    .map(|d| match d {
-                        DependsOnConfig::String(s) => {
-                            DependsOnConfig::String(Task::qualified_name(&self.name, s))
-                        }
-                        DependsOnConfig::Struct(s) => DependsOnConfig::Struct(DependsOnConfigStruct {
-                            task: Task::qualified_name(&self.name, &s.task),
-                            vars: s.vars.clone(),
-                            cascade: s.cascade,
-                        }),
-                    })
-                    .collect(),
-                ..default
-            };
-
-            let matches_all = qualified_default.tasks.is_none();
-            for (task_name, task_config) in self.tasks.iter_mut() {
-                if matches_all || qualified_default.tasks.as_ref().map_or(false, |s| s.matches(task_name)) {
-                    task_config.apply_default(&qualified_default);
+        // Validate regex patterns and qualify depends_on upfront
+        let qualified_defaults: Vec<DefaultsConfig> = self
+            .defaults
+            .iter()
+            .map(|d| {
+                if let Some(TaskSelector::Regex(ref pattern)) = d.tasks {
+                    Regex::new(pattern)
+                        .with_context(|| format!("defaults: invalid regex pattern {:?}", pattern))?;
                 }
+                Ok(DefaultsConfig {
+                    depends_on: d
+                        .depends_on
+                        .iter()
+                        .map(|dep| match dep {
+                            DependsOnConfig::String(s) => {
+                                DependsOnConfig::String(Task::qualified_name(&self.name, s))
+                            }
+                            DependsOnConfig::Struct(s) => DependsOnConfig::Struct(DependsOnConfigStruct {
+                                task: Task::qualified_name(&self.name, &s.task),
+                                vars: s.vars.clone(),
+                                cascade: s.cascade,
+                            }),
+                        })
+                        .collect(),
+                    ..d.clone()
+                })
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
+        for (task_name, task_config) in self.tasks.iter_mut() {
+            // Merge all matching defaults in order (later entries override earlier)
+            let mut eff_shell: Option<ShellConfig> = None;
+            let mut eff_working_dir: Option<String> = None;
+            let mut eff_service: Option<ServiceConfig> = None;
+            let mut eff_vars: IndexMap<String, VarsConfig> = IndexMap::new();
+            let mut eff_env: IndexMap<String, String> = IndexMap::new();
+            let mut eff_env_files: Vec<String> = Vec::new();
+            let mut eff_depends_on: Vec<DependsOnConfig> = Vec::new();
+            let mut eff_inputs: Vec<String> = Vec::new();
+            let mut eff_outputs: Vec<String> = Vec::new();
+            let mut matched = false;
+
+            for default in &qualified_defaults {
+                let is_match = match &default.tasks {
+                    None => true,
+                    Some(selector) => selector.matches(task_name),
+                };
+                if !is_match {
+                    continue;
+                }
+                matched = true;
+
+                // Scalars: later wins
+                if default.shell.is_some() {
+                    eff_shell = default.shell.clone();
+                }
+                if default.working_dir.is_some() {
+                    eff_working_dir = default.working_dir.clone();
+                }
+                if default.service.is_some() {
+                    eff_service = default.service.clone();
+                }
+                // Maps: later wins on key conflict
+                eff_vars.extend(default.vars.clone());
+                eff_env.extend(default.env.clone());
+                // Arrays: concatenate in order
+                eff_env_files.extend(default.env_files.clone());
+                eff_depends_on.extend(default.depends_on.clone());
+                eff_inputs.extend(default.inputs.clone());
+                eff_outputs.extend(default.outputs.clone());
             }
+
+            if !matched {
+                continue;
+            }
+
+            // Apply merged defaults to task (task-specific values take precedence)
+            if task_config.shell.is_none() {
+                task_config.shell = eff_shell;
+            }
+            if task_config.working_dir.is_none() {
+                task_config.working_dir = eff_working_dir;
+            }
+            if task_config.service.is_none() {
+                task_config.service = eff_service;
+            }
+
+            eff_vars.extend(task_config.vars.clone());
+            task_config.vars = eff_vars;
+
+            eff_env.extend(task_config.env.clone());
+            task_config.env = eff_env;
+
+            eff_env_files.append(&mut task_config.env_files);
+            task_config.env_files = eff_env_files;
+
+            eff_depends_on.append(&mut task_config.depends_on);
+            task_config.depends_on = eff_depends_on;
+
+            eff_inputs.append(&mut task_config.inputs);
+            task_config.inputs = eff_inputs;
+
+            eff_outputs.append(&mut task_config.outputs);
+            task_config.outputs = eff_outputs;
         }
         Ok(())
     }
@@ -599,46 +671,6 @@ impl TaskConfig {
         self.outputs.iter().map(|f| absolute_or_join(f, dir)).collect()
     }
 
-    /// Apply a defaults entry to this task.
-    /// Default values are applied as a base layer: task-specific values take precedence.
-    fn apply_default(&mut self, defaults: &DefaultsConfig) {
-        // Scalar fields: use task value if set, otherwise default value
-        if self.shell.is_none() {
-            self.shell = defaults.shell.clone();
-        }
-        if self.working_dir.is_none() {
-            self.working_dir = defaults.working_dir.clone();
-        }
-        if self.service.is_none() {
-            self.service = defaults.service.clone();
-        }
-
-        // Map fields: merge defaults into task (task values win on key conflict)
-        let mut merged_vars = defaults.vars.clone();
-        merged_vars.extend(self.vars.clone());
-        self.vars = merged_vars;
-
-        let mut merged_env = defaults.env.clone();
-        merged_env.extend(self.env.clone());
-        self.env = merged_env;
-
-        // Sequence fields: prepend defaults entries before task entries
-        let mut merged_env_files = defaults.env_files.clone();
-        merged_env_files.append(&mut self.env_files);
-        self.env_files = merged_env_files;
-
-        let mut merged_depends_on = defaults.depends_on.clone();
-        merged_depends_on.append(&mut self.depends_on);
-        self.depends_on = merged_depends_on;
-
-        let mut merged_inputs = defaults.inputs.clone();
-        merged_inputs.append(&mut self.inputs);
-        self.inputs = merged_inputs;
-
-        let mut merged_outputs = defaults.outputs.clone();
-        merged_outputs.append(&mut self.outputs);
-        self.outputs = merged_outputs;
-    }
 }
 
 fn absolute_or_join(path: &str, dir: &Path) -> PathBuf {
