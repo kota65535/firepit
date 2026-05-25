@@ -466,7 +466,7 @@ impl ProjectConfig {
     pub fn apply_defaults(&mut self) -> anyhow::Result<()> {
         for default in self.defaults.clone() {
             // Validate the regex pattern
-            if let TaskSelector::Regex(ref pattern) = default.tasks {
+            if let Some(TaskSelector::Regex(ref pattern)) = default.tasks {
                 Regex::new(pattern)
                     .with_context(|| format!("defaults: invalid regex pattern {:?}", pattern))?;
             }
@@ -490,8 +490,9 @@ impl ProjectConfig {
                 ..default
             };
 
+            let matches_all = qualified_default.tasks.is_none();
             for (task_name, task_config) in self.tasks.iter_mut() {
-                if qualified_default.tasks.matches(task_name) {
+                if matches_all || qualified_default.tasks.as_ref().map_or(false, |s| s.matches(task_name)) {
                     task_config.apply_default(&qualified_default);
                 }
             }
@@ -983,6 +984,7 @@ impl JsonSchema for Restart {
 /// Task selector for `defaults`.
 /// A string value is treated as a regex pattern matched against the task name.
 /// An array value is treated as an explicit list of task names.
+/// If omitted, all tasks are matched.
 /// ```yaml
 /// defaults:
 ///   - tasks: "^build"        # regex
@@ -991,6 +993,8 @@ impl JsonSchema for Restart {
 ///   - tasks: [test, lint]    # explicit list
 ///     depends_on:
 ///       - install
+///   - env:                   # no tasks field = all tasks
+///       LOG_LEVEL: info
 /// ```
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[serde(untagged)]
@@ -1003,8 +1007,18 @@ impl TaskSelector {
     /// Returns true if the given task name matches this selector.
     pub fn matches(&self, task_name: &str) -> bool {
         match self {
-            TaskSelector::Regex(pattern) => Regex::new(pattern).map(|re| re.is_match(task_name)).unwrap_or(false),
-            TaskSelector::List(names) => names.iter().any(|n| n == task_name),
+            TaskSelector::Regex(pattern) => {
+                if pattern.is_empty() {
+                    return false;
+                }
+                Regex::new(pattern).map(|re| re.is_match(task_name)).unwrap_or(false)
+            }
+            TaskSelector::List(names) => {
+                if names.is_empty() {
+                    return false;
+                }
+                names.iter().any(|n| n == task_name)
+            }
         }
     }
 }
@@ -1021,7 +1035,8 @@ impl TaskSelector {
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct DefaultsConfig {
     /// Task selector. A string is a regex pattern, an array is an explicit list of task names.
-    pub tasks: TaskSelector,
+    /// If omitted, all tasks are matched.
+    pub tasks: Option<TaskSelector>,
 
     /// Shell configuration
     pub shell: Option<ShellConfig>,

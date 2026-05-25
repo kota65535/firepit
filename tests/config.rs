@@ -242,3 +242,24 @@ fn test_defaults_bad_regex() {
     let err = ProjectConfig::new_multi(path).expect_err("");
     assert!(err.to_string().contains("invalid regex pattern"));
 }
+
+#[test]
+fn test_defaults_no_selector() {
+    let path = Path::new("tests/fixtures/config/defaults_no_selector");
+    let (root, _) = ProjectConfig::new_multi(path).unwrap();
+
+    // No tasks field = all tasks should have LOG_LEVEL
+    for (_, task) in root.tasks.iter() {
+        assert_eq!(task.env.get("LOG_LEVEL"), Some(&"info".to_string()));
+    }
+
+    // tasks: "" (empty regex) = no tasks should match
+    for (_, task) in root.tasks.iter() {
+        assert!(task.env.get("EMPTY_REGEX").is_none());
+    }
+
+    // tasks: [] (empty list) = no tasks should match
+    for (_, task) in root.tasks.iter() {
+        assert!(task.env.get("EMPTY_LIST").is_none());
+    }
+}

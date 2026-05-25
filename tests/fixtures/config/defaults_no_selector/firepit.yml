@@ -1,0 +1,15 @@
+defaults:
+  - env:
+      LOG_LEVEL: info
+  - tasks: ""
+    env:
+      EMPTY_REGEX: should_not_apply
+  - tasks: []
+    env:
+      EMPTY_LIST: should_not_apply
+
+tasks:
+  build:
+    command: echo build
+  test:
+    command: echo test
