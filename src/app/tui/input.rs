@@ -139,8 +139,11 @@ impl InputHandler {
                 let num_clicks = self.num_of_multiple_clicks();
                 if num_clicks == 1 {
                     Some(AppCommand::ClearSelection)
+                } else if num_clicks == 2 {
+                    debug!("Double-clicked: word selection");
+                    Some(AppCommand::WordSelection { rows: row, cols: column })
                 } else {
-                    debug!("Clicked {} times", num_clicks);
+                    debug!("Triple-clicked: line selection");
                     Some(AppCommand::LineSelection { rows: row })
                 }
             }

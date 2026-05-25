@@ -108,6 +108,53 @@ impl TerminalOutput {
         self.parser.screen_mut().update_selection(row, col);
     }
 
+    pub fn word_selection(&mut self, row: u16, col: u16) {
+        let (start_col, end_col) = {
+            let screen = self.parser.screen();
+            let Some(visible_row) = screen.grid().visible_row(row) else {
+                return;
+            };
+            let size = screen.size();
+            let cols = size.1;
+            let col = col.min(cols.saturating_sub(1));
+
+            // Get the character class at the clicked position
+            let char_class = |c: u16| -> u8 {
+                match visible_row.get(c) {
+                    Some(cell) => {
+                        let contents = cell.contents();
+                        if contents.is_empty() || contents.chars().all(|c| c == ' ' || c == '\0') {
+                            0 // whitespace
+                        } else if contents.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                            1 // word character
+                        } else {
+                            2 // punctuation / other
+                        }
+                    }
+                    None => 0,
+                }
+            };
+
+            let target_class = char_class(col);
+
+            // Expand left
+            let mut start = col;
+            while start > 0 && char_class(start - 1) == target_class {
+                start -= 1;
+            }
+
+            // Expand right
+            let mut end = col;
+            while end + 1 < cols && char_class(end + 1) == target_class {
+                end += 1;
+            }
+
+            (start, end)
+        };
+
+        self.parser.screen_mut().set_selection(row, start_col, row, end_col + 1);
+    }
+
     pub fn line_selection(&mut self, row: u16) {
         let (start_row, end_row, cols) = {
             let screen = self.parser.screen();

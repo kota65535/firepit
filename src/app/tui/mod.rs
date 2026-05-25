@@ -536,6 +536,12 @@ impl TuiAppState {
         Ok(())
     }
 
+    pub fn word_selection(&mut self, rows: u16, cols: u16) -> anyhow::Result<()> {
+        let task = self.active_task_mut()?;
+        task.output.word_selection(rows, cols);
+        Ok(())
+    }
+
     pub fn line_selection(&mut self, rows: u16) -> anyhow::Result<()> {
         let task = self.active_task_mut()?;
         task.output.line_selection(rows);
@@ -868,6 +874,9 @@ impl TuiAppState {
             }
             AppCommand::ClearSelection => {
                 self.clear_selection()?;
+            }
+            AppCommand::WordSelection { rows, cols } => {
+                self.word_selection(rows, cols)?;
             }
             AppCommand::LineSelection { rows } => {
                 self.line_selection(rows)?;
