@@ -15,6 +15,9 @@ use tracing::debug;
 #[derive(Debug, Clone)]
 pub struct InputHandler {
     click_times: RingBuffer<Instant>,
+    /// Set on single-click Down, cleared on Drag or multi-click.
+    /// If still set on Up, we open the hovered URL.
+    pending_url_click: bool,
 }
 
 pub struct InputOptions<'a> {
@@ -48,6 +51,7 @@ impl InputHandler {
     pub fn new() -> Self {
         Self {
             click_times: RingBuffer::new(3),
+            pending_url_click: false,
         }
     }
 
@@ -135,33 +139,38 @@ impl InputHandler {
             (MouseEventKind::ScrollUp, false) => Some(AppCommand::ScrollUp(ScrollSize::One)),
             (MouseEventKind::Down(MouseButton::Left), true) => Some(AppCommand::Select { index: row as usize }),
             (MouseEventKind::Down(MouseButton::Left), false) => {
-                let has_open_modifier = if cfg!(target_os = "macos") {
-                    mouse_event.modifiers.contains(KeyModifiers::SUPER)
+                self.click_times.push(Instant::now());
+                let num_clicks = self.num_of_multiple_clicks();
+                if num_clicks == 1 {
+                    self.pending_url_click = true;
+                    Some(AppCommand::ClearSelection)
+                } else if num_clicks == 2 {
+                    self.pending_url_click = false;
+                    debug!("Double-clicked: word selection");
+                    Some(AppCommand::WordSelection { rows: row, cols: column })
                 } else {
-                    mouse_event.modifiers.contains(KeyModifiers::CONTROL)
-                };
-                if has_open_modifier {
+                    self.pending_url_click = false;
+                    debug!("Triple-clicked: line selection");
+                    Some(AppCommand::LineSelection { rows: row })
+                }
+            }
+            (MouseEventKind::Up(MouseButton::Left), false) => {
+                if self.pending_url_click {
+                    self.pending_url_click = false;
                     Some(AppCommand::ClickPane { row, col: column })
                 } else {
-                    self.click_times.push(Instant::now());
-                    let num_clicks = self.num_of_multiple_clicks();
-                    if num_clicks == 1 {
-                        Some(AppCommand::ClearSelection)
-                    } else if num_clicks == 2 {
-                        debug!("Double-clicked: word selection");
-                        Some(AppCommand::WordSelection { rows: row, cols: column })
-                    } else {
-                        debug!("Triple-clicked: line selection");
-                        Some(AppCommand::LineSelection { rows: row })
-                    }
+                    None
                 }
             }
             (MouseEventKind::Moved, false) => Some(AppCommand::HoverPane { row, col: column }),
-            (MouseEventKind::Drag(MouseButton::Left), _) => Some(AppCommand::UpdateSelection {
-                rows: row,
-                cols: column,
-                edge,
-            }),
+            (MouseEventKind::Drag(MouseButton::Left), _) => {
+                self.pending_url_click = false;
+                Some(AppCommand::UpdateSelection {
+                    rows: row,
+                    cols: column,
+                    edge,
+                })
+            }
             _ => None,
         }
     }
