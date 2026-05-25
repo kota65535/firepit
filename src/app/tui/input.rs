@@ -137,7 +137,10 @@ impl InputHandler {
             (MouseEventKind::ScrollDown, false) => Some(AppCommand::ScrollDown(ScrollSize::One)),
             (MouseEventKind::ScrollUp, true) => Some(AppCommand::Up),
             (MouseEventKind::ScrollUp, false) => Some(AppCommand::ScrollUp(ScrollSize::One)),
-            (MouseEventKind::Down(MouseButton::Left), true) => Some(AppCommand::Select { index: row as usize }),
+            (MouseEventKind::Down(MouseButton::Left), true) => {
+                self.is_single_click = false;
+                Some(AppCommand::Select { index: row as usize })
+            }
             (MouseEventKind::Down(MouseButton::Left), false) => {
                 self.click_times.push(Instant::now());
                 let num_clicks = self.num_of_multiple_clicks();
