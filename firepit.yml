@@ -1,9 +1,0 @@
-tasks:
-  bbb:
-    env:
-      LC_ALL: C
-    command: echo "           aaaaa bbbb                      https://github.com/toggle-inc/infra/pull/164"
-  aaa:
-    env:
-      LC_ALL: C
-    command: "seq 1 100000"
