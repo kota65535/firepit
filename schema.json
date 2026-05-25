@@ -192,8 +192,15 @@
           ]
         },
         "tasks": {
-          "description": "Task selector. A string is a regex pattern, an array is an explicit list of task names.",
-          "$ref": "#/$defs/TaskSelector"
+          "description": "Task selector. A string is a regex pattern, an array is an explicit list of task names.\nIf omitted, all tasks are matched.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TaskSelector"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "vars": {
           "description": "Template variables",
@@ -212,10 +219,7 @@
           ],
           "x-template": true
         }
-      },
-      "required": [
-        "tasks"
-      ]
+      }
     },
     "DependsOnConfig": {
       "anyOf": [
@@ -608,7 +612,7 @@
       }
     },
     "TaskSelector": {
-      "description": "Task selector for `defaults`.\nA string value is treated as a regex pattern matched against the task name.\nAn array value is treated as an explicit list of task names.\n```yaml\ndefaults:\n  - tasks: \"^build\"        # regex\n    env:\n      NODE_ENV: production\n  - tasks: [test, lint]    # explicit list\n    depends_on:\n      - install\n```",
+      "description": "Task selector for `defaults`.\nA string value is treated as a regex pattern matched against the task name.\nAn array value is treated as an explicit list of task names.\nIf omitted, all tasks are matched.\n```yaml\ndefaults:\n  - tasks: \"^build\"        # regex\n    env:\n      NODE_ENV: production\n  - tasks: [test, lint]    # explicit list\n    depends_on:\n      - install\n  - env:                   # no tasks field = all tasks\n      LOG_LEVEL: info\n```",
       "anyOf": [
         {
           "type": "string"

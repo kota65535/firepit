@@ -234,8 +234,9 @@ working_dir: src
 ### tasks
 
 - **Type:** <code><a href="#taskselector">TaskSelector</a></code>
-- **Required:** yes
+- **Required:** no
 - **Description:** Task selector. A string is a regex pattern, an array is an explicit list of task names.
+If omitted, all tasks are matched.
 
 ### vars
 
@@ -569,6 +570,7 @@ working_dir: dist
 - **Description:** Task selector for `defaults`.
 A string value is treated as a regex pattern matched against the task name.
 An array value is treated as an explicit list of task names.
+If omitted, all tasks are matched.
 ```yaml
 defaults:
   - tasks: "^build"        # regex
@@ -577,6 +579,8 @@ defaults:
   - tasks: [test, lint]    # explicit list
     depends_on:
       - install
+  - env:                   # no tasks field = all tasks
+      LOG_LEVEL: info
 ```
 
 ## UI
