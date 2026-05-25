@@ -94,6 +94,21 @@ pub enum AppCommand {
     },
 
     ///
+    /// URL Commands
+    ///
+    HoverPane {
+        row: u16,
+        col: u16,
+    },
+    ClickPane {
+        row: u16,
+        col: u16,
+    },
+    OpenUrl {
+        url: String,
+    },
+
+    ///
     /// Search Commands
     ///
     EnterSearch,

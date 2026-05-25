@@ -138,12 +138,13 @@ impl InputHandler {
                 self.click_times.push(Instant::now());
                 let num_clicks = self.num_of_multiple_clicks();
                 if num_clicks == 1 {
-                    Some(AppCommand::ClearSelection)
+                    Some(AppCommand::ClickPane { row, col: column })
                 } else {
                     debug!("Clicked {} times", num_clicks);
                     Some(AppCommand::LineSelection { rows: row })
                 }
             }
+            (MouseEventKind::Moved, false) => Some(AppCommand::HoverPane { row, col: column }),
             (MouseEventKind::Drag(MouseButton::Left), _) => Some(AppCommand::UpdateSelection {
                 rows: row,
                 cols: column,
