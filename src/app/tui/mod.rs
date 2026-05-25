@@ -933,8 +933,6 @@ impl TuiAppState {
                         let url = url_span.url.clone();
                         self.open_url(&url);
                     }
-                } else {
-                    self.clear_selection()?;
                 }
             }
             AppCommand::OpenUrl { url } => {

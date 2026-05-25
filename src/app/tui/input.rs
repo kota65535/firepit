@@ -135,16 +135,25 @@ impl InputHandler {
             (MouseEventKind::ScrollUp, false) => Some(AppCommand::ScrollUp(ScrollSize::One)),
             (MouseEventKind::Down(MouseButton::Left), true) => Some(AppCommand::Select { index: row as usize }),
             (MouseEventKind::Down(MouseButton::Left), false) => {
-                self.click_times.push(Instant::now());
-                let num_clicks = self.num_of_multiple_clicks();
-                if num_clicks == 1 {
-                    Some(AppCommand::ClickPane { row, col: column })
-                } else if num_clicks == 2 {
-                    debug!("Double-clicked: word selection");
-                    Some(AppCommand::WordSelection { rows: row, cols: column })
+                let has_open_modifier = if cfg!(target_os = "macos") {
+                    mouse_event.modifiers.contains(KeyModifiers::SUPER)
                 } else {
-                    debug!("Triple-clicked: line selection");
-                    Some(AppCommand::LineSelection { rows: row })
+                    mouse_event.modifiers.contains(KeyModifiers::CONTROL)
+                };
+                if has_open_modifier {
+                    Some(AppCommand::ClickPane { row, col: column })
+                } else {
+                    self.click_times.push(Instant::now());
+                    let num_clicks = self.num_of_multiple_clicks();
+                    if num_clicks == 1 {
+                        Some(AppCommand::ClearSelection)
+                    } else if num_clicks == 2 {
+                        debug!("Double-clicked: word selection");
+                        Some(AppCommand::WordSelection { rows: row, cols: column })
+                    } else {
+                        debug!("Triple-clicked: line selection");
+                        Some(AppCommand::LineSelection { rows: row })
+                    }
                 }
             }
             (MouseEventKind::Moved, false) => Some(AppCommand::HoverPane { row, col: column }),
