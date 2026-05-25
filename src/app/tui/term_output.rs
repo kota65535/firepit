@@ -109,45 +109,82 @@ impl TerminalOutput {
     }
 
     pub fn word_selection(&mut self, row: u16, col: u16) {
-        let (start_col, end_col) = {
+        let selection = {
             let screen = self.parser.screen();
-            let Some(visible_row) = screen.grid().visible_row(row) else {
-                return;
-            };
             let size = screen.size();
             let cols = size.1;
+            let wrapped_flags: Vec<bool> = screen.grid().visible_rows().map(|r| r.wrapped()).collect();
+            if wrapped_flags.is_empty() {
+                return;
+            }
+            let max_row = wrapped_flags.len().saturating_sub(1) as u16;
+            let row = row.min(max_row);
             let col = col.min(cols.saturating_sub(1));
 
             // Classify each cell as whitespace or word (non-whitespace).
             // Using only two classes allows double-click to select URLs, file paths, etc.
-            let is_word = |c: u16| -> bool {
+            let is_word = |r: u16, c: u16| -> bool {
+                let Some(visible_row) = screen.grid().visible_row(r) else {
+                    return false;
+                };
                 match visible_row.get(c) {
                     Some(cell) => {
                         let contents = cell.contents();
-                        !contents.is_empty() && !contents.chars().all(|c| c == ' ' || c == '\0')
+                        !contents.is_empty() && !contents.chars().all(|ch| ch == ' ' || ch == '\0')
                     }
                     None => false,
                 }
             };
 
-            let target_is_word = is_word(col);
+            let target_is_word = is_word(row, col);
 
-            // Expand left
-            let mut start = col;
-            while start > 0 && is_word(start - 1) == target_is_word {
-                start -= 1;
+            // Expand left, crossing wrapped line boundaries
+            let (mut start_row, mut start_col) = (row, col);
+            loop {
+                if start_col > 0 {
+                    if is_word(start_row, start_col - 1) == target_is_word {
+                        start_col -= 1;
+                    } else {
+                        break;
+                    }
+                } else if start_row > 0 && wrapped_flags[start_row as usize - 1] {
+                    if is_word(start_row - 1, cols - 1) == target_is_word {
+                        start_row -= 1;
+                        start_col = cols - 1;
+                    } else {
+                        break;
+                    }
+                } else {
+                    break;
+                }
             }
 
-            // Expand right
-            let mut end = col;
-            while end + 1 < cols && is_word(end + 1) == target_is_word {
-                end += 1;
+            // Expand right, crossing wrapped line boundaries
+            let (mut end_row, mut end_col) = (row, col);
+            loop {
+                if end_col + 1 < cols {
+                    if is_word(end_row, end_col + 1) == target_is_word {
+                        end_col += 1;
+                    } else {
+                        break;
+                    }
+                } else if wrapped_flags.get(end_row as usize) == Some(&true) {
+                    if is_word(end_row + 1, 0) == target_is_word {
+                        end_row += 1;
+                        end_col = 0;
+                    } else {
+                        break;
+                    }
+                } else {
+                    break;
+                }
             }
 
-            (start, end)
+            (start_row, start_col, end_row, end_col)
         };
 
-        self.parser.screen_mut().set_selection(row, start_col, row, end_col);
+        let (start_row, start_col, end_row, end_col) = selection;
+        self.parser.screen_mut().set_selection(start_row, start_col, end_row, end_col);
     }
 
     pub fn line_selection(&mut self, row: u16) {
