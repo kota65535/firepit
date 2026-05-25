@@ -19,7 +19,7 @@
       }
     },
     "depends_on": {
-      "description": "**Deprecated**: Use `defaults` instead.\n\nDependency tasks for all the project tasks.\n```yaml\ndepends_on:\n  - '#install'\n```",
+      "description": "**Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.\n\nDependency tasks for all the project tasks.\n```yaml\ndepends_on:\n  - '#install'\n```",
       "type": "array",
       "default": [],
       "deprecated": true,
@@ -29,7 +29,7 @@
       "x-template": true
     },
     "env": {
-      "description": "**Deprecated**: Use `defaults` instead.\n\nEnvironment variables for all the project tasks.\n```yaml\nenv:\n  TZ: Asia/Tokyo\n```",
+      "description": "**Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.\n\nEnvironment variables for all the project tasks.\n```yaml\nenv:\n  TZ: Asia/Tokyo\n```",
       "type": "object",
       "additionalProperties": {
         "type": "string"
@@ -39,7 +39,7 @@
       "x-template": true
     },
     "env_files": {
-      "description": "**Deprecated**: Use `defaults` instead.\n\nDotenv files for all the project tasks.\nIn case of duplicated environment variables, the latter one takes precedence.\n```yaml\nenv_files:\n  - .env\n  - .env.local\n```",
+      "description": "**Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.\n\nDotenv files for all the project tasks.\nIn case of duplicated environment variables, the latter one takes precedence.\n```yaml\nenv_files:\n  - .env\n  - .env.local\n```",
       "type": "array",
       "default": [],
       "deprecated": true,
@@ -81,7 +81,7 @@
       "default": {}
     },
     "shell": {
-      "description": "**Deprecated**: Use `defaults` instead.\n\nShell configuration for all the project tasks.\n```yaml\nshell:\n  command: \"bash\"\n  args: [\"-eux\", \"-c\"]\n```",
+      "description": "**Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.\n\nShell configuration for all the project tasks.\n```yaml\nshell:\n  command: \"bash\"\n  args: [\"-eux\", \"-c\"]\n```",
       "$ref": "#/$defs/ShellConfig",
       "default": {
         "args": [
@@ -114,7 +114,7 @@
       "x-template": true
     },
     "working_dir": {
-      "description": "**Deprecated**: Use `defaults` instead.\n\nWorking directory for all the project tasks.\n```yaml\nworking_dir: src\n```",
+      "description": "**Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.\n\nWorking directory for all the project tasks.\n```yaml\nworking_dir: src\n```",
       "type": "string",
       "default": ".",
       "deprecated": true,
