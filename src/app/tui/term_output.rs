@@ -128,9 +128,15 @@ impl TerminalOutput {
                     return false;
                 };
                 match visible_row.get(c) {
+                    Some(cell) if cell.is_wide_continuation() => {
+                        c > 0 && visible_row.get(c - 1).is_some_and(|prev| {
+                            let contents = prev.contents();
+                            !contents.is_empty() && !contents.chars().all(|ch| ch.is_whitespace())
+                        })
+                    }
                     Some(cell) => {
                         let contents = cell.contents();
-                        !contents.is_empty() && !contents.chars().all(|ch| ch == ' ' || ch == '\0')
+                        !contents.is_empty() && !contents.chars().all(|ch| ch.is_whitespace())
                     }
                     None => false,
                 }
