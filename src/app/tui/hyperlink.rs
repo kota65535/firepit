@@ -74,12 +74,6 @@ fn find_urls_in_line(line: &str, row_widths: &[(u16, usize)], urls: &mut Vec<Url
                 .map(|i| abs_start + i)
                 .unwrap_or(line.len());
 
-            // Skip when http:// matches inside an https:// URL
-            if *prefix == "http://" && line[abs_start..].starts_with("https://") {
-                search_start = abs_start + 1;
-                continue;
-            }
-
             let url_text = &line[abs_start..url_end];
             if url_text.len() <= prefix.len() {
                 search_start = url_end;
@@ -211,16 +205,6 @@ mod tests {
         let mut urls = Vec::new();
         find_urls_in_line(line, &row_widths, &mut urls);
         assert!(urls.is_empty());
-    }
-
-    #[test]
-    fn test_find_urls_no_duplicate_for_https() {
-        let line = "Visit https://example.com for info";
-        let row_widths = vec![(0, line.width())];
-        let mut urls = Vec::new();
-        find_urls_in_line(line, &row_widths, &mut urls);
-        assert_eq!(urls.len(), 1);
-        assert_eq!(urls[0].url, "https://example.com");
     }
 
     #[test]
