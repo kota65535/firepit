@@ -1,0 +1,19 @@
+defaults:
+  - tasks: ".*"
+    env:
+      LOG_LEVEL: info
+  - tasks: "^build"
+    depends_on:
+      - install
+    env:
+      NODE_ENV: production
+
+tasks:
+  install:
+    command: echo install
+  build:
+    command: echo build
+  build-storybook:
+    command: echo build-storybook
+  test:
+    command: echo test

@@ -39,6 +39,8 @@ pub struct ProjectConfig {
     #[serde(default)]
     pub projects: IndexMap<String, String>,
 
+    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
+    ///
     /// Shell configuration for all the project tasks.
     /// ```yaml
     /// shell:
@@ -46,14 +48,17 @@ pub struct ProjectConfig {
     ///   args: ["-eux", "-c"]
     /// ```
     #[serde(default = "default_shell")]
+    #[schemars(extend("deprecated" = true))]
     pub shell: ShellConfig,
 
+    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
+    ///
     /// Working directory for all the project tasks.
     /// ```yaml
     /// working_dir: src
     /// ```
     #[serde(default = "default_working_dir")]
-    #[schemars(extend("x-template" = true))]
+    #[schemars(extend("x-template" = true, "deprecated" = true))]
     pub working_dir: String,
 
     /// Template variables for all the project tasks.
@@ -67,15 +72,19 @@ pub struct ProjectConfig {
     #[schemars(extend("x-template" = true))]
     pub vars: IndexMap<String, VarsConfig>,
 
+    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
+    ///
     /// Environment variables for all the project tasks.
     /// ```yaml
     /// env:
     ///   TZ: Asia/Tokyo
     /// ```
     #[serde(default)]
-    #[schemars(extend("x-template" = true))]
+    #[schemars(extend("x-template" = true, "deprecated" = true))]
     pub env: IndexMap<String, String>,
 
+    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
+    ///
     /// Dotenv files for all the project tasks.
     /// In case of duplicated environment variables, the latter one takes precedence.
     /// ```yaml
@@ -84,17 +93,29 @@ pub struct ProjectConfig {
     ///   - .env.local
     /// ```
     #[serde(default)]
-    #[schemars(extend("x-template" = true))]
+    #[schemars(extend("x-template" = true, "deprecated" = true))]
     pub env_files: Vec<String>,
 
+    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
+    ///
     /// Dependency tasks for all the project tasks.
     /// ```yaml
     /// depends_on:
     ///   - '#install'
     /// ```
     #[serde(default)]
-    #[schemars(extend("x-template" = true))]
+    #[schemars(extend("x-template" = true, "deprecated" = true))]
     pub depends_on: Vec<DependsOnConfig>,
+
+    /// Default settings applied to tasks matching a selector.
+    /// ```yaml
+    /// defaults:
+    ///   - tasks: "^(build|test)"
+    ///     depends_on:
+    ///       - install
+    /// ```
+    #[serde(default)]
+    pub defaults: Vec<DefaultsConfig>,
 
     /// Task definitions.
     #[serde(default)]
@@ -223,6 +244,7 @@ impl ProjectConfig {
                     t.project = name.clone();
                 }
                 child_config = child_config.merge(&context)?;
+                child_config.apply_defaults()?;
                 children.insert(name.clone(), child_config);
             }
         } else {
@@ -231,6 +253,7 @@ impl ProjectConfig {
         }
 
         root_config = root_config.merge(&context)?;
+        root_config.apply_defaults()?;
 
         Ok((root_config, children))
     }
@@ -412,6 +435,142 @@ impl ProjectConfig {
     pub fn relative_path_from(&self, path: &Path) -> PathBuf {
         self.dir.strip_prefix(path).unwrap_or(&self.dir).to_path_buf()
     }
+
+    /// Collect deprecation warnings for project-level task settings.
+    /// Returns a list of warning messages for fields that should be migrated to `defaults`.
+    pub fn deprecated_warnings(&self) -> Vec<String> {
+        let file = self.path.display();
+        let mut warnings = Vec::new();
+        let fields: &[(&str, bool)] = &[
+            ("shell", self.shell != default_shell()),
+            ("working_dir", self.working_dir != default_working_dir()),
+            ("env", !self.env.is_empty()),
+            ("env_files", !self.env_files.is_empty()),
+            ("depends_on", !self.depends_on.is_empty()),
+        ];
+        for (field, used) in fields {
+            if *used {
+                warnings.push(format!(
+                    "{}: project-level `{}` is deprecated. Use `defaults` instead. See https://kota65535.github.io/firepit/schema.html#defaults",
+                    file, field
+                ));
+            }
+        }
+        warnings
+    }
+
+    /// Apply `defaults` entries to all matching tasks.
+    /// For each task, all matching defaults are merged in order (later entries override earlier
+    /// for scalars and maps, arrays are concatenated), then the merged result is applied to the
+    /// task as a base layer (task-specific values take precedence).
+    pub fn apply_defaults(&mut self) -> anyhow::Result<()> {
+        // Validate regex patterns and qualify depends_on upfront
+        let qualified_defaults: Vec<DefaultsConfig> = self
+            .defaults
+            .iter()
+            .map(|d| {
+                if let Some(TaskSelector::Regex(ref pattern)) = d.tasks {
+                    Regex::new(pattern)
+                        .with_context(|| format!("defaults: invalid regex pattern {:?}", pattern))?;
+                }
+                Ok(DefaultsConfig {
+                    depends_on: d
+                        .depends_on
+                        .iter()
+                        .map(|dep| match dep {
+                            DependsOnConfig::String(s) => {
+                                DependsOnConfig::String(Task::qualified_name(&self.name, s))
+                            }
+                            DependsOnConfig::Struct(s) => DependsOnConfig::Struct(DependsOnConfigStruct {
+                                task: Task::qualified_name(&self.name, &s.task),
+                                vars: s.vars.clone(),
+                                cascade: s.cascade,
+                            }),
+                        })
+                        .collect(),
+                    ..d.clone()
+                })
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
+        for (task_name, task_config) in self.tasks.iter_mut() {
+            // Merge all matching defaults in order (later entries override earlier)
+            let mut eff_shell: Option<ShellConfig> = None;
+            let mut eff_working_dir: Option<String> = None;
+            let mut eff_service: Option<ServiceConfig> = None;
+            let mut eff_vars: IndexMap<String, VarsConfig> = IndexMap::new();
+            let mut eff_env: IndexMap<String, String> = IndexMap::new();
+            let mut eff_env_files: Vec<String> = Vec::new();
+            let mut eff_depends_on: Vec<DependsOnConfig> = Vec::new();
+            let mut eff_inputs: Vec<String> = Vec::new();
+            let mut eff_outputs: Vec<String> = Vec::new();
+            let mut matched = false;
+
+            for default in &qualified_defaults {
+                let is_match = match &default.tasks {
+                    None => true,
+                    Some(selector) => selector.matches(task_name),
+                };
+                if !is_match {
+                    continue;
+                }
+                matched = true;
+
+                // Scalars: later wins
+                if default.shell.is_some() {
+                    eff_shell = default.shell.clone();
+                }
+                if default.working_dir.is_some() {
+                    eff_working_dir = default.working_dir.clone();
+                }
+                if default.service.is_some() {
+                    eff_service = default.service.clone();
+                }
+                // Maps: later wins on key conflict
+                eff_vars.extend(default.vars.clone());
+                eff_env.extend(default.env.clone());
+                // Arrays: concatenate in order
+                eff_env_files.extend(default.env_files.clone());
+                eff_depends_on.extend(default.depends_on.clone());
+                eff_inputs.extend(default.inputs.clone());
+                eff_outputs.extend(default.outputs.clone());
+            }
+
+            if !matched {
+                continue;
+            }
+
+            // Apply merged defaults to task (task-specific values take precedence)
+            if task_config.shell.is_none() {
+                task_config.shell = eff_shell;
+            }
+            if task_config.working_dir.is_none() {
+                task_config.working_dir = eff_working_dir;
+            }
+            if task_config.service.is_none() {
+                task_config.service = eff_service;
+            }
+
+            eff_vars.extend(task_config.vars.clone());
+            task_config.vars = eff_vars;
+
+            eff_env.extend(task_config.env.clone());
+            task_config.env = eff_env;
+
+            eff_env_files.append(&mut task_config.env_files);
+            task_config.env_files = eff_env_files;
+
+            eff_depends_on.append(&mut task_config.depends_on);
+            task_config.depends_on = eff_depends_on;
+
+            eff_inputs.append(&mut task_config.inputs);
+            task_config.inputs = eff_inputs;
+
+            eff_outputs.append(&mut task_config.outputs);
+            task_config.outputs = eff_outputs;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
@@ -511,6 +670,7 @@ impl TaskConfig {
     pub fn output_paths(&self, dir: &PathBuf) -> Vec<PathBuf> {
         self.outputs.iter().map(|f| absolute_or_join(f, dir)).collect()
     }
+
 }
 
 fn absolute_or_join(path: &str, dir: &Path) -> PathBuf {
@@ -851,6 +1011,102 @@ impl JsonSchema for Restart {
             ]
         })
     }
+}
+
+/// Task selector for `defaults`.
+/// A string value is treated as a regex pattern matched against the task name.
+/// An array value is treated as an explicit list of task names.
+/// If omitted, all tasks are matched.
+/// ```yaml
+/// defaults:
+///   - tasks: "^build"        # regex
+///     env:
+///       NODE_ENV: production
+///   - tasks: [test, lint]    # explicit list
+///     depends_on:
+///       - install
+///   - env:                   # no tasks field = all tasks
+///       LOG_LEVEL: info
+/// ```
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(untagged)]
+pub enum TaskSelector {
+    Regex(String),
+    List(Vec<String>),
+}
+
+impl TaskSelector {
+    /// Returns true if the given task name matches this selector.
+    pub fn matches(&self, task_name: &str) -> bool {
+        match self {
+            TaskSelector::Regex(pattern) => {
+                if pattern.is_empty() {
+                    return false;
+                }
+                Regex::new(pattern).map(|re| re.is_match(task_name)).unwrap_or(false)
+            }
+            TaskSelector::List(names) => {
+                if names.is_empty() {
+                    return false;
+                }
+                names.iter().any(|n| n == task_name)
+            }
+        }
+    }
+}
+
+/// Default settings applied to tasks matching the selector.
+/// ```yaml
+/// defaults:
+///   - tasks: "^(build|test)"
+///     depends_on:
+///       - install
+///     env:
+///       NODE_ENV: development
+/// ```
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct DefaultsConfig {
+    /// Task selector. A string is a regex pattern, an array is an explicit list of task names.
+    /// If omitted, all tasks are matched.
+    pub tasks: Option<TaskSelector>,
+
+    /// Shell configuration
+    pub shell: Option<ShellConfig>,
+
+    /// Working directory
+    #[schemars(extend("x-template" = true))]
+    pub working_dir: Option<String>,
+
+    /// Template variables
+    #[serde(default)]
+    #[schemars(extend("x-template" = true))]
+    pub vars: IndexMap<String, VarsConfig>,
+
+    /// Environment variables
+    #[serde(default)]
+    #[schemars(extend("x-template" = true))]
+    pub env: IndexMap<String, String>,
+
+    /// Dotenv files
+    #[serde(default)]
+    #[schemars(extend("x-template" = true))]
+    pub env_files: Vec<String>,
+
+    /// Dependency tasks
+    #[serde(default)]
+    #[schemars(extend("x-template" = true))]
+    pub depends_on: Vec<DependsOnConfig>,
+
+    /// Service configurations
+    pub service: Option<ServiceConfig>,
+
+    /// Inputs file glob patterns
+    #[serde(default)]
+    pub inputs: Vec<String>,
+
+    /// Output file glob patterns
+    #[serde(default)]
+    pub outputs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, strum::EnumString)]

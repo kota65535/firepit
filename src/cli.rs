@@ -171,6 +171,12 @@ pub async fn run() -> anyhow::Result<i32> {
         }
     };
 
+    // Collect deprecation warnings before root is moved into the runner task
+    let mut deprecation_warnings = root.deprecated_warnings();
+    for child in children.values() {
+        deprecation_warnings.extend(child.deprecated_warnings());
+    }
+
     let quit_on_done = !args.watch && root.ui != UI::Tui;
     let runner_fut = tokio_spawn!("runner", async move {
         let result = runner.start(&app_tx, quit_on_done).await;
@@ -184,7 +190,14 @@ pub async fn run() -> anyhow::Result<i32> {
         result
     });
     runner_fut.await??;
-    app_fut.await?
+    let exit_code = app_fut.await?;
+
+    // Print deprecation warnings after UI cleanup so they are visible to the user
+    for warning in &deprecation_warnings {
+        eprintln!("{} {}", BOLD_YELLOW.apply_to("warning:"), warning);
+    }
+
+    exit_code
 }
 
 fn parse_tasks_or_vars(items: &Vec<String>) -> anyhow::Result<(Vec<String>, IndexMap<String, Value>)> {

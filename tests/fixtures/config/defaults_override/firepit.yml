@@ -1,0 +1,35 @@
+defaults:
+  # First entry: applies to all tasks
+  - env:
+      LOG_LEVEL: info
+      NODE_ENV: development
+    shell:
+      command: bash
+      args: ["-c"]
+    depends_on:
+      - install
+    env_files:
+      - .env.base
+  # Second entry: applies to build tasks, overrides some values
+  - tasks: "^build"
+    env:
+      NODE_ENV: production
+    shell:
+      command: node
+      args: ["-e"]
+    depends_on:
+      - lint
+    env_files:
+      - .env.build
+
+tasks:
+  install:
+    command: echo install
+  build:
+    command: echo build
+  build-storybook:
+    command: echo build-storybook
+  test:
+    command: echo test
+    env:
+      NODE_ENV: test

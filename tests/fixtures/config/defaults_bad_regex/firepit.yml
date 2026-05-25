@@ -1,0 +1,8 @@
+defaults:
+  - tasks: "[invalid"
+    env:
+      FOO: bar
+
+tasks:
+  build:
+    command: echo build
