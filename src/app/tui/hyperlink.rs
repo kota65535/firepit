@@ -1,9 +1,3 @@
-use crossterm::cursor::{MoveTo, RestorePosition, SavePosition};
-use crossterm::style::{
-    Attribute, Color as CColor, SetAttribute, SetBackgroundColor, SetForegroundColor,
-};
-use crossterm::{queue, style::Print};
-use std::io::Write;
 use unicode_width::UnicodeWidthStr;
 
 /// A URL and its screen coordinate segments
@@ -55,6 +49,16 @@ pub fn detect_urls(screen: &vt100::Screen) -> Vec<UrlSpan> {
     }
 
     urls
+}
+
+/// Find the URL at a given (row, col) position, returning its index and the span.
+pub fn find_url_at(urls: &[UrlSpan], row: u16, col: u16) -> Option<usize> {
+    urls.iter().position(|url_span| {
+        url_span
+            .segments
+            .iter()
+            .any(|seg| seg.row == row && col >= seg.start_col && col < seg.end_col)
+    })
 }
 
 /// Find URLs in a logical line and map them to row/col segments
@@ -127,112 +131,12 @@ fn map_to_segments(
     segments
 }
 
-/// Convert a vt100::Color to a crossterm Color
-fn vt100_to_crossterm_color(color: vt100::Color) -> CColor {
-    match color {
-        vt100::Color::Default => CColor::Reset,
-        vt100::Color::Idx(i) => CColor::AnsiValue(i),
-        vt100::Color::Rgb(r, g, b) => CColor::Rgb { r, g, b },
-    }
-}
-
-/// Write OSC 8 hyperlink sequences to stdout for detected URLs.
-///
-/// For each URL segment, re-renders the text with the original vt100 cell styles
-/// wrapped in OSC 8 start/end sequences so the host terminal creates a proper hyperlink.
-pub fn write_hyperlinks<W: Write>(
-    writer: &mut W,
-    urls: &[UrlSpan],
-    screen: &vt100::Screen,
-    offset_x: u16,
-    offset_y: u16,
-) -> std::io::Result<()> {
-    if urls.is_empty() {
-        return Ok(());
-    }
-
-    // Save cursor position so ratatui's next draw starts from the right place
-    queue!(writer, SavePosition)?;
-
-    for (link_idx, url_span) in urls.iter().enumerate() {
-        // Use id parameter to group multi-segment links (OSC 8 spec recommendation)
-        let osc8_start = format!("\x1b]8;id=firepit-{};{}\x1b\\", link_idx, url_span.url);
-        let osc8_end = "\x1b]8;;\x1b\\";
-
-        for segment in &url_span.segments {
-            let screen_y = offset_y + segment.row;
-            let screen_x_start = offset_x + segment.start_col;
-
-            queue!(writer, MoveTo(screen_x_start, screen_y))?;
-            writer.write_all(osc8_start.as_bytes())?;
-
-            // Re-render each cell with its original style
-            let mut last_fg: Option<CColor> = None;
-            let mut last_bg: Option<CColor> = None;
-            for col in segment.start_col..segment.end_col {
-                if let Some(cell) = screen.cell(segment.row, col) {
-                    if cell.is_wide_continuation() {
-                        continue;
-                    }
-
-                    let fg = vt100_to_crossterm_color(cell.fgcolor());
-                    let bg = vt100_to_crossterm_color(cell.bgcolor());
-
-                    if last_fg.as_ref() != Some(&fg) {
-                        queue!(writer, SetForegroundColor(fg))?;
-                        last_fg = Some(fg);
-                    }
-                    if last_bg.as_ref() != Some(&bg) {
-                        queue!(writer, SetBackgroundColor(bg))?;
-                        last_bg = Some(bg);
-                    }
-
-                    // Apply text modifiers
-                    if cell.bold() {
-                        queue!(writer, SetAttribute(Attribute::Bold))?;
-                    }
-                    if cell.underline() {
-                        queue!(writer, SetAttribute(Attribute::Underlined))?;
-                    }
-
-                    let contents = cell.contents();
-                    if !contents.is_empty() {
-                        queue!(writer, Print(&contents))?;
-                    }
-
-                    // Reset modifiers for next cell
-                    if cell.bold() || cell.underline() {
-                        queue!(writer, SetAttribute(Attribute::Reset))?;
-                        // Force re-apply colors after reset
-                        last_fg = None;
-                        last_bg = None;
-                    }
-                }
-            }
-
-            writer.write_all(osc8_end.as_bytes())?;
-        }
-    }
-
-    // Reset styles and restore cursor position
-    queue!(
-        writer,
-        SetForegroundColor(CColor::Reset),
-        SetBackgroundColor(CColor::Reset),
-        SetAttribute(Attribute::Reset),
-        RestorePosition,
-    )?;
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_map_to_segments_single_row() {
-        // URL at cols 5..15 in a single row of width 80
         let row_widths = vec![(0, 80)];
         let segments = map_to_segments(5, 10, &row_widths);
         assert_eq!(segments.len(), 1);
@@ -243,9 +147,6 @@ mod tests {
 
     #[test]
     fn test_map_to_segments_wrapped() {
-        // Two rows of width 40 each. URL starts at col 35 of row 0, 15 chars wide.
-        // Row 0: cols 35..40 (5 chars)
-        // Row 1: cols 0..10 (10 chars)
         let row_widths = vec![(0, 40), (1, 40)];
         let segments = map_to_segments(35, 15, &row_widths);
         assert_eq!(segments.len(), 2);
@@ -304,5 +205,44 @@ mod tests {
         let mut urls = Vec::new();
         find_urls_in_line(line, &row_widths, &mut urls);
         assert!(urls.is_empty());
+    }
+
+    #[test]
+    fn test_find_url_at_hit() {
+        let urls = vec![UrlSpan {
+            url: "https://example.com".to_string(),
+            segments: vec![UrlSegment {
+                row: 0,
+                start_col: 5,
+                end_col: 24,
+            }],
+        }];
+        assert_eq!(find_url_at(&urls, 0, 5), Some(0));
+        assert_eq!(find_url_at(&urls, 0, 23), Some(0));
+        assert_eq!(find_url_at(&urls, 0, 24), None);
+        assert_eq!(find_url_at(&urls, 0, 4), None);
+        assert_eq!(find_url_at(&urls, 1, 10), None);
+    }
+
+    #[test]
+    fn test_find_url_at_wrapped() {
+        let urls = vec![UrlSpan {
+            url: "https://example.com/long".to_string(),
+            segments: vec![
+                UrlSegment {
+                    row: 0,
+                    start_col: 35,
+                    end_col: 40,
+                },
+                UrlSegment {
+                    row: 1,
+                    start_col: 0,
+                    end_col: 18,
+                },
+            ],
+        }];
+        assert_eq!(find_url_at(&urls, 0, 36), Some(0));
+        assert_eq!(find_url_at(&urls, 1, 5), Some(0));
+        assert_eq!(find_url_at(&urls, 1, 18), None);
     }
 }

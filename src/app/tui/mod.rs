@@ -38,8 +38,8 @@ use ratatui::{
 use std::collections::HashMap;
 use std::io::{self, Stdout, Write};
 use tokio::{sync::mpsc, time::Instant};
-use tracing::{debug, error, info};
 use unicode_width::UnicodeWidthStr;
+use tracing::{debug, error, info};
 
 #[derive(Debug, Clone)]
 pub enum LayoutSections {
@@ -70,9 +70,13 @@ pub struct TuiAppState {
     quitting: bool,
     force_quitting: bool,
     done: bool,
-    /// Inner area of the PseudoTerminal widget (after block borders/padding),
-    /// used for mapping vt100 cell coordinates to screen coordinates for OSC 8 hyperlinks.
+    /// Inner area of the PseudoTerminal widget (after block borders/padding/title),
+    /// used for mapping mouse coordinates to vt100 cell coordinates.
     pane_inner_area: Option<Rect>,
+    /// Cached URL spans for the current active task's visible output.
+    cached_urls: Vec<hyperlink::UrlSpan>,
+    /// Index into `cached_urls` of the currently hovered URL, if any.
+    hovered_url_index: Option<usize>,
 }
 
 impl TuiApp {
@@ -140,6 +144,8 @@ impl TuiApp {
                 force_quitting: false,
                 done: false,
                 pane_inner_area: None,
+                cached_urls: Vec::new(),
+                hovered_url_index: None,
             },
         })
     }
@@ -196,57 +202,34 @@ impl TuiApp {
 
     pub async fn run_inner(&mut self, runner_tx: &RunnerCommandChannel) -> anyhow::Result<()> {
         self.terminal.draw(|f| self.state.view(f))?;
-        self.write_hyperlinks();
 
         let mut last_render = Instant::now();
         let mut needs_rerender = true;
         while let Some(event) = self.poll().await? {
             // For non-tick events, always set needs_rerender to true
-            if !matches!(event, AppCommand::Tick) {
+            if !matches!(event, AppCommand::Tick | AppCommand::HoverPane { .. }) {
                 needs_rerender = true;
             }
             if matches!(event, AppCommand::Resize { .. }) {
                 self.terminal.autoresize()?;
             }
+            let hover_changed = matches!(event, AppCommand::HoverPane { .. });
             self.state.update(event, runner_tx)?;
             if self.state.done {
                 break;
             }
+            if hover_changed {
+                // Hover changes need immediate re-render for responsive feedback
+                needs_rerender = true;
+            }
             if FRAME_RATE <= last_render.elapsed() && needs_rerender {
                 self.terminal.draw(|f| self.state.view(f))?;
-                self.write_hyperlinks();
                 last_render = Instant::now();
                 needs_rerender = false;
             }
         }
 
         Ok(())
-    }
-
-    /// After each render, detect URLs in the active task's terminal output
-    /// and emit OSC 8 hyperlink sequences so the host terminal can make them clickable,
-    /// even when a URL wraps across multiple lines.
-    fn write_hyperlinks(&mut self) {
-        let Some(inner_area) = self.state.pane_inner_area else {
-            return;
-        };
-
-        let Ok(task) = self.state.active_task() else {
-            return;
-        };
-
-        let screen = task.output.screen();
-        let urls = hyperlink::detect_urls(screen);
-        if urls.is_empty() {
-            return;
-        }
-
-        let mut stdout = io::stdout();
-        if let Err(e) = hyperlink::write_hyperlinks(&mut stdout, &urls, screen, inner_area.x, inner_area.y) {
-            debug!("Failed to write hyperlinks: {}", e);
-            return;
-        }
-        let _ = stdout.flush();
     }
 
     /// Blocking poll for events, will only return None if app handle has been
@@ -469,7 +452,7 @@ impl TuiAppState {
         };
         let [table, pane] = horizontal.areas(f.size());
 
-        // Compute pane inner area for OSC 8 hyperlink coordinate mapping.
+        // Compute pane inner area for mouse-to-vt100 coordinate mapping.
         // Must match the Block layout used in TerminalPane::render().
         // The Block must include a title (even empty) because ratatui's Block::inner()
         // adds +1 to y when a title exists at Position::Top.
@@ -483,6 +466,16 @@ impl TuiAppState {
             self.pane_inner_area = Some(block.inner(main_area));
         }
 
+        // Update cached URLs for hover/click detection
+        let new_urls = match self.active_task() {
+            Ok(task) => hyperlink::detect_urls(task.output.screen()),
+            Err(e) => {
+                error!("Error on rendering: {}", e);
+                return;
+            }
+        };
+        self.cached_urls = new_urls;
+
         let active_task = match self.active_task() {
             Ok(task) => task,
             Err(e) => {
@@ -490,11 +483,19 @@ impl TuiAppState {
                 return;
             }
         };
+
         let content_length = active_task.output.screen().current_scrollback_len();
         let scrollback = active_task.output.screen().scrollback();
 
+        // Get hovered URL segments for visual overlay
+        let hovered_segments = self
+            .hovered_url_index
+            .and_then(|idx| self.cached_urls.get(idx))
+            .map(|span| span.segments.as_slice());
+
         // Render pane
-        let pane_to_render = TerminalPane::new(&active_task, &self.focus, self.has_sidebar);
+        let pane_to_render =
+            TerminalPane::new(&active_task, &self.focus, self.has_sidebar, hovered_segments);
         f.render_widget(&pane_to_render, pane);
 
         // Render pane scrollbar
@@ -565,6 +566,45 @@ impl TuiAppState {
         };
         copy_to_clipboard(&text);
         Ok(())
+    }
+
+    /// Map pane-relative mouse coordinates to vt100 visible row/col
+    /// and update the hovered URL index.
+    fn update_hover(&mut self, pane_row: u16, pane_col: u16) {
+        let Some(inner) = self.pane_inner_area else {
+            self.hovered_url_index = None;
+            return;
+        };
+        // pane_row/pane_col are already relative to the pane area (after HEADER_HEIGHT
+        // and sidebar offset subtracted in input.rs). We need to further subtract
+        // the Block's title and padding rows to get vt100 visible row coordinates.
+        // inner.y is the absolute y of the content area; the pane starts at
+        // inner.y - title(1) - padding(1) - footer is separate.
+        // But pane_row is relative to the pane top (after HEADER_HEIGHT=2).
+        // The Block title takes 1 row and padding takes 1 row, so vt100 row 0
+        // starts at pane_row = 2 (title + padding).
+        let title_and_padding = 2u16; // title(1) + padding.top(1)
+        if pane_col < (inner.x.saturating_sub(inner.x.saturating_sub(if self.has_sidebar { 1 } else { 0 }))) {
+            self.hovered_url_index = None;
+            return;
+        }
+        let vt100_row = pane_row.saturating_sub(title_and_padding);
+        let border_offset = if self.has_sidebar { 1u16 } else { 0 };
+        let vt100_col = pane_col.saturating_sub(border_offset);
+
+        self.hovered_url_index = hyperlink::find_url_at(&self.cached_urls, vt100_row, vt100_col);
+    }
+
+    fn open_url(&self, url: &str) {
+        debug!("Opening URL: {}", url);
+        #[cfg(target_os = "macos")]
+        {
+            let _ = std::process::Command::new("open").arg(url).spawn();
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+        }
     }
 
     pub fn clear_selection(&mut self) -> anyhow::Result<()> {
@@ -912,6 +952,23 @@ impl TuiAppState {
             }
             AppCommand::Input { bytes } => {
                 self.forward_input(&bytes)?;
+            }
+            AppCommand::HoverPane { row, col } => {
+                self.update_hover(row, col);
+            }
+            AppCommand::ClickPane { row, col } => {
+                self.update_hover(row, col);
+                if let Some(idx) = self.hovered_url_index {
+                    if let Some(url_span) = self.cached_urls.get(idx) {
+                        let url = url_span.url.clone();
+                        self.open_url(&url);
+                    }
+                } else {
+                    self.clear_selection()?;
+                }
+            }
+            AppCommand::OpenUrl { url } => {
+                self.open_url(&url);
             }
             AppCommand::ClearSelection => {
                 self.clear_selection()?;
