@@ -1,0 +1,16 @@
+
+env:
+  LC_ALL: C
+
+tasks:
+  bbb:
+    env:
+      LC_ALL: C
+    command: echo "                                 https://github.com/toggle-inc/infra/pull/164"
+  aaa:
+    env:
+      LC_ALL: C
+    command: "seq 1 1000000"
+
+log:
+  file: firepit.log
