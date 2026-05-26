@@ -281,6 +281,14 @@ impl ProjectConfig {
                     anyhow::bail!("tasks.{}.depends_on: task {:?} is not defined.", t.name, d);
                 }
             }
+            for f in t.finalized_by.iter().map(|f| match f {
+                FinalizedByConfig::String(s) => s.clone(),
+                FinalizedByConfig::Struct(s) => s.task.clone(),
+            }) {
+                if !tasks.contains(&f) {
+                    anyhow::bail!("tasks.{}.finalized_by: task {:?} is not defined.", t.name, f);
+                }
+            }
         }
         Ok(())
     }
@@ -306,9 +314,20 @@ impl ProjectConfig {
                 .map(|d| match d {
                     DependsOnConfig::String(s) => DependsOnConfig::String(Task::qualified_name(&name, s)),
                     DependsOnConfig::Struct(s) => DependsOnConfig::Struct(DependsOnConfigStruct {
-                        task: Task::qualified_name(&data.name, &s.task),
+                        task: Task::qualified_name(&name, &s.task),
                         vars: s.vars.clone(),
                         cascade: s.cascade,
+                    }),
+                })
+                .collect();
+            v.finalized_by = v
+                .finalized_by
+                .iter()
+                .map(|f| match f {
+                    FinalizedByConfig::String(s) => FinalizedByConfig::String(Task::qualified_name(&name, s)),
+                    FinalizedByConfig::Struct(s) => FinalizedByConfig::Struct(FinalizedByConfigStruct {
+                        task: Task::qualified_name(&name, &s.task),
+                        vars: s.vars.clone(),
                     }),
                 })
                 .collect();
@@ -470,21 +489,31 @@ impl ProjectConfig {
             .iter()
             .map(|d| {
                 if let Some(TaskSelector::Regex(ref pattern)) = d.tasks {
-                    Regex::new(pattern)
-                        .with_context(|| format!("defaults: invalid regex pattern {:?}", pattern))?;
+                    Regex::new(pattern).with_context(|| format!("defaults: invalid regex pattern {:?}", pattern))?;
                 }
                 Ok(DefaultsConfig {
                     depends_on: d
                         .depends_on
                         .iter()
                         .map(|dep| match dep {
-                            DependsOnConfig::String(s) => {
-                                DependsOnConfig::String(Task::qualified_name(&self.name, s))
-                            }
+                            DependsOnConfig::String(s) => DependsOnConfig::String(Task::qualified_name(&self.name, s)),
                             DependsOnConfig::Struct(s) => DependsOnConfig::Struct(DependsOnConfigStruct {
                                 task: Task::qualified_name(&self.name, &s.task),
                                 vars: s.vars.clone(),
                                 cascade: s.cascade,
+                            }),
+                        })
+                        .collect(),
+                    finalized_by: d
+                        .finalized_by
+                        .iter()
+                        .map(|f| match f {
+                            FinalizedByConfig::String(s) => {
+                                FinalizedByConfig::String(Task::qualified_name(&self.name, s))
+                            }
+                            FinalizedByConfig::Struct(s) => FinalizedByConfig::Struct(FinalizedByConfigStruct {
+                                task: Task::qualified_name(&self.name, &s.task),
+                                vars: s.vars.clone(),
                             }),
                         })
                         .collect(),
@@ -502,6 +531,7 @@ impl ProjectConfig {
             let mut eff_env: IndexMap<String, String> = IndexMap::new();
             let mut eff_env_files: Vec<String> = Vec::new();
             let mut eff_depends_on: Vec<DependsOnConfig> = Vec::new();
+            let mut eff_finalized_by: Vec<FinalizedByConfig> = Vec::new();
             let mut eff_inputs: Vec<String> = Vec::new();
             let mut eff_outputs: Vec<String> = Vec::new();
             let mut matched = false;
@@ -532,6 +562,7 @@ impl ProjectConfig {
                 // Arrays: concatenate in order
                 eff_env_files.extend(default.env_files.clone());
                 eff_depends_on.extend(default.depends_on.clone());
+                eff_finalized_by.extend(default.finalized_by.clone());
                 eff_inputs.extend(default.inputs.clone());
                 eff_outputs.extend(default.outputs.clone());
             }
@@ -562,6 +593,9 @@ impl ProjectConfig {
 
             eff_depends_on.append(&mut task_config.depends_on);
             task_config.depends_on = eff_depends_on;
+
+            eff_finalized_by.append(&mut task_config.finalized_by);
+            task_config.finalized_by = eff_finalized_by;
 
             eff_inputs.append(&mut task_config.inputs);
             task_config.inputs = eff_inputs;
@@ -631,6 +665,24 @@ pub struct TaskConfig {
     #[schemars(extend("x-template" = true))]
     pub depends_on: Vec<DependsOnConfig>,
 
+    /// Finalizer tasks that run after this task completes, regardless of success or failure.
+    /// Similar to Gradle's `finalizedBy`.
+    /// Supports templating for `finalized_by`, including nested `finalized_by.task`
+    /// and `finalized_by.vars`.
+    /// ```yaml
+    /// tasks:
+    ///   build:
+    ///     command: cargo build
+    ///     finalized_by:
+    ///       - cleanup
+    ///       - task: report
+    ///         vars:
+    ///           output_dir: dist
+    /// ```
+    #[serde(default)]
+    #[schemars(extend("x-template" = true))]
+    pub finalized_by: Vec<FinalizedByConfig>,
+
     /// Service configurations
     pub service: Option<ServiceConfig>,
 
@@ -670,7 +722,6 @@ impl TaskConfig {
     pub fn output_paths(&self, dir: &PathBuf) -> Vec<PathBuf> {
         self.outputs.iter().map(|f| absolute_or_join(f, dir)).collect()
     }
-
 }
 
 fn absolute_or_join(path: &str, dir: &Path) -> PathBuf {
@@ -786,6 +837,26 @@ pub struct DependsOnConfigStruct {
 
 fn default_cascade() -> bool {
     true
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(untagged)]
+#[schemars(extend("x-template" = true))]
+pub enum FinalizedByConfig {
+    String(String),
+    Struct(FinalizedByConfigStruct),
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct FinalizedByConfigStruct {
+    /// Finalizer task name
+    #[schemars(extend("x-template" = true))]
+    pub task: String,
+
+    /// Variables to override the finalizer task vars.
+    #[serde(default)]
+    #[schemars(extend("x-template" = true))]
+    pub vars: IndexMap<String, VarsConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
@@ -1096,6 +1167,11 @@ pub struct DefaultsConfig {
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
     pub depends_on: Vec<DependsOnConfig>,
+
+    /// Finalizer tasks
+    #[serde(default)]
+    #[schemars(extend("x-template" = true))]
+    pub finalized_by: Vec<FinalizedByConfig>,
 
     /// Service configurations
     pub service: Option<ServiceConfig>,

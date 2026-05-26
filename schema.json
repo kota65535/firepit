@@ -153,6 +153,15 @@
           },
           "x-template": true
         },
+        "finalized_by": {
+          "description": "Finalizer tasks",
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/FinalizedByConfig"
+          },
+          "x-template": true
+        },
         "inputs": {
           "description": "Inputs file glob patterns",
           "type": "array",
@@ -387,6 +396,39 @@
         "command"
       ]
     },
+    "FinalizedByConfig": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/FinalizedByConfigStruct"
+        }
+      ],
+      "x-template": true
+    },
+    "FinalizedByConfigStruct": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "description": "Finalizer task name",
+          "type": "string",
+          "x-template": true
+        },
+        "vars": {
+          "description": "Variables to override the finalizer task vars.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/VarsConfig"
+          },
+          "default": {},
+          "x-template": true
+        }
+      },
+      "required": [
+        "task"
+      ]
+    },
     "HealthCheckConfig": {
       "anyOf": [
         {
@@ -543,6 +585,15 @@
           "default": [],
           "items": {
             "type": "string"
+          },
+          "x-template": true
+        },
+        "finalized_by": {
+          "description": "Finalizer tasks that run after this task completes, regardless of success or failure.\nSimilar to Gradle's `finalizedBy`.\nSupports templating for `finalized_by`, including nested `finalized_by.task`\nand `finalized_by.vars`.\n```yaml\ntasks:\n  build:\n    command: cargo build\n    finalized_by:\n      - cleanup\n      - task: report\n        vars:\n          output_dir: dist\n```",
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/FinalizedByConfig"
           },
           "x-template": true
         },

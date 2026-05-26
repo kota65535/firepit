@@ -1,0 +1,5 @@
+tasks:
+  build:
+    command: echo "build"
+    finalized_by:
+      - p2#cleanup

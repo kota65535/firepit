@@ -350,6 +350,181 @@ async fn test_vars_dynamic() {
 }
 
 #[tokio::test]
+async fn test_finalized_by() {
+    setup();
+    let path = BASE_PATH.join("finalized_by");
+    let tasks = vec![String::from("foo")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#foo"), String::from("Finished: Success"));
+    statuses.insert(String::from("#bar"), String::from("Finished: Success"));
+    statuses.insert(String::from("#cleanup"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#foo"), String::from("foo"));
+    outputs.insert(String::from("#bar"), String::from("bar"));
+    outputs.insert(String::from("#cleanup"), String::from("cleanup"));
+
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_finalized_by_failure() {
+    setup();
+    let path = BASE_PATH.join("finalized_by_failure");
+    let tasks = vec![String::from("foo")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#foo"), String::from("Finished: Failure(1)"));
+    statuses.insert(String::from("#cleanup"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#foo"), String::from("foo"));
+    outputs.insert(String::from("#cleanup"), String::from("cleanup"));
+
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_finalized_by_vars() {
+    setup();
+    let path = BASE_PATH.join("finalized_by_vars");
+    let tasks = vec![String::from("foo"), String::from("bar")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#foo"), String::from("Finished: Success"));
+    statuses.insert(String::from("#bar"), String::from("Finished: Success"));
+    statuses.insert(String::from("#cleanup-1"), String::from("Finished: Success"));
+    statuses.insert(String::from("#cleanup-2"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#foo"), String::from("foo"));
+    outputs.insert(String::from("#bar"), String::from("bar"));
+    outputs.insert(String::from("#cleanup-1"), String::from("cleanup bar"));
+    outputs.insert(String::from("#cleanup-2"), String::from("cleanup foo"));
+
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_finalized_by_cyclic() {
+    setup();
+    let path = BASE_PATH.join("finalized_by_cyclic");
+    let tasks = vec![String::from("foo")];
+
+    let err = run_task(&path, tasks, HashMap::new(), None, false)
+        .await
+        .expect_err("should fail");
+    assert!(err.to_string().contains("cyclic dependency"));
+}
+
+#[tokio::test]
+async fn test_finalized_by_invalid() {
+    setup();
+    let path = BASE_PATH.join("finalized_by_invalid");
+    let tasks = vec![String::from("foo")];
+
+    let err = run_task(&path, tasks, HashMap::new(), None, false)
+        .await
+        .expect_err("should fail");
+    let msg = format!("{:?}", err);
+    assert!(msg.contains("finalized_by"));
+    assert!(msg.contains("nonexistent"));
+}
+
+#[tokio::test]
+async fn test_finalized_by_multi() {
+    setup();
+    let path = BASE_PATH.join("finalized_by_multi");
+    let tasks = vec![String::from("build")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("p1#build"), String::from("Finished: Success"));
+    statuses.insert(String::from("p2#cleanup"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("p1#build"), String::from("build"));
+    outputs.insert(String::from("p2#cleanup"), String::from("cleanup"));
+
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_finalized_by_with_deps() {
+    setup();
+    let path = BASE_PATH.join("finalized_by_with_deps");
+    let tasks = vec![String::from("foo")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#foo"), String::from("Finished: Failure(1)"));
+    statuses.insert(String::from("#setup"), String::from("Finished: Success"));
+    statuses.insert(String::from("#cleanup"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#foo"), String::from("foo"));
+    outputs.insert(String::from("#setup"), String::from("setup"));
+    outputs.insert(String::from("#cleanup"), String::from("cleanup after setup"));
+
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_finalized_by_chain() {
+    setup();
+    let path = BASE_PATH.join("finalized_by_chain");
+    let tasks = vec![String::from("foo")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#foo"), String::from("Finished: Success"));
+    statuses.insert(String::from("#bar"), String::from("Finished: Success"));
+    statuses.insert(String::from("#baz"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#foo"), String::from("foo"));
+    outputs.insert(String::from("#bar"), String::from("bar"));
+    outputs.insert(String::from("#baz"), String::from("baz"));
+
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+/// Test that TaskGraph.targets() includes finalizer tasks.
+/// This ensures quit_on_done waits for finalizers before stopping.
+#[tokio::test]
+async fn test_finalized_by_targets_include_finalizers() {
+    setup();
+    let path = BASE_PATH.join("finalized_by");
+    let tasks = vec![String::from("foo")];
+
+    let path = path::absolute(&path).unwrap();
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
+    let ws = Workspace::new(&root, &children, &tasks, &path, &IndexMap::new(), false, false, Some(false), Some(false)).await.unwrap();
+    let runner = TaskRunner::new(&ws).unwrap();
+    let targets = runner.task_graph.targets();
+
+    // "#foo" is the explicit target, "#cleanup" should be auto-added as foo's finalizer
+    assert!(targets.contains("#foo"), "targets should contain the explicit target");
+    assert!(targets.contains("#cleanup"), "targets should contain the finalizer task");
+}
+
+/// Test that a finalizer is NOT scheduled when its finalized task is not in the execution graph.
+/// Running only "bar" should not trigger "cleanup" (which is foo's finalizer).
+#[tokio::test]
+async fn test_finalized_by_not_in_graph() {
+    setup();
+    let path = BASE_PATH.join("finalized_by");
+    let tasks = vec![String::from("bar")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#bar"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#bar"), String::from("bar"));
+
+    // Only bar runs; foo and cleanup should NOT be in the graph
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+#[tokio::test]
 async fn test_cyclic() {
     setup();
     let path = BASE_PATH.join("cyclic");

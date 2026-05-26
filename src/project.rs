@@ -1,5 +1,6 @@
 use crate::config::{
-    DependsOnConfig, HealthCheckConfig, ProjectConfig, Restart, ServiceConfig, TaskConfig, VarsConfig, UI,
+    DependsOnConfig, FinalizedByConfig, HealthCheckConfig, ProjectConfig, Restart, ServiceConfig, TaskConfig,
+    VarsConfig, UI,
 };
 use crate::probe::{ExecProbe, LogLineProbe, Probe};
 use crate::template::ConfigRenderer;
@@ -216,6 +217,10 @@ pub struct Task {
 
     /// Dependency task names
     pub depends_on: Vec<DependsOn>,
+
+    /// Finalizer task names.
+    /// These tasks run after this task completes, regardless of success/failure.
+    pub finalized_by: Vec<String>,
 
     /// Task working directory path (absolute).
     pub working_dir: PathBuf,
@@ -440,6 +445,15 @@ impl Task {
                     },
                 })
                 .filter(|d| d.task != task_name) // Exclude the task itself
+                .collect(),
+            finalized_by: task_config
+                .finalized_by
+                .iter()
+                .map(|f| match f {
+                    FinalizedByConfig::String(s) => Task::qualified_name(project_name, s),
+                    FinalizedByConfig::Struct(s) => Task::qualified_name(project_name, &s.task),
+                })
+                .filter(|f| *f != task_name)
                 .collect(),
             is_service,
             probe,

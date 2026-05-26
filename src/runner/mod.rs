@@ -52,6 +52,7 @@ impl TaskRunner {
         let task_graph_all = TaskGraph::new(&all_tasks, Some(&target_tasks), ws.force)?;
         let task_graph = task_graph_all.transitive_closure(&target_tasks, Direction::Outgoing)?;
         let tasks = task_graph.sort()?;
+
         debug!("Task graph:\n{:?}", task_graph);
 
         let file_watcher = if ws.watch {
@@ -124,7 +125,7 @@ impl TaskRunner {
 
         // Task futures
         let mut task_fut = FuturesUnordered::new();
-        let targets_remaining: HashSet<String> = self.target_tasks.iter().map(|s| s.clone()).collect();
+        let targets_remaining = self.task_graph.targets().clone();
         let targets_remaining = Arc::new(Mutex::new(targets_remaining));
 
         while !node_rx.is_closed() {

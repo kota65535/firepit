@@ -1,0 +1,15 @@
+tasks:
+  foo:
+    command: |
+      echo "foo"
+      exit 1
+    finalized_by:
+      - cleanup
+
+  cleanup:
+    command: echo "cleanup after setup"
+    depends_on:
+      - setup
+
+  setup:
+    command: echo "setup"

@@ -2,6 +2,7 @@ use crate::project::Task;
 use crate::tokio_spawn;
 use anyhow::Context;
 use futures::stream::FuturesUnordered;
+use indexmap::IndexSet;
 use petgraph::algo::toposort;
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{DiGraph, NodeIndex};
@@ -15,10 +16,15 @@ use tokio::sync::{broadcast, mpsc, watch};
 use tokio::task::JoinHandle;
 use tracing::{debug, info, warn};
 
+#[derive(Debug, Clone)]
+pub struct EdgeInfo {
+    pub cascade: bool,
+}
+
 #[derive(Clone)]
 pub struct TaskGraph {
-    graph: DiGraph<Task, bool>,
-    targets: Vec<String>,
+    graph: DiGraph<Task, EdgeInfo>,
+    targets: HashSet<String>,
 }
 
 pub struct VisitorMessage {
@@ -68,7 +74,7 @@ impl NodeResult {
 
 impl TaskGraph {
     pub fn new(tasks: &Vec<Task>, targets: Option<&Vec<String>>, force: bool) -> anyhow::Result<TaskGraph> {
-        let mut graph = DiGraph::<Task, bool>::new();
+        let mut graph = DiGraph::<Task, EdgeInfo>::new();
         let mut nodes = HashMap::new();
 
         // If `force` is true, we only add the target tasks as nodes to the graph
@@ -96,7 +102,13 @@ impl TaskGraph {
                 let to = nodes.get(&d.task);
                 match (from, to) {
                     (Some(from), Some(to)) => {
-                        graph.add_edge(*from, *to, d.cascade);
+                        graph.add_edge(
+                            *from,
+                            *to,
+                            EdgeInfo {
+                                cascade: d.cascade,
+                            },
+                        );
                     }
                     // Ignore if the dependent task does not exist.
                     // This can occur when creating a subgraph by `transitive_closure`.
@@ -105,12 +117,42 @@ impl TaskGraph {
                     }
                 }
             }
+
+            // Add finalized_by edges: finalizer depends on the finalized task
+            for f in &t.finalized_by {
+                let finalizer_idx = nodes.get(f);
+                let finalized_idx = nodes.get(&t.name);
+                match (finalizer_idx, finalized_idx) {
+                    (Some(fi), Some(fd)) => {
+                        graph.add_edge(
+                            *fi,
+                            *fd,
+                            EdgeInfo {
+                                cascade: false,
+                            },
+                        );
+                    }
+                    _ => {
+                        warn!("Cannot find node for task {} and finalizer {}", t.name, f);
+                    }
+                }
+            }
         }
 
         // If targets are not given, consider all tasks as target
-        let targets = targets
+        let mut targets = targets
             .cloned()
-            .unwrap_or_else(|| tasks.iter().map(|t| t.name.clone()).collect());
+            .unwrap_or_else(|| tasks.iter().map(|t| t.name.clone()).collect())
+            .into_iter().collect::<HashSet<_>>();
+
+        // Expand targets to include finalizer tasks so quit_on_done waits for them
+        for t in tasks {
+            if targets.contains(&t.name) {
+                for f in &t.finalized_by {
+                    targets.insert(f.clone());
+                }
+            }
+        }
 
         let ret = TaskGraph { graph, targets };
 
@@ -147,7 +189,7 @@ impl TaskGraph {
         let (visitor_tx, visitor_rx) = broadcast::channel(1024);
 
         // Remaining target tasks
-        let targets_remaining: HashSet<String> = self.targets.iter().map(|s| s.clone()).collect();
+        let targets_remaining: HashSet<String> = self.targets.clone();
         let targets_remaining = Arc::new(Mutex::new(targets_remaining));
 
         // Run visitor thread for all nodes
@@ -164,10 +206,18 @@ impl TaskGraph {
                 .clone()
                 .map(|n| self.graph.node_weight(n).cloned().context("node not found"))
                 .collect::<anyhow::Result<Vec<_>>>()?;
-            // Watch channels to receive the result of dependent tasks
-            let dep_rxs = neighbors
+            // Watch channels to receive the results of dependency tasks, with finalizer flag.
+            // A neighbor not listed in task.depends_on is a finalized task (reverse edge),
+            // so failures from it should be ignored (finalizer runs regardless).
+            let dep_names: HashSet<&str> = task.depends_on.iter().map(|d| d.task.as_str()).collect();
+            let dep_rxs: Vec<(watch::Receiver<NodeResult>, bool)> = neighbors
                 .clone()
-                .map(|n| rxs.get(&n).cloned().context("sender not found"))
+                .map(|n| {
+                    let rx = rxs.get(&n).cloned().context("sender not found")?;
+                    let neighbor_name = self.graph.node_weight(n).context("node not found")?.name.as_str();
+                    let ignore_failure = !dep_names.contains(neighbor_name);
+                    Ok((rx, ignore_failure))
+                })
                 .collect::<anyhow::Result<Vec<_>>>()?;
 
             let task_name = task.name.clone();
@@ -354,14 +404,12 @@ impl TaskGraph {
         })
     }
 
+    pub fn targets(&self) -> &HashSet<String> {
+        &self.targets
+    }
+
     pub fn transitive_closure(&self, names: &Vec<String>, direction: Direction) -> anyhow::Result<TaskGraph> {
-        let mut visited = Vec::<NodeIndex>::new();
-        let mut visitor = |idx| {
-            if let petgraph::visit::DfsEvent::Discover(n, _) = idx {
-                visited.push(n);
-            }
-            Control::<()>::Continue
-        };
+        let mut visited = IndexSet::<NodeIndex>::new();
 
         let indices = names
             .iter()
@@ -371,21 +419,55 @@ impl TaskGraph {
 
         match direction {
             Direction::Outgoing => {
-                depth_first_search(&self.graph, indices, visitor);
+                depth_first_search(&self.graph, indices, |idx| {
+                    if let petgraph::visit::DfsEvent::Discover(n, _) = idx {
+                        visited.insert(n);
+                    }
+                    Control::<()>::Continue
+                });
+
+                // Also include finalizer tasks and their transitive dependencies.
+                // Loop until no new finalizer nodes are discovered (handles chained finalizers).
+                loop {
+                    let mut finalizer_indices = Vec::new();
+                    for &idx in &visited {
+                        if let Some(task) = self.graph.node_weight(idx) {
+                            for f in &task.finalized_by {
+                                if let Some((_, fi)) = self.node_by_task(f) {
+                                    if !visited.contains(&fi) {
+                                        finalizer_indices.push(fi);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if finalizer_indices.is_empty() {
+                        break;
+                    }
+                    depth_first_search(&self.graph, finalizer_indices, |idx| {
+                        if let petgraph::visit::DfsEvent::Discover(n, _) = idx {
+                            visited.insert(n);
+                        }
+                        Control::<()>::Continue
+                    });
+                }
             }
             Direction::Incoming => {
                 depth_first_search(Reversed(&self.graph), indices, |event| {
+                    if let petgraph::visit::DfsEvent::Discover(n, _) = event {
+                        visited.insert(n);
+                    }
                     if let petgraph::visit::DfsEvent::TreeEdge(u, v) = event {
                         if let Ok(edge_idx) = self.graph.find_edge(v, u).context("edge not found") {
-                            if let Some(cascade) = self.graph.edge_weight(edge_idx) {
-                                if !cascade {
+                            if let Some(edge_info) = self.graph.edge_weight(edge_idx) {
+                                if !edge_info.cascade {
                                     return Control::Prune;
                                 }
                             }
                         }
                         return Control::Continue;
                     }
-                    visitor(event)
+                    Control::<()>::Continue
                 });
             }
         };
@@ -412,24 +494,23 @@ impl TaskGraph {
         None
     }
 
-    async fn wait_all_watches(mut receivers: Vec<watch::Receiver<NodeResult>>) -> anyhow::Result<bool> {
-        for rx in receivers.iter_mut() {
-            let v = rx.borrow().clone();
+    async fn wait_all_watches(receivers: Vec<(watch::Receiver<NodeResult>, bool)>) -> anyhow::Result<bool> {
+        for (mut rx, ignore_failure) in receivers {
             if (*rx.borrow()).present() {
-                if !(*rx.borrow()).success() {
-                    return Ok(false);
+                if (*rx.borrow()).success() || ignore_failure {
+                    continue;
                 }
-                continue;
+                return Ok(false);
             }
             loop {
                 if rx.changed().await.is_err() {
                     anyhow::bail!("watch channel closed");
                 }
                 if (*rx.borrow()).present() {
-                    if !(*rx.borrow()).success() {
-                        return Ok(false);
+                    if (*rx.borrow()).success() || ignore_failure {
+                        break;
                     }
-                    break;
+                    return Ok(false);
                 }
             }
         }

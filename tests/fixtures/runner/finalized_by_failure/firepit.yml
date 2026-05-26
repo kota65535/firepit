@@ -1,0 +1,10 @@
+tasks:
+  foo:
+    command: |
+      echo "foo"
+      exit 1
+    finalized_by:
+      - cleanup
+
+  cleanup:
+    command: echo "cleanup"

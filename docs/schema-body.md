@@ -203,6 +203,13 @@ working_dir: src
 - **Template:** yes
 - **Description:** Dotenv files
 
+### finalized_by
+
+- **Type:** <code>Array&lt;<a href="#finalizedbyconfig">FinalizedByConfig</a>&gt;</code>
+- **Required:** no
+- **Default:** `[]`
+- **Description:** Finalizer tasks
+
 ### inputs
 
 - **Type:** <code>Array&lt;string&gt;</code>
@@ -389,6 +396,28 @@ Probe failure during that period will not be counted towards the maximum number 
 - **Template:** yes
 - **Description:** Working directory
 
+## FinalizedByConfig
+
+- **Type:** <code>string | <a href="#finalizedbyconfigstruct">FinalizedByConfigStruct</a></code>
+- **Template:** yes
+
+## FinalizedByConfigStruct
+
+### task
+
+- **Type:** <code>string</code>
+- **Required:** yes
+- **Template:** yes
+- **Description:** Finalizer task name
+
+### vars
+
+- **Type:** <code>Map&lt;string, <a href="#varsconfig">VarsConfig</a>&gt;</code>
+- **Required:** no
+- **Default:** `{}`
+- **Template:** yes
+- **Description:** Variables to override the finalizer task vars.
+
 ## HealthCheckConfig
 
 - **Type:** <code><a href="#logprobeconfig">LogProbeConfig</a> | <a href="#execprobeconfig">ExecProbeConfig</a></code>
@@ -507,6 +536,26 @@ Probe failure during that period will not be counted towards the maximum number 
 - **Default:** `[]`
 - **Template:** yes
 - **Description:** Dotenv files. Merged with the project `env_files`.
+
+### finalized_by
+
+- **Type:** <code>Array&lt;<a href="#finalizedbyconfig">FinalizedByConfig</a>&gt;</code>
+- **Required:** no
+- **Default:** `[]`
+- **Description:** Finalizer tasks that run after this task completes, regardless of success or failure.
+Similar to Gradle's `finalizedBy`.
+Supports templating for `finalized_by`, including nested `finalized_by.task`
+and `finalized_by.vars`.
+```yaml
+tasks:
+  build:
+    command: cargo build
+    finalized_by:
+      - cleanup
+      - task: report
+        vars:
+          output_dir: dist
+```
 
 ### inputs
 

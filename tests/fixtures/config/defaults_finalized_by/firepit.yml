@@ -1,0 +1,14 @@
+defaults:
+  - tasks: "^(build|test)"
+    finalized_by:
+      - cleanup
+
+tasks:
+  build:
+    command: echo "build"
+  test:
+    command: echo "test"
+  lint:
+    command: echo "lint"
+  cleanup:
+    command: echo "cleanup"
