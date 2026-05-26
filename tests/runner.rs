@@ -386,6 +386,39 @@ async fn test_finalized_by_failure() {
 }
 
 #[tokio::test]
+async fn test_finalized_by_vars() {
+    setup();
+    let path = BASE_PATH.join("finalized_by_vars");
+    let tasks = vec![String::from("foo"), String::from("bar")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#foo"), String::from("Finished: Success"));
+    statuses.insert(String::from("#bar"), String::from("Finished: Success"));
+    statuses.insert(String::from("#cleanup-1"), String::from("Finished: Success"));
+    statuses.insert(String::from("#cleanup-2"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#foo"), String::from("foo"));
+    outputs.insert(String::from("#bar"), String::from("bar"));
+    outputs.insert(String::from("#cleanup-1"), String::from("cleanup bar"));
+    outputs.insert(String::from("#cleanup-2"), String::from("cleanup foo"));
+
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_finalized_by_cyclic() {
+    setup();
+    let path = BASE_PATH.join("finalized_by_cyclic");
+    let tasks = vec![String::from("foo")];
+
+    let err = run_task(&path, tasks, HashMap::new(), None, false)
+        .await
+        .expect_err("should fail");
+    assert!(err.to_string().contains("cyclic dependency"));
+}
+
+#[tokio::test]
 async fn test_cyclic() {
     setup();
     let path = BASE_PATH.join("cyclic");

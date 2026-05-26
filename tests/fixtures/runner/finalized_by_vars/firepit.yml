@@ -1,0 +1,19 @@
+tasks:
+  foo:
+    command: echo "foo"
+    finalized_by:
+      - task: cleanup
+        vars:
+          TARGET: foo
+
+  bar:
+    command: echo "bar"
+    finalized_by:
+      - task: cleanup
+        vars:
+          TARGET: bar
+
+  cleanup:
+    vars:
+      TARGET: default
+    command: echo "cleanup {{ TARGET }}"

@@ -1,0 +1,10 @@
+tasks:
+  foo:
+    command: echo "foo"
+    finalized_by:
+      - bar
+
+  bar:
+    command: echo "bar"
+    finalized_by:
+      - foo
