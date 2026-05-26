@@ -199,7 +199,7 @@ impl TaskGraph {
                 .clone()
                 .map(|n| self.graph.node_weight(n).cloned().context("node not found"))
                 .collect::<anyhow::Result<Vec<_>>>()?;
-            // Watch channels to receive the result of dependent tasks, with finalizer flag
+            // Watch channels to receive the results of dependency tasks, with finalizer flag
             let dep_rxs: Vec<(watch::Receiver<NodeResult>, bool)> = neighbors
                 .clone()
                 .map(|n| {
