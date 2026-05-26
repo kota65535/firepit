@@ -2,6 +2,7 @@ use crate::project::Task;
 use crate::tokio_spawn;
 use anyhow::Context;
 use futures::stream::FuturesUnordered;
+use indexmap::IndexSet;
 use petgraph::algo::toposort;
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{DiGraph, NodeIndex};
@@ -394,7 +395,7 @@ impl TaskGraph {
     }
 
     pub fn transitive_closure(&self, names: &Vec<String>, direction: Direction) -> anyhow::Result<TaskGraph> {
-        let mut visited = Vec::<NodeIndex>::new();
+        let mut visited = IndexSet::<NodeIndex>::new();
 
         let indices = names
             .iter()
@@ -406,19 +407,18 @@ impl TaskGraph {
             Direction::Outgoing => {
                 depth_first_search(&self.graph, indices, |idx| {
                     if let petgraph::visit::DfsEvent::Discover(n, _) = idx {
-                        visited.push(n);
+                        visited.insert(n);
                     }
                     Control::<()>::Continue
                 });
 
                 // Also include finalizer tasks and their transitive dependencies
-                let visited_set: HashSet<NodeIndex> = visited.iter().cloned().collect();
                 let mut finalizer_indices = Vec::new();
                 for &idx in &visited {
                     if let Some(task) = self.graph.node_weight(idx) {
                         for f in &task.finalized_by {
                             if let Some((_, fi)) = self.node_by_task(f) {
-                                if !visited_set.contains(&fi) {
+                                if !visited.contains(&fi) {
                                     finalizer_indices.push(fi);
                                 }
                             }
@@ -428,7 +428,7 @@ impl TaskGraph {
                 if !finalizer_indices.is_empty() {
                     depth_first_search(&self.graph, finalizer_indices, |idx| {
                         if let petgraph::visit::DfsEvent::Discover(n, _) = idx {
-                            visited.push(n);
+                            visited.insert(n);
                         }
                         Control::<()>::Continue
                     });
@@ -437,7 +437,7 @@ impl TaskGraph {
             Direction::Incoming => {
                 depth_first_search(Reversed(&self.graph), indices, |event| {
                     if let petgraph::visit::DfsEvent::Discover(n, _) = event {
-                        visited.push(n);
+                        visited.insert(n);
                     }
                     if let petgraph::visit::DfsEvent::TreeEdge(u, v) = event {
                         if let Ok(edge_idx) = self.graph.find_edge(v, u).context("edge not found") {
@@ -453,10 +453,6 @@ impl TaskGraph {
                 });
             }
         };
-
-        // Deduplicate visited nodes (finalizer DFS may revisit nodes)
-        let mut seen = HashSet::new();
-        visited.retain(|idx| seen.insert(*idx));
 
         let tasks = visited
             .iter()
