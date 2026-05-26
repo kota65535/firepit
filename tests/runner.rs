@@ -488,8 +488,8 @@ async fn test_finalized_by_chain() {
 }
 
 /// Test that finalizer tasks are executed even with quit_on_done=true.
-/// Without the set_targets fix, quit_on_done would stop the runner before
-/// the finalizer has a chance to run.
+/// Without the targets expansion fix, quit_on_done would stop the runner
+/// before the finalizer has a chance to run.
 #[tokio::test]
 async fn test_finalized_by_quit_on_done() {
     setup();
@@ -506,30 +506,25 @@ async fn test_finalized_by_quit_on_done() {
     outputs.insert(String::from("#bar"), String::from("bar"));
     outputs.insert(String::from("#cleanup"), String::from("cleanup"));
 
-    // Use quit_on_done=true to verify finalizers are included in targets
-    let path = path::absolute(&path).unwrap();
-    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
-    let ws = Workspace::new(&root, &children, &tasks, &path, &IndexMap::new(), false, false, Some(false), Some(false)).await.unwrap();
-    let mut runner = TaskRunner::new(&ws).unwrap();
-    let (app_tx, app_rx) = AppCommandChannel::new();
-    let runner_tx = runner.command_tx.clone();
+    run_task_inner_with_opts(&path, tasks, statuses, Some(outputs), None, None, None, IndexMap::new(), false, true).await.unwrap();
+}
 
-    let runner_fut = tokio::spawn(async move {
-        runner.run(&app_tx, true).await.ok();
-    });
+/// Test that a finalizer is NOT scheduled when its finalized task is not in the execution graph.
+/// Running only "bar" should not trigger "cleanup" (which is foo's finalizer).
+#[tokio::test]
+async fn test_finalized_by_not_in_graph() {
+    setup();
+    let path = BASE_PATH.join("finalized_by");
+    let tasks = vec![String::from("bar")];
 
-    let events_fut = handle_events(
-        app_rx,
-        runner_tx,
-        statuses,
-        Some(outputs),
-        None,
-        None,
-        None,
-    );
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#bar"), String::from("Finished: Success"));
 
-    runner_fut.await.unwrap();
-    events_fut.await.unwrap();
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#bar"), String::from("bar"));
+
+    // Only bar runs; foo and cleanup should NOT be in the graph
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
 
 #[tokio::test]
@@ -774,6 +769,21 @@ async fn run_task_inner(
     vars: IndexMap<String, VarsConfig>,
     force: bool,
 ) -> anyhow::Result<()> {
+    run_task_inner_with_opts(path, tasks, status_expected, outputs_expected, restarts_expected, runs_expected, timeout_seconds, vars, force, false).await
+}
+
+async fn run_task_inner_with_opts(
+    path: &Path,
+    tasks: Vec<String>,
+    status_expected: HashMap<String, String>,
+    outputs_expected: Option<HashMap<String, String>>,
+    restarts_expected: Option<HashMap<String, u64>>,
+    runs_expected: Option<HashMap<String, u64>>,
+    timeout_seconds: Option<u64>,
+    vars: IndexMap<String, VarsConfig>,
+    force: bool,
+    quit_on_done: bool,
+) -> anyhow::Result<()> {
     let path = path::absolute(path)?;
     let (root, children) = ProjectConfig::new_multi(&path)?;
     let ws = Workspace::new(&root, &children, &tasks, &path, &vars, force, false, Some(false), Some(false)).await?;
@@ -785,7 +795,7 @@ async fn run_task_inner(
 
     // Start runner
     let runner_fut = tokio::spawn(async move {
-        runner.run(&app_tx, false).await.ok();
+        runner.run(&app_tx, quit_on_done).await.ok();
     });
 
     // Handle events and assert task statuses

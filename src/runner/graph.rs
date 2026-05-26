@@ -19,7 +19,6 @@ use tracing::{debug, info, warn};
 #[derive(Debug, Clone)]
 pub struct EdgeInfo {
     pub cascade: bool,
-    pub is_finalizer: bool,
 }
 
 #[derive(Clone)]
@@ -108,7 +107,6 @@ impl TaskGraph {
                             *to,
                             EdgeInfo {
                                 cascade: d.cascade,
-                                is_finalizer: false,
                             },
                         );
                     }
@@ -131,7 +129,6 @@ impl TaskGraph {
                             *fd,
                             EdgeInfo {
                                 cascade: false,
-                                is_finalizer: true,
                             },
                         );
                     }
@@ -211,13 +208,16 @@ impl TaskGraph {
                 .clone()
                 .map(|n| self.graph.node_weight(n).cloned().context("node not found"))
                 .collect::<anyhow::Result<Vec<_>>>()?;
-            // Watch channels to receive the results of dependency tasks, with finalizer flag
+            // Watch channels to receive the results of dependency tasks, with finalizer flag.
+            // A neighbor not listed in task.depends_on is a finalized task (reverse edge),
+            // so failures from it should be ignored (finalizer runs regardless).
+            let dep_names: HashSet<&str> = task.depends_on.iter().map(|d| d.task.as_str()).collect();
             let dep_rxs: Vec<(watch::Receiver<NodeResult>, bool)> = neighbors
                 .clone()
                 .map(|n| {
                     let rx = rxs.get(&n).cloned().context("sender not found")?;
-                    // Check if ALL edges from this node to the neighbor are finalizer edges
-                    let ignore_failure = self.graph.edges_connecting(node_id, n).all(|e| e.weight().is_finalizer);
+                    let neighbor_name = self.graph.node_weight(n).context("node not found")?.name.as_str();
+                    let ignore_failure = !dep_names.contains(neighbor_name);
                     Ok((rx, ignore_failure))
                 })
                 .collect::<anyhow::Result<Vec<_>>>()?;
