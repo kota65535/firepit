@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.21.0] - 2026-05-26
+
+### 🚀 Features
+
+- *(config)* Add finalized_by task option (#301)
+
+### 🐛 Bug Fixes
+
+- *(test)* Disable PTY in test runners to prevent TTY-dependent failures (#300)
+
 ## [0.20.0] - 2026-05-25
 
 ### 🚀 Features
