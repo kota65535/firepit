@@ -394,6 +394,10 @@ impl TaskGraph {
         })
     }
 
+    pub fn set_targets(&mut self, targets: Vec<String>) {
+        self.targets = targets;
+    }
+
     pub fn transitive_closure(&self, names: &Vec<String>, direction: Direction) -> anyhow::Result<TaskGraph> {
         let mut visited = IndexSet::<NodeIndex>::new();
 

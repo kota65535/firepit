@@ -50,7 +50,7 @@ impl TaskRunner {
         let target_tasks = ws.target_tasks.clone();
 
         let task_graph_all = TaskGraph::new(&all_tasks, Some(&target_tasks), ws.force)?;
-        let task_graph = task_graph_all.transitive_closure(&target_tasks, Direction::Outgoing)?;
+        let mut task_graph = task_graph_all.transitive_closure(&target_tasks, Direction::Outgoing)?;
         let tasks = task_graph.sort()?;
 
         // Expand target_tasks to include finalizer tasks so quit_on_done waits for them
@@ -62,6 +62,9 @@ impl TaskRunner {
                 }
             }
         }
+
+        // Update task graph targets so visit()'s quit_on_done also waits for finalizers
+        task_graph.set_targets(target_tasks.clone());
 
         debug!("Task graph:\n{:?}", task_graph);
 
