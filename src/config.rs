@@ -314,7 +314,7 @@ impl ProjectConfig {
                 .map(|d| match d {
                     DependsOnConfig::String(s) => DependsOnConfig::String(Task::qualified_name(&name, s)),
                     DependsOnConfig::Struct(s) => DependsOnConfig::Struct(DependsOnConfigStruct {
-                        task: Task::qualified_name(&data.name, &s.task),
+                        task: Task::qualified_name(&name, &s.task),
                         vars: s.vars.clone(),
                         cascade: s.cascade,
                     }),
@@ -326,7 +326,7 @@ impl ProjectConfig {
                 .map(|f| match f {
                     FinalizedByConfig::String(s) => FinalizedByConfig::String(Task::qualified_name(&name, s)),
                     FinalizedByConfig::Struct(s) => FinalizedByConfig::Struct(FinalizedByConfigStruct {
-                        task: Task::qualified_name(&data.name, &s.task),
+                        task: Task::qualified_name(&name, &s.task),
                         vars: s.vars.clone(),
                     }),
                 })

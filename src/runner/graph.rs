@@ -25,7 +25,7 @@ pub struct EdgeInfo {
 #[derive(Clone)]
 pub struct TaskGraph {
     graph: DiGraph<Task, EdgeInfo>,
-    targets: Vec<String>,
+    targets: HashSet<String>,
 }
 
 pub struct VisitorMessage {
@@ -145,14 +145,15 @@ impl TaskGraph {
         // If targets are not given, consider all tasks as target
         let mut targets = targets
             .cloned()
-            .unwrap_or_else(|| tasks.iter().map(|t| t.name.clone()).collect::<Vec<_>>());
+            .unwrap_or_else(|| tasks.iter().map(|t| t.name.clone()).collect())
+            .into_iter().collect::<HashSet<_>>();
 
         // Expand targets to include finalizer tasks so quit_on_done waits for them
         for t in tasks {
             if targets.contains(&t.name) {
                 for f in &t.finalized_by {
                     if !targets.contains(f) {
-                        targets.push(f.clone());
+                        targets.insert(f.clone());
                     }
                 }
             }
@@ -193,7 +194,7 @@ impl TaskGraph {
         let (visitor_tx, visitor_rx) = broadcast::channel(1024);
 
         // Remaining target tasks
-        let targets_remaining: HashSet<String> = self.targets.iter().map(|s| s.clone()).collect();
+        let targets_remaining: HashSet<String> = self.targets.clone();
         let targets_remaining = Arc::new(Mutex::new(targets_remaining));
 
         // Run visitor thread for all nodes
@@ -405,7 +406,7 @@ impl TaskGraph {
         })
     }
 
-    pub fn targets(&self) -> &Vec<String> {
+    pub fn targets(&self) -> &HashSet<String> {
         &self.targets
     }
 

@@ -125,7 +125,7 @@ impl TaskRunner {
 
         // Task futures
         let mut task_fut = FuturesUnordered::new();
-        let targets_remaining: HashSet<String> = self.task_graph.targets().iter().cloned().collect();
+        let targets_remaining = self.task_graph.targets().clone();
         let targets_remaining = Arc::new(Mutex::new(targets_remaining));
 
         while !node_rx.is_closed() {
