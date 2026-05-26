@@ -667,6 +667,8 @@ pub struct TaskConfig {
 
     /// Finalizer tasks that run after this task completes, regardless of success or failure.
     /// Similar to Gradle's `finalizedBy`.
+    /// Supports templating for `finalized_by`, including nested `finalized_by.task`
+    /// and `finalized_by.vars`.
     /// ```yaml
     /// tasks:
     ///   build:
