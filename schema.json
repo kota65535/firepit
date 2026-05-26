@@ -589,7 +589,7 @@
           "x-template": true
         },
         "finalized_by": {
-          "description": "Finalizer tasks that run after this task completes, regardless of success or failure.\nSimilar to Gradle's `finalizedBy`.\n```yaml\ntasks:\n  build:\n    command: cargo build\n    finalized_by:\n      - cleanup\n      - task: report\n        vars:\n          output_dir: dist\n```",
+          "description": "Finalizer tasks that run after this task completes, regardless of success or failure.\nSimilar to Gradle's `finalizedBy`.\nSupports templating for `finalized_by`, including nested `finalized_by.task`\nand `finalized_by.vars`.\n```yaml\ntasks:\n  build:\n    command: cargo build\n    finalized_by:\n      - cleanup\n      - task: report\n        vars:\n          output_dir: dist\n```",
           "type": "array",
           "default": [],
           "items": {

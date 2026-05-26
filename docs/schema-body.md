@@ -544,6 +544,8 @@ Probe failure during that period will not be counted towards the maximum number 
 - **Default:** `[]`
 - **Description:** Finalizer tasks that run after this task completes, regardless of success or failure.
 Similar to Gradle's `finalizedBy`.
+Supports templating for `finalized_by`, including nested `finalized_by.task`
+and `finalized_by.vars`.
 ```yaml
 tasks:
   build:
