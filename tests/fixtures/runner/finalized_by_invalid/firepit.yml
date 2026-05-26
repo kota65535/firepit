@@ -1,0 +1,5 @@
+tasks:
+  foo:
+    command: echo "foo"
+    finalized_by:
+      - nonexistent

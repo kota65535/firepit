@@ -1,5 +1,5 @@
 use assertables::assert_starts_with;
-use firepit::config::{DependsOnConfig, ProjectConfig, ShellConfig};
+use firepit::config::{DependsOnConfig, FinalizedByConfig, ProjectConfig, ShellConfig};
 use indexmap::IndexMap;
 use std::path::Path;
 use std::sync::Once;
@@ -156,6 +156,33 @@ fn depends_on_names(task: &firepit::config::TaskConfig) -> Vec<String> {
             DependsOnConfig::Struct(s) => s.task.clone(),
         })
         .collect()
+}
+
+fn finalized_by_names(task: &firepit::config::TaskConfig) -> Vec<String> {
+    task.finalized_by
+        .iter()
+        .map(|f| match f {
+            FinalizedByConfig::String(s) => s.clone(),
+            FinalizedByConfig::Struct(s) => s.task.clone(),
+        })
+        .collect()
+}
+
+#[test]
+fn test_defaults_finalized_by() {
+    let path = Path::new("tests/fixtures/config/defaults_finalized_by");
+    let (root, _) = ProjectConfig::new_multi(path).unwrap();
+
+    // build and test should have finalized_by cleanup from defaults
+    let build = root.tasks.get("build").unwrap();
+    assert!(finalized_by_names(build).iter().any(|f| f.contains("cleanup")));
+
+    let test = root.tasks.get("test").unwrap();
+    assert!(finalized_by_names(test).iter().any(|f| f.contains("cleanup")));
+
+    // lint should NOT have finalized_by
+    let lint = root.tasks.get("lint").unwrap();
+    assert!(finalized_by_names(lint).is_empty());
 }
 
 #[test]
