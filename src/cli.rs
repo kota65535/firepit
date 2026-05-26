@@ -138,6 +138,7 @@ pub async fn run() -> anyhow::Result<i32> {
         args.force,
         args.watch,
         fail_fast,
+        None
     )
     .await?;
 
