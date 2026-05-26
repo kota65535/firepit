@@ -33,6 +33,7 @@ impl Workspace {
         force: bool,
         watch: bool,
         fail_fast: Option<bool>,
+        use_pty: Option<bool>,
     ) -> anyhow::Result<Workspace> {
         let mut target_tasks = Vec::new();
         for task in tasks.iter() {
@@ -107,9 +108,12 @@ impl Workspace {
             children.insert(k.clone(), Project::new(k, v)?);
         }
 
-        let use_pty = match root_config.ui {
-            UI::Tui => true,
-            UI::Cui => false,
+        let use_pty = match use_pty {
+            Some(u) => u,
+            None => match root_config.ui {
+                UI::Tui => true,
+                UI::Cui => false,
+            },
         };
 
         let fail_fast = match fail_fast {

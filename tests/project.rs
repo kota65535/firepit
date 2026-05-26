@@ -38,6 +38,7 @@ async fn test_env_file_not_found() {
         false,
         false,
         Some(false),
+        Some(false),
     )
     .await;
     assert_ok!(result);
@@ -56,6 +57,7 @@ async fn test_bad_env_file() {
         false,
         false,
         Some(false),
+        Some(false),
     )
     .await;
     assert_err!(result);
@@ -73,6 +75,7 @@ async fn test_multi() {
         &IndexMap::new(),
         false,
         false,
+        Some(false),
         Some(false),
     )
     .await
