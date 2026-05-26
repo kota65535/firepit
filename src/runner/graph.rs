@@ -205,8 +205,8 @@ impl TaskGraph {
                 .map(|n| {
                     let rx = rxs.get(&n).cloned().context("sender not found")?;
                     // Check if ALL edges from this node to the neighbor are finalizer edges
-                    let all_finalizer = self.graph.edges_connecting(node_id, n).all(|e| e.weight().is_finalizer);
-                    Ok((rx, all_finalizer))
+                    let ignore_failure = self.graph.edges_connecting(node_id, n).all(|e| e.weight().is_finalizer);
+                    Ok((rx, ignore_failure))
                 })
                 .collect::<anyhow::Result<Vec<_>>>()?;
 
@@ -477,22 +477,22 @@ impl TaskGraph {
     }
 
     async fn wait_all_watches(receivers: Vec<(watch::Receiver<NodeResult>, bool)>) -> anyhow::Result<bool> {
-        for (mut rx, is_finalizer) in receivers {
+        for (mut rx, ignore_failure) in receivers {
             if (*rx.borrow()).present() {
-                if !(*rx.borrow()).success() && !is_finalizer {
-                    return Ok(false);
+                if *rx.borrow().success() || ignore_failure {
+                    continue;
                 }
-                continue;
+                return Ok(false);
             }
             loop {
                 if rx.changed().await.is_err() {
                     anyhow::bail!("watch channel closed");
                 }
                 if (*rx.borrow()).present() {
-                    if !(*rx.borrow()).success() && !is_finalizer {
-                        return Ok(false);
+                    if *rx.borrow().success() || ignore_failure {
+                        break;
                     }
-                    break;
+                    return Ok(false);
                 }
             }
         }
