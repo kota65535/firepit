@@ -149,9 +149,7 @@ impl TaskGraph {
         for t in tasks {
             if targets.contains(&t.name) {
                 for f in &t.finalized_by {
-                    if !targets.contains(f) {
-                        targets.insert(f.clone());
-                    }
+                    targets.insert(f.clone());
                 }
             }
         }

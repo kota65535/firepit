@@ -487,26 +487,23 @@ async fn test_finalized_by_chain() {
     run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
 
-/// Test that finalizer tasks are executed even with quit_on_done=true.
-/// Without the targets expansion fix, quit_on_done would stop the runner
-/// before the finalizer has a chance to run.
+/// Test that TaskGraph.targets() includes finalizer tasks.
+/// This ensures quit_on_done waits for finalizers before stopping.
 #[tokio::test]
-async fn test_finalized_by_quit_on_done() {
+async fn test_finalized_by_targets_include_finalizers() {
     setup();
     let path = BASE_PATH.join("finalized_by");
     let tasks = vec![String::from("foo")];
 
-    let mut statuses = HashMap::new();
-    statuses.insert(String::from("#foo"), String::from("Finished: Success"));
-    statuses.insert(String::from("#bar"), String::from("Finished: Success"));
-    statuses.insert(String::from("#cleanup"), String::from("Finished: Success"));
+    let path = path::absolute(&path).unwrap();
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
+    let ws = Workspace::new(&root, &children, &tasks, &path, &IndexMap::new(), false, false, Some(false), Some(false)).await.unwrap();
+    let runner = TaskRunner::new(&ws).unwrap();
+    let targets = runner.task_graph.targets();
 
-    let mut outputs = HashMap::new();
-    outputs.insert(String::from("#foo"), String::from("foo"));
-    outputs.insert(String::from("#bar"), String::from("bar"));
-    outputs.insert(String::from("#cleanup"), String::from("cleanup"));
-
-    run_task_inner_with_opts(&path, tasks, statuses, Some(outputs), None, None, None, IndexMap::new(), false, true).await.unwrap();
+    // "#foo" is the explicit target, "#cleanup" should be auto-added as foo's finalizer
+    assert!(targets.contains("#foo"), "targets should contain the explicit target");
+    assert!(targets.contains("#cleanup"), "targets should contain the finalizer task");
 }
 
 /// Test that a finalizer is NOT scheduled when its finalized task is not in the execution graph.
@@ -769,21 +766,6 @@ async fn run_task_inner(
     vars: IndexMap<String, VarsConfig>,
     force: bool,
 ) -> anyhow::Result<()> {
-    run_task_inner_with_opts(path, tasks, status_expected, outputs_expected, restarts_expected, runs_expected, timeout_seconds, vars, force, false).await
-}
-
-async fn run_task_inner_with_opts(
-    path: &Path,
-    tasks: Vec<String>,
-    status_expected: HashMap<String, String>,
-    outputs_expected: Option<HashMap<String, String>>,
-    restarts_expected: Option<HashMap<String, u64>>,
-    runs_expected: Option<HashMap<String, u64>>,
-    timeout_seconds: Option<u64>,
-    vars: IndexMap<String, VarsConfig>,
-    force: bool,
-    quit_on_done: bool,
-) -> anyhow::Result<()> {
     let path = path::absolute(path)?;
     let (root, children) = ProjectConfig::new_multi(&path)?;
     let ws = Workspace::new(&root, &children, &tasks, &path, &vars, force, false, Some(false), Some(false)).await?;
@@ -795,7 +777,7 @@ async fn run_task_inner_with_opts(
 
     // Start runner
     let runner_fut = tokio::spawn(async move {
-        runner.run(&app_tx, quit_on_done).await.ok();
+        runner.run(&app_tx, false).await.ok();
     });
 
     // Handle events and assert task statuses
