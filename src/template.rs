@@ -1,6 +1,6 @@
 use crate::config::{
-    DependsOnConfig, DependsOnConfigStruct, DynamicVarsInner, HealthCheckConfig, ProjectConfig, ServiceConfig,
-    TaskConfig, VarsConfig,
+    DependsOnConfig, DependsOnConfigStruct, DynamicVarsInner, FinalizedByConfig, FinalizedByConfigStruct,
+    HealthCheckConfig, ProjectConfig, ServiceConfig, TaskConfig, VarsConfig,
 };
 use crate::log::OutputCollector;
 use crate::process::{ChildExit, Command, ProcessManager};
@@ -257,6 +257,27 @@ impl TaskConfig {
             }
         }
         config.depends_on = rendered_depends_on;
+
+        // Render finalized_by task and vars
+        let mut rendered_finalized_by = Vec::new();
+        for finalized_by in config.finalized_by.iter() {
+            match finalized_by {
+                FinalizedByConfig::String(task) => {
+                    let task = tera.render_str(task, &context)?;
+                    if !task.ends_with("#") {
+                        rendered_finalized_by.push(FinalizedByConfig::String(task))
+                    }
+                }
+                FinalizedByConfig::Struct(fb) => {
+                    let task = tera.render_str(&fb.task, &context)?;
+                    if !task.ends_with("#") {
+                        let vars = render_value_map(&fb.vars, &mut tera, context).await?;
+                        rendered_finalized_by.push(FinalizedByConfig::Struct(FinalizedByConfigStruct { task, vars }));
+                    }
+                }
+            }
+        }
+        config.finalized_by = rendered_finalized_by;
 
         Ok(config)
     }
@@ -517,6 +538,89 @@ impl ConfigRenderer {
             depends_on.task = variant_task_name.clone();
 
             // Render dependency tasks recursively
+            Self::render_variant_tasks(
+                &variant_task_name,
+                root_config,
+                child_configs,
+                raw_root_config,
+                raw_child_configs,
+                num_variants,
+                contexts,
+            )
+            .await?;
+        }
+
+        // Render finalized_by task variants (same logic as depends_on)
+        for finalized_by in task_config.finalized_by.iter_mut() {
+            let FinalizedByConfig::Struct(finalized_by) = finalized_by else {
+                continue;
+            };
+            if finalized_by.vars.is_empty() {
+                continue;
+            };
+
+            let (fb_task, fb_project) = Self::get_task(&finalized_by.task, raw_root_config, raw_child_configs)
+                .context(format!(
+                    "unknown finalized_by task {:?} for {:?}",
+                    finalized_by.task, task_name
+                ))?;
+
+            let mut variant_task = fb_task.clone();
+
+            for (k, v) in finalized_by.vars.iter().filter(|(k, _)| fb_task.vars.contains_key(*k)) {
+                variant_task.vars.insert(k.clone(), v.clone());
+            }
+
+            let fb_context = contexts
+                .get(&fb_task.full_name())
+                .context(format!("unknown task {:?}", fb_task.full_name()))?;
+            let variant_context = variant_task.context(fb_project, fb_context).await?;
+
+            let mut rendered_variant_task = variant_task.render(&variant_context).await?;
+
+            debug!(
+                "Variant? (finalized_by): {:?}, finalizer of: {:?}\ncontext: {:#?}\nvars: {:#?}",
+                rendered_variant_task.full_name(),
+                task_name,
+                variant_context,
+                rendered_variant_task.vars,
+            );
+
+            if let Some(same_variant) =
+                Self::get_variant_tasks(&rendered_variant_task.full_name(), root_config, child_configs)
+                    .iter()
+                    .find(|t| {
+                        contexts
+                            .get(&t.full_name())
+                            .map(|c| *c == variant_context)
+                            .unwrap_or(false)
+                    })
+            {
+                finalized_by.task = same_variant.full_name();
+                continue;
+            }
+
+            let suffix = num_variants
+                .entry(fb_task.full_orig_name())
+                .and_modify(|v| *v += 1)
+                .or_insert(1);
+            let variant_task_name = format!("{}-{}", fb_task.full_name(), suffix);
+            rendered_variant_task.name = Task::split_name(&variant_task_name).1.to_string();
+
+            info!(
+                "Variant (finalized_by): {:?}, finalizer of: {:?}\ncontext: {:#?}\nvars: {:#?}",
+                rendered_variant_task.full_name(),
+                task_name,
+                variant_context,
+                rendered_variant_task.vars
+            );
+
+            contexts.insert(variant_task_name.clone(), variant_context);
+
+            Self::set_task(rendered_variant_task, root_config, child_configs);
+
+            finalized_by.task = variant_task_name.clone();
+
             Self::render_variant_tasks(
                 &variant_task_name,
                 root_config,

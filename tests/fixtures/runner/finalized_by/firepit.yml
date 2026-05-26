@@ -1,0 +1,13 @@
+tasks:
+  foo:
+    command: echo "foo"
+    depends_on:
+      - bar
+    finalized_by:
+      - cleanup
+
+  bar:
+    command: echo "bar"
+
+  cleanup:
+    command: echo "cleanup"

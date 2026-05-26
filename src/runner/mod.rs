@@ -52,6 +52,17 @@ impl TaskRunner {
         let task_graph_all = TaskGraph::new(&all_tasks, Some(&target_tasks), ws.force)?;
         let task_graph = task_graph_all.transitive_closure(&target_tasks, Direction::Outgoing)?;
         let tasks = task_graph.sort()?;
+
+        // Expand target_tasks to include finalizer tasks so quit_on_done waits for them
+        let mut target_tasks = target_tasks;
+        for task in &tasks {
+            for f in &task.finalized_by {
+                if !target_tasks.contains(f) {
+                    target_tasks.push(f.clone());
+                }
+            }
+        }
+
         debug!("Task graph:\n{:?}", task_graph);
 
         let file_watcher = if ws.watch {

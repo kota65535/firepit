@@ -350,6 +350,42 @@ async fn test_vars_dynamic() {
 }
 
 #[tokio::test]
+async fn test_finalized_by() {
+    setup();
+    let path = BASE_PATH.join("finalized_by");
+    let tasks = vec![String::from("foo")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#foo"), String::from("Finished: Success"));
+    statuses.insert(String::from("#bar"), String::from("Finished: Success"));
+    statuses.insert(String::from("#cleanup"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#foo"), String::from("foo"));
+    outputs.insert(String::from("#bar"), String::from("bar"));
+    outputs.insert(String::from("#cleanup"), String::from("cleanup"));
+
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_finalized_by_failure() {
+    setup();
+    let path = BASE_PATH.join("finalized_by_failure");
+    let tasks = vec![String::from("foo")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#foo"), String::from("Finished: Failure(1)"));
+    statuses.insert(String::from("#cleanup"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#foo"), String::from("foo"));
+    outputs.insert(String::from("#cleanup"), String::from("cleanup"));
+
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+#[tokio::test]
 async fn test_cyclic() {
     setup();
     let path = BASE_PATH.join("cyclic");
