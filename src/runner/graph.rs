@@ -479,7 +479,7 @@ impl TaskGraph {
     async fn wait_all_watches(receivers: Vec<(watch::Receiver<NodeResult>, bool)>) -> anyhow::Result<bool> {
         for (mut rx, ignore_failure) in receivers {
             if (*rx.borrow()).present() {
-                if *rx.borrow().success() || ignore_failure {
+                if (*rx.borrow()).success() || ignore_failure {
                     continue;
                 }
                 return Ok(false);
@@ -489,7 +489,7 @@ impl TaskGraph {
                     anyhow::bail!("watch channel closed");
                 }
                 if (*rx.borrow()).present() {
-                    if *rx.borrow().success() || ignore_failure {
+                    if (*rx.borrow()).success() || ignore_failure {
                         break;
                     }
                     return Ok(false);
