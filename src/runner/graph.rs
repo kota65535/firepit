@@ -412,20 +412,24 @@ impl TaskGraph {
                     Control::<()>::Continue
                 });
 
-                // Also include finalizer tasks and their transitive dependencies
-                let mut finalizer_indices = Vec::new();
-                for &idx in &visited {
-                    if let Some(task) = self.graph.node_weight(idx) {
-                        for f in &task.finalized_by {
-                            if let Some((_, fi)) = self.node_by_task(f) {
-                                if !visited.contains(&fi) {
-                                    finalizer_indices.push(fi);
+                // Also include finalizer tasks and their transitive dependencies.
+                // Loop until no new finalizer nodes are discovered (handles chained finalizers).
+                loop {
+                    let mut finalizer_indices = Vec::new();
+                    for &idx in &visited {
+                        if let Some(task) = self.graph.node_weight(idx) {
+                            for f in &task.finalized_by {
+                                if let Some((_, fi)) = self.node_by_task(f) {
+                                    if !visited.contains(&fi) {
+                                        finalizer_indices.push(fi);
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                if !finalizer_indices.is_empty() {
+                    if finalizer_indices.is_empty() {
+                        break;
+                    }
                     depth_first_search(&self.graph, finalizer_indices, |idx| {
                         if let petgraph::visit::DfsEvent::Discover(n, _) = idx {
                             visited.insert(n);
