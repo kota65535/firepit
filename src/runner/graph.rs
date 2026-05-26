@@ -143,9 +143,20 @@ impl TaskGraph {
         }
 
         // If targets are not given, consider all tasks as target
-        let targets = targets
+        let mut targets = targets
             .cloned()
-            .unwrap_or_else(|| tasks.iter().map(|t| t.name.clone()).collect());
+            .unwrap_or_else(|| tasks.iter().map(|t| t.name.clone()).collect::<Vec<_>>());
+
+        // Expand targets to include finalizer tasks so quit_on_done waits for them
+        for t in tasks {
+            if targets.contains(&t.name) {
+                for f in &t.finalized_by {
+                    if !targets.contains(f) {
+                        targets.push(f.clone());
+                    }
+                }
+            }
+        }
 
         let ret = TaskGraph { graph, targets };
 
@@ -394,8 +405,8 @@ impl TaskGraph {
         })
     }
 
-    pub fn set_targets(&mut self, targets: Vec<String>) {
-        self.targets = targets;
+    pub fn targets(&self) -> &Vec<String> {
+        &self.targets
     }
 
     pub fn transitive_closure(&self, names: &Vec<String>, direction: Direction) -> anyhow::Result<TaskGraph> {

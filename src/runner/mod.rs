@@ -50,21 +50,8 @@ impl TaskRunner {
         let target_tasks = ws.target_tasks.clone();
 
         let task_graph_all = TaskGraph::new(&all_tasks, Some(&target_tasks), ws.force)?;
-        let mut task_graph = task_graph_all.transitive_closure(&target_tasks, Direction::Outgoing)?;
+        let task_graph = task_graph_all.transitive_closure(&target_tasks, Direction::Outgoing)?;
         let tasks = task_graph.sort()?;
-
-        // Expand target_tasks to include finalizer tasks so quit_on_done waits for them
-        let mut target_tasks = target_tasks;
-        for task in &tasks {
-            for f in &task.finalized_by {
-                if !target_tasks.contains(f) {
-                    target_tasks.push(f.clone());
-                }
-            }
-        }
-
-        // Update task graph targets so visit()'s quit_on_done also waits for finalizers
-        task_graph.set_targets(target_tasks.clone());
 
         debug!("Task graph:\n{:?}", task_graph);
 
@@ -138,7 +125,7 @@ impl TaskRunner {
 
         // Task futures
         let mut task_fut = FuturesUnordered::new();
-        let targets_remaining: HashSet<String> = self.target_tasks.iter().map(|s| s.clone()).collect();
+        let targets_remaining: HashSet<String> = self.task_graph.targets().iter().cloned().collect();
         let targets_remaining = Arc::new(Mutex::new(targets_remaining));
 
         while !node_rx.is_closed() {
