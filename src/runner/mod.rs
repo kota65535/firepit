@@ -127,6 +127,7 @@ impl TaskRunner {
         let mut task_fut = FuturesUnordered::new();
         let targets_remaining = self.task_graph.targets().clone();
         let targets_remaining = Arc::new(Mutex::new(targets_remaining));
+        let finalizer_names = self.task_graph.finalizer_names();
         let is_finalizing = Arc::new(Mutex::new(false));
 
         while !node_rx.is_closed() {
@@ -183,7 +184,6 @@ impl TaskRunner {
                             info!("Stopping runner");
 
                             // Check for pending finalizer tasks before stopping
-                            let finalizer_names = self.task_graph.finalizer_names();
                             let has_pending_finalizers = {
                                 let remaining = targets_remaining.lock().expect("not poisoned");
                                 finalizer_names.iter().any(|f| remaining.contains(f))

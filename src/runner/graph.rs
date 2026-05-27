@@ -230,6 +230,17 @@ impl TaskGraph {
             let targets_remaining_cloned = targets_remaining.clone();
             let visitor_tx_cloned = visitor_tx.clone();
             nodes_fut.push(tokio_spawn!("node", { name = task_name }, async move {
+                // Handle Finalize command: finalizer visitors continue, non-finalizer visitors stop.
+                macro_rules! handle_finalize {
+                    ($msg:expr) => {
+                        if is_finalizer {
+                            debug!($msg);
+                            continue
+                        }
+                        debug!("Non-finalizer visitor stopped by Finalize");
+                        return Ok(());
+                    };
+                }
                 let mut ignore_deps = false;
                 let mut num_runs = 0;
                 let mut num_restart = 0;
@@ -257,12 +268,7 @@ impl TaskGraph {
                                             return Ok(())
                                         }
                                         VisitorCommand::Finalize => {
-                                            if is_finalizer {
-                                                debug!("Finalizer visitor continuing to wait for deps");
-                                                continue
-                                            }
-                                            debug!("Non-finalizer visitor stopped by Finalize");
-                                            return Ok(());
+                                            handle_finalize!("Finalizer visitor continuing to wait for deps");
                                         }
                                         VisitorCommand::Restart { task: task_name, force } => {
                                             debug!("Visitor restarted");
@@ -309,12 +315,7 @@ impl TaskGraph {
                                                     return Ok(())
                                                 }
                                                 VisitorCommand::Finalize => {
-                                                    if is_finalizer {
-                                                        debug!("Finalizer visitor continuing to wait for callback");
-                                                        continue 'recv
-                                                    }
-                                                    debug!("Non-finalizer visitor stopped by Finalize");
-                                                    return Ok(());
+                                                    handle_finalize!("Finalizer visitor continuing to wait for callback");
                                                 }
                                                 VisitorCommand::Restart { task: task_name, force } => {
                                                     debug!("Visitor restarted");
@@ -397,13 +398,7 @@ impl TaskGraph {
                                     return Ok(());
                                 }
                                 VisitorCommand::Finalize => {
-                                    // Finalizer already completed, nothing to do
-                                    if is_finalizer {
-                                        debug!("Finalizer visitor already completed, ignoring Finalize");
-                                        continue;
-                                    }
-                                    debug!("Non-finalizer visitor stopped by Finalize");
-                                    return Ok(());
+                                    handle_finalize!("Finalizer visitor already completed, ignoring Finalize");
                                 }
                                 VisitorCommand::Restart { task: task_name, force } => {
                                     if task.name == task_name {
