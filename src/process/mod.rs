@@ -173,14 +173,6 @@ impl ProcessManager {
         }
     }
 
-    /// Re-open the process manager after a close, allowing new processes to be spawned.
-    /// Used during the finalization phase of shutdown, where finalizer tasks
-    /// need to spawn new processes after the main tasks have been stopped.
-    pub async fn reopen(&self) {
-        let mut lock = self.state.lock().await;
-        lock.is_closing = false;
-    }
-
     pub async fn is_closed(&self) -> bool {
         self.state.lock().await.is_closing
     }

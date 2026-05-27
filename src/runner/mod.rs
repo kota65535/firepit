@@ -182,35 +182,19 @@ impl TaskRunner {
                             }
 
                             info!("Stopping runner");
-                            info!("Stopping tasks");
-                            let force_quit = tokio::select! {
-                                Ok(RunnerCommand::Quit) = self.command_rx.recv() => {
-                                    info!("Killing tasks");
-                                    self.manager.close_by_kill().await;
-                                    info!("Killed tasks");
-                                    true
-                                }
-                                _ = self.manager.close() => {
-                                    info!("Stopped tasks");
-                                    false
-                                }
-                            };
 
-                            if force_quit {
-                                info!("Stopping all visitors (force quit)");
-                                if let Err(err) = visitor_tx.send(VisitorCommand::Stop) {
-                                    warn!("Failed to stop visitors: {:?}", err);
-                                }
-                                node_rx.close();
-                                continue;
-                            }
-
-                            // Check for finalizer tasks that still need to run
+                            // Check for pending finalizer tasks before stopping
                             let finalizer_names = self.task_graph.finalizer_names();
                             let has_pending_finalizers = {
                                 let remaining = targets_remaining.lock().expect("not poisoned");
                                 finalizer_names.iter().any(|f| remaining.contains(f))
                             };
+
+                            // Stop non-finalizer tasks
+                            info!("Stopping tasks");
+                            self.manager.stop().await;
+                            info!("Stopped tasks");
+
                             if !has_pending_finalizers {
                                 info!("No pending finalizer tasks, stopping visitors");
                                 if let Err(err) = visitor_tx.send(VisitorCommand::Stop) {
@@ -219,10 +203,6 @@ impl TaskRunner {
                                 node_rx.close();
                                 continue;
                             }
-
-                            // Reopen process manager so finalizer processes can spawn
-                            info!("Reopening process manager for finalizer tasks");
-                            self.manager.reopen().await;
 
                             // Send Finalize: stops non-finalizer visitors, lets finalizer visitors continue
                             info!("Sending Finalize to visitors, {} finalizers pending", finalizer_names.len());
