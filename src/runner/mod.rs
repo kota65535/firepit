@@ -190,9 +190,9 @@ impl TaskRunner {
                                 finalizer_names.iter().any(|f| remaining.contains(f))
                             };
 
-                            // Stop non-finalizer tasks
+                            // Stop non-finalizer tasks (preserve running finalizers)
                             info!("Stopping tasks");
-                            self.manager.stop().await;
+                            self.manager.stop_except_labels(&finalizer_names).await;
                             info!("Stopped tasks");
 
                             if !has_pending_finalizers {
