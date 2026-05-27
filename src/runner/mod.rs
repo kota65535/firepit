@@ -14,6 +14,7 @@ use futures::StreamExt;
 use indexmap::IndexMap;
 use petgraph::Direction;
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -127,6 +128,7 @@ impl TaskRunner {
         let mut task_fut = FuturesUnordered::new();
         let targets_remaining = self.task_graph.targets().clone();
         let targets_remaining = Arc::new(Mutex::new(targets_remaining));
+        let is_finalizing = Arc::new(AtomicBool::new(false));
 
         while !node_rx.is_closed() {
             tokio::select! {
@@ -168,36 +170,85 @@ impl TaskRunner {
                             }
                         }
                         RunnerCommand::Quit => {
+                            // If already finalizing, force quit
+                            if is_finalizing.load(Ordering::SeqCst) {
+                                info!("Force killing remaining finalizer tasks");
+                                self.manager.close_by_kill().await;
+                                if let Err(err) = visitor_tx.send(VisitorCommand::Stop) {
+                                    warn!("Failed to stop visitors: {:?}", err);
+                                }
+                                node_rx.close();
+                                continue;
+                            }
+
                             info!("Stopping runner");
                             info!("Stopping tasks");
-                            tokio::select! {
+                            let force_quit = tokio::select! {
                                 Ok(RunnerCommand::Quit) = self.command_rx.recv() => {
                                     info!("Killing tasks");
                                     self.manager.close_by_kill().await;
                                     info!("Killed tasks");
+                                    true
                                 }
-                                _ =  self.manager.close() => {
+                                _ = self.manager.close() => {
                                     info!("Stopped tasks");
+                                    false
                                 }
+                            };
+
+                            if force_quit {
+                                info!("Stopping all visitors (force quit)");
+                                if let Err(err) = visitor_tx.send(VisitorCommand::Stop) {
+                                    warn!("Failed to stop visitors: {:?}", err);
+                                }
+                                node_rx.close();
+                                continue;
                             }
-                            info!("Stopping visitors");
-                            if let Err(err) = visitor_tx.send(VisitorCommand::Stop) {
-                                warn!("Failed to stop visitors: {:?}", err);
+
+                            // Check for finalizer tasks that still need to run
+                            let finalizer_names = self.task_graph.finalizer_names();
+                            let has_pending_finalizers = {
+                                let remaining = targets_remaining.lock().expect("not poisoned");
+                                finalizer_names.iter().any(|f| remaining.contains(f))
+                            };
+                            if !has_pending_finalizers {
+                                info!("No pending finalizer tasks, stopping visitors");
+                                if let Err(err) = visitor_tx.send(VisitorCommand::Stop) {
+                                    warn!("Failed to stop visitors: {:?}", err);
+                                }
+                                node_rx.close();
+                                continue;
                             }
-                            node_rx.close();
+
+                            // Reopen process manager so finalizer processes can spawn
+                            info!("Reopening process manager for finalizer tasks");
+                            self.manager.reopen().await;
+
+                            // Send Finalize: stops non-finalizer visitors, lets finalizer visitors continue
+                            info!("Sending Finalize to visitors, {} finalizers pending", finalizer_names.len());
+                            if let Err(err) = visitor_tx.send(VisitorCommand::Finalize) {
+                                warn!("Failed to send Finalize: {:?}", err);
+                            }
+
+                            // Set flag so task futures know to stop visitors when all targets are done
+                            is_finalizing.store(true, Ordering::SeqCst);
                         }
                     }
                 }
 
                 // Visitor message branch
-                Some(message) = node_rx.recv() => {
-                    let VisitorMessage {
+                message = node_rx.recv() => {
+                    let Some(VisitorMessage {
                         node: task,
                         deps_ok,
                         num_runs,
                         num_restart,
                         callback,
-                    } = message;
+                    }) = message else {
+                        // All visitor senders dropped, no more tasks to run
+                        info!("All visitors finished, exiting main loop");
+                        break;
+                    };
 
                     let mut app_tx = app_tx.clone().with_name(&task.name);
                     let fail_fast = self.fail_fast;
@@ -206,6 +257,7 @@ impl TaskRunner {
                     let task_name = task.name.clone();
                     let visitor_tx_cloned = visitor_tx.clone();
                     let targets_remaining_cloned = targets_remaining.clone();
+                    let is_finalizing_cloned = is_finalizing.clone();
                     let start_times_cloned = self.start_times.clone();
                     let end_times_cloned = self.end_times.clone();
                     task_fut.push(tokio_spawn!("task", { name = task_name }, async move {
@@ -388,7 +440,7 @@ impl TaskRunner {
                             t.remove(&task.name);
                             t.is_empty()
                         };
-                        if quit_on_done && targets_done {
+                        if (quit_on_done || is_finalizing_cloned.load(Ordering::SeqCst)) && targets_done {
                             info!("All target tasks done, stopping visitors");
                             visitor_tx_cloned.send(VisitorCommand::Stop).ok();
                         }

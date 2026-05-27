@@ -1,0 +1,8 @@
+tasks:
+  server:
+    command: sleep 3600
+    service: true
+    finalized_by:
+      - cleanup
+  cleanup:
+    command: echo "cleanup done"

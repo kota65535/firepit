@@ -953,3 +953,90 @@ fn handle_events(
         }
     })
 }
+
+/// Test that finalized_by tasks run when a service is stopped via Quit.
+/// The cleanup task should execute after the service is gracefully stopped.
+#[tokio::test]
+async fn test_finalized_by_service_quit() {
+    setup();
+    let path = BASE_PATH.join("finalized_by_service");
+    let tasks = vec![String::from("server")];
+
+    let path = path::absolute(&path).unwrap();
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &tasks,
+        &path,
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    let mut runner = TaskRunner::new(&ws).unwrap();
+    let (app_tx, mut app_rx) = AppCommandChannel::new();
+    let runner_tx = runner.command_tx();
+
+    let runner_fut = tokio::spawn(async move {
+        runner.run(&app_tx, false).await.ok();
+    });
+
+    let events_fut = tokio::spawn(async move {
+        let mut statuses = HashMap::new();
+        let mut quit_sent = false;
+
+        let timeout = tokio::time::sleep(Duration::from_secs(DEFAULT_TEST_TIMEOUT_SECONDS));
+        tokio::pin!(timeout);
+
+        loop {
+            tokio::select! {
+                _ = &mut timeout => {
+                    panic!(
+                        "Test timed out. Statuses so far: {:?}",
+                        statuses
+                    );
+                }
+                Some(event) = app_rx.recv() => {
+                    match event {
+                        AppCommand::ReadyTask { task } => {
+                            statuses.insert(task.clone(), String::from("Ready"));
+                            // Service is ready, send Quit to trigger finalization
+                            if !quit_sent && task == "#server" {
+                                runner_tx.quit();
+                                quit_sent = true;
+                            }
+                        }
+                        AppCommand::FinishTask { task, result, .. } => {
+                            statuses.insert(task.clone(), format!("Finished: {:?}", result));
+                        }
+                        AppCommand::Quit => {
+                            break;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            // Check if cleanup finished after quit was sent
+            if quit_sent && statuses.get("#cleanup").is_some() {
+                break;
+            }
+        }
+
+        // Assert that the cleanup task ran successfully
+        assert_eq!(
+            statuses.get("#cleanup"),
+            Some(&String::from("Finished: Success")),
+            "Cleanup finalizer should have run after quit. Statuses: {:?}",
+            statuses
+        );
+    });
+
+    runner_fut.await.unwrap();
+    events_fut.await.unwrap();
+}

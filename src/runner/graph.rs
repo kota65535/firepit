@@ -39,6 +39,8 @@ pub struct VisitorMessage {
 pub enum VisitorCommand {
     Stop,
     Restart { task: String, force: bool },
+    /// Graceful shutdown: stop non-finalizer visitors, let finalizer visitors continue
+    Finalize,
 }
 
 pub struct VisitorHandle {
@@ -192,6 +194,9 @@ impl TaskGraph {
         let targets_remaining: HashSet<String> = self.targets.clone();
         let targets_remaining = Arc::new(Mutex::new(targets_remaining));
 
+        // Compute finalizer task names
+        let finalizer_set = self.finalizer_names();
+
         // Run visitor thread for all nodes
         let nodes_fut = FuturesUnordered::new();
         for node_id in self.graph.node_identifiers() {
@@ -221,6 +226,7 @@ impl TaskGraph {
                 .collect::<anyhow::Result<Vec<_>>>()?;
 
             let task_name = task.name.clone();
+            let is_finalizer = finalizer_set.contains(&task.name);
             let targets_remaining_cloned = targets_remaining.clone();
             let visitor_tx_cloned = visitor_tx.clone();
             nodes_fut.push(tokio_spawn!("node", { name = task_name }, async move {
@@ -249,6 +255,14 @@ impl TaskGraph {
                                         VisitorCommand::Stop => {
                                             debug!("Visitor stopped");
                                             return Ok(())
+                                        }
+                                        VisitorCommand::Finalize => {
+                                            if is_finalizer {
+                                                debug!("Finalizer visitor continuing to wait for deps");
+                                                continue
+                                            }
+                                            debug!("Non-finalizer visitor stopped by Finalize");
+                                            return Ok(());
                                         }
                                         VisitorCommand::Restart { task: task_name, force } => {
                                             debug!("Visitor restarted");
@@ -293,6 +307,14 @@ impl TaskGraph {
                                                 VisitorCommand::Stop => {
                                                     debug!("Visitor stopped");
                                                     return Ok(())
+                                                }
+                                                VisitorCommand::Finalize => {
+                                                    if is_finalizer {
+                                                        debug!("Finalizer visitor continuing to wait for callback");
+                                                        continue 'recv
+                                                    }
+                                                    debug!("Non-finalizer visitor stopped by Finalize");
+                                                    return Ok(());
                                                 }
                                                 VisitorCommand::Restart { task: task_name, force } => {
                                                     debug!("Visitor restarted");
@@ -374,6 +396,15 @@ impl TaskGraph {
                                     debug!("Visitor stopped");
                                     return Ok(());
                                 }
+                                VisitorCommand::Finalize => {
+                                    // Finalizer already completed, nothing to do
+                                    if is_finalizer {
+                                        debug!("Finalizer visitor already completed, ignoring Finalize");
+                                        continue;
+                                    }
+                                    debug!("Non-finalizer visitor stopped by Finalize");
+                                    return Ok(());
+                                }
                                 VisitorCommand::Restart { task: task_name, force } => {
                                     if task.name == task_name {
                                         debug!("Visitor restarted");
@@ -406,6 +437,18 @@ impl TaskGraph {
 
     pub fn targets(&self) -> &HashSet<String> {
         &self.targets
+    }
+
+    /// Returns the set of task names that are finalizer tasks
+    /// (appear in some task's `finalized_by` list).
+    pub fn finalizer_names(&self) -> HashSet<String> {
+        let mut finalizers = HashSet::new();
+        for task in self.graph.node_weights() {
+            for f in &task.finalized_by {
+                finalizers.insert(f.clone());
+            }
+        }
+        finalizers
     }
 
     pub fn transitive_closure(&self, names: &Vec<String>, direction: Direction) -> anyhow::Result<TaskGraph> {
