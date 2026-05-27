@@ -13,8 +13,7 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use indexmap::IndexMap;
 use petgraph::Direction;
-use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -128,7 +127,7 @@ impl TaskRunner {
         let mut task_fut = FuturesUnordered::new();
         let targets_remaining = self.task_graph.targets().clone();
         let targets_remaining = Arc::new(Mutex::new(targets_remaining));
-        let is_finalizing = Arc::new(AtomicBool::new(false));
+        let is_finalizing = Arc::new(Mutex::new(false));
 
         while !node_rx.is_closed() {
             tokio::select! {
@@ -171,7 +170,7 @@ impl TaskRunner {
                         }
                         RunnerCommand::Quit => {
                             // If already finalizing, force quit
-                            if is_finalizing.load(Ordering::SeqCst) {
+                            if *is_finalizing.lock().expect("not poisoned") {
                                 info!("Force killing remaining finalizer tasks");
                                 self.manager.close_by_kill().await;
                                 if let Err(err) = visitor_tx.send(VisitorCommand::Stop) {
@@ -211,7 +210,7 @@ impl TaskRunner {
                             }
 
                             // Set flag so task futures know to stop visitors when all targets are done
-                            is_finalizing.store(true, Ordering::SeqCst);
+                            *is_finalizing.lock().expect("not poisoned") = true;
                         }
                     }
                 }
@@ -420,7 +419,7 @@ impl TaskRunner {
                             t.remove(&task.name);
                             t.is_empty()
                         };
-                        if (quit_on_done || is_finalizing_cloned.load(Ordering::SeqCst)) && targets_done {
+                        if (quit_on_done || *is_finalizing_cloned.lock().expect("not poisoned")) && targets_done {
                             info!("All target tasks done, stopping visitors");
                             visitor_tx_cloned.send(VisitorCommand::Stop).ok();
                         }
