@@ -52,5 +52,5 @@ inherits = "release"
 lto = "thin"
 
 [dev-dependencies]
-assertables = "9.5.0"
-rstest = "0.26.0"
+assertables = "=9.5.0"
+rstest = "=0.26.0"
