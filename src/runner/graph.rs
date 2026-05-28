@@ -230,21 +230,40 @@ impl TaskGraph {
             let targets_remaining_cloned = targets_remaining.clone();
             let visitor_tx_cloned = visitor_tx.clone();
             nodes_fut.push(tokio_spawn!("node", { name = task_name }, async move {
-                // Handle Finalize command: finalizer visitors continue, non-finalizer visitors stop.
-                macro_rules! handle_finalize {
-                    ($msg:expr) => {
-                        if is_finalizer {
-                            debug!($msg);
-                            continue
-                        }
-                        debug!("Non-finalizer visitor stopped by Finalize");
-                        return Ok(());
-                    };
-                }
                 let mut ignore_deps = false;
                 let mut num_runs = 0;
                 let mut num_restart = 0;
                 'start: loop {
+                    // Handle visitor commands consistently across all 3 wait points
+                    // (dep-wait, callback-wait, post-completion).
+                    macro_rules! handle_visitor_command {
+                        ($command:expr, $finalize_msg:expr) => {
+                            match $command {
+                                VisitorCommand::Stop => {
+                                    debug!("Visitor stopped");
+                                    return Ok(());
+                                }
+                                VisitorCommand::Finalize => {
+                                    if is_finalizer {
+                                        debug!($finalize_msg);
+                                        continue
+                                    }
+                                    debug!("Non-finalizer visitor stopped by Finalize");
+                                    return Ok(());
+                                }
+                                VisitorCommand::Restart { task: task_name, force } => {
+                                    if task.name == task_name {
+                                        debug!("Visitor restarted");
+                                        ignore_deps = force;
+                                        num_runs += 1;
+                                        tx.send(NodeResult::None).ok();
+                                        continue 'start;
+                                    }
+                                    continue
+                                }
+                            }
+                        };
+                    }
                     if dep_tasks.is_empty() {
                         info!("No dependency")
                     } else {
@@ -262,25 +281,7 @@ impl TaskGraph {
                             tokio::select! {
                                 // Visitor command branch
                                 Ok(command) = visitor_rx.recv() => {
-                                    match command {
-                                        VisitorCommand::Stop => {
-                                            debug!("Visitor stopped");
-                                            return Ok(())
-                                        }
-                                        VisitorCommand::Finalize => {
-                                            handle_finalize!("Finalizer visitor continuing to wait for deps");
-                                        }
-                                        VisitorCommand::Restart { task: task_name, force } => {
-                                            debug!("Visitor restarted");
-                                            if task.name == task_name {
-                                                ignore_deps = force;
-                                                num_runs += 1;
-                                                tx.send(NodeResult::None).ok();
-                                                continue 'start;
-                                            }
-                                            continue
-                                        }
-                                    };
+                                    handle_visitor_command!(command, "Finalizer visitor continuing to wait for deps");
                                 }
                                 // Normal branch, waiting for all dependency tasks
                                 Ok(deps_ok) = Self::wait_all_watches(dep_rxs.clone()) => {
@@ -309,25 +310,7 @@ impl TaskGraph {
                                     tokio::select! {
                                         // Visitor command branch
                                         Ok(command) = visitor_rx.recv() => {
-                                            match command {
-                                                VisitorCommand::Stop => {
-                                                    debug!("Visitor stopped");
-                                                    return Ok(())
-                                                }
-                                                VisitorCommand::Finalize => {
-                                                    handle_finalize!("Finalizer visitor continuing to wait for callback");
-                                                }
-                                                VisitorCommand::Restart { task: task_name, force } => {
-                                                    debug!("Visitor restarted");
-                                                    if task.name == task_name {
-                                                        ignore_deps = force;
-                                                        num_runs += 1;
-                                                        tx.send(NodeResult::None).ok();
-                                                        continue 'start;
-                                                    }
-                                                    continue 'recv
-                                                }
-                                            };
+                                            handle_visitor_command!(command, "Finalizer visitor continuing to wait for callback");
                                         }
                                         // Normal branch, waiting for the node result
                                         result = callback_rx.recv() => {
@@ -392,24 +375,9 @@ impl TaskGraph {
 
                     loop {
                         match visitor_rx.recv().await {
-                            Ok(command) => match command {
-                                VisitorCommand::Stop => {
-                                    debug!("Visitor stopped");
-                                    return Ok(());
-                                }
-                                VisitorCommand::Finalize => {
-                                    handle_finalize!("Finalizer visitor already completed, ignoring Finalize");
-                                }
-                                VisitorCommand::Restart { task: task_name, force } => {
-                                    if task.name == task_name {
-                                        debug!("Visitor restarted");
-                                        num_runs += 1;
-                                        ignore_deps = force;
-                                        tx.send(NodeResult::None).ok();
-                                        continue 'start;
-                                    }
-                                }
-                            },
+                            Ok(command) => {
+                                handle_visitor_command!(command, "Finalizer visitor already completed, ignoring Finalize");
+                            }
                             Err(broadcast::error::RecvError::Closed) => {
                                 debug!("Visitor command channel closed");
                                 return Ok(());
