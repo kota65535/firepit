@@ -22,7 +22,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Setup other tools
-        uses: jdx/mise-action@v3
+        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4
 
       - name: Generate schema.json
         run: cargo run --bin firepit-schema
