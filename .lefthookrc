@@ -1,0 +1,6 @@
+# Sourced by lefthook before running pre-commit commands.
+# Commits from editors/GUIs often run with a stripped PATH, so make the
+# toolchains reachable here once instead of in every command:
+#   - cargo: rustup's bin dir
+#   - mise (and the dprint it manages): mise's bin dir + shims
+export PATH="$HOME/.cargo/bin:$HOME/.local/share/mise/shims:$HOME/.local/bin:$PATH"

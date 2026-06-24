@@ -7,21 +7,21 @@
 # pre-commit runs format & lint checks (check-only; nothing is auto-modified).
 # Fix locally with: cargo fmt --all && dprint fmt
 #
-# Commits from editors/GUIs often run with a stripped PATH, so each command
-# makes sure its toolchain is reachable: cargo from the rustup bin dir, and
-# the mise-managed dprint via `mise exec`.
+# PATH for the toolchains (cargo, mise/dprint) is set once in .lefthookrc,
+# which is sourced before the commands run.
+rc: .lefthookrc
 pre-commit:
   parallel: true
   commands:
     rustfmt:
       glob: "*.rs"
-      run: PATH="$HOME/.cargo/bin:$PATH" cargo fmt --all --check
+      run: cargo fmt --all --check
       fail_text: "Rust code is not formatted. Run: cargo fmt --all"
     clippy:
       glob: "*.rs"
-      run: PATH="$HOME/.cargo/bin:$PATH" cargo clippy --all-targets -- -D warnings
+      run: cargo clippy --all-targets -- -D warnings
       fail_text: "Clippy found issues. Fix the warnings above."
     dprint:
       glob: "*.{json,jsonc,md,markdown,toml,yaml,yml}"
-      run: PATH="$HOME/.local/bin:$PATH" mise exec -- dprint check {staged_files}
+      run: mise exec -- dprint check {staged_files}
       fail_text: "Files are not formatted. Run: dprint fmt"
