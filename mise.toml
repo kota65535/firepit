@@ -5,6 +5,7 @@
 "cargo:cargo-edit" = "0.13.10"
 lefthook = "2.1.9"
 dprint = "0.54.0"
+"npm:@commitlint/cli" = "latest"
 
 [settings]
 # Required for the [hooks] section below.

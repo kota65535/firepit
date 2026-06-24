@@ -25,3 +25,9 @@ pre-commit:
       glob: "*.{json,jsonc,md,markdown,toml,yaml,yml}"
       run: mise exec -- dprint check {staged_files}
       fail_text: "Files are not formatted. Run: dprint fmt"
+
+commit-msg:
+  commands:
+    commitlint:
+      run: mise exec -- commitlint --edit {1}
+      fail_text: "Commit message must follow Conventional Commits (e.g. 'feat: ...')."
