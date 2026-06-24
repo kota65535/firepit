@@ -53,16 +53,10 @@ pub enum NodeResult {
 
 impl NodeResult {
     pub fn success(&self) -> bool {
-        match self {
-            NodeResult::Success => true,
-            _ => false,
-        }
+        matches!(self, NodeResult::Success)
     }
     pub fn present(&self) -> bool {
-        match self {
-            NodeResult::None => false,
-            _ => true,
-        }
+        !matches!(self, NodeResult::None)
     }
 }
 
@@ -147,7 +141,7 @@ impl TaskGraph {
         let (visitor_tx, visitor_rx) = broadcast::channel(1024);
 
         // Remaining target tasks
-        let targets_remaining: HashSet<String> = self.targets.iter().map(|s| s.clone()).collect();
+        let targets_remaining: HashSet<String> = self.targets.iter().cloned().collect();
         let targets_remaining = Arc::new(Mutex::new(targets_remaining));
 
         // Run visitor thread for all nodes
@@ -414,7 +408,6 @@ impl TaskGraph {
 
     async fn wait_all_watches(mut receivers: Vec<watch::Receiver<NodeResult>>) -> anyhow::Result<bool> {
         for rx in receivers.iter_mut() {
-            let v = rx.borrow().clone();
             if (*rx.borrow()).present() {
                 if !(*rx.borrow()).success() {
                     return Ok(false);

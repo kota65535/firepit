@@ -343,7 +343,7 @@ async fn test_vars_dynamic() {
     let mut outputs = HashMap::new();
     outputs.insert(
         String::from("#foo"),
-        String::from(format!("12345 workflows true foo {}\nA\nB\nC\nD\nE", branch)),
+        format!("12345 workflows true foo {}\nA\nB\nC\nD\nE", branch),
     );
 
     run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
@@ -580,6 +580,9 @@ async fn run_task_with_vars(
     .await
 }
 
+// Test helper aggregating many independent expectations; a struct refactor
+// would add noise without improving the tests.
+#[allow(clippy::too_many_arguments)]
 async fn run_task_inner(
     path: &Path,
     tasks: Vec<String>,
@@ -593,7 +596,18 @@ async fn run_task_inner(
 ) -> anyhow::Result<()> {
     let path = path::absolute(path)?;
     let (root, children) = ProjectConfig::new_multi(&path)?;
-    let ws = Workspace::new(&root, &children, &tasks, &path, &vars, force, false, Some(false), Some(false)).await?;
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &tasks,
+        &path,
+        &vars,
+        force,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await?;
     // Create runner
     let mut runner = TaskRunner::new(&ws)?;
     let (app_tx, app_rx) = AppCommandChannel::new();
@@ -621,6 +635,9 @@ async fn run_task_inner(
     Ok(())
 }
 
+// Test helper aggregating many independent expectations; a struct refactor
+// would add noise without improving the tests.
+#[allow(clippy::too_many_arguments)]
 async fn run_task_with_watch<F>(
     path: &Path,
     tasks: Vec<String>,
@@ -663,7 +680,7 @@ async fn run_task_with_watch<F>(
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Do something in this closure, ex: create or update files
-    tokio::spawn(async move { f.await });
+    tokio::spawn(f);
 
     // Handle events and assert task statuses
     handle_events(

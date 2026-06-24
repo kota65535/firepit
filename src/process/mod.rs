@@ -109,16 +109,16 @@ impl ProcessManager {
     }
 
     pub async fn stop(&self) -> Vec<ChildExit> {
-        self.stop_inner(|c| true).await
+        self.stop_inner(|_c| true).await
     }
 
-    async fn stop_inner<F>(&self, filter: F) -> Vec<ChildExit>
+    async fn stop_inner<F>(&self, mut filter: F) -> Vec<ChildExit>
     where
         F: FnMut(&Child) -> bool,
     {
         let mut children = {
             let lock = self.state.lock().await;
-            lock.children.iter().cloned().filter(filter).collect::<Vec<_>>()
+            lock.children.iter().filter(|&x| filter(x)).cloned().collect::<Vec<_>>()
         };
 
         let results = FuturesUnordered::from_iter(children.iter_mut().map(|c| c.stop()))

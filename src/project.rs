@@ -24,10 +24,13 @@ pub struct Workspace {
 }
 
 impl Workspace {
+    // Public constructor aggregating many independent config inputs; refactoring
+    // into a builder/struct would change the public API without real benefit.
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         root_config: &ProjectConfig,
         child_configs: &IndexMap<String, ProjectConfig>,
-        tasks: &Vec<String>,
+        tasks: &[String],
         current_dir: &Path,
         vars: &IndexMap<String, VarsConfig>,
         force: bool,
@@ -58,7 +61,7 @@ impl Workspace {
                         // If not, select all tasks with the name in the child projects.
                         let tasks = match root_config.task(task_name) {
                             Ok(task) => vec![task],
-                            Err(_) => child_configs.values().map(|c| c.task(task_name)).flatten().collect(),
+                            Err(_) => child_configs.values().filter_map(|c| c.task(task_name).ok()).collect(),
                         };
                         if tasks.is_empty() {
                             anyhow::bail!("task {:?} does not exist in any project", task)
@@ -98,7 +101,7 @@ impl Workspace {
             }
         }
 
-        let mut renderer = ConfigRenderer::new(&root_config, &child_configs, &vars, watch);
+        let mut renderer = ConfigRenderer::new(&root_config, &child_configs, vars, watch);
         let (root_config, child_configs) = renderer.render().await?;
         ProjectConfig::validate_multi(&root_config, &child_configs)?;
 
@@ -184,7 +187,7 @@ impl Project {
     pub fn new(name: &str, root: &ProjectConfig) -> anyhow::Result<Project> {
         Ok(Project {
             name: name.to_owned(),
-            tasks: Task::new_multi(name, &root)?,
+            tasks: Task::new_multi(name, root)?,
             dir: root.dir.clone(),
         })
     }
@@ -248,15 +251,21 @@ pub struct Env {
     configs: Vec<EnvConfig>,
 }
 
+impl Default for Env {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Env {
     pub fn new() -> Self {
         Self { configs: Vec::new() }
     }
 
-    pub fn with(&self, env_files: &Vec<PathBuf>, env: &IndexMap<String, String>) -> Self {
+    pub fn with(&self, env_files: &[PathBuf], env: &IndexMap<String, String>) -> Self {
         let mut configs = self.configs.clone();
         configs.push(EnvConfig {
-            env_files: env_files.clone(),
+            env_files: env_files.to_vec(),
             env: env.clone(),
         });
         Self { configs }
@@ -268,11 +277,8 @@ impl Env {
     }
 
     pub fn load(&self) -> anyhow::Result<HashMap<String, String>> {
-        self.configs.iter().fold(Ok(HashMap::new()), |acc, config| {
-            Ok(acc?
-                .into_iter()
-                .chain(config.merged_env()?.into_iter())
-                .collect::<HashMap<_, _>>())
+        self.configs.iter().try_fold(HashMap::new(), |acc, config| {
+            Ok(acc.into_iter().chain(config.merged_env()?).collect::<HashMap<_, _>>())
         })
     }
 }
@@ -288,7 +294,7 @@ impl EnvConfig {
         Ok(self
             .load_env_files()?
             .into_iter()
-            .chain(self.env.clone().into_iter())
+            .chain(self.env.clone())
             .collect::<HashMap<_, _>>())
     }
 
@@ -316,7 +322,7 @@ impl Task {
     pub fn new_multi(project_name: &str, config: &ProjectConfig) -> anyhow::Result<HashMap<String, Task>> {
         let mut ret = HashMap::new();
         for (task_name, task_config) in config.tasks.iter() {
-            let task = Self::new(project_name, &config, task_name, task_config)?;
+            let task = Self::new(project_name, config, task_name, task_config)?;
             ret.insert(task.name.clone(), task);
         }
 
@@ -365,14 +371,14 @@ impl Task {
         let inputs = task_config
             .input_paths(&config.dir)
             .into_iter()
-            .chain(task_config.env_file_paths(&config.dir).into_iter())
+            .chain(task_config.env_file_paths(&config.dir))
             .collect::<Vec<_>>();
 
         // Output files
         let outputs = task_config
             .output_paths(&config.dir)
             .into_iter()
-            .chain(task_config.env_file_paths(&config.dir).into_iter())
+            .chain(task_config.env_file_paths(&config.dir))
             .collect::<Vec<_>>();
 
         // Probes
@@ -384,7 +390,6 @@ impl Task {
                         Some(healthcheck) => match healthcheck {
                             // Log Probe
                             HealthCheckConfig::Log(c) => Probe::LogLine(LogLineProbe::new(
-                                &task_name,
                                 Regex::new(&c.log).with_context(|| format!("invalid regex pattern {:?}", c.log))?,
                                 c.timeout,
                             )),
@@ -467,15 +472,12 @@ impl Task {
     }
 
     pub fn match_inputs(&self, paths: &HashSet<PathBuf>) -> bool {
-        self.inputs
-            .iter()
-            .map(|i| {
-                self.match_glob(i.to_str().unwrap_or(""), paths).unwrap_or_else(|e| {
-                    warn!("{:?}", e);
-                    false
-                })
+        self.inputs.iter().any(|i| {
+            self.match_glob(i.to_str().unwrap_or(""), paths).unwrap_or_else(|e| {
+                warn!("{:?}", e);
+                false
             })
-            .any(|b| b)
+        })
     }
 
     pub fn is_up_to_date(&self) -> bool {
@@ -510,7 +512,7 @@ impl Task {
         input_modified_time < output_modified_time
     }
 
-    fn latest_modified_time(&self, paths: &Vec<PathBuf>) -> u64 {
+    fn latest_modified_time(&self, paths: &[PathBuf]) -> u64 {
         let timestamps = paths
             .iter()
             .map(|p| self.modified_time(p))
@@ -530,7 +532,7 @@ impl Task {
     }
 
     fn modified_time(&self, path: &Path) -> anyhow::Result<Option<u64>> {
-        let metadata = std::fs::metadata(&path).with_context(|| format!("failed to get metadata of {:?}", path))?;
+        let metadata = std::fs::metadata(path).with_context(|| format!("failed to get metadata of {:?}", path))?;
         if !metadata.is_file() {
             return Ok(None);
         }
@@ -542,7 +544,7 @@ impl Task {
         Ok(Some(timestamp))
     }
 
-    fn glob(&self, pattern: &PathBuf) -> anyhow::Result<Vec<PathBuf>> {
+    fn glob(&self, pattern: &Path) -> anyhow::Result<Vec<PathBuf>> {
         let file_name = pattern.file_name().map(|f| f.to_string_lossy());
         let dir_name = pattern.parent();
 

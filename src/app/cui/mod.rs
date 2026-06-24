@@ -35,7 +35,7 @@ pub struct CuiApp {
 
 impl CuiApp {
     pub fn new(
-        target_tasks: &Vec<String>,
+        target_tasks: &[String],
         labels: &HashMap<String, String>,
         quit_on_done: bool,
         fail_fast: bool,
@@ -47,7 +47,7 @@ impl CuiApp {
             command_tx,
             command_rx,
             signal_handler: SignalHandler::infer()?,
-            target_tasks: target_tasks.clone(),
+            target_tasks: target_tasks.to_vec(),
             labels: labels.clone(),
             fail_fast,
             quit_on_done,
@@ -98,7 +98,7 @@ impl CuiApp {
         }
 
         info!("App is exiting");
-        Ok(ret?)
+        ret
     }
 
     pub async fn run_inner(&mut self) -> anyhow::Result<i32> {
@@ -115,17 +115,18 @@ impl CuiApp {
                         .write_all(output.as_slice())
                         .context("failed to write to stdout")?;
                 }
-                AppCommand::FinishTask { task, result, datetime } => {
+                AppCommand::FinishTask {
+                    task,
+                    result,
+                    datetime: _,
+                } => {
                     debug!("Task {:?} finished", task);
 
                     if result.is_failure() {
                         failed_tasks.insert(task.clone(), result);
                         eprintln!(
                             "{}",
-                            RED.apply_to(format!(
-                                "{}",
-                                result.long_message(self.labels.get(&task).unwrap_or(&task))
-                            ))
+                            RED.apply_to(result.long_message(self.labels.get(&task).unwrap_or(&task)).to_string())
                         );
                     }
                     tasks_remaining.remove(&task);
@@ -141,7 +142,7 @@ impl CuiApp {
             }
         }
 
-        if failed_tasks.len() > 0 {
+        if !failed_tasks.is_empty() {
             if self.fail_fast {
                 let (task, result) = failed_tasks.iter().next().unwrap();
                 eprintln!();
@@ -178,7 +179,7 @@ impl CuiApp {
             }
         }
 
-        let exit_code = if failed_tasks.len() > 0 { 1 } else { 0 };
+        let exit_code = if !failed_tasks.is_empty() { 1 } else { 0 };
         Ok(exit_code)
     }
 }

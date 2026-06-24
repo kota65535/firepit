@@ -12,18 +12,18 @@ use ratatui::{
 };
 use tui_term::widget::PseudoTerminal;
 
-static STOP_TASK: &'static (&str, &str) = &("[s]", "Stop");
-static RESTART_TASK: &'static (&str, &str) = &("[r]", "Restart");
-static START_INTERACTION: &'static (&str, &str) = &("[Enter]", "Interact");
-static EXIT_INTERACTION: &'static (&str, &str) = &("[Ctrl-z]", "Exit Interaction");
-static START_SEARCH: &'static (&str, &str) = &("[/]", "Search");
-static EXIT_SEARCH: &'static (&str, &str) = &("[Esc]", "Exit Search");
-static COPY_SELECTION: &'static (&str, &str) = &("[c]", "Copy Selection");
-static SHOW_TASKS: &'static (&str, &str) = &("[h]", "Show Tasks");
-static NAVIGATE_SEARCH_RESULT: &'static (&str, &str) = &("[n\u{FF65}N]", "Next/Prev Match");
-static CLEAR_SEARCH_RESULT: &'static (&str, &str) = &("[Esc]", "Clear");
-static QUIT: &'static (&str, &str) = &("[q]", "Quit");
-static HELP: &'static (&str, &str) = &("[?]", "Help");
+static STOP_TASK: &(&str, &str) = &("[s]", "Stop");
+static RESTART_TASK: &(&str, &str) = &("[r]", "Restart");
+static START_INTERACTION: &(&str, &str) = &("[Enter]", "Interact");
+static EXIT_INTERACTION: &(&str, &str) = &("[Ctrl-z]", "Exit Interaction");
+static START_SEARCH: &(&str, &str) = &("[/]", "Search");
+static EXIT_SEARCH: &(&str, &str) = &("[Esc]", "Exit Search");
+static COPY_SELECTION: &(&str, &str) = &("[c]", "Copy Selection");
+static SHOW_TASKS: &(&str, &str) = &("[h]", "Show Tasks");
+static NAVIGATE_SEARCH_RESULT: &(&str, &str) = &("[n\u{FF65}N]", "Next/Prev Match");
+static CLEAR_SEARCH_RESULT: &(&str, &str) = &("[Esc]", "Clear");
+static QUIT: &(&str, &str) = &("[q]", "Quit");
+static HELP: &(&str, &str) = &("[?]", "Help");
 
 pub struct TerminalPane<'a> {
     task: &'a Task,
@@ -51,7 +51,7 @@ impl<'a> TerminalPane<'a> {
         matches!(self.section, LayoutSections::Pane)
     }
 
-    fn right_footer(&self) -> Text {
+    fn right_footer(&self) -> Text<'_> {
         if matches!(self.section, LayoutSections::TaskList { .. }) {
             Text::from(vec![
                 Line::from(key_help_spans(*QUIT)),
@@ -62,7 +62,7 @@ impl<'a> TerminalPane<'a> {
         }
     }
 
-    fn left_footer(&self) -> Text {
+    fn left_footer(&self) -> Text<'_> {
         let mut help_spans = Vec::new();
         let mut search_spans = Vec::new();
         match self.section {
@@ -84,7 +84,7 @@ impl<'a> TerminalPane<'a> {
                 }
                 help_spans.push(key_help_spans(*START_SEARCH));
                 if let Some(search) = s {
-                    if search.matches.len() > 0 {
+                    if !search.matches.is_empty() {
                         help_spans.push(key_help_spans(*NAVIGATE_SEARCH_RESULT));
                         help_spans.push(key_help_spans(*CLEAR_SEARCH_RESULT));
                     }
@@ -108,9 +108,7 @@ impl<'a> TerminalPane<'a> {
         Text::from(vec![
             Line::from(search_spans).left_aligned(),
             Line::from(
-                help_spans
-                    .into_iter()
-                    .intersperse_with(|| vec![Span::raw("  ")])
+                Itertools::intersperse_with(help_spans.into_iter(), || vec![Span::raw("  ")])
                     .flatten()
                     .collect::<Vec<_>>(),
             )
@@ -169,11 +167,7 @@ impl<'a> Widget for &TerminalPane<'a> {
                     let y = inner.y + seg.row;
                     if x < inner.right() && y < inner.bottom() {
                         let cell = buf.get_mut(x, y);
-                        cell.set_style(
-                            Style::default()
-                                .fg(Color::Blue)
-                                .add_modifier(Modifier::UNDERLINED),
-                        );
+                        cell.set_style(Style::default().fg(Color::Blue).add_modifier(Modifier::UNDERLINED));
                     }
                 }
             }

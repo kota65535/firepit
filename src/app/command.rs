@@ -262,11 +262,8 @@ impl AppCommandChannel {
     }
 
     pub fn send(&self, event: AppCommand) {
-        match self.tx.send(event) {
-            Err(e) => {
-                warn!("Task {:?} failed to send {} event: {:?}", self.name, e.0.as_ref(), e);
-            }
-            Ok(_) => {}
+        if let Err(e) = self.tx.send(event) {
+            warn!("Task {:?} failed to send {} event: {:?}", self.name, e.0.as_ref(), e);
         }
     }
 
@@ -359,15 +356,15 @@ impl TaskResult {
 
     pub fn short_message(&self) -> String {
         match self {
-            TaskResult::Success => format!("Success"),
+            TaskResult::Success => "Success".to_string(),
             TaskResult::Failure(code) => format!("Failed with exit code {code}"),
-            TaskResult::UpToDate => format!("Up-to-date"),
-            TaskResult::BadDeps => format!("Dependency task failed"),
-            TaskResult::Stopped => format!("Stopped"),
-            TaskResult::NotReady => format!("Service not ready"),
-            TaskResult::Reloading => format!("Service is reloading..."),
-            TaskResult::Error => format!("Error"),
-            TaskResult::Unknown => format!("Unknown"),
+            TaskResult::UpToDate => "Up-to-date".to_string(),
+            TaskResult::BadDeps => "Dependency task failed".to_string(),
+            TaskResult::Stopped => "Stopped".to_string(),
+            TaskResult::NotReady => "Service not ready".to_string(),
+            TaskResult::Reloading => "Service is reloading...".to_string(),
+            TaskResult::Error => "Error".to_string(),
+            TaskResult::Unknown => "Unknown".to_string(),
         }
     }
 
@@ -381,7 +378,7 @@ impl TaskResult {
             TaskResult::NotReady => format!("Service task {:?} is terminated because it did not become ready", name),
             TaskResult::Reloading => format!("Service task {:?} is reloading...", name),
             TaskResult::Error => format!("Task {:?} in not run because of an error during execution", name),
-            TaskResult::Unknown => format!("Unknown"),
+            TaskResult::Unknown => "Unknown".to_string(),
         }
     }
 }

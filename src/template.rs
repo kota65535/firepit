@@ -12,7 +12,6 @@ use indexmap::IndexMap;
 use serde_json::{Map, Value as JsonValue};
 use serde_yaml::Value;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use tera::Tera;
 use tracing::{debug, info};
 
@@ -47,7 +46,7 @@ impl ProjectConfig {
             .iter()
             .chain(self.vars.iter().filter(|(k, _)| !vars.contains_key(*k)))
         {
-            let rk = tera.render_str(&k, &context)?;
+            let rk = tera.render_str(k, &context)?;
             if !rk.is_empty() {
                 let v = match v {
                     VarsConfig::Dynamic(s) => {
@@ -87,12 +86,12 @@ impl ProjectConfig {
         // Render includes
         let mut rendered_includes = Vec::new();
         for f in config.includes.iter() {
-            rendered_includes.push(tera.render_str(f, &context)?);
+            rendered_includes.push(tera.render_str(f, context)?);
         }
         config.includes = rendered_includes;
 
         // Render working_dir
-        config.working_dir = tera.render_str(&config.working_dir, &context)?;
+        config.working_dir = tera.render_str(&config.working_dir, context)?;
 
         // Render env
         config.env = render_string_map(&config.env, &mut tera, context)?;
@@ -101,7 +100,7 @@ impl ProjectConfig {
         config.env_files = config
             .env_files
             .iter()
-            .map(|f| tera.render_str(f, &context))
+            .map(|f| tera.render_str(f, context))
             .collect::<anyhow::Result<Vec<_>, _>>()?;
 
         // Render tasks
@@ -126,7 +125,7 @@ impl TaskConfig {
 
         // Render task-level vars
         for (k, v) in self.vars.iter() {
-            let rk = tera.render_str(&k, &context)?;
+            let rk = tera.render_str(k, &context)?;
             if !rk.is_empty() {
                 let v = match v {
                     VarsConfig::Dynamic(s) => {
@@ -169,25 +168,25 @@ impl TaskConfig {
 
         // Render label
         if let Some(l) = config.label {
-            config.label = Some(tera.render_str(&l, &context)?);
+            config.label = Some(tera.render_str(&l, context)?);
         }
 
         // Render command
-        config.command = config.command.map(|c| tera.render_str(&c, &context)).transpose()?;
+        config.command = config.command.map(|c| tera.render_str(&c, context)).transpose()?;
 
         // Render working_dir
         config.working_dir = match config.working_dir {
-            Some(w) => Some(tera.render_str(&w, &context)?),
+            Some(w) => Some(tera.render_str(&w, context)?),
             None => None,
         };
 
         // Render env
-        config.env = render_string_map(&config.env, &mut tera, &context)?;
+        config.env = render_string_map(&config.env, &mut tera, context)?;
 
         // Render env_files
         let mut rendered_env_files = Vec::new();
         for f in config.env_files.iter() {
-            rendered_env_files.push(tera.render_str(f, &context)?);
+            rendered_env_files.push(tera.render_str(f, context)?);
         }
         config.env_files = rendered_env_files;
 
@@ -199,16 +198,16 @@ impl TaskConfig {
                         // Log Probe
                         HealthCheckConfig::Log(ref mut c) => {
                             // Render log
-                            c.log = tera.render_str(&c.log, &context)?;
+                            c.log = tera.render_str(&c.log, context)?;
                         }
                         // Exec Probe
                         HealthCheckConfig::Exec(ref mut c) => {
                             // Render command
-                            c.command = tera.render_str(&c.command, &context)?;
+                            c.command = tera.render_str(&c.command, context)?;
 
                             // Render working_dir
                             c.working_dir = match &c.working_dir {
-                                Some(w) => Some(tera.render_str(&w, &context)?),
+                                Some(w) => Some(tera.render_str(w, context)?),
                                 None => None,
                             };
 
@@ -219,7 +218,7 @@ impl TaskConfig {
                             c.env_files = c
                                 .env_files
                                 .iter()
-                                .map(|f| tera.render_str(f, &context))
+                                .map(|f| tera.render_str(f, context))
                                 .collect::<anyhow::Result<Vec<_>, _>>()?;
                         }
                     }
@@ -236,14 +235,14 @@ impl TaskConfig {
         for depends_on in config.depends_on.iter() {
             match depends_on {
                 DependsOnConfig::String(task) => {
-                    let task = tera.render_str(task, &context)?;
+                    let task = tera.render_str(task, context)?;
                     // Ignore if rendered task name is empty
                     if !task.ends_with("#") {
                         rendered_depends_on.push(DependsOnConfig::String(task))
                     }
                 }
                 DependsOnConfig::Struct(dep) => {
-                    let task = tera.render_str(&dep.task, &context)?;
+                    let task = tera.render_str(&dep.task, context)?;
                     // Ignore if rendered task name is empty
                     if !task.ends_with("#") {
                         let vars = render_value_map(&dep.vars, &mut tera, context).await?;
@@ -419,7 +418,7 @@ impl ConfigRenderer {
         contexts: &mut HashMap<String, tera::Context>,
     ) -> anyhow::Result<()> {
         // Get task config
-        let (task_config, project_config) =
+        let (task_config, _project_config) =
             Self::get_task(task_name, root_config, child_configs).context(format!("unknown task {:?}", task_name))?;
         let context = contexts
             .get(task_name)
@@ -616,7 +615,7 @@ async fn render_value(value: &VarsConfig, tera: &mut Tera, context: &tera::Conte
             let command = Command::new(shell.command)
                 .with_args(args)
                 .with_envs(inner.env)
-                .with_current_dir(PathBuf::from(working_dir))
+                .with_current_dir(working_dir)
                 .to_owned();
             let output = execute_command(&command)
                 .await
@@ -645,7 +644,7 @@ async fn execute_command(command: &Command) -> anyhow::Result<String> {
     Ok(match exit {
         Ok(Some(exit_status)) => match exit_status {
             // Trim trailing newline
-            ChildExit::Finished(Some(code)) if code == 0 => output,
+            ChildExit::Finished(Some(0)) => output,
             ChildExit::Finished(Some(code)) => {
                 anyhow::bail!("process exited with non-zero code: {:?}, output: {:?}", code, output)
             }

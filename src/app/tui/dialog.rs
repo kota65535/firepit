@@ -1,6 +1,6 @@
 use once_cell::sync::Lazy;
 use ratatui::layout::Alignment;
-use ratatui::prelude::{Line, Rect, Span, Style, Stylize, Text};
+use ratatui::prelude::{Line, Rect, Span, Style, Text};
 use ratatui::style::Color;
 use ratatui::widgets::block::{Position, Title};
 use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph, Wrap};
@@ -52,18 +52,12 @@ pub fn render_quit_dialog(f: &mut Frame, force: bool) {
     // Clear the background
     f.render_widget(Clear, dialog_area);
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .padding(Padding::horizontal(2));
+    let block = Block::default().borders(Borders::ALL).padding(Padding::horizontal(2));
 
     let lines = if force {
         vec![Line::from(FORCE_QUIT_TXT)]
     } else {
-        QUIT_LINES
-            .iter()
-            .cloned()
-            .map(|line| Line::from(line))
-            .collect::<Vec<_>>()
+        QUIT_LINES.iter().cloned().map(Line::from).collect::<Vec<_>>()
     };
 
     // Create message paragraph

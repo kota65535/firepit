@@ -97,11 +97,7 @@ fn find_urls_in_line(line: &str, row_widths: &[(u16, usize)], urls: &mut Vec<Url
 }
 
 /// Map a display-width range to (row, start_col, end_col) segments
-fn map_to_segments(
-    display_start: usize,
-    display_width: usize,
-    row_widths: &[(u16, usize)],
-) -> Vec<UrlSegment> {
+fn map_to_segments(display_start: usize, display_width: usize, row_widths: &[(u16, usize)]) -> Vec<UrlSegment> {
     let display_end = display_start + display_width;
     let mut segments = Vec::new();
     let mut cumulative = 0usize;

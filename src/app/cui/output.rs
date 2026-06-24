@@ -24,12 +24,6 @@ pub struct OutputClient<W> {
     writers: Arc<Mutex<SinkWriters<W>>>,
 }
 
-#[derive(Default)]
-struct Marginals {
-    header: Option<()>,
-    footer: Option<()>,
-}
-
 pub struct OutputWriter<'a, W> {
     logger: &'a OutputClient<W>,
     destination: Destination,
@@ -91,7 +85,7 @@ impl<W: Write> OutputSink<W> {
 impl<W: Write> OutputClient<W> {
     /// A writer that will write to the underlying sink's out writer according
     /// to this client's behavior.
-    pub fn stdout(&self) -> OutputWriter<W> {
+    pub fn stdout(&self) -> OutputWriter<'_, W> {
         OutputWriter {
             logger: self,
             destination: Destination::Stdout,
@@ -101,7 +95,7 @@ impl<W: Write> OutputClient<W> {
 
     /// A writer that will write to the underlying sink's err writer according
     /// to this client's behavior.
-    pub fn stderr(&self) -> OutputWriter<W> {
+    pub fn stderr(&self) -> OutputWriter<'_, W> {
         OutputWriter {
             logger: self,
             destination: Destination::Stderr,
@@ -112,11 +106,7 @@ impl<W: Write> OutputClient<W> {
     /// Consume the client and flush any bytes to the underlying sink if
     /// necessary
     pub fn finish(self) -> io::Result<Option<Vec<u8>>> {
-        let Self {
-            behavior,
-            buffer,
-            writers,
-        } = self;
+        let Self { buffer, .. } = self;
         let buffers = buffer.map(|cell| cell.into_inner().expect("should not poisoned"));
         Ok(buffers.map(|buffers| {
             // TODO: it might be worth the list traversal to calculate length so we do a

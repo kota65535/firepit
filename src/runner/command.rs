@@ -40,11 +40,8 @@ impl RunnerCommandChannel {
     }
 
     fn send(&self, event: RunnerCommand) {
-        match self.tx.send(event) {
-            Err(e) => {
-                warn!("Failed to send {} event: {:?}", e.0.as_ref(), e);
-            }
-            Ok(_) => {}
+        if let Err(e) = self.tx.send(event) {
+            warn!("Failed to send {} event: {:?}", e.0.as_ref(), e);
         }
     }
 }

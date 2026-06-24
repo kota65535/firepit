@@ -1,6 +1,6 @@
-use axoupdater::{AxoUpdater, AxoupdateResult};
+use axoupdater::AxoUpdater;
 
-fn main() -> AxoupdateResult<()> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("Checking for updates...");
     match AxoUpdater::new_for("firepit").load_receipt()?.run_sync()? {
         Some(update) => {

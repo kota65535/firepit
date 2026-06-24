@@ -1,4 +1,4 @@
-use crate::project::{Env, Task};
+use crate::project::Task;
 use crate::template::ROOT_DIR_CONTEXT_KEY;
 use crate::util::merge_yaml;
 use anyhow::Context;
@@ -304,7 +304,7 @@ impl ProjectConfig {
                 .depends_on
                 .iter()
                 .map(|d| match d {
-                    DependsOnConfig::String(s) => DependsOnConfig::String(Task::qualified_name(&name, s)),
+                    DependsOnConfig::String(s) => DependsOnConfig::String(Task::qualified_name(name, s)),
                     DependsOnConfig::Struct(s) => DependsOnConfig::Struct(DependsOnConfigStruct {
                         task: Task::qualified_name(&data.name, &s.task),
                         vars: s.vars.clone(),
@@ -341,7 +341,7 @@ impl ProjectConfig {
         let mut tera = Tera::default();
         let mut rendered_includes = Vec::new();
         for f in self.includes.iter() {
-            rendered_includes.push(tera.render_str(f, &context)?);
+            rendered_includes.push(tera.render_str(f, context)?);
         }
 
         // Start from empty value
@@ -350,8 +350,8 @@ impl ProjectConfig {
         // Merge included files first
         for incl in rendered_includes.iter() {
             info!("Config file {:?} includes {:?}", self.dir, incl);
-            let path = absolute_or_join(&incl, &self.dir);
-            let (file, _) = Self::open_file(&self.dir.join(&incl))
+            let path = absolute_or_join(incl, &self.dir);
+            let (file, _) = Self::open_file(&self.dir.join(incl))
                 .with_context(|| format!("cannot open included file {:?}", path))?;
             let reader = BufReader::new(file);
             let raw_yaml: Value =
@@ -470,17 +470,14 @@ impl ProjectConfig {
             .iter()
             .map(|d| {
                 if let Some(TaskSelector::Regex(ref pattern)) = d.tasks {
-                    Regex::new(pattern)
-                        .with_context(|| format!("defaults: invalid regex pattern {:?}", pattern))?;
+                    Regex::new(pattern).with_context(|| format!("defaults: invalid regex pattern {:?}", pattern))?;
                 }
                 Ok(DefaultsConfig {
                     depends_on: d
                         .depends_on
                         .iter()
                         .map(|dep| match dep {
-                            DependsOnConfig::String(s) => {
-                                DependsOnConfig::String(Task::qualified_name(&self.name, s))
-                            }
+                            DependsOnConfig::String(s) => DependsOnConfig::String(Task::qualified_name(&self.name, s)),
                             DependsOnConfig::Struct(s) => DependsOnConfig::Struct(DependsOnConfigStruct {
                                 task: Task::qualified_name(&self.name, &s.task),
                                 vars: s.vars.clone(),
@@ -652,25 +649,24 @@ impl TaskConfig {
         format!("{}#{}", self.project, self.orig_name)
     }
 
-    pub fn working_dir_path(&self, dir: &PathBuf) -> PathBuf {
+    pub fn working_dir_path(&self, dir: &Path) -> PathBuf {
         match self.working_dir.clone() {
             Some(wd) => absolute_or_join(&wd, dir),
-            None => dir.clone(),
+            None => dir.to_path_buf(),
         }
     }
 
-    pub fn env_file_paths(&self, dir: &PathBuf) -> Vec<PathBuf> {
+    pub fn env_file_paths(&self, dir: &Path) -> Vec<PathBuf> {
         self.env_files.iter().map(|f| absolute_or_join(f, dir)).collect()
     }
 
-    pub fn input_paths(&self, dir: &PathBuf) -> Vec<PathBuf> {
+    pub fn input_paths(&self, dir: &Path) -> Vec<PathBuf> {
         self.inputs.iter().map(|f| absolute_or_join(f, dir)).collect()
     }
 
-    pub fn output_paths(&self, dir: &PathBuf) -> Vec<PathBuf> {
+    pub fn output_paths(&self, dir: &Path) -> Vec<PathBuf> {
         self.outputs.iter().map(|f| absolute_or_join(f, dir)).collect()
     }
-
 }
 
 fn absolute_or_join(path: &str, dir: &Path) -> PathBuf {
@@ -686,7 +682,7 @@ fn absolute_or_join(path: &str, dir: &Path) -> PathBuf {
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[serde(untagged)]
 pub enum VarsConfig {
-    Dynamic(DynamicVars),
+    Dynamic(Box<DynamicVars>),
     Static(JsonValue),
 }
 
@@ -718,14 +714,14 @@ pub struct DynamicVars {
 }
 
 impl DynamicVars {
-    pub fn env_file_paths(&self, dir: &PathBuf) -> Vec<PathBuf> {
+    pub fn env_file_paths(&self, dir: &Path) -> Vec<PathBuf> {
         self.env_files.iter().map(|f| absolute_or_join(f, dir)).collect()
     }
 
-    pub fn working_dir_path(&self, dir: &PathBuf) -> PathBuf {
+    pub fn working_dir_path(&self, dir: &Path) -> PathBuf {
         match self.working_dir.clone() {
             Some(wd) => absolute_or_join(&wd, dir),
-            None => dir.clone(),
+            None => dir.to_path_buf(),
         }
     }
 }
@@ -854,7 +850,7 @@ pub struct ExecProbeConfig {
 }
 
 impl ExecProbeConfig {
-    pub fn working_dir_path(&self, dir: &PathBuf) -> PathBuf {
+    pub fn working_dir_path(&self, dir: &Path) -> PathBuf {
         match self.working_dir.clone() {
             Some(wd) => {
                 let wd = Path::new(&wd);
@@ -864,11 +860,11 @@ impl ExecProbeConfig {
                     dir.join(wd)
                 }
             }
-            None => dir.clone(),
+            None => dir.to_path_buf(),
         }
     }
 
-    pub fn env_files_paths(&self, dir: &PathBuf) -> Vec<PathBuf> {
+    pub fn env_files_paths(&self, dir: &Path) -> Vec<PathBuf> {
         self.env_files
             .iter()
             .map(|f| {
@@ -900,7 +896,7 @@ pub fn default_healthcheck_start_period() -> u64 {
 #[serde(untagged)]
 pub enum ServiceConfig {
     Bool(bool),
-    Struct(ServiceConfigStruct),
+    Struct(Box<ServiceConfigStruct>),
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]

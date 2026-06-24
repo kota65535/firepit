@@ -20,8 +20,8 @@ impl TerminalOutput {
         }
     }
 
-    pub fn stdin(&self) -> Option<&Box<dyn Write + Send>> {
-        self.stdin.as_ref()
+    pub fn stdin(&self) -> Option<&(dyn Write + Send)> {
+        self.stdin.as_deref()
     }
 
     pub fn stdin_mut(&mut self) -> Option<&mut Box<dyn Write + Send>> {
@@ -40,7 +40,7 @@ impl TerminalOutput {
         self.parser.screen_mut()
     }
 
-    pub fn entire_screen(&self) -> vt100::EntireScreen {
+    pub fn entire_screen(&self) -> vt100::EntireScreen<'_> {
         self.parser.entire_screen()
     }
 
@@ -97,7 +97,7 @@ impl TerminalOutput {
     }
 
     pub fn has_selection(&self) -> bool {
-        self.parser.screen().selected_text().map_or(false, |s| !s.is_empty())
+        self.parser.screen().selected_text().is_some_and(|s| !s.is_empty())
     }
 
     pub fn reset_selection(&mut self) {
@@ -129,10 +129,11 @@ impl TerminalOutput {
                 };
                 match visible_row.get(c) {
                     Some(cell) if cell.is_wide_continuation() => {
-                        c > 0 && visible_row.get(c - 1).is_some_and(|prev| {
-                            let contents = prev.contents();
-                            !contents.is_empty() && !contents.chars().all(|ch| ch.is_whitespace())
-                        })
+                        c > 0
+                            && visible_row.get(c - 1).is_some_and(|prev| {
+                                let contents = prev.contents();
+                                !contents.is_empty() && !contents.chars().all(|ch| ch.is_whitespace())
+                            })
                     }
                     Some(cell) => {
                         let contents = cell.contents();
@@ -190,7 +191,9 @@ impl TerminalOutput {
         };
 
         let (start_row, start_col, end_row, end_col) = selection;
-        self.parser.screen_mut().set_selection(start_row, start_col, end_row, end_col);
+        self.parser
+            .screen_mut()
+            .set_selection(start_row, start_col, end_row, end_col);
     }
 
     pub fn line_selection(&mut self, row: u16) {

@@ -67,16 +67,6 @@ pub enum ShutdownStyle {
     Kill,
 }
 
-/// Child process stopped.
-#[derive(Debug)]
-pub struct ShutdownFailed;
-
-impl From<std::io::Error> for ShutdownFailed {
-    fn from(_: std::io::Error) -> Self {
-        ShutdownFailed
-    }
-}
-
 struct ChildHandle {
     pid: Option<u32>,
     imp: ChildHandleImpl,
@@ -142,7 +132,7 @@ impl ChildHandle {
         };
         let pair = pty_system.openpty(size).map_err(|err| match err.downcast() {
             Ok(err) => err,
-            Err(err) => io::Error::new(io::ErrorKind::Other, err),
+            Err(err) => io::Error::other(err),
         })?;
 
         let controller = pair.master;
@@ -166,7 +156,7 @@ impl ChildHandle {
 
         let child = receiver.spawn_command(command).map_err(|err| match err.downcast() {
             Ok(err) => err,
-            Err(err) => io::Error::new(io::ErrorKind::Other, err),
+            Err(err) => io::Error::other(err),
         })?;
 
         let pid = child.process_id();
@@ -236,7 +226,7 @@ impl ChildHandle {
             ChildHandleImpl::Tokio(child) => child.kill().await,
             ChildHandleImpl::Pty(child) => {
                 let mut killer = child.clone_killer();
-                let pid = self.pid.clone();
+                let pid = self.pid;
                 tokio_spawn_blocking!("kill", { pid = pid }, move || killer.kill())
                     .await
                     .unwrap()
@@ -266,15 +256,6 @@ enum ChildOutput {
         stderr: tokio::process::ChildStderr,
     },
     Pty(Box<dyn Read + Send>),
-}
-
-impl ChildInput {
-    fn concrete(self) -> Option<tokio::process::ChildStdin> {
-        match self {
-            ChildInput::Std(stdin) => Some(stdin),
-            ChildInput::Pty(_) => None,
-        }
-    }
 }
 
 impl fmt::Debug for ChildInput {
@@ -597,7 +578,7 @@ impl Child {
         // TODO: in order to not impose that a stdout_pipe is Send we send the bytes
         // across a channel
         let (byte_tx, mut byte_rx) = mpsc::channel(48);
-        let pid = self.pid.clone();
+        let pid = self.pid;
         tokio_spawn_blocking!("child", { pid = pid }, move || {
             let mut buffer = [0; 1024];
             let mut last_byte = None;
@@ -687,7 +668,7 @@ impl Child {
                     stderr_pipe.write_all(&stderr_buffer)?;
                     stderr_buffer.clear();
                 }
-                status = self.wait(), if !is_exited => {
+                _status = self.wait(), if !is_exited => {
                     trace!("child process exited: {}", self.label());
                     is_exited = true;
                 }
@@ -719,38 +700,6 @@ impl Child {
 
     pub fn label(&self) -> &str {
         &self.label
-    }
-}
-
-struct SharedWriter<W> {
-    inner: Arc<Mutex<W>>,
-}
-
-impl<W> SharedWriter<W> {
-    fn new(writer: W) -> Self {
-        Self {
-            inner: Arc::new(Mutex::new(writer)),
-        }
-    }
-}
-
-impl<W> Clone for SharedWriter<W> {
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-        }
-    }
-}
-
-impl<W: Write> Write for SharedWriter<W> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let mut writer = self.inner.lock().expect("writer lock poisoned");
-        writer.write(buf)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        let mut writer = self.inner.lock().expect("writer lock poisoned");
-        writer.flush()
     }
 }
 

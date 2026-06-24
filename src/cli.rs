@@ -119,7 +119,7 @@ pub async fn run() -> anyhow::Result<i32> {
 
     // Print workspace information if no task specified
     if tasks.is_empty() {
-        print_summary(&root, &children);
+        print_summary(&root, &children)?;
         return Ok(0);
     }
 
@@ -138,7 +138,7 @@ pub async fn run() -> anyhow::Result<i32> {
         args.force,
         args.watch,
         fail_fast,
-        None
+        None,
     )
     .await?;
 
@@ -181,7 +181,7 @@ pub async fn run() -> anyhow::Result<i32> {
     let quit_on_done = !args.watch && root.ui != UI::Tui;
     let runner_fut = tokio_spawn!("runner", async move {
         let result = runner.start(&app_tx, quit_on_done).await;
-        if let Ok(_) = result {
+        if result.is_ok() {
             if let Some(gantt_path) = root.gantt_file {
                 if let Ok(gantt) = runner.gantt() {
                     save_gantt_chart(&gantt, &gantt_path);
@@ -201,7 +201,7 @@ pub async fn run() -> anyhow::Result<i32> {
     exit_code
 }
 
-fn parse_tasks_or_vars(items: &Vec<String>) -> anyhow::Result<(Vec<String>, IndexMap<String, Value>)> {
+fn parse_tasks_or_vars(items: &[String]) -> anyhow::Result<(Vec<String>, IndexMap<String, Value>)> {
     let mut tasks = Vec::new();
     let mut vars = IndexMap::new();
     for item in items.iter() {
@@ -247,17 +247,17 @@ fn print_summary(root: &ProjectConfig, children: &IndexMap<String, ProjectConfig
         lines.extend(project_task_lines(root));
     } else {
         // Show multi project tasks
-        let cwd = getcwd().unwrap_or(path::PathBuf::new());
+        let cwd = getcwd().unwrap_or_default();
         if cwd == root.dir {
             // Show all projects' tasks
-            lines.push(format!("{} {}", BOLD.apply_to("Project:").to_string(), "root"));
+            lines.push(format!("{} {}", BOLD.apply_to("Project:"), "root"));
             lines.extend(project_task_lines(root));
             lines.push("".to_string());
             for c in children.values() {
                 let dir = root.projects.get(&c.name).cloned().unwrap_or_default();
                 lines.push("─".to_string());
-                lines.push(format!("{} {}", BOLD.apply_to("Project:  ").to_string(), c.name));
-                lines.push(format!("{} {}", BOLD.apply_to("Directory:").to_string(), dir));
+                lines.push(format!("{} {}", BOLD.apply_to("Project:  "), c.name));
+                lines.push(format!("{} {}", BOLD.apply_to("Directory:"), dir));
                 lines.extend(project_task_lines(c));
                 lines.push("".to_string());
             }
@@ -265,8 +265,8 @@ fn print_summary(root: &ProjectConfig, children: &IndexMap<String, ProjectConfig
             // Show the current project's tasks only
             if let Some(c) = children.values().find(|v| cwd == v.dir) {
                 let dir = root.projects.get(&c.name).cloned().unwrap_or_default();
-                lines.push(format!("{} {}", BOLD.apply_to("Project:  ").to_string(), c.name));
-                lines.push(format!("{} {}", BOLD.apply_to("Directory:").to_string(), dir));
+                lines.push(format!("{} {}", BOLD.apply_to("Project:  "), c.name));
+                lines.push(format!("{} {}", BOLD.apply_to("Directory:"), dir));
                 lines.extend(project_task_lines(c));
                 lines.push("".to_string());
             }
@@ -317,7 +317,7 @@ fn save_gantt_chart(gantt: &str, path: &str) {
             return;
         }
     };
-    if let Err(e) = file.write_all(gantt.as_bytes()) {
+    if file.write_all(gantt.as_bytes()).is_err() {
         eprintln!("failed to write gantt chart file");
     }
 }
