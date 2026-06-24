@@ -25,6 +25,12 @@ pre-commit:
       glob: "*.{json,jsonc,md,markdown,toml,yaml,yml}"
       run: mise exec -- dprint check {staged_files}
       fail_text: "Files are not formatted. Run: dprint fmt"
+    mise-pinned:
+      # Tool versions must be pinned; "latest" is not allowed in mise.toml.
+      glob: "mise.toml"
+      run: |
+        grep -nE "=[[:space:]]*['\"]latest['\"]" {staged_files} && exit 1 || exit 0
+      fail_text: "Pin the tool version in mise.toml; 'latest' is not allowed."
 
 commit-msg:
   commands:
