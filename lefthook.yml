@@ -31,6 +31,10 @@ pre-commit:
       run: |
         grep -nE "=[[:space:]]*['\"]latest['\"]" {staged_files} && exit 1 || exit 0
       fail_text: "Pin the tool version in mise.toml; 'latest' is not allowed."
+    gitleaks:
+      # Scan staged changes for committed secrets.
+      run: mise exec -- gitleaks git --staged --no-banner --redact
+      fail_text: "Potential secret detected. Remove it before committing."
 
 commit-msg:
   commands:
