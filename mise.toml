@@ -9,10 +9,6 @@
 # version (and its transitive deps) is installed, as a supply-chain guard.
 "npm:@commitlint/cli" = { version = "21.1.0", minimum_release_age = "7d" }
 
-[settings]
-# Required for the [hooks] section below.
-experimental = true
-
 [hooks]
 # Install the git hooks right after `mise install` so contributors don't have
 # to remember to run `lefthook install` manually.
