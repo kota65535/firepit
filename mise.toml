@@ -5,9 +5,12 @@
 "cargo:cargo-edit" = "0.13.10"
 "lefthook" = "2.1.9"
 "dprint" = "0.54.0"
-# npm backend tools wait out a 7-day cooldown before a freshly published
-# version (and its transitive deps) is installed, as a supply-chain guard.
-"npm:@commitlint/cli" = { version = "21.1.0", minimum_release_age = "7d" }
+"npm:@commitlint/cli" = "21.1.0"
+
+[settings]
+# Tools wait out a 7-day cooldown before a freshly published version
+# (and, for npm, its transitive deps) is installed — a supply-chain guard.
+minimum_release_age = "7d"
 
 [hooks]
 # Install the git hooks right after `mise install` so contributors don't have
