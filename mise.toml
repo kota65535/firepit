@@ -3,3 +3,5 @@
 "github:axodotdev/cargo-dist" = "0.30.4"
 "cargo:git-cliff" = "latest"
 "cargo:cargo-edit" = "latest"
+lefthook = "latest"
+dprint = "latest"
