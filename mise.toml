@@ -5,3 +5,12 @@
 "cargo:cargo-edit" = "0.13.10"
 lefthook = "2.1.9"
 dprint = "0.54.0"
+
+[settings]
+# Required for the [hooks] section below.
+experimental = true
+
+[hooks]
+# Install the git hooks right after `mise install` so contributors don't have
+# to remember to run `lefthook install` manually.
+postinstall = "lefthook install"
