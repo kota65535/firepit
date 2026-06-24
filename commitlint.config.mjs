@@ -1,10 +1,12 @@
 // Conventional Commits enforcement for commitlint.
 //
-// The rules below mirror @commitlint/config-conventional. They are inlined
-// rather than pulled in via `extends` because commitlint and the preset are
-// installed under separate mise (npm backend) prefixes, so commitlint cannot
-// resolve the preset package at runtime. Keeping the rules here avoids a
-// node_modules / package.json in this Rust repo.
+// The rules below mirror @commitlint/config-conventional (v21.1.0):
+// https://github.com/conventional-changelog/commitlint/blob/v21.1.0/@commitlint/config-conventional/src/index.ts
+//
+// They are inlined rather than pulled in via `extends` because commitlint and
+// the preset are installed under separate mise (npm backend) prefixes, so
+// commitlint cannot resolve the preset package at runtime. Keeping the rules
+// here avoids a node_modules / package.json in this Rust repo.
 export default {
   rules: {
     "body-leading-blank": [1, "always"],
