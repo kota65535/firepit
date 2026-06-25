@@ -21,13 +21,18 @@ pub struct OutputClient<W> {
     // We could use a RefCell if we didn't use this with async code.
     // Any locals held across an await must implement Sync and RwLock lets us achieve this
     buffer: Option<RwLock<Vec<SinkBytes<'static>>>>,
+    line_buffers: LineBuffers,
     writers: Arc<Mutex<SinkWriters<W>>>,
+}
+
+struct LineBuffers {
+    out: RwLock<Vec<u8>>,
+    err: RwLock<Vec<u8>>,
 }
 
 pub struct OutputWriter<'a, W> {
     logger: &'a OutputClient<W>,
     destination: Destination,
-    buffer: Vec<u8>,
 }
 
 /// Enum for controlling the behavior of the client
@@ -77,6 +82,10 @@ impl<W: Write> OutputSink<W> {
         OutputClient {
             behavior,
             buffer,
+            line_buffers: LineBuffers {
+                out: RwLock::new(Vec::new()),
+                err: RwLock::new(Vec::new()),
+            },
             writers,
         }
     }
@@ -89,7 +98,6 @@ impl<W: Write> OutputClient<W> {
         OutputWriter {
             logger: self,
             destination: Destination::Stdout,
-            buffer: Vec::new(),
         }
     }
 
@@ -99,7 +107,6 @@ impl<W: Write> OutputClient<W> {
         OutputWriter {
             logger: self,
             destination: Destination::Stderr,
-            buffer: Vec::new(),
         }
     }
 
@@ -160,31 +167,113 @@ impl<W: Write> OutputClient<W> {
         let buffer = self.buffer.as_ref().expect("attempted to add line to nil buffer");
         buffer.write().expect("lock poisoned").push(bytes);
     }
+
+    fn line_buffer(&self, destination: Destination) -> &RwLock<Vec<u8>> {
+        match destination {
+            Destination::Stdout => &self.line_buffers.out,
+            Destination::Stderr => &self.line_buffers.err,
+        }
+    }
 }
 
 impl<'a, W: Write> Write for OutputWriter<'a, W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        for line in buf.split_inclusive(|b| *b == b'\n') {
-            self.buffer.extend_from_slice(line);
-            // If the line doesn't end in a newline we assume it isn't finished and add it
-            // to the buffer
-            if line.ends_with(b"\n") {
-                self.logger.handle_bytes(SinkBytes {
-                    buffer: self.buffer.as_slice().into(),
-                    destination: self.destination,
-                })?;
-                self.buffer.clear();
+        let mut ready = Vec::new();
+        let line_buffer = self.logger.line_buffer(self.destination);
+        {
+            let mut buffer = line_buffer.write().expect("lock poisoned");
+
+            for line in buf.split_inclusive(|b| *b == b'\n') {
+                buffer.extend_from_slice(line);
+                // If the line doesn't end in a newline we assume it isn't finished and add it
+                // to the buffer
+                if line.ends_with(b"\n") {
+                    ready.push(std::mem::take(&mut *buffer));
+                }
             }
         }
+
+        for line in ready {
+            self.logger.handle_bytes(SinkBytes {
+                buffer: line.into(),
+                destination: self.destination,
+            })?;
+        }
+
         Ok(buf.len())
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        self.logger.handle_bytes(SinkBytes {
-            buffer: self.buffer.as_slice().into(),
-            destination: self.destination,
-        })?;
-        self.buffer.clear();
+        let line = {
+            let line_buffer = self.logger.line_buffer(self.destination);
+            let mut buffer = line_buffer.write().expect("lock poisoned");
+            if buffer.is_empty() {
+                None
+            } else {
+                Some(std::mem::take(&mut *buffer))
+            }
+        };
+        if let Some(line) = line {
+            self.logger.handle_bytes(SinkBytes {
+                buffer: line.into(),
+                destination: self.destination,
+            })?;
+        }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{OutputClientBehavior, OutputSink};
+    use std::io::{self, Write};
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Clone, Default)]
+    struct SharedWriter {
+        bytes: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl SharedWriter {
+        fn bytes(&self) -> Vec<u8> {
+            self.bytes.lock().expect("lock poisoned").clone()
+        }
+    }
+
+    impl Write for SharedWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.bytes.lock().expect("lock poisoned").extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn passthrough_keeps_partial_stdout_across_writers() {
+        let stdout = SharedWriter::default();
+        let sink = OutputSink::new(stdout.clone(), SharedWriter::default());
+        let client = sink.logger(OutputClientBehavior::Passthrough);
+
+        client.stdout().write_all(b"Enter a value: ").unwrap();
+        assert!(stdout.bytes().is_empty());
+
+        client.stdout().write_all(b"\n").unwrap();
+        assert_eq!(stdout.bytes(), b"Enter a value: \n");
+    }
+
+    #[test]
+    fn passthrough_flushes_partial_stdout() {
+        let stdout = SharedWriter::default();
+        let sink = OutputSink::new(stdout.clone(), SharedWriter::default());
+        let client = sink.logger(OutputClientBehavior::Passthrough);
+
+        let mut writer = client.stdout();
+        writer.write_all(b"Enter a value: ").unwrap();
+        writer.flush().unwrap();
+
+        assert_eq!(stdout.bytes(), b"Enter a value: ");
     }
 }
