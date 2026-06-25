@@ -868,7 +868,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "shell-words",
- "strum",
+ "strum 0.28.0",
  "tera",
  "tokio",
  "tracing",
@@ -2325,7 +2325,7 @@ dependencies = [
  "lru",
  "paste",
  "stability",
- "strum",
+ "strum 0.26.3",
  "unicode-segmentation",
  "unicode-width 0.1.14",
 ]
@@ -2910,6 +2910,12 @@ checksum = "8fec0f0aef304996cf250b31b5a10dee7980c85da9d759361292b8bca5a18f06"
 dependencies = [
  "strum_macros",
 ]
+
+[[package]]
+name = "strum"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
 
 [[package]]
 name = "strum_macros"
