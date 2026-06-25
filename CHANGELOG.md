@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.21.0] - 2026-06-25
+
+### 🚀 Features
+
+- *(cli)* Forward arguments after -- to tasks via the args variable (#311)
+
+### 🐛 Bug Fixes
+
+- *(test)* Disable PTY in test runners to prevent TTY-dependent failures (#300)
+
+### ⚙️ Miscellaneous Tasks
+
+- Add lefthook hooks and CI guardrails (#310)
+
 ## [0.20.0] - 2026-05-25
 
 ### 🚀 Features
