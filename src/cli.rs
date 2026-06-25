@@ -16,8 +16,8 @@ use std::io::Write;
 use std::path;
 use tracing::info;
 
-/// Name of the variable that receives the CLI arguments passed after `--`.
-const CLI_ARGS_VAR_NAME: &str = "args";
+/// Name of the variable that receives the task arguments passed after `--`.
+const TASK_ARGS_VAR_NAME: &str = "args";
 
 /// Firepit: Simple task & service runner with a comfortable TUI
 #[derive(Parser, Debug)]
@@ -31,8 +31,8 @@ pub struct Args {
     /// Extra arguments forwarded to tasks.
     /// Everything after `--` is joined with spaces and assigned to the `args` variable,
     /// so it can be referenced in task commands as `{{ args }}`.
-    #[arg(last = true)]
-    pub cli_args: Vec<String>,
+    #[arg(last = true, value_name = "ARGS")]
+    pub task_args: Vec<String>,
 
     /// Working directory
     #[arg(short, long, default_value = ".")]
@@ -101,7 +101,7 @@ pub async fn run() -> anyhow::Result<i32> {
     // Arguments
     let args = Args::parse();
     let dir = path::absolute(&args.dir)?;
-    let (tasks, vars) = parse_tasks_or_vars(&args.tasks_or_vars, &args.cli_args)?;
+    let (tasks, vars) = parse_tasks_or_vars(&args.tasks_or_vars, &args.task_args)?;
     let fail_fast = args.fail_fast();
 
     // Load config files
@@ -212,7 +212,7 @@ pub async fn run() -> anyhow::Result<i32> {
 
 fn parse_tasks_or_vars(
     items: &[String],
-    cli_args: &[String],
+    task_args: &[String],
 ) -> anyhow::Result<(Vec<String>, IndexMap<String, Value>)> {
     let mut tasks = Vec::new();
     let mut vars = IndexMap::new();
@@ -238,14 +238,14 @@ fn parse_tasks_or_vars(
 
     // Forward the arguments after `--` as the `args` variable (space-joined).
     // This is just an alias for setting `args=...`, so specifying both is ambiguous and rejected.
-    if !cli_args.is_empty() {
-        if vars.contains_key(CLI_ARGS_VAR_NAME) {
+    if !task_args.is_empty() {
+        if vars.contains_key(TASK_ARGS_VAR_NAME) {
             anyhow::bail!(
                 "the `{name}` variable is specified both via `{name}=...` and `-- ...`; use only one",
-                name = CLI_ARGS_VAR_NAME
+                name = TASK_ARGS_VAR_NAME
             );
         }
-        vars.insert(CLI_ARGS_VAR_NAME.to_string(), Value::String(cli_args.join(" ")));
+        vars.insert(TASK_ARGS_VAR_NAME.to_string(), Value::String(task_args.join(" ")));
     }
 
     Ok((tasks, vars))
