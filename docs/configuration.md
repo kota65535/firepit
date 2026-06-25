@@ -257,7 +257,8 @@ tasks:
 fire test -- --nocapture my_test   # runs: cargo test --nocapture my_test
 ```
 
-Everything after `--` is joined with a space and assigned to `args`.
+Everything after `--` is shell-escaped, joined with a space, and assigned to `args`.
+Embed `{{ args }}` without extra quotes so the shell can interpret the generated quoting correctly.
 Since `--` is just an alias for `args=...`, specifying both at the same time is an error.
 
 Because `args` is an ordinary variable, a dependent task can also set it through `depends_on`.

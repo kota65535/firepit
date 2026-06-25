@@ -24,12 +24,13 @@ Template variables to override. Variable are in "Name=Value" format (e.g. `ENV=p
 
 ### Args
 
-Arguments after `--` are joined with a space and assigned to the `args` template variable, so they can be referenced in task commands as `{{ args }}`.
+Arguments after `--` are shell-escaped, joined with a space, and assigned to the `args` template variable, so they can be referenced in task commands as `{{ args }}`.
 
 ```
 fire test -- --nocapture my_test
 ```
 
+Embed `{{ args }}` without extra quotes in task commands.
 This is an alias for setting `args=...`, so specifying both `args=...` and `-- ...` at the same time is an error.
 See [Passing Arguments](/configuration#passing-arguments) for details.
 

@@ -29,8 +29,8 @@ pub struct Args {
     pub tasks_or_vars: Vec<String>,
 
     /// Extra arguments forwarded to tasks.
-    /// Everything after `--` is joined with spaces and assigned to the `args` variable,
-    /// so it can be referenced in task commands as `{{ args }}`.
+    /// Everything after `--` is shell-escaped, joined with spaces, and assigned to the
+    /// `args` variable, so it can be referenced in task commands as `{{ args }}`.
     #[arg(last = true, value_name = "ARGS")]
     pub task_args: Vec<String>,
 
@@ -236,7 +236,7 @@ fn parse_tasks_or_vars(
         }
     }
 
-    // Forward the arguments after `--` as the `args` variable (space-joined).
+    // Forward the arguments after `--` as the `args` variable (shell-escaped and space-joined).
     // This is just an alias for setting `args=...`, so specifying both is ambiguous and rejected.
     if !task_args.is_empty() {
         if vars.contains_key(TASK_ARGS_VAR_NAME) {
@@ -245,7 +245,10 @@ fn parse_tasks_or_vars(
                 name = TASK_ARGS_VAR_NAME
             );
         }
-        vars.insert(TASK_ARGS_VAR_NAME.to_string(), Value::String(task_args.join(" ")));
+        vars.insert(
+            TASK_ARGS_VAR_NAME.to_string(),
+            Value::String(shell_words::join(task_args)),
+        );
     }
 
     Ok((tasks, vars))
@@ -374,14 +377,23 @@ mod tests {
     }
 
     #[test]
-    fn cli_args_after_dashes_are_joined_into_args_var() {
+    fn cli_args_after_dashes_are_shell_escaped_into_args_var() {
         let inputs = vec!["test".to_string()];
-        let cli_args = vec!["--nocapture".to_string(), "my_test".to_string()];
+        let cli_args = vec![
+            "--filter".to_string(),
+            "my test".to_string(),
+            "quote's".to_string(),
+            "$(rm -rf /tmp)".to_string(),
+            "".to_string(),
+        ];
 
         let (tasks, vars) = parse_tasks_or_vars(&inputs, &cli_args).unwrap();
 
         assert_eq!(tasks, vec!["test".to_string()]);
-        assert_eq!(vars.get("args"), Some(&json!("--nocapture my_test")));
+        assert_eq!(
+            vars.get("args"),
+            Some(&json!("--filter 'my test' 'quote'\\''s' '$(rm -rf /tmp)' ''"))
+        );
     }
 
     #[test]
