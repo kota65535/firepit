@@ -34,8 +34,8 @@ impl SizeInfo {
 
     pub fn pane_rows(&self) -> u16 {
         self.rows
-            // Account for top padding (1) and footer (2) in layout
-            .saturating_sub(3)
+            // Account for title (1), top padding (1), and footer (2) in layout
+            .saturating_sub(4)
             // Always allocate at least one row as vt100 crashes if emulating a zero area terminal
             .max(1)
     }
@@ -61,5 +61,26 @@ impl SizeInfo {
     /// Return the actual task table width.
     pub fn task_list_width(&self) -> u16 {
         self.cols - self.pane_cols(true) + 1
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SizeInfo;
+
+    #[test]
+    fn pane_rows_matches_rendered_terminal_body_height() {
+        let tasks = ["#foo"];
+        let size = SizeInfo::new(40, 160, tasks.iter().copied());
+
+        assert_eq!(size.pane_rows(), 36);
+    }
+
+    #[test]
+    fn pane_rows_keeps_vt100_height_nonzero() {
+        let tasks = ["#foo"];
+        let size = SizeInfo::new(2, 80, tasks.iter().copied());
+
+        assert_eq!(size.pane_rows(), 1);
     }
 }
