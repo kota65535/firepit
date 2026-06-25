@@ -127,7 +127,7 @@ You can annotate a task with a `description` and a `label`.
 - **`description`:** A human-readable explanation of what the task does.
   It is shown in the task listing (`fire --list`) and help output. It may span multiple lines.
 - **`label`:** A display name used instead of the task name in the TUI/CUI output (for example as the log prefix and pane title).
-  Unlike `description`, `label` supports template variables such as `{{ project }}`, `{{ task }}`, and your own `vars`.
+  Unlike `description`, `label` supports [template variables](#template-variables) such as `{{ project }}`, `{{ task }}`, and your own `vars`.
 
 ```yaml
 tasks:
