@@ -120,6 +120,24 @@ tasks:
     service: true
 ```
 
+### Description and Label
+
+You can annotate a task with a `description` and a `label`.
+
+- **`description`:** A human-readable explanation of what the task does.
+  It is shown in the task listing (`fire --list`) and help output. It may span multiple lines.
+- **`label`:** A display name used instead of the task name in the TUI/CUI output (for example as the log prefix and pane title).
+  When omitted, the task name is used. Unlike `description`, `label` supports template variables such as `{{ project }}`, `{{ task }}`, and your own `vars`.
+
+```yaml
+tasks:
+  dev:
+    description: Start the dev server with hot reload
+    label: "{{ project }}/dev"
+    command: bun run --hot src/index.ts
+    service: true
+```
+
 ## Dependencies
 
 Tasks can depend on other tasks using the `depends_on` field.
@@ -142,6 +160,26 @@ tasks:
     depends_on:
       - compile
 ```
+
+### Cascading Restarts
+
+In [watch mode](#watch-mode), when a dependency task is re-run, the tasks that depend on it are re-run as well by default.
+This cascading behavior can be turned off per dependency by writing the dependency in object form and setting `cascade: false`.
+A dependency written as a plain string is equivalent to `cascade: true`.
+
+In this example, `build` is re-run when `install` changes, but **not** when `codegen` is re-run.
+
+```yaml
+tasks:
+  build:
+    command: bun build src/index.ts
+    depends_on:
+      - install # cascade: true (default)
+      - task: codegen
+        cascade: false # re-running codegen does not re-run build
+```
+
+The object form also accepts `vars` to override the dependency task's variables (see [Passing Arguments](#passing-arguments)).
 
 ## Service Readiness
 
@@ -194,6 +232,29 @@ db:
   service:
     healthcheck:
       log: Ready to accept connections tcp
+```
+
+## Restart Policy
+
+You can control whether a service is restarted when its process exits, using the `restart` field.
+
+| Value          | Description                                                 |
+| -------------- | ----------------------------------------------------------- |
+| `never`        | Never restart the service. **This is the default.**         |
+| `always`       | Always restart the service when it exits.                   |
+| `always:N`     | Always restart, up to `N` times.                            |
+| `on-failure`   | Restart only when the service exits with a non-zero status. |
+| `on-failure:N` | Restart on failure, up to `N` times.                        |
+
+```yaml
+tasks:
+  db:
+    command: redis-server
+    service:
+      # Restart on failure, up to 5 times
+      restart: on-failure:5
+      healthcheck:
+        log: Ready to accept connections tcp
 ```
 
 ## Template Variables
@@ -280,6 +341,32 @@ tasks:
 
 When a dependency specifies `vars`, that value takes precedence over any value injected globally via `--`.
 
+### Dynamic Variables
+
+The variables shown so far are _static_: their values are plain JSON (string, number, boolean, array, or map).
+A variable can instead be _dynamic_, taking its value from the output of a command.
+Write the variable in object form and specify a `command`:
+
+```yaml
+vars:
+  git_sha:
+    command: git rev-parse --short HEAD
+  build_date:
+    command: date +%Y%m%d
+    # Optional fields
+    working_dir: .
+    shell:
+      command: bash
+      args: ["-c"]
+
+tasks:
+  build:
+    command: docker build -t app:{{ git_sha }} .
+```
+
+The command's standard output, trimmed of surrounding whitespace, becomes the variable's value; standard error is ignored.
+In addition to `command`, a dynamic variable accepts the optional `shell`, `working_dir`, `env`, and `env_files` fields.
+
 ## Environment Variables
 
 Environment variables can be defined in the `env` field.
@@ -322,6 +409,43 @@ tasks:
         command: nc -z localhost 3000
         interval: 2
 ```
+
+## Defaults
+
+The `defaults` field lets you apply common settings to multiple tasks at once, instead of repeating them in every task.
+Each entry has an optional `tasks` selector and the settings to apply.
+
+The `tasks` selector decides which tasks an entry applies to:
+
+- A **string** is treated as a regular expression matched against the task name.
+- An **array** is treated as an explicit list of task names.
+- If **omitted**, the entry applies to all tasks. (Note that an empty string `""` or empty list `[]` matches nothing.)
+
+An entry can set `shell`, `working_dir`, `vars`, `env`, `env_files`, `depends_on`, `service`, `inputs`, and `outputs`.
+
+```yaml
+defaults:
+  - tasks: "^(build|test)" # regex: applies to build and test
+    depends_on:
+      - install
+    env:
+      NODE_ENV: development
+  - tasks: [lint, test] # explicit list
+    shell:
+      command: bash
+      args: ["-c"]
+
+tasks:
+  build:
+    command: bun run build
+  test:
+    command: bun test
+  lint:
+    command: bun run lint
+```
+
+When multiple entries match the same task, they are merged in order: scalars (`shell`, `working_dir`, `service`) and map keys (`vars`, `env`) are overridden by later entries, while arrays (`env_files`, `depends_on`, `inputs`, `outputs`) are concatenated.
+The merged defaults act as a base layer, so any setting defined directly on the task itself takes precedence.
 
 ## Merging Config Files
 
