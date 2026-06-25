@@ -15,7 +15,7 @@ const recs = {
 };
 
 // Using asciinema's inline player for video playback.
-// Since script tags cannot be directly embedded in Markdown, 
+// Since script tags cannot be directly embedded in Markdown,
 // we dynamically generate and embed script tags in onMounted
 onMounted(() => {
   for (const [k, v] of Object.entries(recs)) {
