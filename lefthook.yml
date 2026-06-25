@@ -18,7 +18,14 @@ pre-commit:
       run: cargo fmt --all --check
       fail_text: "Rust code is not formatted. Run: cargo fmt --all"
     clippy:
-      glob: "*.rs"
+      # Run on any Rust build input, not just *.rs: dependency, feature,
+      # toolchain or rustflags changes can all change clippy results.
+      glob:
+        - "*.rs"
+        - "Cargo.toml"
+        - "Cargo.lock"
+        - "rust-toolchain.toml"
+        - ".cargo/config.toml"
       run: cargo clippy --all-targets -- -D warnings
       fail_text: "Clippy found issues. Fix the warnings above."
     dprint:
