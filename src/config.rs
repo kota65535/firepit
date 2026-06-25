@@ -422,7 +422,9 @@ impl ProjectConfig {
 
     pub fn schema() -> anyhow::Result<String> {
         let schema = schemars::schema_for!(ProjectConfig);
-        serde_json::to_string_pretty(&schema).context("cannot create config schema")
+        let mut schema = serde_json::to_string_pretty(&schema).context("cannot create config schema")?;
+        schema.push('\n');
+        Ok(schema)
     }
 
     pub fn task(&self, name: &str) -> anyhow::Result<&TaskConfig> {
