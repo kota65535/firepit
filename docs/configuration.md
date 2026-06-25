@@ -240,6 +240,46 @@ There are also some built-in variables available for use in templates.
 | `task`         | string              | The task name.                                                         |
 | `watch`        | boolean             | `true` if running in watch mode, `false` otherwise.                    |
 
+### Passing Arguments
+
+The `args` variable is a convenient convention for forwarding command-line arguments to a task.
+Declare it with a default value, reference it in the command, and override it from the CLI using `--`:
+
+```yaml
+tasks:
+  test:
+    vars:
+      args: ""
+    command: cargo test {{ args }}
+```
+
+```
+fire test -- --nocapture my_test   # runs: cargo test --nocapture my_test
+```
+
+Everything after `--` is shell-escaped, joined with a space, and assigned to `args`.
+Embed `{{ args }}` without extra quotes so the shell can interpret the generated quoting correctly.
+Since `--` is just an alias for `args=...`, specifying both at the same time is an error.
+
+Because `args` is an ordinary variable, a dependent task can also set it through `depends_on`.
+The dependency task must already declare the variable (here, `test` declares `args`):
+
+```yaml
+tasks:
+  test:
+    vars:
+      args: ""
+    command: cargo test {{ args }}
+
+  ci:
+    depends_on:
+      - task: test
+        vars:
+          args: "--release" # runs test as: cargo test --release
+```
+
+When a dependency specifies `vars`, that value takes precedence over any value injected globally via `--`.
+
 ## Environment Variables
 
 Environment variables can be defined in the `env` field.

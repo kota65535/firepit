@@ -16,6 +16,9 @@ use std::io::Write;
 use std::path;
 use tracing::info;
 
+/// Name of the variable that receives the task arguments passed after `--`.
+const TASK_ARGS_VAR_NAME: &str = "args";
+
 /// Firepit: Simple task & service runner with a comfortable TUI
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -24,6 +27,12 @@ pub struct Args {
     /// Variable are in "Name=Value" format (e.g. ENV=prod, DEBUG=true)
     #[arg(required = false)]
     pub tasks_or_vars: Vec<String>,
+
+    /// Extra arguments forwarded to tasks.
+    /// Everything after `--` is shell-escaped, joined with spaces, and assigned to the
+    /// `args` variable, so it can be referenced in task commands as `{{ args }}`.
+    #[arg(last = true, value_name = "ARGS")]
+    pub task_args: Vec<String>,
 
     /// Working directory
     #[arg(short, long, default_value = ".")]
@@ -92,7 +101,7 @@ pub async fn run() -> anyhow::Result<i32> {
     // Arguments
     let args = Args::parse();
     let dir = path::absolute(&args.dir)?;
-    let (tasks, vars) = parse_tasks_or_vars(&args.tasks_or_vars)?;
+    let (tasks, vars) = parse_tasks_or_vars(&args.tasks_or_vars, &args.task_args)?;
     let fail_fast = args.fail_fast();
 
     // Load config files
@@ -201,7 +210,10 @@ pub async fn run() -> anyhow::Result<i32> {
     exit_code
 }
 
-fn parse_tasks_or_vars(items: &[String]) -> anyhow::Result<(Vec<String>, IndexMap<String, Value>)> {
+fn parse_tasks_or_vars(
+    items: &[String],
+    task_args: &[String],
+) -> anyhow::Result<(Vec<String>, IndexMap<String, Value>)> {
     let mut tasks = Vec::new();
     let mut vars = IndexMap::new();
     for item in items.iter() {
@@ -223,6 +235,22 @@ fn parse_tasks_or_vars(items: &[String]) -> anyhow::Result<(Vec<String>, IndexMa
             None => tasks.push(item.to_string()),
         }
     }
+
+    // Forward the arguments after `--` as the `args` variable (shell-escaped and space-joined).
+    // This is just an alias for setting `args=...`, so specifying both is ambiguous and rejected.
+    if !task_args.is_empty() {
+        if vars.contains_key(TASK_ARGS_VAR_NAME) {
+            anyhow::bail!(
+                "the `{name}` variable is specified both via `{name}=...` and `-- ...`; use only one",
+                name = TASK_ARGS_VAR_NAME
+            );
+        }
+        vars.insert(
+            TASK_ARGS_VAR_NAME.to_string(),
+            Value::String(shell_words::join(task_args)),
+        );
+    }
+
     Ok((tasks, vars))
 }
 
@@ -338,7 +366,7 @@ mod tests {
             "flag=true".to_string(),
         ];
 
-        let (tasks, vars) = parse_tasks_or_vars(&inputs).unwrap();
+        let (tasks, vars) = parse_tasks_or_vars(&inputs, &[]).unwrap();
 
         assert_eq!(tasks, vec!["build".to_string()]);
         assert_eq!(vars.get("count"), Some(&json!(10)));
@@ -346,5 +374,44 @@ mod tests {
         assert_eq!(vars.get("raw"), Some(&json!("foo=bar")));
         assert_eq!(vars.get("single"), Some(&json!("baz=qux")));
         assert_eq!(vars.get("flag"), Some(&json!(true)));
+    }
+
+    #[test]
+    fn cli_args_after_dashes_are_shell_escaped_into_args_var() {
+        let inputs = vec!["test".to_string()];
+        let cli_args = vec![
+            "--filter".to_string(),
+            "my test".to_string(),
+            "quote's".to_string(),
+            "$(rm -rf /tmp)".to_string(),
+            "".to_string(),
+        ];
+
+        let (tasks, vars) = parse_tasks_or_vars(&inputs, &cli_args).unwrap();
+
+        assert_eq!(tasks, vec!["test".to_string()]);
+        assert_eq!(
+            vars.get("args"),
+            Some(&json!("--filter 'my test' 'quote'\\''s' '$(rm -rf /tmp)' ''"))
+        );
+    }
+
+    #[test]
+    fn no_cli_args_does_not_inject_args_var() {
+        let inputs = vec!["test".to_string()];
+
+        let (_, vars) = parse_tasks_or_vars(&inputs, &[]).unwrap();
+
+        assert_eq!(vars.get("args"), None);
+    }
+
+    #[test]
+    fn specifying_args_both_ways_is_rejected() {
+        let inputs = vec!["test".to_string(), "args=foo".to_string()];
+        let cli_args = vec!["bar".to_string()];
+
+        let result = parse_tasks_or_vars(&inputs, &cli_args);
+
+        assert!(result.is_err());
     }
 }

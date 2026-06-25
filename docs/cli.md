@@ -9,7 +9,7 @@ outline: deep
 ## Usage
 
 ```
-fire [OPTIONS] [TASKS]... [VARS]...
+fire [OPTIONS] [TASKS]... [VARS]... [-- <ARGS>...]
 ```
 
 ## Arguments
@@ -21,6 +21,18 @@ One or more tasks to run. Tasks run in parallel by default, respecting dependenc
 ### Vars
 
 Template variables to override. Variable are in "Name=Value" format (e.g. `ENV=prod`, `DEBUG=true`)
+
+### Args
+
+Arguments after `--` are shell-escaped, joined with a space, and assigned to the `args` template variable, so they can be referenced in task commands as `{{ args }}`.
+
+```
+fire test -- --nocapture my_test
+```
+
+Embed `{{ args }}` without extra quotes in task commands.
+This is an alias for setting `args=...`, so specifying both `args=...` and `-- ...` at the same time is an error.
+See [Passing Arguments](/configuration#passing-arguments) for details.
 
 ## Options
 
