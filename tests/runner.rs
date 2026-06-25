@@ -97,6 +97,54 @@ async fn test_basic_failure() {
 }
 
 #[tokio::test]
+async fn test_partial_output_without_newline_is_forwarded_before_exit() {
+    setup();
+    let path = path::absolute(BASE_PATH.join("partial_output")).unwrap();
+    let tasks = vec![String::from("foo")];
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &tasks,
+        &path,
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    let mut runner = TaskRunner::new(&ws).unwrap();
+    let (app_tx, mut app_rx) = AppCommandChannel::new();
+    let runner_tx = runner.command_tx.clone();
+    let runner_fut = tokio::spawn(async move { runner.run(&app_tx, false).await });
+
+    let output = tokio::time::timeout(Duration::from_secs(1), async {
+        while let Some(event) = app_rx.recv().await {
+            match event {
+                AppCommand::TaskOutput { task, output } if task == "#foo" => {
+                    return String::from_utf8(output).unwrap();
+                }
+                AppCommand::FinishTask { task, .. } if task == "#foo" => {
+                    panic!("task finished before partial output was forwarded");
+                }
+                _ => {}
+            }
+        }
+        panic!("app command channel closed before partial output was forwarded");
+    })
+    .await
+    .expect("partial output was not forwarded before the task exited");
+
+    runner_tx.quit();
+    runner_fut.await.unwrap().unwrap();
+
+    assert_eq!(output, "Enter a value: ");
+}
+
+#[tokio::test]
 #[rstest]
 #[case("")]
 #[case("foo")]

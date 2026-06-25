@@ -28,7 +28,7 @@ use super::{Command, PtySize};
 use crate::{tokio_spawn, tokio_spawn_blocking};
 use portable_pty::{native_pty_system, Child as PtyChild, MasterPty as PtyController};
 use tokio::{
-    io::{AsyncBufRead, AsyncBufReadExt, BufReader},
+    io::{AsyncRead, AsyncReadExt},
     join,
     process::Command as TokioCommand,
     sync::{mpsc, watch, RwLock},
@@ -554,13 +554,8 @@ impl Child {
     ) -> Result<Option<ChildExit>, io::Error> {
         match self.outputs() {
             Some(ChildOutput::Std { stdout, stderr }) => {
-                self.wait_with_piped_async_outputs(
-                    stdout_pipe,
-                    stderr_pipe,
-                    Some(BufReader::new(stdout)),
-                    Some(BufReader::new(stderr)),
-                )
-                .await
+                self.wait_with_piped_async_outputs(stdout_pipe, stderr_pipe, Some(stdout), Some(stderr))
+                    .await
             }
             Some(ChildOutput::Pty(output)) => {
                 self.wait_with_piped_sync_output(stdout_pipe, io::BufReader::new(output))
@@ -624,76 +619,72 @@ impl Child {
         Ok(status)
     }
 
-    async fn wait_with_piped_async_outputs<R1: AsyncBufRead + Unpin, R2: AsyncBufRead + Unpin>(
+    async fn wait_with_piped_async_outputs<R1: AsyncRead + Unpin, R2: AsyncRead + Unpin>(
         &mut self,
         mut stdout_pipe: impl Write,
         mut stderr_pipe: impl Write,
         mut stdout_lines: Option<R1>,
         mut stderr_lines: Option<R2>,
     ) -> Result<Option<ChildExit>, std::io::Error> {
-        async fn next_line<R: AsyncBufRead + Unpin>(
-            stream: &mut Option<R>,
-            buffer: &mut Vec<u8>,
-        ) -> Option<Result<(), io::Error>> {
-            match stream {
-                Some(stream) => match stream.read_until(b'\n', buffer).await {
-                    Ok(0) => {
-                        trace!("reached EOF");
-                        None
-                    }
-                    Ok(_) => Some(Ok(())),
-                    Err(e) => Some(Err(e)),
-                },
-                None => None,
+        enum StreamOutput {
+            Bytes(Vec<u8>),
+            Eof,
+        }
+
+        async fn next_chunk<R: AsyncRead + Unpin>(stream: &mut Option<R>) -> Option<Result<StreamOutput, io::Error>> {
+            let reader = stream.as_mut()?;
+            let mut buffer = [0; 1024];
+            match reader.read(&mut buffer).await {
+                Ok(0) => {
+                    trace!("reached EOF");
+                    stream.take();
+                    Some(Ok(StreamOutput::Eof))
+                }
+                Ok(n) => Some(Ok(StreamOutput::Bytes(buffer[..n].to_vec()))),
+                Err(e) => Some(Err(e)),
             }
         }
 
-        let mut stdout_buffer = Vec::new();
-        let mut stderr_buffer = Vec::new();
+        let mut last_stdout_byte = None;
+        let mut last_stderr_byte = None;
 
         let mut is_exited = false;
         loop {
             tokio::select! {
-                Some(result) = next_line(&mut stdout_lines, &mut stdout_buffer) => {
-                    trace!("processing stdout line");
-                    result?;
-                    add_trailing_newline(&mut stdout_buffer);
-                    stdout_pipe.write_all(&stdout_buffer)?;
-                    stdout_buffer.clear();
+                Some(result) = next_chunk(&mut stdout_lines) => {
+                    trace!("processing stdout chunk");
+                    match result? {
+                        StreamOutput::Bytes(bytes) => {
+                            last_stdout_byte = bytes.last().copied();
+                            write_output_chunks(&mut stdout_pipe, &bytes)?;
+                        }
+                        StreamOutput::Eof => {
+                            write_trailing_newline(&mut stdout_pipe, last_stdout_byte)?;
+                        }
+                    }
                 }
-                Some(result) = next_line(&mut stderr_lines, &mut stderr_buffer) => {
-                    trace!("processing stderr line");
-                    result?;
-                    add_trailing_newline(&mut stderr_buffer);
-                    stderr_pipe.write_all(&stderr_buffer)?;
-                    stderr_buffer.clear();
+                Some(result) = next_chunk(&mut stderr_lines) => {
+                    trace!("processing stderr chunk");
+                    match result? {
+                        StreamOutput::Bytes(bytes) => {
+                            last_stderr_byte = bytes.last().copied();
+                            write_output_chunks(&mut stderr_pipe, &bytes)?;
+                        }
+                        StreamOutput::Eof => {
+                            write_trailing_newline(&mut stderr_pipe, last_stderr_byte)?;
+                        }
+                    }
                 }
                 _status = self.wait(), if !is_exited => {
                     trace!("child process exited: {}", self.label());
                     is_exited = true;
                 }
                 else => {
-                    trace!("flushing child stdout/stderr buffers");
-                    // In the case that both futures read a complete line
-                    // the future not chosen in the select will return None if it's at EOF
-                    // as the number of bytes read will be 0.
-                    // We check and flush the buffers to avoid missing the last line of output.
-                    if !stdout_buffer.is_empty() {
-                        add_trailing_newline(&mut stdout_buffer);
-                        stdout_pipe.write_all(&stdout_buffer)?;
-                        stdout_buffer.clear();
-                    }
-                    if !stderr_buffer.is_empty() {
-                        add_trailing_newline(&mut stderr_buffer);
-                        stderr_pipe.write_all(&stderr_buffer)?;
-                        stderr_buffer.clear();
-                    }
+                    trace!("finished draining child stdout/stderr");
                     break;
                 }
             }
         }
-        debug_assert!(stdout_buffer.is_empty(), "buffer should be empty");
-        debug_assert!(stderr_buffer.is_empty(), "buffer should be empty");
 
         Ok(self.wait().await)
     }
@@ -703,14 +694,18 @@ impl Child {
     }
 }
 
-// Adds a trailing newline if necessary to the buffer
-fn add_trailing_newline(buffer: &mut Vec<u8>) {
-    // If the line doesn't end with a newline, that indicates we hit a EOF.
-    // We add a newline so output from other tasks doesn't get written to the same
-    // line.
-    if buffer.last() != Some(&b'\n') {
-        buffer.push(b'\n');
+fn write_trailing_newline(pipe: &mut impl Write, last_byte: Option<u8>) -> io::Result<()> {
+    if matches!(last_byte, Some(byte) if byte != b'\n') {
+        pipe.write_all(b"\n")?;
     }
+    Ok(())
+}
+
+fn write_output_chunks(pipe: &mut impl Write, bytes: &[u8]) -> io::Result<()> {
+    for chunk in bytes.split_inclusive(|byte| *byte == b'\n') {
+        pipe.write_all(chunk)?;
+    }
+    Ok(())
 }
 
 impl ChildStateManager {
