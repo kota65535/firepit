@@ -1,5 +1,19 @@
 [tools]
 "node" = "24.11.1"
 "github:axodotdev/cargo-dist" = "0.30.4"
-"cargo:git-cliff" = "latest"
-"cargo:cargo-edit" = "latest"
+"github:orhun/git-cliff" = "2.13.1"
+"cargo:cargo-edit" = "0.13.10"
+"lefthook" = "2.1.9"
+"dprint" = "0.54.0"
+"npm:@commitlint/cli" = "21.1.0"
+"github:gitleaks/gitleaks" = "8.30.1"
+
+[settings]
+# Tools wait out a 7-day cooldown before a freshly published version
+# (and, for npm, its transitive deps) is installed — a supply-chain guard.
+minimum_release_age = "7d"
+
+[hooks]
+# Install the git hooks right after `mise install` so contributors don't have
+# to remember to run `lefthook install` manually.
+postinstall = "lefthook install"

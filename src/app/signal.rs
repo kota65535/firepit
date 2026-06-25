@@ -27,7 +27,11 @@ pub struct SignalSubscriber(oneshot::Receiver<oneshot::Sender<()>>);
 
 /// SubscriberGuard should be kept until a subscriber is done processing the
 /// signal
-pub struct SubscriberGuard(oneshot::Sender<()>);
+pub struct SubscriberGuard {
+    // Held only for its `Drop`: when this guard is dropped, the sender is
+    // dropped, which signals the signal handler worker that cleanup is done.
+    _callback: oneshot::Sender<()>,
+}
 
 fn get_signal() -> anyhow::Result<impl Future<Output = Option<i32>>> {
     use tokio::signal::unix;
@@ -129,13 +133,6 @@ impl SignalHandler {
         // Receiver is dropped once the worker task completes
         self.close.closed().await;
     }
-
-    // Check if the worker thread is done, only meant to be used for assertions in
-    // testing
-    #[cfg(test)]
-    fn is_done(&self) -> bool {
-        self.close.is_closed()
-    }
 }
 
 impl SignalSubscriber {
@@ -145,7 +142,7 @@ impl SignalSubscriber {
             .0
             .await
             .expect("signal handler worker thread exited without alerting subscribers");
-        SubscriberGuard(callback)
+        SubscriberGuard { _callback: callback }
     }
 }
 

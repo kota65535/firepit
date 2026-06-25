@@ -2,7 +2,6 @@ use crate::log::OutputCollector;
 use crate::process::{Child, ChildExit, Command, ProcessManager};
 use crate::project::Env;
 use crate::PROBE_STOP_TIMEOUT;
-use anyhow::Context;
 use regex::Regex;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -19,18 +18,13 @@ pub enum Probe {
 
 #[derive(Debug, Clone)]
 pub struct LogLineProbe {
-    name: String,
     regex: Regex,
     timeout: u64,
 }
 
 impl LogLineProbe {
-    pub fn new(name: &str, regex: Regex, timeout: u64) -> Self {
-        Self {
-            name: name.to_string(),
-            regex,
-            timeout,
-        }
+    pub fn new(regex: Regex, timeout: u64) -> Self {
+        Self { regex, timeout }
     }
 
     pub async fn run(
@@ -86,6 +80,9 @@ pub struct ExecProbe {
 }
 
 impl ExecProbe {
+    // Public constructor mirroring the exec health-check config fields; a builder
+    // refactor would change the public API without real benefit.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         name: &str,
         command: &str,
@@ -150,10 +147,7 @@ impl ExecProbe {
                     let success = match exit {
                         Ok(Some(exit_status)) => {
                             info!("Probe finished with exit code {:?}.\noutput: {:?}", exit_status, output_collector.take_output());
-                            match exit_status {
-                                ChildExit::Finished(Some(code)) if code == 0 => true,
-                                _ => false
-                            }
+                            matches!(exit_status, ChildExit::Finished(Some(0)))
                         },
                         Ok(None) => anyhow::bail!("unable to determine why probe exited"),
                         Err(e) => anyhow::bail!("error while waiting probe: {:?}", e),
@@ -220,7 +214,7 @@ mod test {
     #[tokio::test]
     async fn test_log_line_probe_succeeds() {
         setup();
-        let probe = LogLineProbe::new("test", Regex::new("test").unwrap(), 1);
+        let probe = LogLineProbe::new(Regex::new("test").unwrap(), 1);
         let (log_tx, log_rx) = mpsc::unbounded_channel();
         let (cancel_tx, cancel_rx) = watch::channel(());
 
@@ -230,13 +224,13 @@ mod test {
         // log line matches and succeed
         let result = probe.run(log_rx, cancel_rx).await;
 
-        assert_eq!(result.unwrap(), true);
+        assert!(result.unwrap());
     }
 
     #[tokio::test]
     async fn test_log_line_probe_timeout() {
         setup();
-        let probe = LogLineProbe::new("test", Regex::new("test").unwrap(), 1);
+        let probe = LogLineProbe::new(Regex::new("test").unwrap(), 1);
         let (log_tx, log_rx) = mpsc::unbounded_channel();
         let (cancel_tx, cancel_rx) = watch::channel(());
 
@@ -244,13 +238,13 @@ mod test {
 
         let result = probe.run(log_rx, cancel_rx).await;
 
-        assert_eq!(result.unwrap(), false);
+        assert!(!(result.unwrap()));
     }
 
     #[tokio::test]
     async fn test_log_line_probe_canceled() {
         setup();
-        let probe = LogLineProbe::new("test", Regex::new("test").unwrap(), 1);
+        let probe = LogLineProbe::new(Regex::new("test").unwrap(), 1);
         let (log_tx, log_rx) = mpsc::unbounded_channel();
         let (cancel_tx, cancel_rx) = watch::channel(());
 
@@ -259,7 +253,7 @@ mod test {
 
         let result = probe.run(log_rx, cancel_rx).await;
 
-        assert_eq!(result.unwrap(), false);
+        assert!(!(result.unwrap()));
     }
 
     #[tokio::test]
@@ -281,7 +275,7 @@ mod test {
 
         let result = probe.run(cancel_rx).await;
 
-        assert_eq!(result.unwrap(), true);
+        assert!(result.unwrap());
     }
 
     #[tokio::test]
@@ -303,7 +297,7 @@ mod test {
 
         let result = probe.run(cancel_rx).await;
 
-        assert_eq!(result.unwrap(), false);
+        assert!(!(result.unwrap()));
     }
 
     #[tokio::test]
@@ -325,7 +319,7 @@ mod test {
 
         let result = probe.run(cancel_rx).await;
 
-        assert_eq!(result.unwrap(), false);
+        assert!(!(result.unwrap()));
     }
 
     #[tokio::test]
@@ -348,6 +342,6 @@ mod test {
         cancel_tx.send(());
         let result = probe.run(cancel_rx).await;
 
-        assert_eq!(result.unwrap(), false);
+        assert!(!(result.unwrap()));
     }
 }

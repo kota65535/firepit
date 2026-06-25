@@ -89,7 +89,7 @@ impl TaskRunner {
             self.manager.set_pty_size(pane_size.rows, pane_size.cols).await;
         }
 
-        let ret = self.run(&app_tx, quit_on_done).await;
+        let ret = self.run(app_tx, quit_on_done).await;
 
         if let Err(err) = ret {
             error!("Error: {:?}", err);
@@ -124,7 +124,7 @@ impl TaskRunner {
 
         // Task futures
         let mut task_fut = FuturesUnordered::new();
-        let targets_remaining: HashSet<String> = self.target_tasks.iter().map(|s| s.clone()).collect();
+        let targets_remaining: HashSet<String> = self.target_tasks.iter().cloned().collect();
         let targets_remaining = Arc::new(Mutex::new(targets_remaining));
 
         while !node_rx.is_closed() {
@@ -155,8 +155,8 @@ impl TaskRunner {
                             for task in tasks.iter() {
                                 let end_time =  Local::now();
                                 self.end_times.lock().expect("not poisoned").insert( task.clone(), end_time);
-                                app_tx.clone().with_name(&task).finish_task(TaskResult::Reloading, Some(end_time));
-                                self.manager.stop_by_label(&task).await;
+                                app_tx.clone().with_name(task).finish_task(TaskResult::Reloading, Some(end_time));
+                                self.manager.stop_by_label(task).await;
                             }
                             info!("Stopped tasks");
                             info!("Restarting visitors");
@@ -349,7 +349,7 @@ impl TaskRunner {
                                 }
                             }
                             // If the process finished before the probe, consider it as failed regardless of the result
-                            if let Some(_) = task_result {
+                            if task_result.is_some() {
                                 info!("Task finished before it becomes ready");
                                 if let Err(e) = probe_cancel_tx.send(()) {
                                     warn!("Failed to send cancel probe: {:?}", e)
@@ -431,12 +431,8 @@ impl TaskRunner {
 
     async fn join<T>(futures: &mut FuturesUnordered<JoinHandle<T>>) -> anyhow::Result<()> {
         while let Some(r) = futures.next().await {
-            match r {
-                Ok(_) => match r {
-                    Err(e) => anyhow::bail!("error while waiting futures: {:?}", e),
-                    _ => {}
-                },
-                Err(e) => anyhow::bail!("error while waiting futures: {:?}", e),
+            if let Err(e) = r {
+                anyhow::bail!("error while waiting futures: {:?}", e);
             }
         }
         Ok(())
@@ -497,7 +493,7 @@ impl TaskRunner {
         info!("Process is waiting for output. PID={}", pid);
         let result = match process.wait_with_piped_outputs(app_tx.clone(), app_tx.clone()).await {
             Ok(Some(exit_status)) => match exit_status {
-                ChildExit::Finished(Some(code)) if code == 0 => TaskResult::Success,
+                ChildExit::Finished(Some(0)) => TaskResult::Success,
                 ChildExit::Finished(Some(code)) => TaskResult::Failure(code),
                 ChildExit::Killed | ChildExit::KilledExternal => TaskResult::Stopped,
                 ChildExit::Failed => TaskResult::Unknown,
@@ -516,22 +512,19 @@ impl TaskRunner {
             .lock()
             .expect("not poisoned")
             .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
+            .map(|(k, v)| (k.clone(), *v))
             .collect::<IndexMap<_, _>>();
         let finished_times = self
             .end_times
             .lock()
             .expect("not poisoned")
             .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
+            .map(|(k, v)| (k.clone(), *v))
             .collect::<IndexMap<_, _>>();
 
         let title = self.target_tasks.join(", ");
 
-        let mut gantt = String::from(format!(
-            "gantt\n\ttitle {}\n\tdateFormat x\n\taxisFormat %H:%M:%S\n",
-            title
-        ));
+        let mut gantt = format!("gantt\n\ttitle {}\n\tdateFormat x\n\taxisFormat %H:%M:%S\n", title);
 
         for (task, start_time) in started_times.iter() {
             let end_time = finished_times.get(task);

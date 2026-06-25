@@ -1,0 +1,50 @@
+# Lefthook configuration
+# Docs: https://lefthook.dev/configuration/
+#
+# Enable on a fresh clone with:
+#   mise install && lefthook install
+#
+# pre-commit runs format & lint checks (check-only; nothing is auto-modified).
+# Fix locally with: cargo fmt --all && dprint fmt
+#
+# PATH for the toolchains (cargo, mise/dprint) is set once in .lefthookrc,
+# which is sourced before the commands run.
+rc: .lefthookrc
+pre-commit:
+  parallel: true
+  commands:
+    rustfmt:
+      glob: "*.rs"
+      run: cargo fmt --all --check
+      fail_text: "Rust code is not formatted. Run: cargo fmt --all"
+    clippy:
+      # Run on any Rust build input, not just *.rs: dependency, feature,
+      # toolchain or rustflags changes can all change clippy results.
+      glob:
+        - "*.rs"
+        - "Cargo.toml"
+        - "Cargo.lock"
+        - "rust-toolchain.toml"
+        - ".cargo/config.toml"
+      run: cargo clippy --all-targets -- -D warnings
+      fail_text: "Clippy found issues. Fix the warnings above."
+    dprint:
+      glob: "*.{json,jsonc,md,markdown,toml,yaml,yml}"
+      run: mise exec -- dprint check {staged_files}
+      fail_text: "Files are not formatted. Run: dprint fmt"
+    mise-pinned:
+      # Tool versions must be pinned; "latest" is not allowed in mise.toml.
+      glob: "mise.toml"
+      run: |
+        grep -nE "=[[:space:]]*['\"]latest['\"]" {staged_files} && exit 1 || exit 0
+      fail_text: "Pin the tool version in mise.toml; 'latest' is not allowed."
+    gitleaks:
+      # Scan staged changes for committed secrets.
+      run: mise exec -- gitleaks git --staged --no-banner --redact
+      fail_text: "Potential secret detected. Remove it before committing."
+
+commit-msg:
+  commands:
+    commitlint:
+      run: mise exec -- commitlint --edit {1}
+      fail_text: "Commit message must follow Conventional Commits (e.g. 'feat: ...')."

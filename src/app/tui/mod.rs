@@ -38,8 +38,8 @@ use ratatui::{
 use std::collections::HashMap;
 use std::io::{self, Stdout, Write};
 use tokio::{sync::mpsc, time::Instant};
-use unicode_width::UnicodeWidthStr;
 use tracing::{debug, error, info};
+use unicode_width::UnicodeWidthStr;
 
 #[derive(Debug, Clone)]
 pub enum LayoutSections {
@@ -78,8 +78,8 @@ pub struct TuiAppState {
 
 impl TuiApp {
     pub fn new(
-        target_tasks: &Vec<String>,
-        dep_tasks: &Vec<String>,
+        target_tasks: &[String],
+        dep_tasks: &[String],
         labels: &HashMap<String, String>,
     ) -> anyhow::Result<Self> {
         let terminal = Self::setup_terminal()?;
@@ -230,7 +230,7 @@ impl TuiApp {
 
     /// Blocking poll for events, will only return None if app handle has been
     /// dropped
-    async fn poll<'a>(&mut self) -> anyhow::Result<Option<AppCommand>> {
+    async fn poll(&mut self) -> anyhow::Result<Option<AppCommand>> {
         let input_closed = self.crossterm_rx.is_closed();
 
         if input_closed {
@@ -292,7 +292,7 @@ impl TuiAppState {
             .with_context(|| format!("task {:?} not found", name))
     }
 
-    fn input_options(&self) -> anyhow::Result<InputOptions> {
+    fn input_options(&self) -> anyhow::Result<InputOptions<'_>> {
         let task = self.active_task()?;
         Ok(InputOptions {
             focus: &self.focus,
@@ -478,8 +478,7 @@ impl TuiAppState {
             .map(|span| span.segments.as_slice());
 
         // Render pane
-        let pane_to_render =
-            TerminalPane::new(&active_task, &self.focus, self.has_sidebar, hovered_segments);
+        let pane_to_render = TerminalPane::new(active_task, &self.focus, self.has_sidebar, hovered_segments);
         f.render_widget(&pane_to_render, pane);
 
         // Render pane scrollbar
@@ -498,7 +497,7 @@ impl TuiAppState {
         }
 
         // Render help dialog
-        if let LayoutSections::Help { scroll, max_scroll } = self.focus {
+        if let LayoutSections::Help { scroll, max_scroll: _ } = self.focus {
             render_help_dialog(f, scroll);
         }
     }
@@ -873,7 +872,7 @@ impl TuiAppState {
                 runner_tx.quit();
             }
             AppCommand::OpenHelp => {
-                let (rect, content_width, content_height) = help_dialog_size(self.size.cols(), self.size.rows());
+                let (rect, _content_width, content_height) = help_dialog_size(self.size.cols(), self.size.rows());
                 self.focus = LayoutSections::Help {
                     scroll: 0,
                     max_scroll: content_height.saturating_sub(rect.height.saturating_sub(2) as usize),

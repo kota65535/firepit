@@ -88,6 +88,7 @@ cargo test --test runner
 ### Testing Patterns
 
 The project uses fixture-based testing extensively:
+
 - Test fixtures in `tests/fixtures/` contain various firepit.yml configurations
 - Integration tests in `tests/runner.rs` and `tests/config.rs`
 - Use `rstest` for parameterized tests
@@ -103,7 +104,7 @@ The project uses fixture-based testing extensively:
 ### Key Configuration Concepts
 
 - **Task Dependencies**: Use `depends_on` for sequential execution
-- **Services**: Long-running tasks with health checks and restart policies  
+- **Services**: Long-running tasks with health checks and restart policies
 - **Variables**: Template variables for dynamic configuration
 - **Environment**: Environment variables and dotenv file support
 - **File Watching**: Input/output file patterns for incremental builds

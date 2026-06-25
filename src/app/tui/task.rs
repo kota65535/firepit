@@ -86,7 +86,7 @@ impl Task {
         };
 
         let status = match self.status {
-            TaskStatus::Planned => format!("Waiting"),
+            TaskStatus::Planned => "Waiting".to_string(),
             TaskStatus::Running(_) => format!(
                 "Running, PID: {}, Restart: {}/{}, Reload: {}, Elapsed: {}",
                 pid,

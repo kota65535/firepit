@@ -20,8 +20,8 @@ pub struct TaskTable<'b> {
     section: &'b LayoutSections,
 }
 
-static NAVIGATE_TASKS: &'static (&str, &str) = &("[↑↓]", "Navigate");
-static HIDE_TASKS: &'static (&str, &str) = &("[h] ", "Hide");
+static NAVIGATE_TASKS: &(&str, &str) = &("[↑↓]", "Navigate");
+static HIDE_TASKS: &(&str, &str) = &("[h] ", "Hide");
 static MAX_WIDTH: usize = 40;
 static STATUS_COLUMN_WIDTH: u16 = 3;
 
@@ -44,7 +44,7 @@ impl TaskTable<'_> {
         task_name_width + STATUS_COLUMN_WIDTH + 1
     }
 
-    fn rows(&self) -> Vec<Row> {
+    fn rows(&self) -> Vec<Row<'_>> {
         self.tasks
             .iter()
             .map(|(_, r)| {
@@ -78,7 +78,7 @@ impl TaskTable<'_> {
             .collect()
     }
 
-    fn status_summary(&self) -> Line {
+    fn status_summary(&self) -> Line<'_> {
         // Failure: any task has failed
         if self
             .tasks

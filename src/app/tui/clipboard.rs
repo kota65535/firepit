@@ -87,8 +87,14 @@ fn copy_impl(s: &str, provider: &Provider) -> std::io::Result<()> {
                 .stderr(Stdio::null())
                 .spawn()
                 .unwrap();
-            std::io::Write::write_all(&mut child.stdin.as_ref().unwrap(), s.as_bytes())?;
+            // Take stdin so it is closed (dropped) before waiting, and make sure
+            // the child is always reaped even if writing fails.
+            let write_result = {
+                let mut stdin = child.stdin.take().unwrap();
+                std::io::Write::write_all(&mut stdin, s.as_bytes())
+            };
             child.wait()?;
+            write_result?;
         }
 
         Provider::NoOp => (),
@@ -97,4 +103,4 @@ fn copy_impl(s: &str, provider: &Provider) -> std::io::Result<()> {
     Ok(())
 }
 
-pub static PROVIDER: Lazy<Provider> = Lazy::new(|| detect_copy_provider());
+static PROVIDER: Lazy<Provider> = Lazy::new(detect_copy_provider);

@@ -8,7 +8,11 @@
   "yaml": {
   },
   "excludes": [
-    "workflows/release.yml"
+    ".github/workflows/release.yml",
+    "CHANGELOG.md",
+    "schema.json",
+    "docs/schema-body.md",
+    "examples/**"
   ],
   "plugins": [
     "https://plugins.dprint.dev/json-0.19.4.wasm",

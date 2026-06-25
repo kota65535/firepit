@@ -20,7 +20,7 @@ pub fn panic_handler(panic_info: &std::panic::PanicHookInfo) {
     let report_message = if let Some(backtrace) = report.serialize() {
         format!("Backtrace: \n{backtrace}\n")
     } else {
-        format!("Unable to serialize backtrace.")
+        "Unable to serialize backtrace.".to_string()
     };
     eprintln!("Oops! {} has crashed. {}", name, report_message);
 

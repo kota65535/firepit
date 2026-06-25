@@ -99,5 +99,5 @@ async fn test_multi() {
     );
     assert!(install.depends_on.is_empty());
 
-    let foo = ws.children.get("foo").unwrap().task("foo").unwrap();
+    let _foo = ws.children.get("foo").unwrap().task("foo").unwrap();
 }

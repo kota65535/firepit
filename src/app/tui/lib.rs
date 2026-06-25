@@ -25,10 +25,6 @@ impl<T> RingBuffer<T> {
             self.inner.push_back(item);
         }
     }
-
-    pub fn pop(&mut self) -> Option<T> {
-        self.inner.pop_front()
-    }
 }
 
 impl Display for RingBuffer<Instant> {

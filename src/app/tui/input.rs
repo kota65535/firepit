@@ -43,7 +43,7 @@ impl InputOptions<'_> {
     }
 
     pub fn on_pane(&self) -> bool {
-        matches!(self.focus, LayoutSections::Pane { .. })
+        matches!(self.focus, LayoutSections::Pane)
     }
 }
 
@@ -150,7 +150,10 @@ impl InputHandler {
                 } else if num_clicks == 2 {
                     self.is_single_click = false;
                     debug!("Double-clicked: word selection");
-                    Some(AppCommand::WordSelection { rows: row, cols: column })
+                    Some(AppCommand::WordSelection {
+                        rows: row,
+                        cols: column,
+                    })
                 } else {
                     self.is_single_click = false;
                     debug!("Triple-clicked: line selection");

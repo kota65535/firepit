@@ -35,10 +35,10 @@ pub struct FileWatcherHandle {
 }
 
 impl FileWatcher {
-    pub fn new(tasks: &Vec<Task>, dir: &Path, debounce_duration: Duration) -> FileWatcher {
+    pub fn new(tasks: &[Task], dir: &Path, debounce_duration: Duration) -> FileWatcher {
         FileWatcher {
             inner: Arc::new(Mutex::new(FileWatcherState { is_closing: false })),
-            tasks: tasks.clone(),
+            tasks: tasks.to_vec(),
             dir: dir.to_path_buf(),
             debounce_duration,
         }
@@ -55,22 +55,17 @@ impl FileWatcher {
         // Cancel the file watcher if cancel is sent
         let state = self.inner.clone();
         tokio_spawn!("watcher-canceller", async move {
-            while let Ok(event) = watcher_rx.recv().await {
-                match event {
-                    WatcherCommand::Stop => {
-                        debug!("Stopping watcher");
-                        let mut state = state.lock().expect("not poisoned");
-                        state.is_closing = true;
-                        break;
-                    }
-                }
+            if let Ok(WatcherCommand::Stop) = watcher_rx.recv().await {
+                debug!("Stopping watcher");
+                let mut state = state.lock().expect("not poisoned");
+                state.is_closing = true;
             }
         });
 
         let state = self.inner.clone();
         let tasks = self.tasks.clone();
         let dir = self.dir.clone();
-        let debounce_duration = self.debounce_duration.clone();
+        let debounce_duration = self.debounce_duration;
         let runner_tx = runner_tx.clone();
         let future = std::thread::spawn(move || {
             let _guard = watcher;
