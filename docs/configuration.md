@@ -161,6 +161,38 @@ tasks:
       - compile
 ```
 
+### Parameterized Dependencies
+
+Writing a dependency in object form lets you override its `vars`.
+This means you can define a single generic task and reuse it with different inputs, instead of duplicating near-identical tasks.
+
+In this example, the generic `migrate` task is reused by two tasks with different `database` values:
+
+```yaml
+tasks:
+  migrate:
+    vars:
+      database: ""
+    command: ./migrate.sh {{ database }}
+
+  setup-app:
+    command: echo "app is ready"
+    depends_on:
+      - task: migrate
+        vars:
+          database: app # runs: ./migrate.sh app
+
+  setup-analytics:
+    command: echo "analytics is ready"
+    depends_on:
+      - task: migrate
+        vars:
+          database: analytics # runs: ./migrate.sh analytics
+```
+
+Each dependent runs its own variant of `migrate` with the overridden variables.
+Note that only variables already declared in the dependency task can be overridden, so `migrate` must declare `database` in its `vars`.
+
 ### Cascading Restarts
 
 In [watch mode](#watch-mode), when a dependency task is re-run, the tasks that depend on it are re-run as well by default.
@@ -179,7 +211,7 @@ tasks:
         cascade: false # re-running codegen does not re-run build
 ```
 
-The object form also accepts `vars` to override the dependency task's variables (see [Passing Arguments](#passing-arguments)).
+The object form also accepts `vars` to override the dependency task's variables (see [Parameterized Dependencies](#parameterized-dependencies)).
 
 ## Service Readiness
 
