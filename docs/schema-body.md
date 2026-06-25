@@ -164,6 +164,11 @@ vars:
   aws_region: ap-northeast-1
   ecr_registry: "{{ aws_account_id }}.dkr.ecr.{{ aws_region }}.amazonaws.com"
 ```
+A variable with no value is required and must be provided explicitly.
+```yaml
+vars:
+  env:
+```
 
 ### working_dir
 
@@ -245,6 +250,7 @@ If omitted, all tasks are matched.
 - **Default:** `{}`
 - **Template:** yes
 - **Description:** Template variables
+A variable with no value is required and must be provided explicitly.
 
 ### working_dir
 
@@ -552,6 +558,7 @@ Probe failure during that period will not be counted towards the maximum number 
 - **Description:** Template variables. Merged with the project `vars`.
 Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`,
 `service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`
+A variable with no value is required and must be provided explicitly.
 
 ### working_dir
 

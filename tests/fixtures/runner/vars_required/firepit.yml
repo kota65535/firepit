@@ -1,0 +1,7 @@
+tasks:
+  required:
+    vars:
+      env:
+    command: |
+      echo "{{ env }}"
+      echo "{% if env is string %}ok{% endif %}"

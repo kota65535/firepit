@@ -68,6 +68,11 @@ pub struct ProjectConfig {
     ///   aws_region: ap-northeast-1
     ///   ecr_registry: "{{ aws_account_id }}.dkr.ecr.{{ aws_region }}.amazonaws.com"
     /// ```
+    /// A variable with no value is required and must be provided explicitly.
+    /// ```yaml
+    /// vars:
+    ///   env:
+    /// ```
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
     pub vars: IndexMap<String, VarsConfig>,
@@ -609,6 +614,7 @@ pub struct TaskConfig {
     /// Template variables. Merged with the project `vars`.
     /// Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`,
     /// `service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`
+    /// A variable with no value is required and must be provided explicitly.
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
     pub vars: IndexMap<String, VarsConfig>,
@@ -1074,6 +1080,7 @@ pub struct DefaultsConfig {
     pub working_dir: Option<String>,
 
     /// Template variables
+    /// A variable with no value is required and must be provided explicitly.
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
     pub vars: IndexMap<String, VarsConfig>,

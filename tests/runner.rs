@@ -202,6 +202,40 @@ async fn test_vars_from_cli() {
 }
 
 #[tokio::test]
+async fn test_vars_required_from_cli() {
+    setup();
+
+    let path = BASE_PATH.join("vars_required");
+    let tasks = vec![String::from("required")];
+
+    let mut stats = HashMap::new();
+    stats.insert(String::from("#required"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#required"), String::from("dev\nok"));
+
+    let vars = IndexMap::from([("env".to_string(), VarsConfig::Static(Value::from("dev")))]);
+    run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn test_vars_required_missing() {
+    setup();
+
+    let path = BASE_PATH.join("vars_required");
+    let result = run_task(&path, vec![String::from("required")], HashMap::new(), None, false).await;
+
+    let err = result.expect_err("required vars without values should fail");
+    assert!(
+        format!("{:#}", err).contains("required var \"env\" is not specified"),
+        "unexpected error: {:#}",
+        err
+    );
+}
+
+#[tokio::test]
 async fn test_vars_builtin() {
     setup();
 

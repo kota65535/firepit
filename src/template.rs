@@ -48,6 +48,10 @@ impl ProjectConfig {
         {
             let rk = tera.render_str(k, &context)?;
             if !rk.is_empty() {
+                if let Some(rv) = required_var_value(&rk, v, &context)? {
+                    context.insert(rk, &rv);
+                    continue;
+                }
                 let v = match v {
                     VarsConfig::Dynamic(s) => {
                         let mut s = s.clone();
@@ -127,6 +131,10 @@ impl TaskConfig {
         for (k, v) in self.vars.iter() {
             let rk = tera.render_str(k, &context)?;
             if !rk.is_empty() {
+                if let Some(rv) = required_var_value(&rk, v, &context)? {
+                    context.insert(rk, &rv);
+                    continue;
+                }
                 let v = match v {
                     VarsConfig::Dynamic(s) => {
                         let mut s = s.clone();
@@ -559,11 +567,26 @@ async fn render_value_map(
     for (k, v) in map.iter() {
         let rk = tera.render_str(k, context)?;
         if !rk.is_empty() {
-            let rv = VarsConfig::Static(render_value(v, tera, context).await?);
+            let rv = match required_var_value(&rk, v, context)? {
+                Some(value) => VarsConfig::Static(value),
+                None => VarsConfig::Static(render_value(v, tera, context).await?),
+            };
             ret.insert(rk, rv);
         }
     }
     Ok(ret)
+}
+
+fn required_var_value(name: &str, value: &VarsConfig, context: &tera::Context) -> anyhow::Result<Option<JsonValue>> {
+    if !matches!(value, VarsConfig::Static(JsonValue::Null)) {
+        return Ok(None);
+    }
+
+    let Some(value) = context.get(name).filter(|value| !value.is_null()) else {
+        anyhow::bail!("required var {:?} is not specified", name);
+    };
+
+    Ok(Some(value.clone()))
 }
 
 #[async_recursion]

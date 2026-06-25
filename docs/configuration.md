@@ -93,6 +93,18 @@ tasks:
 Firepit performs template processing using [Tera](https://keats.github.io/tera/).
 Check the documentation for details about the template syntax.
 
+Set a variable without a value to make it required. Required variables must be
+provided explicitly from the CLI or a higher-priority `vars` entry; otherwise,
+config rendering fails before the task starts.
+
+```yaml
+tasks:
+  sops-decrypt:
+    vars:
+      env:
+    command: sops -d ../envs/{{ env }}/*.tfvars
+```
+
 Template processing is supported in the following fields:
 
 - `vars`

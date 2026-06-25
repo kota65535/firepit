@@ -105,7 +105,7 @@
       "default": "cui"
     },
     "vars": {
-      "description": "Template variables for all the project tasks.\n```yaml\nvars:\n  aws_account_id: 123456789012\n  aws_region: ap-northeast-1\n  ecr_registry: \"{{ aws_account_id }}.dkr.ecr.{{ aws_region }}.amazonaws.com\"\n```",
+      "description": "Template variables for all the project tasks.\n```yaml\nvars:\n  aws_account_id: 123456789012\n  aws_region: ap-northeast-1\n  ecr_registry: \"{{ aws_account_id }}.dkr.ecr.{{ aws_region }}.amazonaws.com\"\n```\nA variable with no value is required and must be provided explicitly.\n```yaml\nvars:\n  env:\n```",
       "type": "object",
       "additionalProperties": {
         "$ref": "#/$defs/VarsConfig"
@@ -203,7 +203,7 @@
           ]
         },
         "vars": {
-          "description": "Template variables",
+          "description": "Template variables\nA variable with no value is required and must be provided explicitly.",
           "type": "object",
           "additionalProperties": {
             "$ref": "#/$defs/VarsConfig"
@@ -593,7 +593,7 @@
           ]
         },
         "vars": {
-          "description": "Template variables. Merged with the project `vars`.\nCan be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`,\n`service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`",
+          "description": "Template variables. Merged with the project `vars`.\nCan be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`,\n`service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`\nA variable with no value is required and must be provided explicitly.",
           "type": "object",
           "additionalProperties": {
             "$ref": "#/$defs/VarsConfig"
