@@ -138,157 +138,6 @@ tasks:
     service: true
 ```
 
-## Dependencies
-
-Tasks can depend on other tasks using the `depends_on` field.
-Dependency tasks are executed before the target task.
-
-In this example, `install` and `compile` tasks are executed sequentially before the `build` task.
-
-```yaml
-tasks:
-  install:
-    command: bun install
-
-  compile:
-    command: bun build src/index.ts --compile --outfile dist/app
-    depends_on:
-      - install
-
-  build:
-    command: docker build -t single:latest .
-    depends_on:
-      - compile
-```
-
-### Parameterized Dependencies
-
-Writing a dependency in object form lets you override its `vars`.
-This means you can define a single generic task and reuse it with different inputs, instead of duplicating near-identical tasks.
-
-In this example, the generic `migrate` task is reused by two tasks with different `database` values:
-
-```yaml
-tasks:
-  migrate:
-    vars:
-      database: ""
-    command: ./migrate.sh {{ database }}
-
-  setup-app:
-    command: echo "app is ready"
-    depends_on:
-      - task: migrate
-        vars:
-          database: app # runs: ./migrate.sh app
-
-  setup-analytics:
-    command: echo "analytics is ready"
-    depends_on:
-      - task: migrate
-        vars:
-          database: analytics # runs: ./migrate.sh analytics
-```
-
-Each dependent runs its own variant of `migrate` with the overridden variables.
-Note that only variables already declared in the dependency task can be overridden, so `migrate` must declare `database` in its `vars`.
-
-### Cascading Restarts
-
-In [watch mode](#watch-mode), when a dependency task is re-run, the tasks that depend on it are re-run as well by default.
-This cascading behavior can be turned off per dependency by writing the dependency in object form and setting `cascade: false`.
-A dependency written as a plain string is equivalent to `cascade: true`.
-
-In this example, `build` is re-run when `install` changes, but **not** when `codegen` is re-run.
-
-```yaml
-tasks:
-  build:
-    command: bun build src/index.ts
-    depends_on:
-      - install # cascade: true (default)
-      - task: codegen
-        cascade: false # re-running codegen does not re-run build
-```
-
-The object form also accepts `vars` to override the dependency task's variables (see [Parameterized Dependencies](#parameterized-dependencies)).
-
-## Service Readiness
-
-When a service task is added to the dependencies, target task run immediately after the service starts by default.
-
-In this example, the `dev` service may start before the `db` service is ready to accept connections.
-
-```yaml
-tasks:
-  dev:
-    command: bun run --hot src/index.ts
-    service: true
-    depends_on:
-      - install
-      - db
-
-  db:
-    command: redis-server
-    service: true
-```
-
-You can configure the `db` service to signal its readiness by using the `healthcheck` field.
-There are two ways to define a healthcheck:
-
-- **Command:** Runs a command periodically until it exits with a zero status.
-- **Log:** Waits until log message appears that matches the given regex.
-
-Most services become _Ready_ when they start listening on a port, so you can easily check this with the `nc` (netcat) command.
-By default, healthcheck command is run every 5 seconds, with a timeout of 5 seconds, and up to 3 retries.
-
-```yaml
-db:
-  command: redis-server
-  service:
-    healthcheck:
-      command: nc -z localhost 6379
-      # Default values
-      start_period: 0
-      interval: 5
-      timeout: 5
-      retries: 3
-```
-
-Sometimes it is sufficient to wait for a specific log output.
-In such cases, you can configure the service to be considered _Ready_ when a log message like `Ready to accept connections tcp` appears.
-
-```yaml
-db:
-  command: redis-server
-  service:
-    healthcheck:
-      log: Ready to accept connections tcp
-```
-
-## Restart Policy
-
-You can control whether a service is restarted when its process exits, using the `restart` field.
-
-| Value          | Description                                                 |
-| -------------- | ----------------------------------------------------------- |
-| `never`        | Never restart the service. **This is the default.**         |
-| `always`       | Always restart the service when it exits.                   |
-| `always:N`     | Always restart, up to `N` times.                            |
-| `on-failure`   | Restart only when the service exits with a non-zero status. |
-| `on-failure:N` | Restart on failure, up to `N` times.                        |
-
-```yaml
-tasks:
-  db:
-    command: redis-server
-    service:
-      # Restart on failure, up to 5 times
-      restart: on-failure:5
-      healthcheck:
-        log: Ready to accept connections tcp
-```
-
 ## Template Variables
 
 You can define template variables using the `vars` field.
@@ -440,6 +289,157 @@ tasks:
       healthcheck:
         command: nc -z localhost 3000
         interval: 2
+```
+
+## Dependencies
+
+Tasks can depend on other tasks using the `depends_on` field.
+Dependency tasks are executed before the target task.
+
+In this example, `install` and `compile` tasks are executed sequentially before the `build` task.
+
+```yaml
+tasks:
+  install:
+    command: bun install
+
+  compile:
+    command: bun build src/index.ts --compile --outfile dist/app
+    depends_on:
+      - install
+
+  build:
+    command: docker build -t single:latest .
+    depends_on:
+      - compile
+```
+
+### Parameterized Dependencies
+
+Writing a dependency in object form lets you override its `vars`.
+This means you can define a single generic task and reuse it with different inputs, instead of duplicating near-identical tasks.
+
+In this example, the generic `migrate` task is reused by two tasks with different `database` values:
+
+```yaml
+tasks:
+  migrate:
+    vars:
+      database: ""
+    command: ./migrate.sh {{ database }}
+
+  setup-app:
+    command: echo "app is ready"
+    depends_on:
+      - task: migrate
+        vars:
+          database: app # runs: ./migrate.sh app
+
+  setup-analytics:
+    command: echo "analytics is ready"
+    depends_on:
+      - task: migrate
+        vars:
+          database: analytics # runs: ./migrate.sh analytics
+```
+
+Each dependent runs its own variant of `migrate` with the overridden variables.
+Note that only variables already declared in the dependency task can be overridden, so `migrate` must declare `database` in its `vars`.
+
+### Cascading Restarts
+
+In [watch mode](#watch-mode), when a dependency task is re-run, the tasks that depend on it are re-run as well by default.
+This cascading behavior can be turned off per dependency by writing the dependency in object form and setting `cascade: false`.
+A dependency written as a plain string is equivalent to `cascade: true`.
+
+In this example, `build` is re-run when `install` changes, but **not** when `codegen` is re-run.
+
+```yaml
+tasks:
+  build:
+    command: bun build src/index.ts
+    depends_on:
+      - install # cascade: true (default)
+      - task: codegen
+        cascade: false # re-running codegen does not re-run build
+```
+
+The object form also accepts `vars` to override the dependency task's variables (see [Parameterized Dependencies](#parameterized-dependencies)).
+
+## Service Readiness
+
+When a service task is added to the dependencies, target task run immediately after the service starts by default.
+
+In this example, the `dev` service may start before the `db` service is ready to accept connections.
+
+```yaml
+tasks:
+  dev:
+    command: bun run --hot src/index.ts
+    service: true
+    depends_on:
+      - install
+      - db
+
+  db:
+    command: redis-server
+    service: true
+```
+
+You can configure the `db` service to signal its readiness by using the `healthcheck` field.
+There are two ways to define a healthcheck:
+
+- **Command:** Runs a command periodically until it exits with a zero status.
+- **Log:** Waits until log message appears that matches the given regex.
+
+Most services become _Ready_ when they start listening on a port, so you can easily check this with the `nc` (netcat) command.
+By default, healthcheck command is run every 5 seconds, with a timeout of 5 seconds, and up to 3 retries.
+
+```yaml
+db:
+  command: redis-server
+  service:
+    healthcheck:
+      command: nc -z localhost 6379
+      # Default values
+      start_period: 0
+      interval: 5
+      timeout: 5
+      retries: 3
+```
+
+Sometimes it is sufficient to wait for a specific log output.
+In such cases, you can configure the service to be considered _Ready_ when a log message like `Ready to accept connections tcp` appears.
+
+```yaml
+db:
+  command: redis-server
+  service:
+    healthcheck:
+      log: Ready to accept connections tcp
+```
+
+## Restart Policy
+
+You can control whether a service is restarted when its process exits, using the `restart` field.
+
+| Value          | Description                                                 |
+| -------------- | ----------------------------------------------------------- |
+| `never`        | Never restart the service. **This is the default.**         |
+| `always`       | Always restart the service when it exits.                   |
+| `always:N`     | Always restart, up to `N` times.                            |
+| `on-failure`   | Restart only when the service exits with a non-zero status. |
+| `on-failure:N` | Restart on failure, up to `N` times.                        |
+
+```yaml
+tasks:
+  db:
+    command: redis-server
+    service:
+      # Restart on failure, up to 5 times
+      restart: on-failure:5
+      healthcheck:
+        log: Ready to accept connections tcp
 ```
 
 ## Defaults
