@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.21.1] - 2026-06-26
+
+### 🐛 Bug Fixes
+
+- Update pane_rows calculation (#315)
+
+### 📚 Documentation
+
+- *(configuration)* Document defaults, restart policy, dynamic vars, cascade, description/label (#313)
+
 ## [0.21.0] - 2026-06-25
 
 ### 🚀 Features
