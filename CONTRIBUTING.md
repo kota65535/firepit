@@ -117,10 +117,12 @@ Do not bypass hooks with `--no-verify`; fix the reported issues instead.
 ## Generated files
 
 - **`schema.json`** (JSON schema for `firepit.yml`) and
-  **`docs/schema-body.md`** are generated. When configuration structs in
-  `src/config.rs` change, CI regenerates and auto-commits them on a
-  mismatch, so there is no need to regenerate them manually. You can still
-  do so locally if you want your PR diff to be complete:
+  **`docs/schema-body.md`** are generated. For branches in this repository,
+  CI regenerates and auto-commits them on a mismatch when configuration
+  structs in `src/config.rs` change, so there is no need to regenerate them
+  manually. On pull requests from forks CI cannot push to your branch, so
+  regenerate them yourself (also useful if you want your PR diff to be
+  complete):
 
   ```bash
   cargo run --bin firepit-schema

@@ -37,7 +37,8 @@ development workflows and services.
   lefthook). Never bypass git hooks with `--no-verify`.
 - **Generated files**: `schema.json` and `docs/schema-body.md` are
   regenerated and auto-committed by CI when configuration structs in
-  `src/config.rs` change — no need to regenerate them manually
+  `src/config.rs` change — no need to regenerate them manually. This does
+  not work on pull requests from forks; regenerate them yourself there
   (see [CONTRIBUTING.md](CONTRIBUTING.md#generated-files)).
 - **Tests** are fixture-based: add a directory with a `firepit.yml` under
   `tests/fixtures/` instead of embedding config in test code.
