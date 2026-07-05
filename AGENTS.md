@@ -35,8 +35,9 @@ development workflows and services.
   manually every time — just fix whatever the hook or CI reports.
 - **Commits** must follow Conventional Commits (enforced by commitlint via
   lefthook). Never bypass git hooks with `--no-verify`.
-- **Generated files**: after changing configuration structs in
-  `src/config.rs`, regenerate `schema.json` and `docs/schema-body.md`
+- **Generated files**: `schema.json` and `docs/schema-body.md` are
+  regenerated and auto-committed by CI when configuration structs in
+  `src/config.rs` change — no need to regenerate them manually
   (see [CONTRIBUTING.md](CONTRIBUTING.md#generated-files)).
 - **Tests** are fixture-based: add a directory with a `firepit.yml` under
   `tests/fixtures/` instead of embedding config in test code.

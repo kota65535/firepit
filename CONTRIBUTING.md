@@ -117,16 +117,15 @@ Do not bypass hooks with `--no-verify`; fix the reported issues instead.
 ## Generated files
 
 - **`schema.json`** (JSON schema for `firepit.yml`) and
-  **`docs/schema-body.md`** are generated. After changing configuration
-  structs in `src/config.rs`, regenerate them:
+  **`docs/schema-body.md`** are generated. When configuration structs in
+  `src/config.rs` change, CI regenerates and auto-commits them on a
+  mismatch, so there is no need to regenerate them manually. You can still
+  do so locally if you want your PR diff to be complete:
 
   ```bash
   cargo run --bin firepit-schema
   ./scripts/schema-to-md.js schema.json docs/schema-body.md
   ```
-
-  CI regenerates and auto-commits these on a mismatch, but regenerating
-  locally keeps your PR diff complete.
 
 ## Common development tasks
 
@@ -172,7 +171,6 @@ checks, so fix anything the hook or CI reports rather than bypassing it.
 - Work on a feature branch; never push directly to `main`.
 - Use a Conventional Commits style PR title (commitlint checks it in CI).
 - Add or update tests for any behavior change.
-- Regenerate `schema.json` if you touched configuration structs.
 
 ## Where to learn more
 
