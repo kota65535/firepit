@@ -64,6 +64,32 @@ async fn test_bad_env_file() {
 }
 
 #[tokio::test]
+async fn test_variant_label() {
+    let path = Path::new("tests/fixtures/project/variant_label");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &[String::from("#foo")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    let labels = ws.labels();
+    // Default labels do not include the internal variant suffix
+    assert_eq!(labels.get("#foo"), Some(&String::from("#foo")));
+    assert_eq!(labels.get("#bar-1"), Some(&String::from("#bar")));
+    // Explicit labels are rendered with the variant vars
+    assert_eq!(labels.get("#baz-1"), Some(&String::from("baz 2")));
+}
+
+#[tokio::test]
 async fn test_multi() {
     let path = Path::new("tests/fixtures/project/multi");
     let (root, children) = ProjectConfig::new_multi(path).unwrap();
