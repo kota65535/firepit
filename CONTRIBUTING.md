@@ -11,7 +11,9 @@ contributors and AI agents.
   the first time you run a `cargo` command in this repository.
 - **[mise](https://mise.jdx.dev/)**: installs all other development tools
   (Node.js, dprint, lefthook, git-cliff, cargo-dist, commitlint, gitleaks)
-  at the versions pinned in `mise.toml`.
+  at the versions pinned in `mise.toml`. Resolved versions and artifact
+  checksums are locked in `mise.lock`; after changing a version in
+  `mise.toml`, run `mise install` and commit the updated `mise.lock`.
 - **netcat** (Linux only): some integration tests use `nc` for service
   health checks. On Debian/Ubuntu: `sudo apt install netcat-openbsd`.
   macOS ships with it.
