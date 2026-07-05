@@ -343,7 +343,7 @@ async fn test_vars_dynamic() {
     let mut outputs = HashMap::new();
     outputs.insert(
         String::from("#foo"),
-        format!("12345 workflows true foo {}\nA\nB\nC\nD\nE", branch),
+        format!("12345 workflows/ true foo {}\nA\nB\nC\nD\nE", branch),
     );
 
     run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();

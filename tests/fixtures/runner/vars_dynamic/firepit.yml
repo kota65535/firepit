@@ -4,7 +4,7 @@ vars:
       echo "12345"
       echo "67890" >&2
   B:
-    command: ls
+    command: ls -d */
     working_dir: ../../../../.github
   C:
     command: echo "true"
