@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.21.2] - 2026-07-05
+
+### 🐛 Bug Fixes
+
+- Default task label to the original name without variant suffix (#324)
+
+### 💼 Other
+
+- Add mise.lock for tool artifact pinning (#325)
+
+### 📚 Documentation
+
+- Restructure agent/contributor docs into dedicated files (#322)
+- Add pull request template (#323)
+
 ## [0.21.1] - 2026-06-26
 
 ### 🐛 Bug Fixes
