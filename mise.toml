@@ -9,6 +9,9 @@
 "github:gitleaks/gitleaks" = "8.30.1"
 
 [settings]
+# Pin resolved tool versions (with checksums) in mise.lock so every
+# environment installs the exact same artifacts.
+lockfile = true
 # Tools wait out a 7-day cooldown before a freshly published version
 # (and, for npm, its transitive deps) is installed — a supply-chain guard.
 minimum_release_age = "7d"
