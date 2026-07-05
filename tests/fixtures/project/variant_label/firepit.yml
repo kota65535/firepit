@@ -1,0 +1,23 @@
+# Test that the default label of a task variant is the original task name
+# without the internal variant suffix (-1, -2, ...).
+tasks:
+  foo:
+    command: echo foo
+    depends_on:
+      - task: bar
+        vars:
+          A: 2
+      - task: baz
+        vars:
+          A: 2
+
+  bar:
+    vars:
+      A: 1
+    command: echo "bar {{ A }}"
+
+  baz:
+    label: "baz {{ A }}"
+    vars:
+      A: 1
+    command: echo "baz {{ A }}"

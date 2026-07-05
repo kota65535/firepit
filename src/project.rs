@@ -426,7 +426,12 @@ impl Task {
 
         Ok(Self {
             name: Task::qualified_name(project_name, &task_name),
-            label: task_config.label.clone().unwrap_or(task_name.clone()),
+            // Default to the original name so that task variants do not expose
+            // their internal suffix (-1, -2, ...) in the UI
+            label: task_config
+                .label
+                .clone()
+                .unwrap_or_else(|| Task::qualified_name(project_name, &task_config.orig_name)),
             command: task_config.command.clone().unwrap_or("".to_string()),
             shell: task_shell.command,
             shell_args: task_shell.args,
