@@ -574,6 +574,9 @@ async fn render_value(value: &VarsConfig, tera: &mut Tera, context: &tera::Conte
                 let str = tera
                     .render_str(s, context)
                     .context(format!("failed to render {:?}", s))?;
+                if str.is_empty() {
+                    return Ok(JsonValue::String(str));
+                }
                 let yaml_value =
                     serde_yaml::from_str::<Value>(&str).context(format!("failed to read YAML value {:?}", str))?;
                 match yaml_value {
