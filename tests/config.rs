@@ -320,7 +320,7 @@ fn test_defaults_no_selector() {
 
 #[tokio::test]
 async fn test_render_ignores_empty_env_files() {
-    let path = Path::new("tests/fixtures/config/env_files_empty");
+    let path = Path::new("tests/fixtures/config/render_empty_entries");
     let (root, children) = ProjectConfig::new_multi(path).unwrap();
     let mut renderer = ConfigRenderer::new(&root, &children, &IndexMap::new(), false);
     let (root, children) = renderer.render().await.unwrap();
@@ -347,7 +347,7 @@ async fn test_render_ignores_empty_env_files() {
 
 #[tokio::test]
 async fn test_render_ignores_empty_depends_on() {
-    let path = Path::new("tests/fixtures/config/env_files_empty");
+    let path = Path::new("tests/fixtures/config/render_empty_entries");
     let (root, children) = ProjectConfig::new_multi(path).unwrap();
     let mut renderer = ConfigRenderer::new(&root, &children, &IndexMap::new(), false);
     let (root, children) = renderer.render().await.unwrap();
