@@ -1,0 +1,26 @@
+vars:
+  env: ""
+
+env_files:
+  - .env.root
+  - "{% if env %}.env.{{ env }}{% endif %}"
+
+tasks:
+  run:
+    command: echo run
+    env_files:
+      - .env.task
+      - "{% if env %}.env.task.{{ env }}{% endif %}"
+    service:
+      healthcheck:
+        command: echo ok
+        env_files:
+          - .env.health
+          - "{% if env %}.env.health.{{ env }}{% endif %}"
+
+  with-env:
+    vars:
+      env: dev
+    command: echo with-env
+    env_files:
+      - "{% if env %}.env.task.{{ env }}{% endif %}"
