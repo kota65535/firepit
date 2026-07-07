@@ -1,0 +1,7 @@
+tasks:
+  tf:
+    label: "{{ task }} {{ args | split(pat=' ') | first }}"
+    vars:
+      env:
+      args: ""
+    command: echo "{{ env }} {{ args }}"

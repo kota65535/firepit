@@ -90,6 +90,28 @@ async fn test_variant_label() {
 }
 
 #[tokio::test]
+async fn test_empty_string_task_var_renders_as_string_in_label() {
+    let path = Path::new("tests/fixtures/project/task_empty_args_label");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &[String::from("#tf")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    let labels = ws.labels();
+    assert_eq!(labels.get("#tf"), Some(&String::from("#tf ")));
+}
+
+#[tokio::test]
 async fn test_multi() {
     let path = Path::new("tests/fixtures/project/multi");
     let (root, children) = ProjectConfig::new_multi(path).unwrap();
