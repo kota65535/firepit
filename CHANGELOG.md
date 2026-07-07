@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.21.3] - 2026-07-07
+
+### 🐛 Bug Fixes
+
+- *(config)* Ignore empty rendered env_files (#328)
+- *(config)* Preserve empty string template variables (#327)
+
 ## [0.21.2] - 2026-07-05
 
 ### 🐛 Bug Fixes
