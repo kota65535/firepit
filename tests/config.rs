@@ -344,3 +344,19 @@ async fn test_render_ignores_empty_env_files() {
     let with_env = root.tasks.get("with-env").unwrap();
     assert_eq!(with_env.env_files, vec![".env.task.dev"]);
 }
+
+#[tokio::test]
+async fn test_render_ignores_empty_depends_on() {
+    let path = Path::new("tests/fixtures/config/env_files_empty");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let mut renderer = ConfigRenderer::new(&root, &children, &IndexMap::new(), false);
+    let (root, children) = renderer.render().await.unwrap();
+
+    assert!(children.is_empty());
+
+    let run = root.tasks.get("run").unwrap();
+    assert_eq!(depends_on_names(run), vec!["#setup"]);
+
+    let with_env = root.tasks.get("with-env").unwrap();
+    assert_eq!(depends_on_names(with_env), vec!["#setup"]);
+}

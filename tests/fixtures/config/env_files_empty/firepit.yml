@@ -6,8 +6,15 @@ env_files:
   - "{% if env %}.env.{{ env }}{% endif %}"
 
 tasks:
+  setup:
+    command: echo setup
+
   run:
     command: echo run
+    depends_on:
+      - setup
+      - "{% if env %}setup{% endif %}"
+      - task: "{% if env %}setup{% endif %}"
     env_files:
       - .env.task
       - "{% if env %}.env.task.{{ env }}{% endif %}"
@@ -22,5 +29,7 @@ tasks:
     vars:
       env: dev
     command: echo with-env
+    depends_on:
+      - "{% if env %}setup{% endif %}"
     env_files:
       - "{% if env %}.env.task.{{ env }}{% endif %}"
