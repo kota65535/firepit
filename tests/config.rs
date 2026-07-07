@@ -1,5 +1,6 @@
 use assertables::assert_starts_with;
-use firepit::config::{DependsOnConfig, ProjectConfig, ShellConfig};
+use firepit::config::{DependsOnConfig, HealthCheckConfig, ProjectConfig, ServiceConfig, ShellConfig};
+use firepit::template::ConfigRenderer;
 use indexmap::IndexMap;
 use std::path::Path;
 use std::sync::Once;
@@ -315,4 +316,47 @@ fn test_defaults_no_selector() {
     for (_, task) in root.tasks.iter() {
         assert!(task.env.get("EMPTY_LIST").is_none());
     }
+}
+
+#[tokio::test]
+async fn test_render_ignores_empty_env_files() {
+    let path = Path::new("tests/fixtures/config/render_empty_entries");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let mut renderer = ConfigRenderer::new(&root, &children, &IndexMap::new(), false);
+    let (root, children) = renderer.render().await.unwrap();
+
+    assert!(children.is_empty());
+    assert_eq!(root.env_files, vec![".env.root"]);
+
+    let run = root.tasks.get("run").unwrap();
+    assert_eq!(run.env_files, vec![".env.task"]);
+
+    let service = run.service.as_ref().unwrap();
+    let ServiceConfig::Struct(service) = service else {
+        panic!("expected service config");
+    };
+    let healthcheck = service.healthcheck.as_ref().unwrap();
+    let HealthCheckConfig::Exec(exec) = healthcheck else {
+        panic!("expected exec healthcheck");
+    };
+    assert_eq!(exec.env_files, vec![".env.health"]);
+
+    let with_env = root.tasks.get("with-env").unwrap();
+    assert_eq!(with_env.env_files, vec![".env.task.dev"]);
+}
+
+#[tokio::test]
+async fn test_render_ignores_empty_depends_on() {
+    let path = Path::new("tests/fixtures/config/render_empty_entries");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let mut renderer = ConfigRenderer::new(&root, &children, &IndexMap::new(), false);
+    let (root, children) = renderer.render().await.unwrap();
+
+    assert!(children.is_empty());
+
+    let run = root.tasks.get("run").unwrap();
+    assert_eq!(depends_on_names(run), vec!["#setup"]);
+
+    let with_env = root.tasks.get("with-env").unwrap();
+    assert_eq!(depends_on_names(with_env), vec!["#setup"]);
 }

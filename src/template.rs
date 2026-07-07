@@ -53,11 +53,7 @@ impl ProjectConfig {
                         let mut s = s.clone();
                         s.command = tera.render_str(&s.command, &context)?;
                         s.env = render_string_map(&s.env, &mut tera, &context)?;
-                        s.env_files = s
-                            .env_files
-                            .iter()
-                            .map(|f| tera.render_str(f, &context))
-                            .collect::<anyhow::Result<Vec<_>, _>>()?;
+                        s.env_files = render_env_files(&s.env_files, &mut tera, &context)?;
                         s.working_dir = s.working_dir.map(|w| tera.render_str(&w, &context)).transpose()?;
                         s.inner = Some(DynamicVarsInner {
                             name: k.clone(),
@@ -97,11 +93,7 @@ impl ProjectConfig {
         config.env = render_string_map(&config.env, &mut tera, context)?;
 
         // Render env_files
-        config.env_files = config
-            .env_files
-            .iter()
-            .map(|f| tera.render_str(f, context))
-            .collect::<anyhow::Result<Vec<_>, _>>()?;
+        config.env_files = render_env_files(&config.env_files, &mut tera, context)?;
 
         // Render tasks
         let mut rendered_tasks = IndexMap::new();
@@ -132,11 +124,7 @@ impl TaskConfig {
                         let mut s = s.clone();
                         s.command = tera.render_str(&s.command, &context)?;
                         s.env = render_string_map(&s.env, &mut tera, &context)?;
-                        s.env_files = s
-                            .env_files
-                            .iter()
-                            .map(|f| tera.render_str(f, &context))
-                            .collect::<anyhow::Result<Vec<_>, _>>()?;
+                        s.env_files = render_env_files(&s.env_files, &mut tera, &context)?;
                         s.working_dir = s.working_dir.map(|w| tera.render_str(&w, &context)).transpose()?;
                         s.inner = Some(DynamicVarsInner {
                             name: k.clone(),
@@ -184,11 +172,7 @@ impl TaskConfig {
         config.env = render_string_map(&config.env, &mut tera, context)?;
 
         // Render env_files
-        let mut rendered_env_files = Vec::new();
-        for f in config.env_files.iter() {
-            rendered_env_files.push(tera.render_str(f, context)?);
-        }
-        config.env_files = rendered_env_files;
+        config.env_files = render_env_files(&config.env_files, &mut tera, context)?;
 
         // Render service.healthcheck
         if let Some(service) = config.service {
@@ -215,11 +199,7 @@ impl TaskConfig {
                             c.env = render_string_map(&c.env, &mut tera, context)?;
 
                             // Render env_files
-                            c.env_files = c
-                                .env_files
-                                .iter()
-                                .map(|f| tera.render_str(f, context))
-                                .collect::<anyhow::Result<Vec<_>, _>>()?;
+                            c.env_files = render_env_files(&c.env_files, &mut tera, context)?;
                         }
                     }
                     st.healthcheck = Some(healthcheck);
@@ -545,6 +525,17 @@ fn render_string_map(
         if !rk.is_empty() {
             let rv = tera.render_str(v, context)?;
             ret.insert(rk, rv);
+        }
+    }
+    Ok(ret)
+}
+
+fn render_env_files(env_files: &[String], tera: &mut Tera, context: &tera::Context) -> anyhow::Result<Vec<String>> {
+    let mut ret = Vec::new();
+    for env_file in env_files {
+        let rendered = tera.render_str(env_file, context)?;
+        if !rendered.is_empty() {
+            ret.push(rendered);
         }
     }
     Ok(ret)
