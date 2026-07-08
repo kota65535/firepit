@@ -45,3 +45,38 @@ impl<W: Write> Write for PrefixedWriter<W> {
         self.writer.flush()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::PrefixedWriter;
+    use crate::app::cui::lib::ColorConfig;
+    use console::Style;
+    use std::io::Write;
+
+    #[test]
+    fn non_empty_prefix_writes_label_before_each_line() {
+        let mut output = Vec::new();
+        {
+            let prefix = Style::new().apply_to("task: ");
+            let mut writer = PrefixedWriter::new(ColorConfig::new(true), prefix, &mut output);
+
+            writer.write_all(b"first\n").unwrap();
+            writer.write_all(b"second\n").unwrap();
+        }
+
+        assert_eq!(output, b"task: first\ntask: second\n");
+    }
+
+    #[test]
+    fn empty_prefix_writes_log_bytes_without_label() {
+        let mut output = Vec::new();
+        {
+            let prefix = Style::new().apply_to(String::new());
+            let mut writer = PrefixedWriter::new(ColorConfig::new(true), prefix, &mut output);
+
+            writer.write_all(b"first\nsecond\n").unwrap();
+        }
+
+        assert_eq!(output, b"first\nsecond\n");
+    }
+}

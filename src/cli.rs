@@ -80,6 +80,10 @@ pub struct Args {
     #[arg(long, conflicts_with = "tui")]
     pub cui: bool,
 
+    /// Disable task label prefixes in CUI log output
+    #[arg(long, default_value = "false")]
+    pub no_log_prefix: bool,
+
     /// Enable instrumentation for tokio-console
     #[arg(long, hide = true, default_value = "false")]
     pub tokio_console: bool,
@@ -166,7 +170,13 @@ pub async fn run() -> anyhow::Result<i32> {
     // Create & start UI
     let (app_tx, app_fut) = match root.ui {
         UI::Cui => {
-            let mut app = CuiApp::new(&runner.target_tasks, &ws.labels(), !args.watch, ws.fail_fast)?;
+            let mut app = CuiApp::new(
+                &runner.target_tasks,
+                &ws.labels(),
+                !args.watch,
+                ws.fail_fast,
+                args.no_log_prefix,
+            )?;
             let runner_tx = runner.command_tx();
             let command_tx = app.command_tx();
             let fut = tokio_spawn!("app", async move { app.run(&runner_tx).await });
