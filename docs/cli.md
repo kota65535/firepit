@@ -73,3 +73,8 @@ Force TUI mode, even if tty is not detected.
 ### `--cui`
 
 Force CUI mode, even if tty is detected.
+
+### `--no-log-prefix`
+
+Disable task label prefixes in CUI log output.
+This is useful when piping task logs to external tools that expect raw JSON Lines or other unprefixed output.

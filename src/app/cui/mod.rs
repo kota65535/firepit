@@ -31,6 +31,7 @@ pub struct CuiApp {
     labels: HashMap<String, String>,
     quit_on_done: bool,
     fail_fast: bool,
+    no_log_prefix: bool,
 }
 
 impl CuiApp {
@@ -39,6 +40,7 @@ impl CuiApp {
         labels: &HashMap<String, String>,
         quit_on_done: bool,
         fail_fast: bool,
+        no_log_prefix: bool,
     ) -> anyhow::Result<Self> {
         let (command_tx, command_rx) = AppCommandChannel::new();
         Ok(Self {
@@ -51,12 +53,17 @@ impl CuiApp {
             labels: labels.clone(),
             fail_fast,
             quit_on_done,
+            no_log_prefix,
         })
     }
 
     fn register_output_client(&mut self, task: &str) {
         let task = task.to_string();
-        let prefix = self.labels.get(&task).unwrap_or(&task);
+        let prefix = if self.no_log_prefix {
+            ""
+        } else {
+            self.labels.get(&task).unwrap_or(&task)
+        };
         let out = PrefixedWriter::new(
             ColorConfig::infer(),
             self.color_selector.string_with_color(prefix, prefix),
