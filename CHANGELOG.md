@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.22.0] - 2026-07-08
+
+### 🚀 Features
+
+- *(cli)* Add no-log-prefix for CUI logs (#329)
+
 ## [0.21.3] - 2026-07-07
 
 ### 🐛 Bug Fixes
