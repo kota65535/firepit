@@ -3,7 +3,7 @@
 "github:axodotdev/cargo-dist" = "0.32.0"
 "github:orhun/git-cliff" = "2.13.1"
 "cargo:cargo-edit" = "0.13.10"
-"lefthook" = "2.1.9"
+"lefthook" = "2.1.10"
 "dprint" = "0.55.1"
 "npm:@commitlint/cli" = "21.2.0"
 "github:gitleaks/gitleaks" = "8.30.1"
