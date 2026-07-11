@@ -5,7 +5,7 @@
 "cargo:cargo-edit" = "0.13.10"
 "lefthook" = "2.1.10"
 "dprint" = "0.55.1"
-"npm:@commitlint/cli" = "21.2.0"
+"npm:@commitlint/cli" = "21.2.1"
 "github:gitleaks/gitleaks" = "8.30.1"
 
 [settings]
