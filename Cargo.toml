@@ -43,7 +43,7 @@ tokio = { version = "1.41.1", features = ["full"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 tui-term = { version = "=0.1.9", default-features = false }
-unicode-width = "0.1.14"
+unicode-width = "0.2.0"
 vt100 = { git = "https://github.com/kota65535/vt100-rust", rev = "580026b" }
 which = "8.0.0"
 
