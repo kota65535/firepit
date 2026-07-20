@@ -11,15 +11,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.head_ref }}
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
 
       - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
       - name: Setup other tools
         uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4
@@ -31,7 +31,7 @@ jobs:
         run: ./scripts/schema-to-md.js schema.json docs/schema-body.md
 
       - name: Configure git
-        uses: kota65535/github-git-config-action@v2
+        uses: kota65535/github-git-config-action@519e6d26e10ccdd2ac3437dd5ed32c4042583f09 # v2
         with:
           user.name: github-actions[bot]
           user.email: 41898282+github-actions[bot]@users.noreply.github.com
