@@ -64,6 +64,7 @@ checksum = "sha256:eb52f9fae0d0506774e9f1801c1168f87fa2c87a45e2d64d3ae7c89401929
 url = "https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-x86_64-unknown-linux-gnu.tar.xz"
 url_api = "https://api.github.com/repos/axodotdev/cargo-dist/releases/assets/426804471"
 provenance = "github-attestations"
+provenance_verified = true
 
 [tools."github:axodotdev/cargo-dist"."platforms.linux-x64-musl"]
 checksum = "sha256:0d9dc001b0e937e9cc18e0dc11784aa7a3fd566656b07828d5e1d10ce1c1c48c"
@@ -248,7 +249,3 @@ url = "https://nodejs.org/dist/v24.11.1/node-v24.11.1-win-x64.zip"
 [[tools."npm:@commitlint/cli"]]
 version = "21.2.2"
 backend = "npm:@commitlint/cli"
-
-[[tools.rust]]
-version = "1.91.0"
-backend = "core:rust"
