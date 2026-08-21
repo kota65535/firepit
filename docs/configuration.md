@@ -364,6 +364,34 @@ tasks:
         log: Ready to accept connections tcp
 ```
 
+## Stop Timeout
+
+When a task is stopped -- on `Ctrl-C`, on a restart, or when you stop it from the TUI -- Firepit sends `SIGINT` to the
+task's process group and waits for it to exit. If the process is still alive after the grace period, it is forcibly
+killed with `SIGKILL`.
+
+The grace period defaults to 10 seconds. Use the `stop_timeout` field to change it per task, in seconds.
+
+```yaml
+tasks:
+  # A server that needs time to drain in-flight requests
+  api:
+    command: node server.js
+    stop_timeout: 30
+    service: true
+
+  # A task that should be killed promptly
+  watch:
+    command: tsc --watch
+    stop_timeout: 1
+```
+
+`stop_timeout` can also be set in [`defaults`](#defaults) to apply it to multiple tasks at once.
+
+The grace period applies to the task's own process. The command of an
+[exec readiness probe](#readiness) is stopped on a much shorter, fixed grace period, since a probe is a short-lived
+check with nothing to clean up.
+
 ## Incremental Builds and Watch Mode
 
 ### Incremental Builds

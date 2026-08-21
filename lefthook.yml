@@ -8,8 +8,11 @@
 # Fix locally with: cargo fmt --all && dprint fmt
 #
 # PATH for the toolchains (cargo, mise/dprint) is set once in .lefthookrc,
-# which is sourced before the commands run.
-rc: .lefthookrc
+# which is sourced before the commands run. The path must keep the leading
+# "./": the hook sources it with `.`, and a POSIX shell looks up an argument
+# without a slash in PATH rather than the current directory, so a bare
+# ".lefthookrc" is not found under dash (the /bin/sh of CI runners).
+rc: ./.lefthookrc
 pre-commit:
   parallel: true
   commands:
@@ -30,7 +33,10 @@ pre-commit:
       fail_text: "Clippy found issues. Fix the warnings above."
     dprint:
       glob: "*.{json,jsonc,md,markdown,toml,yaml,yml}"
-      run: mise exec -- dprint check {staged_files}
+      # --allow-no-files: the glob can match only files that dprint.json
+      # excludes (schema.json, docs/schema-body.md), and without this dprint
+      # treats "nothing to check" as an error.
+      run: mise exec -- dprint check --allow-no-files {staged_files}
       fail_text: "Files are not formatted. Run: dprint fmt"
     mise-pinned:
       # Tool versions must be pinned; "latest" is not allowed in mise.toml.

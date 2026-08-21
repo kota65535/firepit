@@ -231,6 +231,13 @@ working_dir: src
 - **Required:** no
 - **Description:** Shell configuration
 
+### stop_timeout
+
+- **Type:** <code>integer</code>
+- **Required:** no
+- **Description:** Grace period in seconds given to the task process after `SIGINT` is sent,
+before it is forcibly killed with `SIGKILL`.
+
 ### tasks
 
 - **Type:** <code><a href="#taskselector">TaskSelector</a></code>
@@ -542,6 +549,16 @@ Probe failure during that period will not be counted towards the maximum number 
 - **Type:** <code><a href="#shellconfig">ShellConfig</a></code>
 - **Required:** no
 - **Description:** Shell configuration
+
+### stop_timeout
+
+- **Type:** <code>integer</code>
+- **Required:** no
+- **Description:** Grace period in seconds given to the task process after `SIGINT` is sent,
+before it is forcibly killed with `SIGKILL`.
+```yaml
+stop_timeout: 30
+```
 
 ### vars
 

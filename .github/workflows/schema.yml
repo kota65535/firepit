@@ -47,6 +47,6 @@ jobs:
         if: steps.diff.outcome == 'failure'
         run: |
           git add .
-          git commit --author=. -m 'generate schema'
+          git commit --author=. -m 'chore(schema): generate'
           git pull --rebase --autostash
           git push origin HEAD

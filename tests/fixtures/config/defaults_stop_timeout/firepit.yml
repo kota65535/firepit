@@ -1,0 +1,17 @@
+# Test that `stop_timeout` is inherited from `defaults`, that a later matching
+# entry overrides an earlier one, and that a task-level value wins over both.
+defaults:
+  - stop_timeout: 15
+  - tasks: "^build"
+    stop_timeout: 60
+
+tasks:
+  install:
+    command: echo install
+  build:
+    command: echo build
+  build-slow:
+    command: echo build-slow
+    stop_timeout: 120
+  test:
+    command: echo test
