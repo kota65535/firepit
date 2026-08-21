@@ -653,8 +653,10 @@ impl TuiAppState {
                 } else {
                     // The line is wrapped
                     // Reset the current row index to the first line
-                    let mut row_idx = row_idx - previous_row_widths.len();
-                    for width in previous_row_widths.iter().chain(std::iter::once(&current_row_width)) {
+                    let first_row_idx = row_idx - previous_row_widths.len();
+                    for (row_idx, width) in
+                        (first_row_idx..).zip(previous_row_widths.iter().chain(std::iter::once(&current_row_width)))
+                    {
                         if col_idx < *width {
                             // The match exists in this line
                             matches.push(Match(row_idx as u16, col_idx as u16));
@@ -662,7 +664,6 @@ impl TuiAppState {
                         }
                         // The match may be in the next line
                         col_idx -= *width;
-                        row_idx += 1;
                     }
                 }
             }
