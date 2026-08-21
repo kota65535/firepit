@@ -7,7 +7,7 @@
       "description": "Task concurrency.\nValid only in a root project config.\n```yaml\nconcurrency: 4\n```",
       "type": "integer",
       "format": "uint",
-      "default": 8,
+      "default": 4,
       "minimum": 0
     },
     "defaults": {
