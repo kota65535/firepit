@@ -4,7 +4,7 @@
 "github:orhun/git-cliff" = "2.13.1"
 "cargo:cargo-edit" = "0.13.13"
 "lefthook" = "2.1.11"
-"dprint" = "0.55.2"
+"dprint" = "0.56.1"
 "npm:@commitlint/cli" = "21.2.2"
 "github:gitleaks/gitleaks" = "8.30.1"
 
