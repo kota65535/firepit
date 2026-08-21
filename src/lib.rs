@@ -12,6 +12,9 @@ pub mod runner;
 pub mod template;
 pub mod util;
 
-pub const TASK_STOP_TIMEOUT: Duration = Duration::from_millis(5000);
+/// Grace period between `SIGINT` and `SIGKILL` for a readiness probe process.
+/// Probes are short-lived checks with nothing to clean up, and a probe that is
+/// being stopped has already been given its own `timeout`, so the grace period
+/// is deliberately much shorter than a task's.
 pub const PROBE_STOP_TIMEOUT: Duration = Duration::from_millis(1000);
 pub const DYNAMIC_VAR_STOP_TIMEOUT: Duration = Duration::from_secs(1000);

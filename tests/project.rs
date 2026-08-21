@@ -5,6 +5,7 @@ use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Once;
+use std::time::Duration;
 use tracing_subscriber::EnvFilter;
 
 static INIT: Once = Once::new();
@@ -148,4 +149,33 @@ async fn test_multi() {
     assert!(install.depends_on.is_empty());
 
     let _foo = ws.children.get("foo").unwrap().task("foo").unwrap();
+}
+
+#[tokio::test]
+async fn test_stop_timeout() {
+    let path = Path::new("tests/fixtures/project/stop_timeout");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &Vec::new(),
+        &std::env::current_dir().unwrap(),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    // Omitted: falls back to the default grace period
+    assert_eq!(ws.root.task("default").unwrap().stop_timeout, Duration::from_secs(10));
+    // Explicit task-level value
+    assert_eq!(ws.root.task("explicit").unwrap().stop_timeout, Duration::from_secs(30));
+    // Services are covered too
+    assert_eq!(
+        ws.root.task("service_explicit").unwrap().stop_timeout,
+        Duration::from_secs(20)
+    );
 }

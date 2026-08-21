@@ -495,6 +495,7 @@ impl ProjectConfig {
             let mut eff_shell: Option<ShellConfig> = None;
             let mut eff_working_dir: Option<String> = None;
             let mut eff_service: Option<ServiceConfig> = None;
+            let mut eff_stop_timeout: Option<u64> = None;
             let mut eff_vars: IndexMap<String, VarsConfig> = IndexMap::new();
             let mut eff_env: IndexMap<String, String> = IndexMap::new();
             let mut eff_env_files: Vec<String> = Vec::new();
@@ -523,6 +524,9 @@ impl ProjectConfig {
                 if default.service.is_some() {
                     eff_service = default.service.clone();
                 }
+                if default.stop_timeout.is_some() {
+                    eff_stop_timeout = default.stop_timeout;
+                }
                 // Maps: later wins on key conflict
                 eff_vars.extend(default.vars.clone());
                 eff_env.extend(default.env.clone());
@@ -546,6 +550,9 @@ impl ProjectConfig {
             }
             if task_config.service.is_none() {
                 task_config.service = eff_service;
+            }
+            if task_config.stop_timeout.is_none() {
+                task_config.stop_timeout = eff_stop_timeout;
             }
 
             eff_vars.extend(task_config.vars.clone());
@@ -630,6 +637,13 @@ pub struct TaskConfig {
 
     /// Service configurations
     pub service: Option<ServiceConfig>,
+
+    /// Grace period in seconds given to the task process after `SIGINT` is sent,
+    /// before it is forcibly killed with `SIGKILL`.
+    /// ```yaml
+    /// stop_timeout: 30
+    /// ```
+    pub stop_timeout: Option<u64>,
 
     /// Inputs file glob patterns
     #[serde(default)]
@@ -892,6 +906,11 @@ pub fn default_healthcheck_start_period() -> u64 {
     0
 }
 
+/// Default grace period in seconds between `SIGINT` and `SIGKILL` for a task process.
+pub fn default_stop_timeout() -> u64 {
+    10
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[serde(untagged)]
 pub enum ServiceConfig {
@@ -1095,6 +1114,10 @@ pub struct DefaultsConfig {
 
     /// Service configurations
     pub service: Option<ServiceConfig>,
+
+    /// Grace period in seconds given to the task process after `SIGINT` is sent,
+    /// before it is forcibly killed with `SIGKILL`.
+    pub stop_timeout: Option<u64>,
 
     /// Inputs file glob patterns
     #[serde(default)]

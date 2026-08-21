@@ -1,5 +1,6 @@
 use crate::config::{
-    DependsOnConfig, HealthCheckConfig, ProjectConfig, Restart, ServiceConfig, TaskConfig, VarsConfig, UI,
+    default_stop_timeout, DependsOnConfig, HealthCheckConfig, ProjectConfig, Restart, ServiceConfig, TaskConfig,
+    VarsConfig, UI,
 };
 use crate::probe::{ExecProbe, LogLineProbe, Probe};
 use crate::template::ConfigRenderer;
@@ -8,6 +9,7 @@ use indexmap::IndexMap;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use tracing::{info, warn};
 
 #[derive(Debug, Clone)]
@@ -232,6 +234,9 @@ pub struct Task {
     /// Restart setting
     pub restart: Restart,
 
+    /// Grace period between `SIGINT` and `SIGKILL` on stop
+    pub stop_timeout: Duration,
+
     /// Input files
     pub inputs: Vec<PathBuf>,
 
@@ -454,6 +459,7 @@ impl Task {
             is_service,
             probe,
             restart,
+            stop_timeout: Duration::from_secs(task_config.stop_timeout.unwrap_or_else(default_stop_timeout)),
             inputs,
             outputs,
         })
