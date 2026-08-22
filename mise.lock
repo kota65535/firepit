@@ -9,9 +9,9 @@ version = "0.55.2"
 backend = "aqua:dprint/dprint"
 
 [tools.dprint."platforms.linux-arm64"]
-checksum = "sha256:f0101217dd0abc94f1ac01b83d306d0288aeee8a501e8614a5e2bbe037500be0"
-url = "https://github.com/dprint/dprint/releases/download/0.55.2/dprint-aarch64-unknown-linux-musl.zip"
-url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/477041358"
+checksum = "sha256:299923f2b56d66756ad2c7c220650c72f26437fd3f48b3fb6c0df664073eb1d1"
+url = "https://github.com/dprint/dprint/releases/download/0.55.2/dprint-aarch64-unknown-linux-gnu.zip"
+url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/477041360"
 
 [tools.dprint."platforms.linux-arm64-musl"]
 checksum = "sha256:f0101217dd0abc94f1ac01b83d306d0288aeee8a501e8614a5e2bbe037500be0"
@@ -19,9 +19,9 @@ url = "https://github.com/dprint/dprint/releases/download/0.55.2/dprint-aarch64-
 url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/477041358"
 
 [tools.dprint."platforms.linux-x64"]
-checksum = "sha256:45fc0eef3216af21c4c22c6e7e233aa45c3080fac07b6e94db7008a5c8e5c67a"
-url = "https://github.com/dprint/dprint/releases/download/0.55.2/dprint-x86_64-unknown-linux-musl.zip"
-url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/477041351"
+checksum = "sha256:d7ccde62d789dfb048717252d259e21253e32feffe4cbf2dab9954eeab492219"
+url = "https://github.com/dprint/dprint/releases/download/0.55.2/dprint-x86_64-unknown-linux-gnu.zip"
+url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/477041352"
 
 [tools.dprint."platforms.linux-x64-musl"]
 checksum = "sha256:45fc0eef3216af21c4c22c6e7e233aa45c3080fac07b6e94db7008a5c8e5c67a"
@@ -64,6 +64,7 @@ checksum = "sha256:eb52f9fae0d0506774e9f1801c1168f87fa2c87a45e2d64d3ae7c89401929
 url = "https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-x86_64-unknown-linux-gnu.tar.xz"
 url_api = "https://api.github.com/repos/axodotdev/cargo-dist/releases/assets/426804471"
 provenance = "github-attestations"
+provenance_verified = true
 
 [tools."github:axodotdev/cargo-dist"."platforms.linux-x64-musl"]
 checksum = "sha256:0d9dc001b0e937e9cc18e0dc11784aa7a3fd566656b07828d5e1d10ce1c1c48c"
@@ -248,7 +249,3 @@ url = "https://nodejs.org/dist/v24.11.1/node-v24.11.1-win-x64.zip"
 [[tools."npm:@commitlint/cli"]]
 version = "21.2.2"
 backend = "npm:@commitlint/cli"
-
-[[tools.rust]]
-version = "1.91.0"
-backend = "core:rust"
