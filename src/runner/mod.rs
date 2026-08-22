@@ -6,7 +6,7 @@ use crate::project::{Task, Workspace};
 use crate::runner::command::{RunnerCommand, RunnerCommandChannel};
 use crate::runner::graph::{CallbackMessage, NodeResult, TaskGraph, VisitorCommand, VisitorHandle, VisitorMessage};
 use crate::runner::watcher::{FileWatcher, FileWatcherHandle, WatcherCommand};
-use crate::{tokio_spawn, TASK_STOP_TIMEOUT};
+use crate::tokio_spawn;
 use anyhow::Context;
 use chrono::{DateTime, Local};
 use futures::stream::FuturesUnordered;
@@ -466,7 +466,7 @@ impl TaskRunner {
             .with_label(&task.name)
             .to_owned();
 
-        let process = match manager.spawn(cmd, TASK_STOP_TIMEOUT).await {
+        let process = match manager.spawn(cmd, task.stop_timeout).await {
             Some(Ok(child)) => child,
             Some(Err(e)) => anyhow::bail!("failed to spawn task process {:?}: {:?}", task.name, e),
             _ => anyhow::bail!("failed to spawn task process {:?}", task.name),

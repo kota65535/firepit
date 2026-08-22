@@ -360,3 +360,17 @@ async fn test_render_ignores_empty_depends_on() {
     let with_env = root.tasks.get("with-env").unwrap();
     assert_eq!(depends_on_names(with_env), vec!["#setup"]);
 }
+
+#[test]
+fn test_defaults_stop_timeout() {
+    let path = Path::new("tests/fixtures/config/defaults_stop_timeout");
+    let (root, _) = ProjectConfig::new_multi(path).unwrap();
+
+    // Only the first defaults entry matches (all tasks)
+    assert_eq!(root.tasks.get("install").unwrap().stop_timeout, Some(15));
+    assert_eq!(root.tasks.get("test").unwrap().stop_timeout, Some(15));
+    // Both entries match; the later one wins
+    assert_eq!(root.tasks.get("build").unwrap().stop_timeout, Some(60));
+    // Task-level value takes precedence over both defaults entries
+    assert_eq!(root.tasks.get("build-slow").unwrap().stop_timeout, Some(120));
+}

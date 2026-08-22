@@ -1,0 +1,16 @@
+# Test that `stop_timeout` is configurable per task and falls back to the
+# default grace period (10 seconds) when omitted.
+tasks:
+  default:
+    command: echo default
+
+  explicit:
+    command: echo explicit
+    stop_timeout: 30
+
+  service_explicit:
+    command: echo service_explicit
+    stop_timeout: 20
+    service:
+      healthcheck:
+        command: echo ok

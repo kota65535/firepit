@@ -191,6 +191,15 @@
             }
           ]
         },
+        "stop_timeout": {
+          "description": "Grace period in seconds given to the task process after `SIGINT` is sent,\nbefore it is forcibly killed with `SIGKILL`.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
         "tasks": {
           "description": "Task selector. A string is a regex pattern, an array is an explicit list of task names.\nIf omitted, all tasks are matched.",
           "anyOf": [
@@ -591,6 +600,15 @@
               "type": "null"
             }
           ]
+        },
+        "stop_timeout": {
+          "description": "Grace period in seconds given to the task process after `SIGINT` is sent,\nbefore it is forcibly killed with `SIGKILL`.\n```yaml\nstop_timeout: 30\n```",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
         },
         "vars": {
           "description": "Template variables. Merged with the project `vars`.\nCan be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`,\n`service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`",
