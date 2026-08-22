@@ -515,6 +515,9 @@ impl TuiAppState {
     pub fn forward_input(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
         if matches!(self.focus, LayoutSections::Pane) {
             let task = self.active_task_mut()?;
+            // Jump back to the live output before forwarding the input,
+            // otherwise the user types into a view they cannot see.
+            task.output.scroll_to_bottom();
             if let Some(stdin) = task.output.stdin_mut() {
                 stdin
                     .write_all(bytes)
