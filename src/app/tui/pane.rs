@@ -10,7 +10,7 @@ use ratatui::{
     text::Line,
     widgets::{Block, Widget},
 };
-use tui_term::widget::PseudoTerminal;
+use tui_term::widget::{Cursor, PseudoTerminal};
 
 static STOP_TASK: &(&str, &str) = &("[s]", "Stop");
 static RESTART_TASK: &(&str, &str) = &("[r]", "Restart");
@@ -156,7 +156,8 @@ impl<'a> Widget for &TerminalPane<'a> {
 
         // Terminal widget
         let inner = terminal_block.inner(main_area);
-        let term = PseudoTerminal::new(screen).block(terminal_block);
+        let cursor = Cursor::default().visibility(screen.scrollback() == 0);
+        let term = PseudoTerminal::new(screen).cursor(cursor).block(terminal_block);
         term.render(main_area, buf);
 
         // Hover highlight: overlay blue + underline on hovered URL segments

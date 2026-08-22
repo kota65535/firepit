@@ -89,6 +89,10 @@ impl TerminalOutput {
         Ok((new_scrollback, scrollback_len))
     }
 
+    pub fn scroll_to_bottom(&mut self) {
+        self.parser.screen_mut().set_scrollback(0);
+    }
+
     pub fn scroll_to(&mut self, row: u16) {
         let screen = self.parser.screen_mut();
         let scrollback_len = screen.current_scrollback_len();
@@ -230,5 +234,39 @@ impl TerminalOutput {
 
     pub fn clear_selection(&mut self) {
         self.parser.screen_mut().clear_selection();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Produce a terminal output with more lines than the visible rows so that
+    /// the view can be scrolled back.
+    fn output_with_scrollback() -> TerminalOutput {
+        let mut output = TerminalOutput::new(4, 20, None);
+        for i in 0..20 {
+            output.process(format!("line {}\r\n", i).as_bytes());
+        }
+        output
+    }
+
+    #[test]
+    fn scroll_to_bottom_resets_scrollback() {
+        let mut output = output_with_scrollback();
+        output.scroll(Direction::Up, 5).unwrap();
+        assert_eq!(output.screen().scrollback(), 5);
+
+        output.scroll_to_bottom();
+        assert_eq!(output.screen().scrollback(), 0);
+    }
+
+    #[test]
+    fn scroll_to_bottom_is_noop_at_bottom() {
+        let mut output = output_with_scrollback();
+        assert_eq!(output.screen().scrollback(), 0);
+
+        output.scroll_to_bottom();
+        assert_eq!(output.screen().scrollback(), 0);
     }
 }
