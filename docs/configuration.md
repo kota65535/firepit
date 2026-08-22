@@ -388,10 +388,6 @@ tasks:
 
 `stop_timeout` can also be set in [`defaults`](#defaults) to apply it to multiple tasks at once.
 
-The grace period applies to the task's own process. The command of an
-[exec readiness probe](#readiness) is stopped on a much shorter, fixed grace period, since a probe is a short-lived
-check with nothing to clean up.
-
 ## Incremental Builds and Watch Mode
 
 ### Incremental Builds
