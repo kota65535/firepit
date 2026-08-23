@@ -221,7 +221,27 @@ impl ChildHandle {
         }
     }
 
+    /// Kill the child process and every descendant of it.
+    ///
+    /// The child is spawned as the leader of its own process group, so we
+    /// signal the whole group. Killing only the direct child would leave
+    /// grandchildren running, and since they inherit the output pipes, they
+    /// keep the pipes open and make waiting for the child output hang forever.
     pub async fn kill(&mut self) -> io::Result<()> {
+        if let Some(pid) = self.pid {
+            debug!("sending SIGKILL to the process group of child {}", pid);
+            // kill takes negative pid to indicate that you want to use gpid
+            let pgid = -(pid as i32);
+            unsafe {
+                libc::kill(pgid, libc::SIGKILL);
+            }
+            // The signal covers the child itself, so all that is left is to
+            // reap it. Errors here mean the child is already gone.
+            self.wait().await?;
+            return Ok(());
+        }
+        // Without a pid there is no process group to signal, so fall back to
+        // killing the handle directly
         match &mut self.imp {
             ChildHandleImpl::Tokio(child) => child.kill().await,
             ChildHandleImpl::Pty(child) => {
