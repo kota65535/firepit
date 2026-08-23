@@ -400,7 +400,14 @@ impl TuiAppState {
         result: TaskResult,
         datetime: Option<DateTime<Local>>,
     ) -> anyhow::Result<()> {
-        self.set_status(task, TaskStatus::Finished(result, datetime))
+        self.set_status(task, TaskStatus::Finished(result, datetime))?;
+        // A finished task has no stdin, so staying in interaction mode would leave
+        // the user typing into a dead shell. Reloading tasks are exempt since they
+        // are restarted right away and their stdin comes back.
+        if !matches!(result, TaskResult::Reloading) && self.is_interacting_with(task)? {
+            self.exit_interaction();
+        }
+        Ok(())
     }
 
     pub fn has_stdin(&self) -> anyhow::Result<bool> {
@@ -408,13 +415,21 @@ impl TuiAppState {
         Ok(task.output.stdin().is_some())
     }
 
-    pub fn interact(&mut self) -> anyhow::Result<()> {
-        if matches!(self.focus, LayoutSections::Pane) {
-            self.focus = LayoutSections::TaskList(None)
-        } else if self.has_stdin()? {
+    pub fn is_interacting_with(&self, task: &str) -> anyhow::Result<bool> {
+        Ok(matches!(self.focus, LayoutSections::Pane) && self.active_task()?.name == task)
+    }
+
+    pub fn enter_interaction(&mut self) -> anyhow::Result<()> {
+        if self.has_stdin()? {
             self.focus = LayoutSections::Pane;
         }
         Ok(())
+    }
+
+    pub fn exit_interaction(&mut self) {
+        if matches!(self.focus, LayoutSections::Pane) {
+            self.focus = LayoutSections::TaskList(None);
+        }
     }
 
     pub fn persist_tasks(&mut self) -> anyhow::Result<()> {
@@ -915,10 +930,10 @@ impl TuiAppState {
                 self.resize(self.size.rows(), self.size.cols());
             }
             AppCommand::EnterInteractive => {
-                self.interact()?;
+                self.enter_interaction()?;
             }
             AppCommand::ExitInteractive => {
-                self.interact()?;
+                self.exit_interaction();
             }
             AppCommand::Input { bytes } => {
                 self.forward_input(&bytes)?;
@@ -980,5 +995,87 @@ impl TuiAppState {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn state(tasks: &[&str]) -> TuiAppState {
+        let size = SizeInfo::new(24, 80, tasks.iter().copied());
+        let tasks = tasks
+            .iter()
+            .map(|t| {
+                (
+                    t.to_string(),
+                    Task::new(t, true, TerminalOutput::new(10, 40, None), None),
+                )
+            })
+            .collect::<IndexMap<_, _>>();
+        TuiAppState {
+            size,
+            tasks,
+            focus: LayoutSections::Pane,
+            table: TableState::default().with_selected(0),
+            scrollbar: ScrollbarState::default(),
+            selected_task_index: 0,
+            has_sidebar: true,
+            quitting: false,
+            force_quitting: false,
+            done: false,
+            detected_urls: Vec::new(),
+            hovered_url_index: None,
+        }
+    }
+
+    #[test]
+    fn exits_interaction_when_active_task_finishes() {
+        let mut state = state(&["a", "b"]);
+
+        state.finish_task("a", TaskResult::Success, None).unwrap();
+
+        assert!(matches!(state.focus, LayoutSections::TaskList(None)));
+    }
+
+    #[test]
+    fn keeps_interaction_when_another_task_finishes() {
+        let mut state = state(&["a", "b"]);
+
+        state.finish_task("b", TaskResult::Success, None).unwrap();
+
+        assert!(matches!(state.focus, LayoutSections::Pane));
+    }
+
+    #[test]
+    fn keeps_interaction_while_active_task_is_reloading() {
+        let mut state = state(&["a", "b"]);
+
+        state.finish_task("a", TaskResult::Reloading, None).unwrap();
+
+        assert!(matches!(state.focus, LayoutSections::Pane));
+    }
+
+    #[test]
+    fn keeps_task_list_focus_when_not_interacting() {
+        let mut state = state(&["a", "b"]);
+        state.focus = LayoutSections::TaskList(None);
+
+        state.finish_task("a", TaskResult::Success, None).unwrap();
+
+        assert!(matches!(state.focus, LayoutSections::TaskList(None)));
+    }
+
+    #[test]
+    fn enters_interaction_only_when_task_has_stdin() {
+        let mut state = state(&["a", "b"]);
+        state.focus = LayoutSections::TaskList(None);
+
+        state.enter_interaction().unwrap();
+        assert!(matches!(state.focus, LayoutSections::TaskList(None)));
+
+        state.insert_stdin("a", Some(Box::new(Vec::new()))).unwrap();
+        state.enter_interaction().unwrap();
+        assert!(matches!(state.focus, LayoutSections::Pane));
     }
 }
