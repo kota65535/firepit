@@ -17,4 +17,4 @@ pub mod util;
 /// being stopped has already been given its own `timeout`, so the grace period
 /// is deliberately much shorter than a task's.
 pub const PROBE_STOP_TIMEOUT: Duration = Duration::from_millis(1000);
-pub const DYNAMIC_VAR_STOP_TIMEOUT: Duration = Duration::from_secs(1000);
+pub const DYNAMIC_VAR_STOP_TIMEOUT: Duration = Duration::from_millis(1000);
