@@ -138,9 +138,13 @@ impl ExecProbe {
                     if let Some(pid) = process.pid() { self.manager.stop_by_pid(pid).await; }
                     return Ok(false);
                 },
-                // Timeout branch
+                // Timeout branch, stop the process before the next retry
                 _ = tokio::time::sleep(Duration::from_secs(self.timeout)) => {
                     info!("Probe timed-out. output: {:?}", output_collector.take_output());
+                    if let Some(pid) = process.pid() {
+                        let exit = self.manager.stop_by_pid(pid).await;
+                        debug!("Probe process stopped by timeout. exit: {:?}", exit);
+                    }
                 },
                 // Normal branch, success if finished with code 0
                 exit = process.wait_with_piped_outputs(output_collector.clone(), output_collector.clone()) => {
@@ -320,6 +324,46 @@ mod test {
         let result = probe.run(cancel_rx).await;
 
         assert!(!(result.unwrap()));
+    }
+
+    /// A probe process that outlives the probe `timeout` must be stopped, not
+    /// left running until the whole probe finishes.
+    #[tokio::test]
+    async fn test_exec_probe_timeout_stops_process() {
+        setup();
+        let pid_file = std::env::temp_dir().join("firepit-test-probe-timeout.pid");
+        std::fs::remove_file(&pid_file).ok();
+        let probe = ExecProbe::new(
+            "test",
+            &format!("echo $$ >> {}; sleep 10", pid_file.to_string_lossy()),
+            "bash",
+            vec![String::from("-c")],
+            PathBuf::from("./"),
+            Env::new(),
+            1,
+            1,
+            1,
+            0,
+        );
+        let (_cancel_tx, cancel_rx) = watch::channel(());
+
+        assert!(!probe.run(cancel_rx).await.unwrap());
+
+        let pids = std::fs::read_to_string(&pid_file)
+            .unwrap()
+            .lines()
+            .map(|l| l.trim().parse::<i32>().unwrap())
+            .collect::<Vec<_>>();
+        assert!(!pids.is_empty(), "no probe process was recorded");
+        for pid in pids {
+            // Signal 0 sends nothing and only checks that the process exists
+            let alive = unsafe { libc::kill(pid, 0) == 0 };
+            if alive {
+                unsafe { libc::kill(pid, libc::SIGKILL) };
+            }
+            assert!(!alive, "probe process {} was left running", pid);
+        }
+        std::fs::remove_file(&pid_file).ok();
     }
 
     #[tokio::test]
