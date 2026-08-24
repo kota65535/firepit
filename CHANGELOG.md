@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.23.0] - 2026-08-24
+
+### 🚀 Features
+
+- *(config)* [**breaking**] Add per-task stop_timeout (#358)
+
+### 🐛 Bug Fixes
+
+- *(tui)* Keep the pane view in sync while scrolled back (#361)
+- *(process)* Kill the whole process group of a child (#362)
+- *(probe)* Stop the probe process when the probe times out (#363)
+
+### ⚙️ Miscellaneous Tasks
+
+- Read toolchain version from rust-toolchain.toml only (#359)
+
 ## [0.22.0] - 2026-07-08
 
 ### 🚀 Features
