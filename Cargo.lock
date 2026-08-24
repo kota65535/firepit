@@ -837,7 +837,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
- "shell-words",
+ "shlex",
  "strum",
  "tera",
  "tokio",

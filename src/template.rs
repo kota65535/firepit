@@ -35,7 +35,7 @@ impl ProjectConfig {
         context: &tera::Context,
         vars: &IndexMap<String, VarsConfig>,
     ) -> anyhow::Result<tera::Context> {
-        let mut tera = Tera::default();
+        let mut tera = new_tera();
         let mut context = context.clone();
         context.insert(PROJECT_CONTEXT_KEY, &self.name);
         context.insert(PROJECT_DIR_CONTEXT_KEY, &self.dir.as_os_str().to_str().unwrap_or(""));
@@ -75,7 +75,7 @@ impl ProjectConfig {
     }
 
     pub async fn render(&self, context: &tera::Context) -> anyhow::Result<ProjectConfig> {
-        let mut tera = Tera::default();
+        let mut tera = new_tera();
 
         let mut config = self.clone();
 
@@ -111,7 +111,7 @@ impl ProjectConfig {
 
 impl TaskConfig {
     pub async fn context(&self, config: &ProjectConfig, context: &tera::Context) -> anyhow::Result<tera::Context> {
-        let mut tera = Tera::default();
+        let mut tera = new_tera();
         let mut context = context.clone();
         context.insert(TASK_CONTEXT_KEY, &self.full_orig_name());
 
@@ -149,7 +149,7 @@ impl TaskConfig {
 
     pub async fn render(&self, context: &tera::Context) -> anyhow::Result<TaskConfig> {
         let mut config = self.clone();
-        let mut tera = Tera::default();
+        let mut tera = new_tera();
 
         // Render task-level vars
         config.vars = render_value_map(&config.vars, &mut tera, context).await?;
@@ -665,5 +665,114 @@ fn yaml_number_to_json_number(yaml_num: &serde_yaml::Number) -> Option<serde_jso
         serde_json::Number::from_f64(f).map(serde_json::Value::Number)
     } else {
         None
+    }
+}
+
+/// Creates a [`Tera`] instance with the Firepit custom filters registered.
+///
+/// All template rendering must go through this function so that every template
+/// field supports the same set of filters.
+///
+/// # Examples
+///
+/// ```
+/// use firepit::template::new_tera;
+///
+/// let mut tera = new_tera();
+/// let mut context = tera::Context::new();
+/// context.insert("value", "a b");
+/// assert_eq!(tera.render_str("echo {{ value | quote }}", &context).unwrap(), "echo 'a b'");
+/// ```
+pub fn new_tera() -> Tera {
+    let mut tera = Tera::default();
+    tera.register_filter("quote", quote_filter);
+    tera
+}
+
+/// Tera filter that escapes a value so that it can be safely embedded in a shell
+/// command as a single argument.
+///
+/// Strings are quoted with [`shlex`], so whitespace, quotes, newlines and shell
+/// metacharacters in the value cannot break out of the argument.
+/// Numbers, booleans and `null` are quoted the same way after being stringified,
+/// and arrays are quoted element-wise and joined with a single space, which is
+/// handy for passing a list of arguments.
+///
+/// # Errors
+///
+/// Returns an error when the value is a map, when an array contains a nested
+/// array or map, or when the value contains a nul byte, which cannot be
+/// represented as a shell argument.
+fn quote_filter(value: &JsonValue, _args: &HashMap<String, JsonValue>) -> tera::Result<JsonValue> {
+    let quoted = match value {
+        JsonValue::Array(items) => {
+            let words = items.iter().map(scalar_to_string).collect::<tera::Result<Vec<_>>>()?;
+            shlex::try_join(words.iter().map(|w| w.as_str()))
+                .map_err(|e| tera::Error::msg(format!("failed to quote array for shell: {}", e)))?
+        }
+        _ => {
+            let word = scalar_to_string(value)?;
+            shlex::try_quote(&word)
+                .map_err(|e| tera::Error::msg(format!("failed to quote {:?} for shell: {}", word, e)))?
+                .into_owned()
+        }
+    };
+    Ok(JsonValue::String(quoted))
+}
+
+/// Stringifies a scalar JSON value for the `quote` filter.
+///
+/// # Errors
+///
+/// Returns an error for arrays and maps, which have no single-argument shell
+/// representation.
+fn scalar_to_string(value: &JsonValue) -> tera::Result<String> {
+    match value {
+        JsonValue::String(s) => Ok(s.clone()),
+        JsonValue::Number(n) => Ok(n.to_string()),
+        JsonValue::Bool(b) => Ok(b.to_string()),
+        JsonValue::Null => Ok(String::new()),
+        JsonValue::Array(_) | JsonValue::Object(_) => Err(tera::Error::msg(
+            "the `quote` filter accepts a string, number, boolean, null or an array of them",
+        )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn quote(value: JsonValue) -> tera::Result<String> {
+        let args = HashMap::new();
+        quote_filter(&value, &args).map(|v| v.as_str().unwrap_or_default().to_string())
+    }
+
+    #[test]
+    fn test_quote_scalars() {
+        assert_eq!(quote(json!("simple")).unwrap(), "simple");
+        assert_eq!(quote(json!("a b'c")).unwrap(), r#""a b'c""#);
+        assert_eq!(quote(json!("foo; date")).unwrap(), "'foo; date'");
+        assert_eq!(quote(json!("line1\nline2")).unwrap(), "'line1\nline2'");
+        assert_eq!(quote(json!("")).unwrap(), "''");
+        assert_eq!(quote(json!(42)).unwrap(), "42");
+        assert_eq!(quote(json!(true)).unwrap(), "true");
+        // Null becomes an empty argument rather than being dropped
+        assert_eq!(quote(JsonValue::Null).unwrap(), "''");
+    }
+
+    #[test]
+    fn test_quote_array() {
+        assert_eq!(quote(json!(["foo", "bar baz"])).unwrap(), "foo 'bar baz'");
+        assert_eq!(quote(json!([])).unwrap(), "");
+    }
+
+    #[test]
+    fn test_quote_errors() {
+        // A nul byte cannot be represented as a shell argument
+        assert!(quote(json!("a\0b")).is_err());
+        // Maps and nested collections have no single-argument representation
+        assert!(quote(json!({ "a": 1 })).is_err());
+        assert!(quote(json!([["nested"]])).is_err());
     }
 }

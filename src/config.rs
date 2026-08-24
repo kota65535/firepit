@@ -1,4 +1,5 @@
 use crate::project::Task;
+use crate::template::new_tera;
 use crate::template::ROOT_DIR_CONTEXT_KEY;
 use crate::util::merge_yaml;
 use anyhow::Context;
@@ -17,7 +18,6 @@ use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::thread::available_parallelism;
 use std::{io, iter, path};
-use tera::Tera;
 use tracing::info;
 
 const CONFIG_FILE: [&str; 2] = ["firepit.yml", "firepit.yaml"];
@@ -338,7 +338,7 @@ impl ProjectConfig {
 
     pub fn merge(&self, context: &tera::Context) -> anyhow::Result<Self> {
         // Render includes only
-        let mut tera = Tera::default();
+        let mut tera = new_tera();
         let mut rendered_includes = Vec::new();
         for f in self.includes.iter() {
             rendered_includes.push(tera.render_str(f, context)?);
