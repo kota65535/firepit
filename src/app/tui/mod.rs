@@ -37,6 +37,7 @@ use ratatui::{
 };
 use std::collections::HashMap;
 use std::io::{self, Stdout, Write};
+use tokio::sync::broadcast::error::RecvError;
 use tokio::{sync::mpsc, time::Instant};
 use tracing::{debug, error, info};
 use unicode_width::UnicodeWidthStr;
@@ -174,12 +175,14 @@ impl TuiApp {
     }
 
     pub async fn run(&mut self, runner_tx: &RunnerCommandChannel) -> anyhow::Result<i32> {
-        let signal_handler = self.signal_handler.clone();
+        // Translate every signal into a quit command, exactly like a Ctrl-C key
+        // press. The app forwards each one to the runner, which turns a repeated
+        // quit into a forced kill.
+        let mut signals = self.signal_handler.subscribe();
         let command_tx = self.command_tx.clone();
         tokio_spawn!("app-canceller", async move {
-            let subscriber = signal_handler.subscribe();
-            if let Some(subscriber) = subscriber {
-                let _guard = subscriber.listen().await;
+            // A lagged receiver still means signals arrived, so treat it the same.
+            while let Ok(_) | Err(RecvError::Lagged(_)) = signals.recv().await {
                 command_tx.quit().await;
             }
         });
@@ -189,6 +192,8 @@ impl TuiApp {
 
         if let Err(err) = ret {
             error!("Error: {}", err);
+            // `run_inner` has returned early without stopping the runner.
+            runner_tx.quit();
             return Err(err);
         }
 
