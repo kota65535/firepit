@@ -192,6 +192,8 @@ impl TuiApp {
 
         if let Err(err) = ret {
             error!("Error: {}", err);
+            // `run_inner` has returned early without stopping the runner.
+            runner_tx.quit();
             return Err(err);
         }
 
