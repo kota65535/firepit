@@ -169,14 +169,25 @@ impl TaskRunner {
                         RunnerCommand::Quit => {
                             info!("Stopping runner");
                             info!("Stopping tasks");
-                            tokio::select! {
-                                Ok(RunnerCommand::Quit) = self.command_rx.recv() => {
-                                    info!("Killing tasks");
-                                    self.manager.close_by_kill().await;
-                                    info!("Killed tasks");
-                                }
-                                _ =  self.manager.close() => {
-                                    info!("Stopped tasks");
+                            let close_fut = self.manager.close();
+                            tokio::pin!(close_fut);
+                            loop {
+                                tokio::select! {
+                                    event = self.command_rx.recv() => {
+                                        // A second quit means the user gave up on the graceful
+                                        // shutdown. Anything else is irrelevant while shutting
+                                        // down, so keep waiting instead of disabling this branch.
+                                        if matches!(event, Ok(RunnerCommand::Quit)) {
+                                            info!("Killing tasks");
+                                            self.manager.close_by_kill().await;
+                                            info!("Killed tasks");
+                                            break;
+                                        }
+                                    }
+                                    _ = &mut close_fut => {
+                                        info!("Stopped tasks");
+                                        break;
+                                    }
                                 }
                             }
                             info!("Stopping visitors");

@@ -18,6 +18,7 @@ use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 use std::io::{stdout, Stdout, Write};
 use std::sync::{Arc, RwLock};
+use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info};
 
@@ -86,18 +87,18 @@ impl CuiApp {
     }
 
     pub async fn run(&mut self, runner_tx: &RunnerCommandChannel) -> anyhow::Result<i32> {
-        let signal_handler = self.signal_handler.clone();
+        // Translate every signal into a quit command. The app forwards each one
+        // to the runner, which turns a repeated quit into a forced kill.
+        let mut signals = self.signal_handler.subscribe();
         let command_tx = self.command_tx.clone();
         tokio_spawn!("app-canceller", async move {
-            let subscriber = signal_handler.subscribe();
-            if let Some(subscriber) = subscriber {
-                let _guard = subscriber.listen().await;
+            // A lagged receiver still means signals arrived, so treat it the same.
+            while let Ok(_) | Err(RecvError::Lagged(_)) = signals.recv().await {
                 command_tx.quit().await;
             }
         });
 
-        let ret = self.run_inner().await;
-        runner_tx.quit();
+        let ret = self.run_inner(runner_tx).await;
 
         if let Err(err) = ret {
             error!("Error: {}", err);
@@ -108,9 +109,10 @@ impl CuiApp {
         ret
     }
 
-    pub async fn run_inner(&mut self) -> anyhow::Result<i32> {
+    pub async fn run_inner(&mut self, runner_tx: &RunnerCommandChannel) -> anyhow::Result<i32> {
         let mut tasks_remaining = self.target_tasks.iter().cloned().collect::<HashSet<_>>();
         let mut failed_tasks = IndexMap::new();
+        let mut quitting = false;
         while let Some(event) = self.command_rx.recv().await {
             match event {
                 AppCommand::StartTask { task, .. } => self.register_output_client(&task),
@@ -129,7 +131,8 @@ impl CuiApp {
                 } => {
                     debug!("Task {:?} finished", task);
 
-                    if result.is_failure() {
+                    // Tasks stopped by the quit are not failures.
+                    if result.is_failure() && !quitting {
                         failed_tasks.insert(task.clone(), result);
                         eprintln!(
                             "{}",
@@ -139,14 +142,26 @@ impl CuiApp {
                     tasks_remaining.remove(&task);
                     debug!("Target tasks remaining: {:?}", tasks_remaining);
                 }
-                AppCommand::Quit => break,
-                AppCommand::Done if self.quit_on_done => break,
+                AppCommand::Quit => {
+                    // Keep processing output while the runner shuts down. The
+                    // runner kills the tasks when it receives a second quit, and
+                    // sends `Done` once it has finished either way.
+                    quitting = true;
+                    runner_tx.quit();
+                }
+                AppCommand::Done if self.quit_on_done || quitting => break,
                 _ => {}
             }
             if self.quit_on_done && tasks_remaining.is_empty() {
                 debug!("Target tasks all done");
                 break;
             }
+        }
+
+        // Stop the runner unless quitting, in which case it has been told already
+        // and has finished by now.
+        if !quitting {
+            runner_tx.quit();
         }
 
         if !failed_tasks.is_empty() {

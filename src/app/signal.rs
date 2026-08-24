@@ -1,53 +1,49 @@
 use crate::tokio_spawn;
-use futures::{stream::FuturesUnordered, StreamExt};
+use futures::{Stream, StreamExt};
 use nix::sys::signal::Signal;
-use std::{
-    fmt::Debug,
-    future::Future,
-    sync::{Arc, Mutex},
-};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::broadcast;
 use tracing::{debug, warn};
 
-/// SignalHandler provides a mechanism to subscribe to a future and get alerted
-/// whenever the future completes or the handler gets a close message.
+/// Capacity of the broadcast channel used to deliver signals. Signals are
+/// rare and only used to drive the shutdown, so a small buffer is enough.
+const SIGNAL_CHANNEL_SIZE: usize = 8;
+
+/// SignalHandler watches a signal source for the whole lifetime of the
+/// process and broadcasts every signal it receives to all subscribers.
+///
+/// Delivering every signal (not just the first one) lets subscribers escalate
+/// a graceful shutdown into a forced one when the user interrupts again.
 #[derive(Debug, Clone)]
 pub struct SignalHandler {
-    state: Arc<Mutex<HandlerState>>,
-    close: mpsc::Sender<()>,
+    tx: broadcast::Sender<i32>,
 }
 
-#[derive(Debug, Default)]
-struct HandlerState {
-    subscribers: Vec<oneshot::Sender<oneshot::Sender<()>>>,
-    is_closing: bool,
-}
-
-pub struct SignalSubscriber(oneshot::Receiver<oneshot::Sender<()>>);
-
-/// SubscriberGuard should be kept until a subscriber is done processing the
-/// signal
-pub struct SubscriberGuard {
-    // Held only for its `Drop`: when this guard is dropped, the sender is
-    // dropped, which signals the signal handler worker that cleanup is done.
-    _callback: oneshot::Sender<()>,
-}
-
-fn get_signal() -> anyhow::Result<impl Future<Output = Option<i32>>> {
+/// Build a stream that yields every SIGINT and SIGTERM the process receives.
+///
+/// It deliberately keeps yielding after the first signal so that a second
+/// Ctrl-C can be observed while the graceful shutdown is still in progress.
+fn get_signal() -> anyhow::Result<impl Stream<Item = i32>> {
     use tokio::signal::unix;
-    let mut sigint = unix::signal(unix::SignalKind::interrupt())?;
-    let mut sigterm = unix::signal(unix::SignalKind::terminate())?;
+    let sigint = unix::signal(unix::SignalKind::interrupt())?;
+    let sigterm = unix::signal(unix::SignalKind::terminate())?;
 
-    Ok(async move {
-        tokio::select! {
-            _ = sigint.recv() => {
-                Some(libc::SIGINT)
-            }
-            _ = sigterm.recv() => {
-                Some(libc::SIGTERM)
-            }
-        }
-    })
+    Ok(futures::stream::unfold(
+        (sigint, sigterm),
+        |(mut sigint, mut sigterm)| async move {
+            let signal_num = tokio::select! {
+                _ = sigint.recv() => libc::SIGINT,
+                _ = sigterm.recv() => libc::SIGTERM,
+            };
+            Some((signal_num, (sigint, sigterm)))
+        },
+    ))
+}
+
+fn log_signal(signal_num: i32) {
+    match Signal::try_from(signal_num) {
+        Ok(signal) => debug!("Got signal {:?}({})", signal, signal_num),
+        Err(e) => warn!("Unexpected signal {}: {:?})", signal_num, e),
+    }
 }
 
 impl SignalHandler {
@@ -55,103 +51,72 @@ impl SignalHandler {
         Ok(SignalHandler::new(get_signal()?))
     }
 
-    /// Construct a new SignalHandler that will alert any subscribers when
-    /// `signal_source` completes or `close` is called on it.
-    pub fn new(signal_source: impl Future<Output = Option<i32>> + Send + 'static) -> Self {
-        // think about channel size
-        let state = Arc::new(Mutex::new(HandlerState::default()));
-        let worker_state = state.clone();
-        let (close, mut rx) = mpsc::channel::<()>(1);
+    /// Construct a new SignalHandler that forwards every item yielded by
+    /// `signal_source` to all subscribers.
+    pub fn new(signal_source: impl Stream<Item = i32> + Send + 'static) -> Self {
+        let (tx, _) = broadcast::channel(SIGNAL_CHANNEL_SIZE);
+        let worker_tx = tx.clone();
         tokio_spawn!("signal-handler", async move {
-            tokio::select! {
-                // We don't care if we get a signal or if we are unable to receive signals
-                // Either way we start the shutdown.
-                Some(signal_num) = signal_source => {
-                    match Signal::try_from(signal_num) {
-                        Ok(signal) => {
-                            debug!("Got signal {:?}({})", signal, signal_num)
-                        }
-                        Err(e) => {
-                            warn!("Unexpected signal {}: {:?})", signal_num, e)
-                        }
-                    }
-
-                },
-                // We don't care if a close message was sent or if all handlers are dropped.
-                // Either way start the shutdown process.
-                _ = rx.recv() => {}
+            let mut signal_source = Box::pin(signal_source);
+            while let Some(signal_num) = signal_source.next().await {
+                log_signal(signal_num);
+                // We don't care if nobody is subscribed at the moment.
+                let _ = worker_tx.send(signal_num);
             }
-
-            let mut callbacks = {
-                let mut state = worker_state.lock().expect("lock poisoned");
-                // Mark ourselves as closing to prevent any additional subscribers from being
-                // added
-                state.is_closing = true;
-                state
-                    .subscribers
-                    .drain(..)
-                    .filter_map(|callback| {
-                        let (tx, rx) = oneshot::channel();
-                        // If the subscriber is no longer around we don't wait for the callback
-                        callback.send(tx).ok()?;
-                        Some(rx)
-                    })
-                    .collect::<FuturesUnordered<_>>()
-            };
-
-            // We don't care if callback gets dropped or if the done signal is sent.
-            while let Some(_fut) = callbacks.next().await {}
         });
 
-        Self { state, close }
+        Self { tx }
     }
 
-    /// Register a new subscriber
-    /// Will return `None` if SignalHandler is in the process of shutting down
-    /// or if it has already shut down.
-    pub fn subscribe(&self) -> Option<SignalSubscriber> {
-        self.state
-            .lock()
-            .expect("poisoned lock")
-            .add_subscriber()
-            .map(SignalSubscriber)
+    /// Subscribe to all signals received from now on.
+    pub fn subscribe(&self) -> broadcast::Receiver<i32> {
+        self.tx.subscribe()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+    use tokio::sync::mpsc;
+
+    /// Turn a channel into a signal stream so tests can deliver signals on demand.
+    fn signal_stream(mut rx: mpsc::UnboundedReceiver<i32>) -> impl Stream<Item = i32> {
+        futures::stream::poll_fn(move |cx| rx.poll_recv(cx))
     }
 
-    /// Send message to signal handler that it should shut down and alert
-    /// subscribers
-    pub async fn close(&self) {
-        if self.close.send(()).await.is_err() {
-            // watcher has already closed
-            return;
+    #[tokio::test]
+    async fn every_signal_is_delivered_to_subscribers() {
+        let (signal_tx, signal_rx) = mpsc::unbounded_channel();
+        let handler = SignalHandler::new(signal_stream(signal_rx));
+        let mut signals = handler.subscribe();
+
+        // The handler must keep watching the signal source after the first
+        // signal, otherwise a second Ctrl-C would be silently dropped and the
+        // shutdown could never be escalated into a forced kill.
+        for expected in [libc::SIGINT, libc::SIGINT, libc::SIGTERM] {
+            signal_tx.send(expected).unwrap();
+            let signal_num = tokio::time::timeout(Duration::from_secs(5), signals.recv())
+                .await
+                .expect("signal was not delivered")
+                .expect("signal channel closed");
+            assert_eq!(signal_num, expected);
         }
-        self.done().await;
     }
 
-    /// Wait until handler is finished and all subscribers finish their cleanup
-    /// work
-    pub async fn done(&self) {
-        // Receiver is dropped once the worker task completes
-        self.close.closed().await;
-    }
-}
+    #[tokio::test]
+    async fn late_subscribers_receive_subsequent_signals() {
+        let (signal_tx, signal_rx) = mpsc::unbounded_channel();
+        let handler = SignalHandler::new(signal_stream(signal_rx));
 
-impl SignalSubscriber {
-    /// Wait until signal is received by the signal handler
-    pub async fn listen(self) -> SubscriberGuard {
-        let callback = self
-            .0
+        // A subscriber created via a clone shares the same signal feed.
+        let mut signals = handler.clone().subscribe();
+
+        signal_tx.send(libc::SIGINT).unwrap();
+        let signal_num = tokio::time::timeout(Duration::from_secs(5), signals.recv())
             .await
-            .expect("signal handler worker thread exited without alerting subscribers");
-        SubscriberGuard { _callback: callback }
-    }
-}
-
-impl HandlerState {
-    fn add_subscriber(&mut self) -> Option<oneshot::Receiver<oneshot::Sender<()>>> {
-        (!self.is_closing).then(|| {
-            let (tx, rx) = oneshot::channel();
-            self.subscribers.push(tx);
-            rx
-        })
+            .expect("signal was not delivered")
+            .expect("signal channel closed");
+        assert_eq!(signal_num, libc::SIGINT);
     }
 }
