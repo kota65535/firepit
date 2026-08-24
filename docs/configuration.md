@@ -148,16 +148,22 @@ tasks:
     vars:
       message: ""
     command: echo {{ message | quote }}
+
+  fmt:
+    vars:
+      files: []
+    command: prettier --write {{ files | quote }}
 ```
 
 ```
-fire greet 'message=hello; date'   # runs: echo 'hello; date'
+fire greet 'message=hello; date'              # runs: echo 'hello; date'
+fire fmt 'files=["src/a.ts", "my file.ts"]'   # runs: prettier --write src/a.ts 'my file.ts'
 ```
 
-Without the filter the `;` would end the `echo` command and `date` would run as a command of its own.
-
+Without the filter, the `;` would end the `echo` command and `date` would run as a command of its own.
 Write `{{ message | quote }}` without adding quotes of your own—the filter emits whatever quoting the value needs.
-Arrays are quoted element by element and joined with a space, so a list variable turns into a list of arguments.
+
+As the `fmt` task shows, an array is quoted element by element and joined with a space, so a list variable turns into a list of arguments and a path containing a space is not split in two.
 Numbers, booleans and `null` are accepted as well; `null` becomes an empty argument.
 Maps, nested arrays and values containing a nul byte have no single-argument representation and are reported as an error.
 
