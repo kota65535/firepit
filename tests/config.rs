@@ -374,3 +374,40 @@ fn test_defaults_stop_timeout() {
     // Task-level value takes precedence over both defaults entries
     assert_eq!(root.tasks.get("build-slow").unwrap().stop_timeout, Some(120));
 }
+
+#[tokio::test]
+async fn test_quote_filter() {
+    let path = Path::new("tests/fixtures/config/quote_filter");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let mut renderer = ConfigRenderer::new(&root, &children, &IndexMap::new(), false);
+    let (root, _) = renderer.render().await.unwrap();
+
+    let command = |name: &str| root.tasks.get(name).unwrap().command.clone().unwrap();
+
+    // Quotes and whitespace in the value cannot break out of the argument
+    assert_eq!(command("text"), r#"echo "a b'c""#);
+    // Command separators and expansions stay literal instead of being interpreted by the shell
+    assert_eq!(command("injection"), r#"echo 'foo; date'"#);
+    assert_eq!(command("expansion"), r#"echo '$HOME `id` $(id)'"#);
+    // An empty value stays a single empty argument instead of disappearing
+    assert_eq!(command("blank"), "echo ''");
+    // Values with no special characters are left as-is
+    assert_eq!(command("plain"), "echo simple");
+    assert_eq!(command("num"), "echo 42");
+    assert_eq!(command("flag"), "echo true");
+    // Arrays are quoted element-wise and joined with a space
+    assert_eq!(command("words"), "echo foo 'bar baz'");
+
+    // The filter is available in every template field
+    let other = root.tasks.get("other-fields").unwrap();
+    assert_eq!(other.label.as_deref(), Some(r#"run "a b'c""#));
+    assert_eq!(other.working_dir.as_deref(), Some(r#""a b'c""#));
+    assert_eq!(other.env.get("VALUE").map(String::as_str), Some(r#""a b'c""#));
+    let Some(ServiceConfig::Struct(service)) = other.service.as_ref() else {
+        panic!("expected service config");
+    };
+    let Some(HealthCheckConfig::Exec(exec)) = service.healthcheck.as_ref() else {
+        panic!("expected exec healthcheck");
+    };
+    assert_eq!(exec.command, r#"echo "a b'c""#);
+}

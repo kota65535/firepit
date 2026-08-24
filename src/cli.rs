@@ -6,6 +6,7 @@ use crate::log::init_logger;
 use crate::project::Workspace;
 use crate::runner::TaskRunner;
 use crate::tokio_spawn;
+use anyhow::Context;
 use clap::Parser;
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -255,10 +256,9 @@ fn parse_tasks_or_vars(
                 name = TASK_ARGS_VAR_NAME
             );
         }
-        vars.insert(
-            TASK_ARGS_VAR_NAME.to_string(),
-            Value::String(shell_words::join(task_args)),
-        );
+        let joined = shlex::try_join(task_args.iter().map(|a| a.as_str()))
+            .with_context(|| format!("cannot pass the arguments after `--` to the `{TASK_ARGS_VAR_NAME}` variable"))?;
+        vars.insert(TASK_ARGS_VAR_NAME.to_string(), Value::String(joined));
     }
 
     Ok((tasks, vars))
@@ -402,7 +402,7 @@ mod tests {
         assert_eq!(tasks, vec!["test".to_string()]);
         assert_eq!(
             vars.get("args"),
-            Some(&json!("--filter 'my test' 'quote'\\''s' '$(rm -rf /tmp)' ''"))
+            Some(&json!(r#"--filter 'my test' "quote's" '$(rm -rf /tmp)' ''"#))
         );
     }
 

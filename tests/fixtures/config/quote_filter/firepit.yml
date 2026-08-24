@@ -1,0 +1,46 @@
+vars:
+  text: "a b'c"
+  injection: "foo; date"
+  expansion: "$HOME `id` $(id)"
+  blank: ""
+  plain: simple
+  num: 42
+  flag: true
+  words:
+    - foo
+    - bar baz
+
+tasks:
+  text:
+    command: echo {{ text | quote }}
+
+  injection:
+    command: echo {{ injection | quote }}
+
+  expansion:
+    command: echo {{ expansion | quote }}
+
+  blank:
+    command: echo {{ blank | quote }}
+
+  plain:
+    command: echo {{ plain | quote }}
+
+  num:
+    command: echo {{ num | quote }}
+
+  flag:
+    command: echo {{ flag | quote }}
+
+  words:
+    command: echo {{ words | quote }}
+
+  other-fields:
+    label: "run {{ text | quote }}"
+    working_dir: "{{ text | quote }}"
+    env:
+      VALUE: "{{ text | quote }}"
+    command: echo ok
+    service:
+      healthcheck:
+        command: echo {{ text | quote }}

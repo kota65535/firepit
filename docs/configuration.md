@@ -137,6 +137,40 @@ Since `--` is just an alias for `args=...`, specifying both at the same time is 
 
 A dependent task can also set `args`—or any variable—on the task it depends on. See [Parameterized Dependencies](#parameterized-dependencies).
 
+### Quoting Values
+
+Values coming from outside the config file—the CLI, a [dynamic variable](#dynamic-variables), or a [dependency override](#parameterized-dependencies)—may contain spaces, quotes or shell metacharacters.
+The `quote` filter escapes such a value so that it stays a single argument of the command:
+
+```yaml
+tasks:
+  greet:
+    vars:
+      message: ""
+    command: echo {{ message | quote }}
+
+  fmt:
+    vars:
+      files: []
+    command: prettier --write {{ files | quote }}
+```
+
+```
+fire greet 'message=hello; date'              # runs: echo 'hello; date'
+fire fmt 'files=["src/a.ts", "my file.ts"]'   # runs: prettier --write src/a.ts 'my file.ts'
+```
+
+Without the filter, the `;` would end the `echo` command and `date` would run as a command of its own.
+Write `{{ message | quote }}` without adding quotes of your own—the filter emits whatever quoting the value needs.
+
+As the `fmt` task shows, an array is quoted element by element and joined with a space, so a list variable turns into a list of arguments and a path containing a space is not split in two.
+Numbers, booleans and `null` are accepted as well; `null` becomes an empty argument.
+Maps, nested arrays and values containing a nul byte have no single-argument representation and are reported as an error.
+
+The filter is for `command` fields.
+Values of `env` are passed to the process directly without going through a shell, so quoting them would make the quotes part of the value.
+The `args` variable does not need it either, since arguments after `--` are already escaped.
+
 ### Dynamic Variables
 
 The variables shown so far are _static_: their values are plain JSON (string, number, boolean, array, or map).
