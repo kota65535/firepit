@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.24.0] - 2026-08-25
+
+### 🚀 Features
+
+- *(tui)* Exit interaction mode when the task finishes (#364)
+- *(template)* Add quote filter for shell-safe values (#366)
+
+### 🐛 Bug Fixes
+
+- *(deps)* Update rust crate base64 to 0.23.0 (#349)
+- *(app)* Deliver repeated SIGINT/SIGTERM so a second one force-kills tasks (#367)
+- *(deps)* Update rust crate itertools to 0.15.0 (#308)
+- *(deps)* Update rust crate unicode-width to 0.2.0 (#257)
+- *(deps)* Update rust crate axoupdater to 0.10.0 (#268)
+- *(renovate)* Stop overriding the preset ignorePaths (#381)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(ci)* Bump dist to 0.32.0 and track it with Renovate (#368)
+
 ## [0.23.0] - 2026-08-24
 
 ### 🚀 Features
