@@ -197,7 +197,29 @@ async fn test_unset_task_var_of_other_task_is_ignored() {
 }
 
 #[tokio::test]
-async fn test_unset_project_var_without_value() {
+async fn test_unset_project_var_is_harmless_when_not_declared_by_task() {
+    // The project level `env` is unset, but the `bar` task does not declare it
+    let path = Path::new("tests/fixtures/project/required_project_var");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let result = Workspace::new(
+        &root,
+        &children,
+        &[String::from("#bar")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await;
+    assert_ok!(result);
+}
+
+#[tokio::test]
+async fn test_unset_task_var_with_unset_project_var() {
+    // The `foo` task declares `env` without a value and the project level `env` is also unset,
+    // so there is nothing to inherit
     let path = Path::new("tests/fixtures/project/required_project_var");
     let (root, children) = ProjectConfig::new_multi(path).unwrap();
     let result = Workspace::new(
@@ -216,7 +238,7 @@ async fn test_unset_project_var_without_value() {
 }
 
 #[tokio::test]
-async fn test_unset_project_var_given_by_cli() {
+async fn test_unset_task_var_given_by_cli() {
     let path = Path::new("tests/fixtures/project/required_project_var");
     let (root, children) = ProjectConfig::new_multi(path).unwrap();
     let ws = Workspace::new(

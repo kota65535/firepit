@@ -147,10 +147,8 @@ tasks:
     command: ./deploy.sh {{ env }}
 ```
 
-Only the task being run and its dependency tasks are checked, so a task with an unset variable does
-not affect the other tasks.
-Note that a project level variable without a value applies to all the tasks of the project, so it
-must always be given a value by the `Name=Value` CLI argument.
+Only variables declared by the task being run (or its dependency tasks) are checked, so an unset
+variable elsewhere—another task, or the project level—does not affect the run.
 
 To declare a variable whose default value is empty, write an empty string instead:
 

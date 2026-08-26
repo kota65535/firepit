@@ -62,8 +62,6 @@ pub struct ProjectConfig {
     pub working_dir: String,
 
     /// Template variables for all the project tasks.
-    /// A variable declared without a value has no default value, so it must be given one
-    /// by the `<name>=<value>` CLI argument.
     /// ```yaml
     /// vars:
     ///   aws_account_id: 123456789012
@@ -619,9 +617,10 @@ pub struct TaskConfig {
     /// Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`,
     /// `service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`
     ///
-    /// A variable declared without a value has no default value. It takes the value of the project
-    /// variable of the same name if any, and otherwise must be given one by the `<name>=<value>`
-    /// CLI argument or the dependent task's `depends_on.vars`.
+    /// A variable declared without a value has no default value. It takes the value of the
+    /// variable of the same name in the outer scope (project vars or CLI vars) if any, and
+    /// otherwise must be given one by the `<name>=<value>` CLI argument or the dependent task's
+    /// `depends_on.vars`.
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
     pub vars: IndexMap<String, VarsConfig>,
@@ -708,8 +707,9 @@ pub enum VarsConfig {
 
 impl VarsConfig {
     /// Returns whether the variable is declared without a value, ex: `foo:`.
-    /// Such a variable has no default value, so it must be given one by the `<name>=<value>` CLI
-    /// argument, by the dependent task's `depends_on.vars`, or by an outer scope.
+    /// Such a variable has no default value. When declared by a task, it must be given one by an
+    /// outer scope (project vars or CLI vars), by the `<name>=<value>` CLI argument, or by the
+    /// dependent task's `depends_on.vars`, before the task runs.
     pub fn is_unset(&self) -> bool {
         matches!(self, VarsConfig::Static(JsonValue::Null))
     }

@@ -2,5 +2,13 @@ vars:
   env:
 
 tasks:
+  # Declares `env` without a value; the project level `env` is also unset,
+  # so there is nothing to inherit and running this task is an error
   foo:
+    vars:
+      env:
     command: echo "{{ env }}"
+
+  # Does not declare `env`; the unset project level var is harmless here
+  bar:
+    command: echo "bar"

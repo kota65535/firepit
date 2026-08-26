@@ -48,21 +48,6 @@ impl ProjectConfig {
         {
             let rk = tera.render_str(k, &context)?;
             if !rk.is_empty() {
-                // A project-level var without a value must be given one by the `<name>=<value>`
-                // CLI argument, since it applies to all the tasks of the project.
-                if v.is_unset() {
-                    let project = if self.name.is_empty() {
-                        "the root project".to_string()
-                    } else {
-                        format!("project {:?}", self.name)
-                    };
-                    anyhow::bail!(
-                        "var {:?} of {} is required. Set it like: fire <task> {}=<value>",
-                        rk,
-                        project,
-                        rk
-                    )
-                }
                 let v = match v {
                     VarsConfig::Dynamic(s) => {
                         let mut s = s.clone();
