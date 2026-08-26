@@ -164,6 +164,16 @@ impl InputHandler {
                 if self.is_single_click {
                     self.is_single_click = false;
                     Some(AppCommand::ClickPane { row, col: column })
+                } else if options.has_selection {
+                    if self.num_of_multiple_clicks() >= 2 {
+                        // A further click may still upgrade this selection
+                        // (double-click -> triple-click), so let the copy wait
+                        // out the multi-click window instead of firing twice.
+                        Some(AppCommand::DeferCopySelection)
+                    } else {
+                        // Releasing a drag selection copies it immediately.
+                        Some(AppCommand::CopySelection)
+                    }
                 } else {
                     None
                 }

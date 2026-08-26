@@ -6,67 +6,53 @@ use ratatui::widgets::block::{Position, Title};
 use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph, Wrap};
 use ratatui::Frame;
 
-const QUIT_TXT: &str = "Quitting...\n(Press q to force quit)";
-const FORCE_QUIT_TXT: &str = "Force quitting...";
+pub const QUIT_TXT: &str = "Quitting...\n(Press q to force quit)";
+pub const FORCE_QUIT_TXT: &str = "Force quitting...";
+pub const COPIED_TXT: &str = "Copied to clipboard";
 const HELP_TXT: &str = include_str!("help.txt");
 
-pub static QUIT_LINES: Lazy<Vec<&str>> = Lazy::new(|| QUIT_TXT.lines().collect());
-pub static FORCE_QUIT_LINES: Lazy<Vec<&str>> = Lazy::new(|| FORCE_QUIT_TXT.lines().collect());
 pub static HELP_LINES: Lazy<Vec<&str>> = Lazy::new(|| HELP_TXT.lines().collect());
 
-pub fn quit_lines(force: bool) -> &'static Lazy<Vec<&'static str>> {
-    if force {
-        &FORCE_QUIT_LINES
-    } else {
-        &QUIT_LINES
-    }
-}
-
-pub fn quit_dialog_size(screen_width: u16, screen_height: u16, force: bool) -> (Rect, usize, usize) {
-    let content_height = quit_lines(force).len();
-    let content_width = quit_lines(force).iter().map(|line| line.len()).max().unwrap_or(0);
+/// Compute the rect for a toast message anchored at the bottom center of the
+/// screen, leaving one row of margin below.
+pub fn toast_rect(screen_width: u16, screen_height: u16, message: &str) -> Rect {
+    let content_height = message.lines().count().max(1);
+    let content_width = message.lines().map(|line| line.len()).max().unwrap_or(0);
     let width = (content_width as u16 + 6).min(screen_width.saturating_sub(4));
-    let height = (content_height as u16 + 2).min(screen_height.saturating_sub(4));
+    let height = (content_height as u16 + 2).min(screen_height.saturating_sub(2));
 
-    // Ensure we don't create negative coordinates
     let x = if screen_width > width {
         (screen_width - width) / 2
     } else {
         0
     };
-    let y = if screen_height > height {
-        (screen_height - height) / 2
-    } else {
-        0
-    };
+    let y = screen_height.saturating_sub(height + 1);
 
-    let dialog_rect = Rect { x, y, width, height };
-
-    (dialog_rect, content_width, content_height)
+    Rect { x, y, width, height }
 }
 
-pub fn render_quit_dialog(f: &mut Frame, force: bool) {
+/// Render a transient toast message in a white-bordered box at the bottom of
+/// the screen.
+pub fn render_toast(f: &mut Frame, message: &str) {
     let area = f.size();
-    let (dialog_area, _content_width, _content_height) = quit_dialog_size(area.width, area.height, force);
+    let toast_area = toast_rect(area.width, area.height, message);
 
     // Clear the background
-    f.render_widget(Clear, dialog_area);
+    f.render_widget(Clear, toast_area);
 
-    let block = Block::default().borders(Borders::ALL).padding(Padding::horizontal(2));
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::White))
+        .padding(Padding::horizontal(2));
 
-    let lines = if force {
-        vec![Line::from(FORCE_QUIT_TXT)]
-    } else {
-        QUIT_LINES.iter().cloned().map(Line::from).collect::<Vec<_>>()
-    };
+    let lines = message.lines().map(Line::from).collect::<Vec<_>>();
 
-    // Create message paragraph
-    let message = Paragraph::new(Text::from(lines))
+    let paragraph = Paragraph::new(Text::from(lines))
         .block(block)
         .centered()
         .wrap(Wrap { trim: true });
 
-    f.render_widget(message, dialog_area)
+    f.render_widget(paragraph, toast_area)
 }
 
 pub fn help_dialog_size(screen_width: u16, screen_height: u16) -> (Rect, usize, usize) {

@@ -92,6 +92,9 @@ pub enum AppCommand {
         rows: u16,
     },
     CopySelection,
+    /// Copy the selection after the multi-click window has passed, so that
+    /// e.g. the double-click stage of a triple-click does not also copy.
+    DeferCopySelection,
     Resize {
         rows: u16,
         cols: u16,

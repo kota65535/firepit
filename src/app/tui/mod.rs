@@ -15,7 +15,9 @@ use crate::app::command::{AppCommand, TaskResult};
 use crate::app::command::{Direction, PaneSize, ScrollSize, TaskRun, TaskStatus};
 use crate::app::signal::SignalHandler;
 use crate::app::tui::clipboard::copy_to_clipboard;
-use crate::app::tui::dialog::{help_dialog_size, render_help_dialog, render_quit_dialog};
+use crate::app::tui::dialog::{
+    help_dialog_size, render_help_dialog, render_toast, COPIED_TXT, FORCE_QUIT_TXT, QUIT_TXT,
+};
 use crate::app::tui::input::{InputHandler, InputOptions};
 use crate::app::tui::pane::{TerminalPane, TerminalScroll};
 use crate::app::tui::search::{Match, SearchResults};
@@ -23,7 +25,7 @@ use crate::app::tui::size::SizeInfo;
 use crate::app::tui::table::TaskTable;
 use crate::app::tui::task::Task;
 use crate::app::tui::term_output::TerminalOutput;
-use crate::app::FRAME_RATE;
+use crate::app::{DOUBLE_CLICK_DURATION, FRAME_RATE};
 use crate::runner::command::RunnerCommandChannel;
 use crate::tokio_spawn;
 use anyhow::Context;
@@ -41,6 +43,37 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::{sync::mpsc, time::Instant};
 use tracing::{debug, error, info};
 use unicode_width::UnicodeWidthStr;
+
+/// How long a transient toast (e.g. "Copied to clipboard") stays visible.
+const TOAST_DURATION: std::time::Duration = std::time::Duration::from_millis(1500);
+
+/// A short message shown in a box at the bottom of the screen.
+/// `expires_at: None` keeps the toast visible until it is replaced.
+#[derive(Debug, Clone)]
+pub struct Toast {
+    message: String,
+    expires_at: Option<Instant>,
+    /// Clear the log selection together when this toast disappears.
+    clear_selection_on_expire: bool,
+}
+
+impl Toast {
+    fn copied() -> Self {
+        Self {
+            message: COPIED_TXT.to_string(),
+            expires_at: Some(Instant::now() + TOAST_DURATION),
+            clear_selection_on_expire: true,
+        }
+    }
+
+    fn persistent(message: &str) -> Self {
+        Self {
+            message: message.to_string(),
+            expires_at: None,
+            clear_selection_on_expire: false,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum LayoutSections {
@@ -75,6 +108,11 @@ pub struct TuiAppState {
     detected_urls: Vec<hyperlink::UrlSpan>,
     /// Index into `detected_urls` of the currently hovered URL, if any.
     hovered_url_index: Option<usize>,
+    /// Message shown at the bottom of the screen, if any.
+    toast: Option<Toast>,
+    /// When to copy a multi-click selection. Waiting out the multi-click
+    /// window keeps the double-click stage of a triple-click from copying.
+    pending_copy_at: Option<Instant>,
 }
 
 impl TuiApp {
@@ -143,6 +181,8 @@ impl TuiApp {
                 done: false,
                 detected_urls: Vec::new(),
                 hovered_url_index: None,
+                toast: None,
+                pending_copy_at: None,
             },
         })
     }
@@ -221,6 +261,12 @@ impl TuiApp {
             }
             if hover_changed {
                 // Hover changes need immediate re-render for responsive feedback
+                needs_rerender = true;
+            }
+            if self.state.flush_pending_copy()? {
+                needs_rerender = true;
+            }
+            if self.state.expire_toast() {
                 needs_rerender = true;
             }
             if FRAME_RATE <= last_render.elapsed() && needs_rerender {
@@ -511,14 +557,14 @@ impl TuiAppState {
         let table_to_render = TaskTable::new(&self.tasks, &self.focus);
         f.render_stateful_widget(&table_to_render, table, &mut self.table);
 
-        // Render quitting dialog
-        if self.quitting {
-            render_quit_dialog(f, self.force_quitting);
-        }
-
         // Render help dialog
         if let LayoutSections::Help { scroll, max_scroll: _ } = self.focus {
             render_help_dialog(f, scroll);
+        }
+
+        // Render toast (copy notification, quit message, ...) above everything
+        if let Some(toast) = &self.toast {
+            render_toast(f, &toast.message);
         }
     }
 
@@ -565,13 +611,71 @@ impl TuiAppState {
         usize::from(s)
     }
 
-    pub fn copy_selection(&self) -> anyhow::Result<()> {
+    pub fn copy_selection(&mut self) -> anyhow::Result<()> {
+        self.pending_copy_at = None;
         let task = self.active_task()?;
         let Some(text) = task.output.copy_selection() else {
             return Ok(());
         };
         copy_to_clipboard(&text);
+        self.toast = Some(Toast::copied());
         Ok(())
+    }
+
+    /// Schedule a copy of the current selection for when the multi-click
+    /// window has passed, so a further click can still upgrade (and cancel)
+    /// it instead of copying twice.
+    pub fn defer_copy_selection(&mut self) {
+        self.pending_copy_at = Some(Instant::now() + DOUBLE_CLICK_DURATION);
+    }
+
+    /// Copy the selection once its scheduled time has arrived.
+    /// Returns true when the copy ran and a re-render is needed.
+    pub fn flush_pending_copy(&mut self) -> anyhow::Result<bool> {
+        match self.pending_copy_at {
+            Some(at) if at <= Instant::now() => {
+                self.copy_selection()?;
+                Ok(true)
+            }
+            _ => Ok(false),
+        }
+    }
+
+    /// Drop the toast if its display time has elapsed, clearing the log
+    /// selection together when the toast asks for it (copy toast).
+    /// Returns true when the toast was removed and a re-render is needed.
+    pub fn expire_toast(&mut self) -> bool {
+        match &self.toast {
+            Some(Toast {
+                expires_at: Some(expires_at),
+                clear_selection_on_expire,
+                ..
+            }) if *expires_at <= Instant::now() => {
+                if *clear_selection_on_expire {
+                    // Failing to resolve the active task must not keep the
+                    // expired toast on screen
+                    self.clear_selection().ok();
+                }
+                self.toast = None;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Drop a pending copy toast and any scheduled copy when the user starts
+    /// a new selection, so neither can fire against the selection being made.
+    fn cancel_copy_feedback(&mut self) {
+        self.pending_copy_at = None;
+        if matches!(
+            self.toast,
+            Some(Toast {
+                clear_selection_on_expire: true,
+                ..
+            })
+        ) {
+            self.toast = None;
+        }
     }
 
     /// Update the hovered URL index from pane-relative mouse coordinates.
@@ -893,6 +997,12 @@ impl TuiAppState {
                     self.force_quitting = true;
                 }
                 self.quitting = true;
+                // Quit messages stay visible until the app exits.
+                self.toast = Some(Toast::persistent(if self.force_quitting {
+                    FORCE_QUIT_TXT
+                } else {
+                    QUIT_TXT
+                }));
                 runner_tx.quit();
             }
             AppCommand::OpenHelp => {
@@ -962,20 +1072,26 @@ impl TuiAppState {
                 self.open_url(&url);
             }
             AppCommand::ClearSelection => {
+                self.cancel_copy_feedback();
                 self.clear_selection()?;
             }
             AppCommand::WordSelection { rows, cols } => {
+                self.cancel_copy_feedback();
                 self.word_selection(rows, cols)?;
             }
             AppCommand::LineSelection { rows } => {
+                self.cancel_copy_feedback();
                 self.line_selection(rows)?;
             }
             AppCommand::UpdateSelection { rows, cols, edge } => {
+                self.cancel_copy_feedback();
                 self.update_selection(rows, cols, edge)?;
             }
             AppCommand::CopySelection => {
                 self.copy_selection()?;
-                self.clear_selection()?;
+            }
+            AppCommand::DeferCopySelection => {
+                self.defer_copy_selection();
             }
             AppCommand::Resize { rows, cols } => {
                 self.resize(rows, cols);
@@ -1034,6 +1150,8 @@ mod tests {
             done: false,
             detected_urls: Vec::new(),
             hovered_url_index: None,
+            toast: None,
+            pending_copy_at: None,
         }
     }
 
@@ -1085,5 +1203,89 @@ mod tests {
         state.insert_stdin("a", Some(Box::new(Vec::new()))).unwrap();
         state.enter_interaction().unwrap();
         assert!(matches!(state.focus, LayoutSections::Pane));
+    }
+
+    /// A copy toast whose display time has already passed.
+    fn expired_copy_toast() -> Toast {
+        Toast {
+            expires_at: Some(Instant::now()),
+            ..Toast::copied()
+        }
+    }
+
+    #[test]
+    fn expires_copy_toast_after_duration() {
+        let mut state = state(&["a"]);
+
+        // A freshly created copy toast is not expired yet
+        state.toast = Some(Toast::copied());
+        assert!(!state.expire_toast());
+        assert!(state.toast.is_some());
+
+        // A toast whose deadline has passed is removed
+        state.toast = Some(expired_copy_toast());
+        assert!(state.expire_toast());
+        assert!(state.toast.is_none());
+    }
+
+    #[test]
+    fn clears_selection_when_copy_toast_expires() {
+        let mut state = state(&["a"]);
+        let task = state.active_task_mut().unwrap();
+        task.output.process(b"hello world\r\n");
+        task.output.line_selection(0);
+        assert!(state.active_task().unwrap().output.has_selection());
+
+        state.toast = Some(expired_copy_toast());
+        assert!(state.expire_toast());
+        assert!(!state.active_task().unwrap().output.has_selection());
+    }
+
+    #[test]
+    fn cancels_copy_toast_when_new_selection_starts() {
+        let mut state = state(&["a"]);
+
+        state.toast = Some(Toast::copied());
+        state.cancel_copy_feedback();
+        assert!(state.toast.is_none());
+
+        // Persistent toasts (quit message) are not affected
+        state.toast = Some(Toast::persistent(QUIT_TXT));
+        state.cancel_copy_feedback();
+        assert!(state.toast.is_some());
+    }
+
+    #[test]
+    fn keeps_persistent_toast() {
+        let mut state = state(&["a"]);
+
+        state.toast = Some(Toast::persistent(QUIT_TXT));
+        assert!(!state.expire_toast());
+        assert!(state.toast.is_some());
+    }
+
+    #[test]
+    fn deferred_copy_waits_for_multi_click_window() {
+        let mut state = state(&["a"]);
+
+        // A freshly deferred copy does not run yet
+        state.defer_copy_selection();
+        assert!(!state.flush_pending_copy().unwrap());
+        assert!(state.pending_copy_at.is_some());
+
+        // Once the deadline has passed, the copy runs and the schedule clears
+        state.pending_copy_at = Some(Instant::now());
+        assert!(state.flush_pending_copy().unwrap());
+        assert!(state.pending_copy_at.is_none());
+    }
+
+    #[test]
+    fn cancels_deferred_copy_when_new_selection_starts() {
+        let mut state = state(&["a"]);
+
+        state.defer_copy_selection();
+        state.cancel_copy_feedback();
+        assert!(state.pending_copy_at.is_none());
+        assert!(!state.flush_pending_copy().unwrap());
     }
 }
