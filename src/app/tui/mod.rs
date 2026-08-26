@@ -25,7 +25,7 @@ use crate::app::tui::size::SizeInfo;
 use crate::app::tui::table::TaskTable;
 use crate::app::tui::task::Task;
 use crate::app::tui::term_output::TerminalOutput;
-use crate::app::FRAME_RATE;
+use crate::app::{DOUBLE_CLICK_DURATION, FRAME_RATE};
 use crate::runner::command::RunnerCommandChannel;
 use crate::tokio_spawn;
 use anyhow::Context;
@@ -110,6 +110,9 @@ pub struct TuiAppState {
     hovered_url_index: Option<usize>,
     /// Message shown at the bottom of the screen, if any.
     toast: Option<Toast>,
+    /// When to copy a multi-click selection. Waiting out the multi-click
+    /// window keeps the double-click stage of a triple-click from copying.
+    pending_copy_at: Option<Instant>,
 }
 
 impl TuiApp {
@@ -179,6 +182,7 @@ impl TuiApp {
                 detected_urls: Vec::new(),
                 hovered_url_index: None,
                 toast: None,
+                pending_copy_at: None,
             },
         })
     }
@@ -257,6 +261,9 @@ impl TuiApp {
             }
             if hover_changed {
                 // Hover changes need immediate re-render for responsive feedback
+                needs_rerender = true;
+            }
+            if self.state.flush_pending_copy()? {
                 needs_rerender = true;
             }
             if self.state.expire_toast() {
@@ -605,6 +612,7 @@ impl TuiAppState {
     }
 
     pub fn copy_selection(&mut self) -> anyhow::Result<()> {
+        self.pending_copy_at = None;
         let task = self.active_task()?;
         let Some(text) = task.output.copy_selection() else {
             return Ok(());
@@ -612,6 +620,25 @@ impl TuiAppState {
         copy_to_clipboard(&text);
         self.toast = Some(Toast::copied());
         Ok(())
+    }
+
+    /// Schedule a copy of the current selection for when the multi-click
+    /// window has passed, so a further click can still upgrade (and cancel)
+    /// it instead of copying twice.
+    pub fn defer_copy_selection(&mut self) {
+        self.pending_copy_at = Some(Instant::now() + DOUBLE_CLICK_DURATION);
+    }
+
+    /// Copy the selection once its scheduled time has arrived.
+    /// Returns true when the copy ran and a re-render is needed.
+    pub fn flush_pending_copy(&mut self) -> anyhow::Result<bool> {
+        match self.pending_copy_at {
+            Some(at) if at <= Instant::now() => {
+                self.copy_selection()?;
+                Ok(true)
+            }
+            _ => Ok(false),
+        }
     }
 
     /// Drop the toast if its display time has elapsed, clearing the log
@@ -636,9 +663,10 @@ impl TuiAppState {
         }
     }
 
-    /// Drop a pending copy toast when the user starts a new selection, so its
-    /// expiry cannot wipe the selection being made.
-    fn cancel_copy_toast(&mut self) {
+    /// Drop a pending copy toast and any scheduled copy when the user starts
+    /// a new selection, so neither can fire against the selection being made.
+    fn cancel_copy_feedback(&mut self) {
+        self.pending_copy_at = None;
         if matches!(
             self.toast,
             Some(Toast {
@@ -1044,23 +1072,26 @@ impl TuiAppState {
                 self.open_url(&url);
             }
             AppCommand::ClearSelection => {
-                self.cancel_copy_toast();
+                self.cancel_copy_feedback();
                 self.clear_selection()?;
             }
             AppCommand::WordSelection { rows, cols } => {
-                self.cancel_copy_toast();
+                self.cancel_copy_feedback();
                 self.word_selection(rows, cols)?;
             }
             AppCommand::LineSelection { rows } => {
-                self.cancel_copy_toast();
+                self.cancel_copy_feedback();
                 self.line_selection(rows)?;
             }
             AppCommand::UpdateSelection { rows, cols, edge } => {
-                self.cancel_copy_toast();
+                self.cancel_copy_feedback();
                 self.update_selection(rows, cols, edge)?;
             }
             AppCommand::CopySelection => {
                 self.copy_selection()?;
+            }
+            AppCommand::DeferCopySelection => {
+                self.defer_copy_selection();
             }
             AppCommand::Resize { rows, cols } => {
                 self.resize(rows, cols);
@@ -1120,6 +1151,7 @@ mod tests {
             detected_urls: Vec::new(),
             hovered_url_index: None,
             toast: None,
+            pending_copy_at: None,
         }
     }
 
@@ -1214,12 +1246,12 @@ mod tests {
         let mut state = state(&["a"]);
 
         state.toast = Some(Toast::copied());
-        state.cancel_copy_toast();
+        state.cancel_copy_feedback();
         assert!(state.toast.is_none());
 
         // Persistent toasts (quit message) are not affected
         state.toast = Some(Toast::persistent(QUIT_TXT));
-        state.cancel_copy_toast();
+        state.cancel_copy_feedback();
         assert!(state.toast.is_some());
     }
 
@@ -1230,5 +1262,30 @@ mod tests {
         state.toast = Some(Toast::persistent(QUIT_TXT));
         assert!(!state.expire_toast());
         assert!(state.toast.is_some());
+    }
+
+    #[test]
+    fn deferred_copy_waits_for_multi_click_window() {
+        let mut state = state(&["a"]);
+
+        // A freshly deferred copy does not run yet
+        state.defer_copy_selection();
+        assert!(!state.flush_pending_copy().unwrap());
+        assert!(state.pending_copy_at.is_some());
+
+        // Once the deadline has passed, the copy runs and the schedule clears
+        state.pending_copy_at = Some(Instant::now());
+        assert!(state.flush_pending_copy().unwrap());
+        assert!(state.pending_copy_at.is_none());
+    }
+
+    #[test]
+    fn cancels_deferred_copy_when_new_selection_starts() {
+        let mut state = state(&["a"]);
+
+        state.defer_copy_selection();
+        state.cancel_copy_feedback();
+        assert!(state.pending_copy_at.is_none());
+        assert!(!state.flush_pending_copy().unwrap());
     }
 }
