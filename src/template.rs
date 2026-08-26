@@ -48,6 +48,24 @@ impl ProjectConfig {
         {
             let rk = tera.render_str(k, &context)?;
             if !rk.is_empty() {
+                // A project-level var without a value must be given one by the `<name>=<value>`
+                // CLI argument, since it applies to all the tasks of the project.
+                if v.is_unset() {
+                    let project = if self.name.is_empty() {
+                        "the root project".to_string()
+                    } else {
+                        format!("project {:?}", self.name)
+                    };
+                    anyhow::bail!(
+                        "var {:?} of {} is required but not set.\n\
+                         A var declared without a value (ex: `{}:`) has no default and must be set at run time.\n\
+                         Set it with a CLI argument: fire <task> {}=<value>",
+                        rk,
+                        project,
+                        rk,
+                        rk
+                    )
+                }
                 let v = match v {
                     VarsConfig::Dynamic(s) => {
                         let mut s = s.clone();
@@ -119,6 +137,16 @@ impl TaskConfig {
         for (k, v) in self.vars.iter() {
             let rk = tera.render_str(k, &context)?;
             if !rk.is_empty() {
+                // A task-level var without a value inherits the value of the same name in the outer
+                // scope, ex: project-level vars or CLI vars.
+                // If there is no such value, it stays unset and is reported as an error when the
+                // task is actually run.
+                if v.is_unset() {
+                    if !context.contains_key(&rk) {
+                        context.insert(rk, &JsonValue::Null);
+                    }
+                    continue;
+                }
                 let v = match v {
                     VarsConfig::Dynamic(s) => {
                         let mut s = s.clone();
@@ -550,7 +578,12 @@ async fn render_value_map(
     for (k, v) in map.iter() {
         let rk = tera.render_str(k, context)?;
         if !rk.is_empty() {
-            let rv = VarsConfig::Static(render_value(v, tera, context).await?);
+            // Unset vars take the inherited value of the same name, if any.
+            let rv = if v.is_unset() {
+                VarsConfig::Static(context.get(&rk).cloned().unwrap_or(JsonValue::Null))
+            } else {
+                VarsConfig::Static(render_value(v, tera, context).await?)
+            };
             ret.insert(rk, rv);
         }
     }

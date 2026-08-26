@@ -1,0 +1,22 @@
+vars:
+  env: dev
+
+tasks:
+  # An unset task var inherits the value of the project var with the same name
+  inherit:
+    vars:
+      env:
+    command: echo "{{ env }}"
+
+  # An unset task var without an outer value must be given one by the dependent task
+  required:
+    vars:
+      region:
+    command: echo "{{ region }}"
+
+  dependent:
+    depends_on:
+      - task: required
+        vars:
+          region: us-east-1
+    command: echo "dependent"

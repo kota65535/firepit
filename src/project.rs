@@ -106,6 +106,7 @@ impl Workspace {
         let mut renderer = ConfigRenderer::new(&root_config, &child_configs, vars, watch);
         let (root_config, child_configs) = renderer.render().await?;
         ProjectConfig::validate_multi(&root_config, &child_configs)?;
+        Self::validate_vars(&root_config, &child_configs, &target_tasks)?;
 
         let root = Project::new("", &root_config)?;
         let mut children = HashMap::new();
@@ -140,6 +141,90 @@ impl Workspace {
             fail_fast,
             dir: current_dir.to_owned(),
         })
+    }
+
+    /// Ensures that every var of the tasks to run has a value.
+    ///
+    /// A var declared without a value, ex: `foo:`, has no default value, so it must be given one
+    /// before the task runs. Only the target tasks and their dependency tasks are checked, since
+    /// the other tasks are never run.
+    fn validate_vars(
+        root_config: &ProjectConfig,
+        child_configs: &IndexMap<String, ProjectConfig>,
+        target_tasks: &[String],
+    ) -> anyhow::Result<()> {
+        let task_configs = std::iter::once(root_config)
+            .chain(child_configs.values())
+            .flat_map(|c| c.tasks.values().map(|t| (t.full_name(), t)))
+            .collect::<HashMap<_, _>>();
+
+        let mut visited = HashSet::new();
+        let mut queue = target_tasks.to_vec();
+        let mut unset_vars: Vec<(String, Vec<String>)> = Vec::new();
+        while let Some(task_name) = queue.pop() {
+            if !visited.insert(task_name.clone()) {
+                continue;
+            }
+            let Some(task_config) = task_configs.get(&task_name) else {
+                continue;
+            };
+            let names = task_config
+                .vars
+                .iter()
+                .filter(|(_, v)| v.is_unset())
+                .map(|(k, _)| k.clone())
+                .collect::<Vec<_>>();
+            if !names.is_empty() {
+                unset_vars.push((task_name.clone(), names));
+            }
+            queue.extend(
+                task_config
+                    .depends_on
+                    .iter()
+                    .map(|d| match d {
+                        DependsOnConfig::String(s) => s.clone(),
+                        DependsOnConfig::Struct(s) => s.task.clone(),
+                    })
+                    .filter(|d| !d.is_empty())
+                    .map(|d| Task::qualified_name(&task_config.project, &d)),
+            );
+        }
+
+        if !unset_vars.is_empty() {
+            unset_vars.sort();
+            let details = unset_vars
+                .iter()
+                .map(|(task, names)| {
+                    let vars = names.iter().map(|n| format!("{:?}", n)).collect::<Vec<_>>().join(", ");
+                    format!("  task {:?} requires: {}", task, vars)
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            // Example command reproducing what the user ran, with the missing vars appended.
+            // The "#" prefix of root project tasks is internal, so strip it.
+            let tasks = target_tasks
+                .iter()
+                .map(|t| t.strip_prefix('#').unwrap_or(t))
+                .collect::<Vec<_>>()
+                .join(" ");
+            let example = unset_vars
+                .iter()
+                .flat_map(|(_, names)| names.iter().map(|n| format!("{}=<value>", n)))
+                .collect::<Vec<_>>()
+                .join(" ");
+            anyhow::bail!(
+                "cannot run because some vars are required but not set:\n\
+                 {}\n\
+                 A var declared without a value (ex: `foo:`) has no default and must be set at run time.\n\
+                 Set it in one of the following ways:\n  \
+                 - CLI argument:    fire {} {}\n  \
+                 - dependency vars: depends_on: [{{ task: <task>, vars: {{ <name>: <value> }} }}]",
+                details,
+                tasks,
+                example
+            )
+        }
+        Ok(())
     }
 
     pub fn tasks(&self) -> Vec<Task> {

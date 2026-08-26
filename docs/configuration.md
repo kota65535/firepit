@@ -114,6 +114,51 @@ There are also some built-in variables available for use in templates.
 | `task`         | string              | The task name.                                                         |
 | `watch`        | boolean             | `true` if running in watch mode, `false` otherwise.                    |
 
+### Required Variables
+
+A variable declared without a value has no default value, and must be given one before the task runs:
+
+```yaml
+tasks:
+  deploy:
+    vars:
+      env:
+    command: ./deploy.sh {{ env }}
+```
+
+```
+fire deploy           # error: var "env" of task "#deploy" has no value
+fire deploy env=prod  # runs: ./deploy.sh prod
+```
+
+A value can come from the `Name=Value` CLI argument, from the dependent task's `depends_on.vars`
+(see [Parameterized Dependencies](#parameterized-dependencies)), or, for a task level variable,
+from a project level variable of the same name:
+
+```yaml
+vars:
+  env: dev
+
+tasks:
+  deploy:
+    vars:
+      # Inherits `dev` from the project level variable, so `env=...` can override it
+      env:
+    command: ./deploy.sh {{ env }}
+```
+
+Only the task being run and its dependency tasks are checked, so a task with an unset variable does
+not affect the other tasks.
+Note that a project level variable without a value applies to all the tasks of the project, so it
+must always be given a value by the `Name=Value` CLI argument.
+
+To declare a variable whose default value is empty, write an empty string instead:
+
+```yaml
+vars:
+  args: ""
+```
+
 ### Passing Arguments
 
 The `args` variable is a convenient convention for forwarding command-line arguments to a task.
@@ -267,7 +312,7 @@ In this example, the generic `migrate` task is reused by two tasks with differen
 tasks:
   migrate:
     vars:
-      database: ""
+      database:
     command: ./migrate.sh {{ database }}
 
   setup-app:
@@ -288,6 +333,7 @@ tasks:
 Each dependent runs its own variant of `migrate` with the overridden variables.
 In the TUI/CUI, every variant is displayed with the original task name by default; set a `label` with template variables (for example `label: "migrate {{ database }}"`) to tell the variants apart.
 Note that only variables already declared in the dependency task can be overridden, so `migrate` must declare `database` in its `vars`.
+Declaring it without a value, as above, makes it a [required variable](#required-variables): running `migrate` on its own is then an error, since no dependent task provides a value.
 If the same variable is also injected globally via `--` (see [Passing Arguments](#passing-arguments)), the value specified here on the dependency takes precedence.
 
 ### Cascading Restarts

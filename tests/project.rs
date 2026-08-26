@@ -1,5 +1,5 @@
 use assertables::{assert_err, assert_ok};
-use firepit::config::ProjectConfig;
+use firepit::config::{ProjectConfig, VarsConfig};
 use firepit::project::Workspace;
 use indexmap::IndexMap;
 use std::collections::HashMap;
@@ -110,6 +110,130 @@ async fn test_empty_string_task_var_renders_as_string_in_label() {
 
     let labels = ws.labels();
     assert_eq!(labels.get("#tf"), Some(&String::from("#tf ")));
+}
+
+#[tokio::test]
+async fn test_unset_task_var_inherits_project_var() {
+    let path = Path::new("tests/fixtures/project/required_vars");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &[String::from("#inherit")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(ws.task("#inherit").unwrap().command, String::from("echo \"dev\""));
+}
+
+#[tokio::test]
+async fn test_unset_task_var_given_by_dependent_task() {
+    let path = Path::new("tests/fixtures/project/required_vars");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &[String::from("#dependent")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        ws.task("#required-1").unwrap().command,
+        String::from("echo \"us-east-1\"")
+    );
+}
+
+#[tokio::test]
+async fn test_unset_task_var_without_value() {
+    let path = Path::new("tests/fixtures/project/required_vars");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let result = Workspace::new(
+        &root,
+        &children,
+        &[String::from("#required")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await;
+    assert_err!(result);
+}
+
+#[tokio::test]
+async fn test_unset_task_var_of_other_task_is_ignored() {
+    // The `required` task has an unset var, but it is not run, so it must not be an error
+    let path = Path::new("tests/fixtures/project/required_vars");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let result = Workspace::new(
+        &root,
+        &children,
+        &[String::from("#inherit")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await;
+    assert_ok!(result);
+}
+
+#[tokio::test]
+async fn test_unset_project_var_without_value() {
+    let path = Path::new("tests/fixtures/project/required_project_var");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let result = Workspace::new(
+        &root,
+        &children,
+        &[String::from("#foo")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await;
+    assert_err!(result);
+}
+
+#[tokio::test]
+async fn test_unset_project_var_given_by_cli() {
+    let path = Path::new("tests/fixtures/project/required_project_var");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &[String::from("#foo")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::from([(String::from("env"), VarsConfig::Static(serde_json::Value::from("prod")))]),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(ws.task("#foo").unwrap().command, String::from("echo \"prod\""));
 }
 
 #[tokio::test]
