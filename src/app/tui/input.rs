@@ -164,6 +164,10 @@ impl InputHandler {
                 if self.is_single_click {
                     self.is_single_click = false;
                     Some(AppCommand::ClickPane { row, col: column })
+                } else if options.has_selection {
+                    // Releasing a drag / double- / triple-click selection
+                    // copies it to the clipboard immediately.
+                    Some(AppCommand::CopySelection)
                 } else {
                     None
                 }
