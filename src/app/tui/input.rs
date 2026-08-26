@@ -215,7 +215,6 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<App
         KeyCode::Char('/') if options.on_task_list() => Some(AppCommand::EnterSearch),
         KeyCode::Char('n') if options.on_task_list() => Some(AppCommand::SearchNext),
         KeyCode::Char('N') if options.on_task_list() => Some(AppCommand::SearchPrevious),
-        KeyCode::Char('c') if options.has_selection => Some(AppCommand::CopySelection),
         KeyCode::Enter if options.on_task_list() => Some(AppCommand::EnterInteractive),
         KeyCode::Char('q') if options.on_task_list() => Some(AppCommand::Quit),
         KeyCode::Char('s') if options.on_task_list() => Some(AppCommand::StopTask { task: options.task }),

@@ -20,7 +20,6 @@ G                   : Go to the bottom
 Mouse drag          : Select log range and copy it to the clipboard
 Mouse double-click  : Select word and copy it to the clipboard
 Mouse triple-click  : Select line and copy it to the clipboard
-c                   : Copy selected log range to the clipboard
 
 ## Searching Log
 /                   : Start searching log
