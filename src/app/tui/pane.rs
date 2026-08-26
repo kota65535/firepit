@@ -18,7 +18,6 @@ static START_INTERACTION: &(&str, &str) = &("[Enter]", "Interact");
 static EXIT_INTERACTION: &(&str, &str) = &("[Ctrl-z]", "Exit Interaction");
 static START_SEARCH: &(&str, &str) = &("[/]", "Search");
 static EXIT_SEARCH: &(&str, &str) = &("[Esc]", "Exit Search");
-static COPY_SELECTION: &(&str, &str) = &("[c]", "Copy Selection");
 static SHOW_TASKS: &(&str, &str) = &("[h]", "Show Tasks");
 static NAVIGATE_SEARCH_RESULT: &(&str, &str) = &("[n\u{FF65}N]", "Next/Prev Match");
 static CLEAR_SEARCH_RESULT: &(&str, &str) = &("[Esc]", "Clear");
@@ -67,15 +66,9 @@ impl<'a> TerminalPane<'a> {
         let mut search_spans = Vec::new();
         match self.section {
             LayoutSections::Pane => {
-                if self.task.output.has_selection() {
-                    help_spans.push(key_help_spans(*COPY_SELECTION));
-                }
                 help_spans.push(key_help_spans(*EXIT_INTERACTION));
             }
             LayoutSections::TaskList(s) => {
-                if self.task.output.has_selection() {
-                    help_spans.push(key_help_spans(*COPY_SELECTION));
-                }
                 if !self.has_sidebar {
                     help_spans.push(key_help_spans(*SHOW_TASKS));
                 }
@@ -93,9 +86,6 @@ impl<'a> TerminalPane<'a> {
                 help_spans.push(key_help_spans(*STOP_TASK));
             }
             LayoutSections::Search { query } => {
-                if self.task.output.has_selection() {
-                    help_spans.push(key_help_spans(*COPY_SELECTION));
-                }
                 help_spans.push(key_help_spans(*EXIT_SEARCH));
                 // Show cursor
                 search_spans.push(Span::styled(format!("/{}\u{2588}\n", query), Style::default().bold()));
