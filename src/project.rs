@@ -196,7 +196,7 @@ impl Workspace {
                 .iter()
                 .map(|(task, names)| {
                     let vars = names.iter().map(|n| format!("{:?}", n)).collect::<Vec<_>>().join(", ");
-                    format!("  task {:?} requires: {}", task, vars)
+                    format!("task {:?} requires vars that are not set: {}", task, vars)
                 })
                 .collect::<Vec<_>>()
                 .join("\n");
@@ -212,17 +212,7 @@ impl Workspace {
                 .flat_map(|(_, names)| names.iter().map(|n| format!("{}=<value>", n)))
                 .collect::<Vec<_>>()
                 .join(" ");
-            anyhow::bail!(
-                "cannot run because some vars are required but not set:\n\
-                 {}\n\
-                 A var declared without a value (ex: `foo:`) has no default and must be set at run time.\n\
-                 Set it in one of the following ways:\n  \
-                 - CLI argument:    fire {} {}\n  \
-                 - dependency vars: depends_on: [{{ task: <task>, vars: {{ <name>: <value> }} }}]",
-                details,
-                tasks,
-                example
-            )
+            anyhow::bail!("{}\nSet them like: fire {} {}", details, tasks, example)
         }
         Ok(())
     }

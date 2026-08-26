@@ -127,7 +127,7 @@ tasks:
 ```
 
 ```
-fire deploy           # error: var "env" of task "#deploy" has no value
+fire deploy           # error: task "#deploy" requires vars that are not set: "env"
 fire deploy env=prod  # runs: ./deploy.sh prod
 ```
 

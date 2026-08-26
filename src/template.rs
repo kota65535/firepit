@@ -57,12 +57,9 @@ impl ProjectConfig {
                         format!("project {:?}", self.name)
                     };
                     anyhow::bail!(
-                        "var {:?} of {} is required but not set.\n\
-                         A var declared without a value (ex: `{}:`) has no default and must be set at run time.\n\
-                         Set it with a CLI argument: fire <task> {}=<value>",
+                        "var {:?} of {} is required. Set it like: fire <task> {}=<value>",
                         rk,
                         project,
-                        rk,
                         rk
                     )
                 }
