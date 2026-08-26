@@ -45,7 +45,7 @@ use tracing::{debug, error, info};
 use unicode_width::UnicodeWidthStr;
 
 /// How long a transient toast (e.g. "Copied to clipboard") stays visible.
-const TOAST_DURATION: std::time::Duration = std::time::Duration::from_secs(1);
+const TOAST_DURATION: std::time::Duration = std::time::Duration::from_millis(1500);
 
 /// A short message shown in a box at the bottom of the screen.
 /// `expires_at: None` keeps the toast visible until it is replaced.
