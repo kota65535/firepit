@@ -158,6 +158,8 @@ ui: cui
 - **Default:** `{}`
 - **Template:** yes
 - **Description:** Template variables for all the project tasks.
+A variable declared without a value has no default value, so it must be given one
+by the `<name>=<value>` CLI argument.
 ```yaml
 vars:
   aws_account_id: 123456789012
@@ -569,6 +571,10 @@ stop_timeout: 30
 - **Description:** Template variables. Merged with the project `vars`.
 Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`,
 `service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`
+
+A variable declared without a value has no default value. It takes the value of the project
+variable of the same name if any, and otherwise must be given one by the `<name>=<value>`
+CLI argument or the dependent task's `depends_on.vars`.
 
 ### working_dir
 
