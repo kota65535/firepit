@@ -64,9 +64,8 @@ pub struct ProjectConfig {
     /// Template variables for all the project tasks.
     /// ```yaml
     /// vars:
-    ///   aws_account_id: 123456789012
-    ///   aws_region: ap-northeast-1
-    ///   ecr_registry: "{{ aws_account_id }}.dkr.ecr.{{ aws_region }}.amazonaws.com"
+    ///   registry: docker.io/example
+    ///   image: "{{ registry }}/server"
     /// ```
     #[serde(default)]
     #[schemars(extend("x-template" = true))]

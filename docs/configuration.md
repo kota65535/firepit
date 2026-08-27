@@ -77,17 +77,14 @@ You can define template variables using the `vars` field, both at the project le
 ```yaml
 # Project level variables
 vars:
-  aws_account_id: 123456789012
-  aws_region: ap-northeast-1
-  ecr_registry: "{{ aws_account_id }}.dkr.ecr.{{ aws_region }}.amazonaws.com"
+  registry: docker.io/example
 
 tasks:
   build:
     # Task level variables
     vars:
-      app_name: single
-      ecr_repository: "{{ ecr_registry }}/{{ app_name }}"
-    command: docker build -t {{ ecr_repository }}:latest .
+      app: server
+    command: docker build -t {{ registry }}/{{ app }}:latest .
 ```
 
 A task level variable shadows the project level variable of the same name.
@@ -95,7 +92,7 @@ Variables given on the command line as `Name=Value` override both: project level
 task level variables of the tasks you run.
 
 ```
-fire build app_name=another   # builds with ecr_repository = {{ ecr_registry }}/another
+fire build app=client   # runs: docker build -t docker.io/example/client:latest .
 ```
 
 Firepit performs template processing using [Tera](https://keats.github.io/tera/).
