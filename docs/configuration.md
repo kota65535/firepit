@@ -130,17 +130,17 @@ A variable declared without a value has no default, so it is required: give it a
 tasks:
   deploy:
     vars:
-      stage:
-    command: ./deploy.sh {{ stage }}
+      version:
+    command: ./deploy.sh {{ version }}
 ```
 
 ```
-fire deploy             # error: task "#deploy" requires vars that are not set: "stage"
-fire deploy stage=prod  # runs: ./deploy.sh prod
+fire deploy                # error: task "#deploy" requires vars that are not set: "version"
+fire deploy version=1.2.3  # runs: ./deploy.sh 1.2.3
 ```
 
 Only the tasks being run and their dependency tasks are checked.
-To declare a variable whose default value is empty, write an empty string (`stage: ""`) instead.
+To declare a variable whose default value is empty, write an empty string (`version: ""`) instead.
 
 ### Passing Arguments
 
