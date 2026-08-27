@@ -105,7 +105,7 @@
       "default": "cui"
     },
     "vars": {
-      "description": "Template variables for all the project tasks.\n```yaml\nvars:\n  registry: docker.io/example\n  image: \"{{ registry }}/server\"\n```",
+      "description": "Template variables for all the project tasks.\nA variable declared without a value has no default, so it is required: running any task of\nthe project without giving it a value by the `<name>=<value>` CLI argument is an error.\n```yaml\nvars:\n  registry: docker.io/example\n  image: \"{{ registry }}/server\"\n```",
       "type": "object",
       "additionalProperties": {
         "$ref": "#/$defs/VarsConfig"

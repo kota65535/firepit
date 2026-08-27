@@ -158,6 +158,8 @@ ui: cui
 - **Default:** `{}`
 - **Template:** yes
 - **Description:** Template variables for all the project tasks.
+A variable declared without a value has no default, so it is required: running any task of
+the project without giving it a value by the `<name>=<value>` CLI argument is an error.
 ```yaml
 vars:
   registry: docker.io/example
