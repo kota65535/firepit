@@ -242,8 +242,9 @@ async fn test_unset_task_var_of_other_task_is_ignored() {
 }
 
 #[tokio::test]
-async fn test_unset_project_var_is_harmless_when_not_declared_by_task() {
-    // The project level `env` is unset, but the `bar` task does not declare it
+async fn test_unset_project_var_without_cli() {
+    // The project level `env` is unset, so running any task of the project
+    // without the CLI argument is an error, even if the task does not declare it
     let path = Path::new("tests/fixtures/project/required_project_var");
     let (root, children) = ProjectConfig::new_multi(path).unwrap();
     let result = Workspace::new(
@@ -258,7 +259,67 @@ async fn test_unset_project_var_is_harmless_when_not_declared_by_task() {
         Some(false),
     )
     .await;
+    assert_err!(result);
+}
+
+#[tokio::test]
+async fn test_unset_project_var_given_by_cli() {
+    let path = Path::new("tests/fixtures/project/required_project_var");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &[String::from("#bar")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::from([(String::from("env"), VarsConfig::Static(serde_json::Value::from("prod")))]),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(ws.task("#bar").unwrap().command, String::from("echo \"prod\""));
+}
+
+#[tokio::test]
+async fn test_unset_project_var_of_other_project_is_ignored() {
+    // Project `b` has an unset project var, but only project `a` is involved in the run
+    let path = Path::new("tests/fixtures/project/required_project_var_multi");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let result = Workspace::new(
+        &root,
+        &children,
+        &[String::from("a#build")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await;
     assert_ok!(result);
+}
+
+#[tokio::test]
+async fn test_unset_project_var_of_involved_project() {
+    let path = Path::new("tests/fixtures/project/required_project_var_multi");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let result = Workspace::new(
+        &root,
+        &children,
+        &[String::from("b#deploy")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await;
+    assert_err!(result);
 }
 
 #[tokio::test]

@@ -139,7 +139,10 @@ fire deploy                # error: task "#deploy" requires vars that are not se
 fire deploy version=1.2.3  # runs: ./deploy.sh 1.2.3
 ```
 
-Only the tasks being run and their dependency tasks are checked.
+A project level variable declared without a value is required by every task of the project:
+running any of them without the `Name=Value` CLI argument is an error.
+
+Only the tasks being run, their dependency tasks, and the projects they belong to are checked.
 To declare a variable whose default value is empty, write an empty string (`version: ""`) instead.
 
 ### Passing Arguments

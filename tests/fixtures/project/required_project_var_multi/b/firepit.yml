@@ -1,0 +1,6 @@
+vars:
+  env:
+
+tasks:
+  deploy:
+    command: echo "{{ env }}"

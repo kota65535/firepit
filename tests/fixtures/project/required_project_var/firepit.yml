@@ -3,12 +3,13 @@ vars:
 
 tasks:
   # Declares `env` without a value; the project level `env` is also unset,
-  # so there is nothing to inherit and running this task is an error
+  # so both are reported as errors when this task runs without the CLI argument
   foo:
     vars:
       env:
     command: echo "{{ env }}"
 
-  # Does not declare `env`; the unset project level var is harmless here
+  # Does not declare `env`, but the project level `env` is required,
+  # so running any task of this project without the CLI argument is an error
   bar:
-    command: echo "bar"
+    command: echo "{{ env }}"

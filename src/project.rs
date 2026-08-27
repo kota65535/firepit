@@ -106,7 +106,7 @@ impl Workspace {
         let mut renderer = ConfigRenderer::new(&root_config, &child_configs, vars, watch);
         let (root_config, child_configs) = renderer.render().await?;
         ProjectConfig::validate_multi(&root_config, &child_configs)?;
-        Self::validate_vars(&root_config, &child_configs, &target_tasks)?;
+        Self::validate_vars(&root_config, &child_configs, &target_tasks, vars)?;
 
         let root = Project::new("", &root_config)?;
         let mut children = HashMap::new();
@@ -143,22 +143,28 @@ impl Workspace {
         })
     }
 
-    /// Ensures that every var of the tasks to run has a value.
+    /// Ensures that every var involved in the run has a value.
     ///
     /// A var declared without a value, ex: `foo:`, has no default value, so it must be given one
-    /// before the task runs. Only the target tasks and their dependency tasks are checked, since
-    /// the other tasks are never run.
+    /// before the task runs. Two kinds of declarations are checked:
+    /// - vars of the target tasks and their dependency tasks
+    /// - project vars of the projects those tasks belong to, unless set by the CLI argument
+    ///
+    /// The other tasks and projects are not involved in the run, so their unset vars are ignored.
     fn validate_vars(
         root_config: &ProjectConfig,
         child_configs: &IndexMap<String, ProjectConfig>,
         target_tasks: &[String],
+        cli_vars: &IndexMap<String, VarsConfig>,
     ) -> anyhow::Result<()> {
         let task_configs = std::iter::once(root_config)
             .chain(child_configs.values())
             .flat_map(|c| c.tasks.values().map(|t| (t.full_name(), t)))
             .collect::<HashMap<_, _>>();
 
+        let target_task_set = target_tasks.iter().collect::<HashSet<_>>();
         let mut visited = HashSet::new();
+        let mut involved_projects = HashSet::new();
         let mut queue = target_tasks.to_vec();
         // Unset vars per task, with whether each var can be set by the CLI argument,
         // which is the case only for a target task's var.
@@ -170,7 +176,8 @@ impl Workspace {
             let Some(task_config) = task_configs.get(&task_name) else {
                 continue;
             };
-            let is_target = target_tasks.contains(&task_name);
+            involved_projects.insert(task_config.project.clone());
+            let is_target = target_task_set.contains(&task_name);
             let names = task_config
                 .vars
                 .iter()
@@ -193,26 +200,63 @@ impl Workspace {
             );
         }
 
-        if !unset_vars.is_empty() {
-            unset_vars.sort();
-            let details = unset_vars
+        // Unset project vars of the involved projects. The CLI argument always sets a project
+        // var, so vars given by the CLI are not errors.
+        let mut project_unset_vars: Vec<(String, Vec<String>)> = Vec::new();
+        for project_name in involved_projects.iter() {
+            let Some(config) = (if project_name.is_empty() {
+                Some(root_config)
+            } else {
+                child_configs.get(project_name)
+            }) else {
+                continue;
+            };
+            let names = config
+                .vars
                 .iter()
-                .map(|(task, names)| {
+                .filter(|(k, v)| v.is_unset() && !cli_vars.contains_key(*k))
+                .map(|(k, _)| k.clone())
+                .collect::<Vec<_>>();
+            if !names.is_empty() {
+                project_unset_vars.push((project_name.clone(), names));
+            }
+        }
+
+        if !unset_vars.is_empty() || !project_unset_vars.is_empty() {
+            unset_vars.sort();
+            project_unset_vars.sort();
+            let details = project_unset_vars
+                .iter()
+                .map(|(project, names)| {
+                    let vars = names.iter().map(|n| format!("{:?}", n)).collect::<Vec<_>>().join(", ");
+                    let project = if project.is_empty() {
+                        "the root project".to_string()
+                    } else {
+                        format!("project {:?}", project)
+                    };
+                    format!("{} requires vars that are not set: {}", project, vars)
+                })
+                .chain(unset_vars.iter().map(|(task, names)| {
                     let vars = names
                         .iter()
                         .map(|(n, _)| format!("{:?}", n))
                         .collect::<Vec<_>>()
                         .join(", ");
                     format!("task {:?} requires vars that are not set: {}", task, vars)
-                })
+                }))
                 .collect::<Vec<_>>()
                 .join("\n");
             let mut msg = details;
             // Example command reproducing what the user ran, with the missing vars appended.
             // The "#" prefix of root project tasks is internal, so strip it.
-            let cli_settable = unset_vars
+            let cli_settable = project_unset_vars
                 .iter()
-                .flat_map(|(_, names)| names.iter().filter(|(_, s)| *s).map(|(n, _)| format!("{}=<value>", n)))
+                .flat_map(|(_, names)| names.iter().map(|n| format!("{}=<value>", n)))
+                .chain(
+                    unset_vars
+                        .iter()
+                        .flat_map(|(_, names)| names.iter().filter(|(_, s)| *s).map(|(n, _)| format!("{}=<value>", n))),
+                )
                 .collect::<Vec<_>>();
             if !cli_settable.is_empty() {
                 let tasks = target_tasks
