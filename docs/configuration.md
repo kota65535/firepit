@@ -90,6 +90,14 @@ tasks:
     command: docker build -t {{ ecr_repository }}:latest .
 ```
 
+A task level variable shadows the project level variable of the same name.
+Variables given on the command line as `Name=Value` override both: project level variables, and
+task level variables of the tasks you run.
+
+```
+fire build app_name=another   # builds with ecr_repository = {{ ecr_registry }}/another
+```
+
 Firepit performs template processing using [Tera](https://keats.github.io/tera/).
 Check the documentation for details about the template syntax.
 
@@ -116,7 +124,9 @@ There are also some built-in variables available for use in templates.
 
 ### Required Variables
 
-A variable declared without a value has no default value, and must be given one before the task runs:
+A variable declared without a value has no default, so it is required: give it a value with the
+`Name=Value` CLI argument or the dependent task's `depends_on.vars`
+(see [Parameterized Dependencies](#parameterized-dependencies)), or running the task is an error.
 
 ```yaml
 tasks:
@@ -131,39 +141,8 @@ fire deploy           # error: task "#deploy" requires vars that are not set: "e
 fire deploy env=prod  # runs: ./deploy.sh prod
 ```
 
-A value can come from:
-
-- the `Name=Value` CLI argument, for a variable of the tasks you run
-- the dependent task's `depends_on.vars` (see [Parameterized Dependencies](#parameterized-dependencies))
-
-Note that declaring a variable on a task always shadows the project level variable of the same
-name—even when declared without a value:
-
-```yaml
-vars:
-  env: dev
-
-tasks:
-  deploy:
-    vars:
-      # Shadows the project level `env`: the value `dev` is NOT used as a default,
-      # so an explicit value is required, ex: `fire deploy env=prod`
-      env:
-    command: ./deploy.sh {{ env }}
-```
-
-If you want the project level value as a default, reference it without declaring the task
-variable—`{{ env }}` resolves to the project level variable, which the CLI argument can override.
-
-Only variables declared by the task being run (or its dependency tasks) are checked, so an unset
-variable elsewhere—another task, or the project level—does not affect the run.
-
-To declare a variable whose default value is empty, write an empty string instead:
-
-```yaml
-vars:
-  args: ""
-```
+Only the tasks being run and their dependency tasks are checked.
+To declare a variable whose default value is empty, write an empty string (`args: ""`) instead.
 
 ### Passing Arguments
 
