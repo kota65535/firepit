@@ -617,10 +617,10 @@ pub struct TaskConfig {
     /// Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`,
     /// `service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`
     ///
-    /// A variable declared without a value has no default value. It inherits the project
-    /// variable of the same name (which the `<name>=<value>` CLI argument can override) if any,
-    /// and otherwise must be given one by the CLI argument (for the tasks being run) or by the
-    /// dependent task's `depends_on.vars`.
+    /// A variable declared without a value has no default value. Declaring it shadows the
+    /// project variable of the same name, so it must be given a value explicitly: by the
+    /// `<name>=<value>` CLI argument (for the tasks being run) or by the dependent task's
+    /// `depends_on.vars`.
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
     pub vars: IndexMap<String, VarsConfig>,
@@ -707,10 +707,9 @@ pub enum VarsConfig {
 
 impl VarsConfig {
     /// Returns whether the variable is declared without a value, ex: `foo:`.
-    /// Such a variable has no default value. When declared by a task, it must be given one before
-    /// the task runs: by inheriting the project variable of the same name, by the
-    /// `<name>=<value>` CLI argument (for the tasks being run), or by the dependent task's
-    /// `depends_on.vars`.
+    /// Such a variable has no default value and shadows the project variable of the same name,
+    /// so it must be given one before the task runs: by the `<name>=<value>` CLI argument (for
+    /// the tasks being run), or by the dependent task's `depends_on.vars`.
     pub fn is_unset(&self) -> bool {
         matches!(self, VarsConfig::Static(JsonValue::Null))
     }

@@ -2,13 +2,14 @@ vars:
   env: dev
 
 tasks:
-  # An unset task var inherits the value of the project var with the same name
-  inherit:
+  # Declaring a var of the same name as a project var shadows it: the project value is
+  # not used as a default, so an explicit value is required to run this task
+  shadow:
     vars:
       env:
     command: echo "{{ env }}"
 
-  # An unset task var without an outer value must be given one by the dependent task
+  # An unset task var must be given a value by the CLI argument or the dependent task
   required:
     vars:
       region:
@@ -27,3 +28,7 @@ tasks:
     depends_on:
       - required
     command: echo "dependent_nocli"
+
+  # Declares no vars; unset vars of the other tasks do not affect this task
+  plain:
+    command: echo "plain"

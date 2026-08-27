@@ -133,9 +133,11 @@ fire deploy env=prod  # runs: ./deploy.sh prod
 
 A value can come from:
 
-- the `Name=Value` CLI argument, for a variable of the tasks you run or a project level variable
+- the `Name=Value` CLI argument, for a variable of the tasks you run
 - the dependent task's `depends_on.vars` (see [Parameterized Dependencies](#parameterized-dependencies))
-- a project level variable of the same name, which a task level variable inherits:
+
+Note that declaring a variable on a task always shadows the project level variable of the same
+name—even when declared without a value:
 
 ```yaml
 vars:
@@ -144,16 +146,17 @@ vars:
 tasks:
   deploy:
     vars:
-      # Inherits `dev` from the project level variable, so `env=...` can override it
+      # Shadows the project level `env`: the value `dev` is NOT used as a default,
+      # so an explicit value is required, ex: `fire deploy env=prod`
       env:
     command: ./deploy.sh {{ env }}
 ```
 
+If you want the project level value as a default, reference it without declaring the task
+variable—`{{ env }}` resolves to the project level variable, which the CLI argument can override.
+
 Only variables declared by the task being run (or its dependency tasks) are checked, so an unset
 variable elsewhere—another task, or the project level—does not affect the run.
-Note that the CLI argument does not set a dependency task's variable directly: give it a value
-with `depends_on.vars`, or declare the variable at the project level so that the CLI argument can
-set it there.
 
 To declare a variable whose default value is empty, write an empty string instead:
 

@@ -119,17 +119,13 @@ impl TaskConfig {
         for (k, v) in self.vars.iter() {
             let rk = tera.render_str(k, &context)?;
             if !rk.is_empty() {
-                // A task-level var without a value inherits the project-level var of the same
-                // name, which the CLI argument can override.
-                // A var that is not declared at the project level never inherits: the raw CLI
-                // value in the context must not reach a dependency task's var, so it is shadowed
-                // with null here. It is then reported as an error when the task is actually run,
-                // unless the CLI argument sets it directly on a target task or the dependent task
-                // sets it with `depends_on.vars`.
+                // A task-level var without a value never inherits: declaring it shadows the
+                // project-level var of the same name. The value must be given explicitly, by the
+                // `<name>=<value>` CLI argument for the tasks being run or by the dependent
+                // task's `depends_on.vars`. Until then it stays null, and is reported as an error
+                // when the task is actually run.
                 if v.is_unset() {
-                    if !config.vars.contains_key(&rk) {
-                        context.insert(rk, &JsonValue::Null);
-                    }
+                    context.insert(rk, &JsonValue::Null);
                     continue;
                 }
                 let v = match v {
@@ -563,9 +559,9 @@ async fn render_value_map(
     for (k, v) in map.iter() {
         let rk = tera.render_str(k, context)?;
         if !rk.is_empty() {
-            // Unset vars take the inherited value of the same name, if any.
+            // Unset vars stay unset; they are reported as an error when the task is run
             let rv = if v.is_unset() {
-                VarsConfig::Static(context.get(&rk).cloned().unwrap_or(JsonValue::Null))
+                VarsConfig::Static(JsonValue::Null)
             } else {
                 VarsConfig::Static(render_value(v, tera, context).await?)
             };

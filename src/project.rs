@@ -158,14 +158,10 @@ impl Workspace {
             .flat_map(|c| c.tasks.values().map(|t| (t.full_name(), t)))
             .collect::<HashMap<_, _>>();
 
-        let project_configs = std::iter::once((String::new(), root_config))
-            .chain(child_configs.iter().map(|(k, v)| (k.clone(), v)))
-            .collect::<HashMap<_, _>>();
-
         let mut visited = HashSet::new();
         let mut queue = target_tasks.to_vec();
-        // Unset vars per task, with whether each var can be set by the CLI argument:
-        // true for a target task's var and for a var declared at the project level.
+        // Unset vars per task, with whether each var can be set by the CLI argument,
+        // which is the case only for a target task's var.
         let mut unset_vars: Vec<(String, Vec<(String, bool)>)> = Vec::new();
         while let Some(task_name) = queue.pop() {
             if !visited.insert(task_name.clone()) {
@@ -179,14 +175,7 @@ impl Workspace {
                 .vars
                 .iter()
                 .filter(|(_, v)| v.is_unset())
-                .map(|(k, _)| {
-                    let cli_settable = is_target
-                        || project_configs
-                            .get(&task_config.project)
-                            .map(|c| c.vars.contains_key(k))
-                            .unwrap_or(false);
-                    (k.clone(), cli_settable)
-                })
+                .map(|(k, _)| (k.clone(), is_target))
                 .collect::<Vec<_>>();
             if !names.is_empty() {
                 unset_vars.push((task_name.clone(), names));
@@ -235,7 +224,7 @@ impl Workspace {
             }
             if unset_vars.iter().any(|(_, names)| names.iter().any(|(_, s)| !s)) {
                 msg = format!(
-                    "{}\nVars of a dependency task can be set with the dependent task's `depends_on.vars`, or declared as project vars to accept the CLI argument",
+                    "{}\nVars of a dependency task can be set with the dependent task's `depends_on.vars`",
                     msg
                 );
             }

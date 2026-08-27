@@ -1,12 +1,4 @@
-vars:
-  env: dev
-
 tasks:
-  inherit:
-    vars:
-      env:
-    command: echo "{{ env }}"
-
   cli:
     vars:
       region:

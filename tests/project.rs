@@ -113,15 +113,36 @@ async fn test_empty_string_task_var_renders_as_string_in_label() {
 }
 
 #[tokio::test]
-async fn test_unset_task_var_inherits_project_var() {
+async fn test_unset_task_var_shadows_project_var() {
+    // The project level `env` has a value, but the task declares `env` without a value,
+    // which shadows the project value, so an explicit value is required
+    let path = Path::new("tests/fixtures/project/required_vars");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let result = Workspace::new(
+        &root,
+        &children,
+        &[String::from("#shadow")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await;
+    assert_err!(result);
+}
+
+#[tokio::test]
+async fn test_unset_task_var_shadowing_project_var_given_by_cli() {
     let path = Path::new("tests/fixtures/project/required_vars");
     let (root, children) = ProjectConfig::new_multi(path).unwrap();
     let ws = Workspace::new(
         &root,
         &children,
-        &[String::from("#inherit")],
+        &[String::from("#shadow")],
         &std::env::current_dir().unwrap(),
-        &IndexMap::new(),
+        &IndexMap::from([(String::from("env"), VarsConfig::Static(serde_json::Value::from("prod")))]),
         false,
         false,
         Some(false),
@@ -130,7 +151,7 @@ async fn test_unset_task_var_inherits_project_var() {
     .await
     .unwrap();
 
-    assert_eq!(ws.task("#inherit").unwrap().command, String::from("echo \"dev\""));
+    assert_eq!(ws.task("#shadow").unwrap().command, String::from("echo \"prod\""));
 }
 
 #[tokio::test]
@@ -208,7 +229,7 @@ async fn test_unset_task_var_of_other_task_is_ignored() {
     let result = Workspace::new(
         &root,
         &children,
-        &[String::from("#inherit")],
+        &[String::from("#plain")],
         &std::env::current_dir().unwrap(),
         &IndexMap::new(),
         false,
