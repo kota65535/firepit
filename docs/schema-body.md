@@ -570,10 +570,10 @@ stop_timeout: 30
 Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`,
 `service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`
 
-A variable declared without a value has no default value. It takes the value of the
-variable of the same name in the outer scope (project vars or CLI vars) if any, and
-otherwise must be given one by the `<name>=<value>` CLI argument or the dependent task's
-`depends_on.vars`.
+A variable declared without a value has no default value. It inherits the project
+variable of the same name (which the `<name>=<value>` CLI argument can override) if any,
+and otherwise must be given one by the CLI argument (for the tasks being run) or by the
+dependent task's `depends_on.vars`.
 
 ### working_dir
 
