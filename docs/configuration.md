@@ -92,6 +92,7 @@ Variables given on the command line as `Name=Value` override both: project level
 task level variables of the tasks you run.
 
 ```
+fire build              # runs: docker build -t docker.io/example/server:latest .
 fire build app=client   # runs: docker build -t docker.io/example/client:latest .
 ```
 
