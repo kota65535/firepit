@@ -119,12 +119,15 @@ impl TaskConfig {
         for (k, v) in self.vars.iter() {
             let rk = tera.render_str(k, &context)?;
             if !rk.is_empty() {
-                // A task-level var without a value inherits the value of the same name in the outer
-                // scope, ex: project-level vars or CLI vars.
-                // If there is no such value, it stays unset and is reported as an error when the
-                // task is actually run.
+                // A task-level var without a value inherits the project-level var of the same
+                // name, which the CLI argument can override.
+                // A var that is not declared at the project level never inherits: the raw CLI
+                // value in the context must not reach a dependency task's var, so it is shadowed
+                // with null here. It is then reported as an error when the task is actually run,
+                // unless the CLI argument sets it directly on a target task or the dependent task
+                // sets it with `depends_on.vars`.
                 if v.is_unset() {
-                    if !context.contains_key(&rk) {
+                    if !config.vars.contains_key(&rk) {
                         context.insert(rk, &JsonValue::Null);
                     }
                     continue;

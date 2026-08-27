@@ -131,9 +131,11 @@ fire deploy           # error: task "#deploy" requires vars that are not set: "e
 fire deploy env=prod  # runs: ./deploy.sh prod
 ```
 
-A value can come from the `Name=Value` CLI argument, from the dependent task's `depends_on.vars`
-(see [Parameterized Dependencies](#parameterized-dependencies)), or, for a task level variable,
-from a project level variable of the same name:
+A value can come from:
+
+- the `Name=Value` CLI argument, for a variable of the tasks you run or a project level variable
+- the dependent task's `depends_on.vars` (see [Parameterized Dependencies](#parameterized-dependencies))
+- a project level variable of the same name, which a task level variable inherits:
 
 ```yaml
 vars:
@@ -149,6 +151,9 @@ tasks:
 
 Only variables declared by the task being run (or its dependency tasks) are checked, so an unset
 variable elsewhere—another task, or the project level—does not affect the run.
+Note that the CLI argument does not set a dependency task's variable directly: give it a value
+with `depends_on.vars`, or declare the variable at the project level so that the CLI argument can
+set it there.
 
 To declare a variable whose default value is empty, write an empty string instead:
 

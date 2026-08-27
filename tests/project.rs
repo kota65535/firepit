@@ -177,6 +177,30 @@ async fn test_unset_task_var_without_value() {
 }
 
 #[tokio::test]
+async fn test_unset_dep_var_is_not_given_by_cli() {
+    // The CLI argument sets only target task vars and project vars,
+    // so it must not reach the dependency task's unset var
+    let path = Path::new("tests/fixtures/project/required_vars");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let result = Workspace::new(
+        &root,
+        &children,
+        &[String::from("#dependent_nocli")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::from([(
+            String::from("region"),
+            VarsConfig::Static(serde_json::Value::from("us-east-1")),
+        )]),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await;
+    assert_err!(result);
+}
+
+#[tokio::test]
 async fn test_unset_task_var_of_other_task_is_ignored() {
     // The `required` task has an unset var, but it is not run, so it must not be an error
     let path = Path::new("tests/fixtures/project/required_vars");

@@ -20,3 +20,10 @@ tasks:
         vars:
           region: us-east-1
     command: echo "dependent"
+
+  # Depends on `required` without giving `region` a value.
+  # The CLI argument cannot set a dependency task's var, so running this task is always an error
+  dependent_nocli:
+    depends_on:
+      - required
+    command: echo "dependent_nocli"
