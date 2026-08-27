@@ -62,11 +62,12 @@ pub struct ProjectConfig {
     pub working_dir: String,
 
     /// Template variables for all the project tasks.
+    /// A variable declared without a value has no default, so it is required: running any task of
+    /// the project without giving it a value by the `<name>=<value>` CLI argument is an error.
     /// ```yaml
     /// vars:
-    ///   aws_account_id: 123456789012
-    ///   aws_region: ap-northeast-1
-    ///   ecr_registry: "{{ aws_account_id }}.dkr.ecr.{{ aws_region }}.amazonaws.com"
+    ///   registry: docker.io/example
+    ///   image: "{{ registry }}/server"
     /// ```
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
@@ -613,9 +614,13 @@ pub struct TaskConfig {
     #[schemars(extend("x-template" = true))]
     pub working_dir: Option<String>,
 
-    /// Template variables. Merged with the project `vars`.
+    /// Template variables. A task variable shadows the project variable of the same name,
+    /// and the `<name>=<value>` CLI argument overrides both.
     /// Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`,
     /// `service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`
+    ///
+    /// A variable declared without a value has no default, so it is required: give it a value
+    /// with the CLI argument or the dependent task's `depends_on.vars`.
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
     pub vars: IndexMap<String, VarsConfig>,
@@ -698,6 +703,15 @@ fn absolute_or_join(path: &str, dir: &Path) -> PathBuf {
 pub enum VarsConfig {
     Dynamic(Box<DynamicVars>),
     Static(JsonValue),
+}
+
+impl VarsConfig {
+    /// Returns whether the variable is declared without a value, ex: `foo:`.
+    /// Such a variable has no default, so it is required: it must be given a value before the
+    /// task runs, by the `<name>=<value>` CLI argument or the dependent task's `depends_on.vars`.
+    pub fn is_unset(&self) -> bool {
+        matches!(self, VarsConfig::Static(JsonValue::Null))
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]

@@ -1,0 +1,34 @@
+vars:
+  env: dev
+
+tasks:
+  # Declaring a var of the same name as a project var shadows it: the project value is
+  # not used as a default, so an explicit value is required to run this task
+  shadow:
+    vars:
+      env:
+    command: echo "{{ env }}"
+
+  # An unset task var must be given a value by the CLI argument or the dependent task
+  required:
+    vars:
+      region:
+    command: echo "{{ region }}"
+
+  dependent:
+    depends_on:
+      - task: required
+        vars:
+          region: us-east-1
+    command: echo "dependent"
+
+  # Depends on `required` without giving `region` a value.
+  # The CLI argument cannot set a dependency task's var, so running this task is always an error
+  dependent_nocli:
+    depends_on:
+      - required
+    command: echo "dependent_nocli"
+
+  # Declares no vars; unset vars of the other tasks do not affect this task
+  plain:
+    command: echo "plain"

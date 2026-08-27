@@ -202,6 +202,31 @@ async fn test_vars_from_cli() {
 }
 
 #[tokio::test]
+async fn test_vars_required() {
+    setup();
+
+    let path = BASE_PATH.join("vars_required");
+    let tasks = vec![String::from("cli"), String::from("dependent")];
+
+    let mut stats = HashMap::new();
+    stats.insert(String::from("#cli"), String::from("Finished: Success"));
+    stats.insert(String::from("#dependent"), String::from("Finished: Success"));
+    stats.insert(String::from("#required-1"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    // Unset var is given a value by the CLI
+    outputs.insert(String::from("#cli"), String::from("ap-northeast-1"));
+    // Unset var is given a value by the dependent task
+    outputs.insert(String::from("#required-1"), String::from("prod"));
+    outputs.insert(String::from("#dependent"), String::from("dependent"));
+
+    let vars = IndexMap::from([("region".to_string(), VarsConfig::Static(Value::from("ap-northeast-1")))]);
+    run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
 async fn test_vars_builtin() {
     setup();
 

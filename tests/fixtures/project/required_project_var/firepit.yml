@@ -1,0 +1,15 @@
+vars:
+  env:
+
+tasks:
+  # Declares `env` without a value; the project level `env` is also unset,
+  # so both are reported as errors when this task runs without the CLI argument
+  foo:
+    vars:
+      env:
+    command: echo "{{ env }}"
+
+  # Does not declare `env`, but the project level `env` is required,
+  # so running any task of this project without the CLI argument is an error
+  bar:
+    command: echo "{{ env }}"

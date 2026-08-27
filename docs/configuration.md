@@ -77,17 +77,23 @@ You can define template variables using the `vars` field, both at the project le
 ```yaml
 # Project level variables
 vars:
-  aws_account_id: 123456789012
-  aws_region: ap-northeast-1
-  ecr_registry: "{{ aws_account_id }}.dkr.ecr.{{ aws_region }}.amazonaws.com"
+  registry: docker.io/example
 
 tasks:
   build:
     # Task level variables
     vars:
-      app_name: single
-      ecr_repository: "{{ ecr_registry }}/{{ app_name }}"
-    command: docker build -t {{ ecr_repository }}:latest .
+      app: server
+    command: docker build -t {{ registry }}/{{ app }}:latest .
+```
+
+A task level variable shadows the project level variable of the same name.
+Variables given on the command line as `Name=Value` override both: project level variables, and
+task level variables of the tasks you run.
+
+```
+fire build              # runs: docker build -t docker.io/example/server:latest .
+fire build app=client   # runs: docker build -t docker.io/example/client:latest .
 ```
 
 Firepit performs template processing using [Tera](https://keats.github.io/tera/).
@@ -113,6 +119,31 @@ There are also some built-in variables available for use in templates.
 | `project`      | string              | The project name. Multi-projects only.                                 |
 | `task`         | string              | The task name.                                                         |
 | `watch`        | boolean             | `true` if running in watch mode, `false` otherwise.                    |
+
+### Required Variables
+
+A variable declared without a value has no default, so it is required: give it a value with the
+`Name=Value` CLI argument or the dependent task's `depends_on.vars`
+(see [Parameterized Dependencies](#parameterized-dependencies)), or running the task is an error.
+
+```yaml
+tasks:
+  deploy:
+    vars:
+      version:
+    command: ./deploy.sh {{ version }}
+```
+
+```
+fire deploy                # error: task "#deploy" requires vars that are not set: "version"
+fire deploy version=1.2.3  # runs: ./deploy.sh 1.2.3
+```
+
+A project level variable declared without a value is required by every task of the project:
+running any of them without the `Name=Value` CLI argument is an error.
+
+Only the tasks being run, their dependency tasks, and the projects they belong to are checked.
+To declare a variable whose default value is empty, write an empty string (`version: ""`) instead.
 
 ### Passing Arguments
 
@@ -267,7 +298,7 @@ In this example, the generic `migrate` task is reused by two tasks with differen
 tasks:
   migrate:
     vars:
-      database: ""
+      database:
     command: ./migrate.sh {{ database }}
 
   setup-app:
@@ -288,6 +319,7 @@ tasks:
 Each dependent runs its own variant of `migrate` with the overridden variables.
 In the TUI/CUI, every variant is displayed with the original task name by default; set a `label` with template variables (for example `label: "migrate {{ database }}"`) to tell the variants apart.
 Note that only variables already declared in the dependency task can be overridden, so `migrate` must declare `database` in its `vars`.
+Declaring it without a value, as above, makes it a [required variable](#required-variables): running `migrate` on its own is then an error, since no dependent task provides a value.
 If the same variable is also injected globally via `--` (see [Passing Arguments](#passing-arguments)), the value specified here on the dependency takes precedence.
 
 ### Cascading Restarts

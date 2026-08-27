@@ -106,6 +106,7 @@ impl Workspace {
         let mut renderer = ConfigRenderer::new(&root_config, &child_configs, vars, watch);
         let (root_config, child_configs) = renderer.render().await?;
         ProjectConfig::validate_multi(&root_config, &child_configs)?;
+        Self::validate_vars(&root_config, &child_configs, &target_tasks, vars)?;
 
         let root = Project::new("", &root_config)?;
         let mut children = HashMap::new();
@@ -140,6 +141,167 @@ impl Workspace {
             fail_fast,
             dir: current_dir.to_owned(),
         })
+    }
+
+    /// Ensures that every var involved in the run has a value.
+    ///
+    /// A var declared without a value, ex: `foo:`, has no default value, so it must be given one
+    /// before the task runs. Two kinds of declarations are checked:
+    /// - vars of the target tasks and their dependency tasks
+    /// - project vars of the projects those tasks belong to, unless set by the CLI argument
+    ///
+    /// The other tasks and projects are not involved in the run, so their unset vars are ignored.
+    fn validate_vars(
+        root_config: &ProjectConfig,
+        child_configs: &IndexMap<String, ProjectConfig>,
+        target_tasks: &[String],
+        cli_vars: &IndexMap<String, VarsConfig>,
+    ) -> anyhow::Result<()> {
+        let (task_vars, project_vars) = Self::collect_unset_vars(root_config, child_configs, target_tasks, cli_vars);
+        if task_vars.is_empty() && project_vars.is_empty() {
+            return Ok(());
+        }
+        anyhow::bail!(Self::unset_vars_message(&task_vars, &project_vars, target_tasks))
+    }
+
+    /// Collects the unset vars involved in the run:
+    /// per-task vars (with whether each var can be set by the CLI argument, which is the case
+    /// only for a target task's var) and per-project vars of the involved projects.
+    fn collect_unset_vars(
+        root_config: &ProjectConfig,
+        child_configs: &IndexMap<String, ProjectConfig>,
+        target_tasks: &[String],
+        cli_vars: &IndexMap<String, VarsConfig>,
+    ) -> (UnsetTaskVars, UnsetProjectVars) {
+        let task_configs = std::iter::once(root_config)
+            .chain(child_configs.values())
+            .flat_map(|c| c.tasks.values().map(|t| (t.full_name(), t)))
+            .collect::<HashMap<_, _>>();
+
+        // Walk the target tasks and their dependency tasks
+        let target_task_set = target_tasks.iter().collect::<HashSet<_>>();
+        let mut visited = HashSet::new();
+        let mut involved_projects = HashSet::new();
+        let mut queue = target_tasks.to_vec();
+        let mut task_vars: UnsetTaskVars = Vec::new();
+        while let Some(task_name) = queue.pop() {
+            if !visited.insert(task_name.clone()) {
+                continue;
+            }
+            let Some(task_config) = task_configs.get(&task_name) else {
+                continue;
+            };
+            involved_projects.insert(task_config.project.clone());
+            let is_target = target_task_set.contains(&task_name);
+            let names = task_config
+                .vars
+                .iter()
+                .filter(|(_, v)| v.is_unset())
+                .map(|(k, _)| (k.clone(), is_target))
+                .collect::<Vec<_>>();
+            if !names.is_empty() {
+                task_vars.push((task_name.clone(), names));
+            }
+            queue.extend(
+                task_config
+                    .depends_on
+                    .iter()
+                    .map(|d| match d {
+                        DependsOnConfig::String(s) => s.clone(),
+                        DependsOnConfig::Struct(s) => s.task.clone(),
+                    })
+                    .filter(|d| !d.is_empty())
+                    .map(|d| Task::qualified_name(&task_config.project, &d)),
+            );
+        }
+
+        // Unset project vars of the involved projects. The CLI argument always sets a project
+        // var, so vars given by the CLI are not errors.
+        let mut project_vars: UnsetProjectVars = Vec::new();
+        for project_name in involved_projects.iter() {
+            let Some(config) = (if project_name.is_empty() {
+                Some(root_config)
+            } else {
+                child_configs.get(project_name)
+            }) else {
+                continue;
+            };
+            let names = config
+                .vars
+                .iter()
+                .filter(|(k, v)| v.is_unset() && !cli_vars.contains_key(*k))
+                .map(|(k, _)| k.clone())
+                .collect::<Vec<_>>();
+            if !names.is_empty() {
+                project_vars.push((project_name.clone(), names));
+            }
+        }
+
+        task_vars.sort();
+        project_vars.sort();
+        (task_vars, project_vars)
+    }
+
+    /// Builds the error message for the unset vars: one line per project/task, followed by
+    /// an example command with the CLI-settable vars and a hint for the dependency task vars.
+    fn unset_vars_message(
+        task_vars: &[(String, Vec<(String, bool)>)],
+        project_vars: &[(String, Vec<String>)],
+        target_tasks: &[String],
+    ) -> String {
+        let quote =
+            |names: &mut dyn Iterator<Item = &String>| names.map(|n| format!("{:?}", n)).collect::<Vec<_>>().join(", ");
+        let mut msg = project_vars
+            .iter()
+            .map(|(project, names)| {
+                let project = if project.is_empty() {
+                    "the root project".to_string()
+                } else {
+                    format!("project {:?}", project)
+                };
+                format!(
+                    "{} requires vars that are not set: {}",
+                    project,
+                    quote(&mut names.iter())
+                )
+            })
+            .chain(task_vars.iter().map(|(task, names)| {
+                format!(
+                    "task {:?} requires vars that are not set: {}",
+                    task,
+                    quote(&mut names.iter().map(|(n, _)| n))
+                )
+            }))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // Example command reproducing what the user ran, with the missing vars appended.
+        // The "#" prefix of root project tasks is internal, so strip it.
+        let cli_settable = project_vars
+            .iter()
+            .flat_map(|(_, names)| names.iter())
+            .chain(
+                task_vars
+                    .iter()
+                    .flat_map(|(_, names)| names.iter().filter(|(_, s)| *s).map(|(n, _)| n)),
+            )
+            .map(|n| format!("{}=<value>", n))
+            .collect::<Vec<_>>();
+        if !cli_settable.is_empty() {
+            let tasks = target_tasks
+                .iter()
+                .map(|t| t.strip_prefix('#').unwrap_or(t))
+                .collect::<Vec<_>>()
+                .join(" ");
+            msg = format!("{}\nSet them like: fire {} {}", msg, tasks, cli_settable.join(" "));
+        }
+        if task_vars.iter().any(|(_, names)| names.iter().any(|(_, s)| !s)) {
+            msg = format!(
+                "{}\nVars of a dependency task can be set with the dependent task's `depends_on.vars`",
+                msg
+            );
+        }
+        msg
     }
 
     pub fn tasks(&self) -> Vec<Task> {
@@ -198,6 +360,12 @@ impl Project {
         self.tasks.get(&Task::qualified_name(&self.name, name)).cloned()
     }
 }
+
+/// Unset vars grouped by task, with whether each var can be set by the CLI argument
+type UnsetTaskVars = Vec<(String, Vec<(String, bool)>)>;
+
+/// Unset vars grouped by project
+type UnsetProjectVars = Vec<(String, Vec<String>)>;
 
 #[derive(Debug, Clone)]
 pub struct Task {

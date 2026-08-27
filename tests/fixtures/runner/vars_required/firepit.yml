@@ -1,0 +1,17 @@
+tasks:
+  cli:
+    vars:
+      region:
+    command: echo "{{ region }}"
+
+  required:
+    vars:
+      target:
+    command: echo "{{ target }}"
+
+  dependent:
+    depends_on:
+      - task: required
+        vars:
+          target: prod
+    command: echo "dependent"

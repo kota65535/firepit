@@ -119,6 +119,15 @@ impl TaskConfig {
         for (k, v) in self.vars.iter() {
             let rk = tera.render_str(k, &context)?;
             if !rk.is_empty() {
+                // A task-level var without a value never inherits: declaring it shadows the
+                // project-level var of the same name. The value must be given explicitly, by the
+                // `<name>=<value>` CLI argument for the tasks being run or by the dependent
+                // task's `depends_on.vars`. Until then it stays null, and is reported as an error
+                // when the task is actually run.
+                if v.is_unset() {
+                    context.insert(rk, &JsonValue::Null);
+                    continue;
+                }
                 let v = match v {
                     VarsConfig::Dynamic(s) => {
                         let mut s = s.clone();
@@ -550,7 +559,12 @@ async fn render_value_map(
     for (k, v) in map.iter() {
         let rk = tera.render_str(k, context)?;
         if !rk.is_empty() {
-            let rv = VarsConfig::Static(render_value(v, tera, context).await?);
+            // Unset vars stay unset; they are reported as an error when the task is run
+            let rv = if v.is_unset() {
+                VarsConfig::Static(JsonValue::Null)
+            } else {
+                VarsConfig::Static(render_value(v, tera, context).await?)
+            };
             ret.insert(rk, rv);
         }
     }
