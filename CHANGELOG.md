@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.25.0] - 2026-08-27
+
+### 🚀 Features
+
+- *(tui)* Copy selection to clipboard on mouse release with toast (#384)
+
+### 🚜 Refactor
+
+- *(tui)* Remove the c key binding for copying a selection (#385)
+
 ## [0.24.0] - 2026-08-25
 
 ### 🚀 Features
