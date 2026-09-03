@@ -148,13 +148,16 @@ impl TaskGraph {
                 continue;
             };
             for w in &t.wait_for {
+                // An entry that matches the waiting task names the task it is written on. Every
+                // variant of a task carries the same entry, so pairing them would order each
+                // variant both before and after its siblings, which is a cycle. Such an entry
+                // orders nothing. Note this leaves the useful case alone: an entry whose vars
+                // exclude the waiting task still orders it after the variants they do match.
+                if w.matches(t) {
+                    continue;
+                }
                 let candidates = nodes_by_orig_name.get(w.task.as_str()).into_iter().flatten();
                 for (_, to) in candidates.filter(|(t, _)| w.matches(t)) {
-                    // Exclude the task itself, which it matches when it is one of the variants
-                    // named by its own `wait_for`
-                    if to == from {
-                        continue;
-                    }
                     // A dependency edge already orders the two tasks and is stricter, so keep it.
                     // This also keeps the graph free of parallel edges, so an edge can be looked
                     // up by its endpoints alone.

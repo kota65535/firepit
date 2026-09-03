@@ -108,6 +108,7 @@ Template processing is supported in the following fields:
 - `env_files`
 - `working_dir`
 - `depends_on`
+- `wait_for`
 
 There are also some built-in variables available for use in templates.
 
@@ -676,7 +677,7 @@ The `tasks` selector decides which tasks an entry applies to:
 - An **array** is treated as an explicit list of task names.
 - If **omitted**, the entry applies to all tasks. (Note that an empty string `""` or empty list `[]` matches nothing.)
 
-An entry can set `shell`, `working_dir`, `vars`, `env`, `env_files`, `depends_on`, `service`, `inputs`, and `outputs`.
+An entry can set `shell`, `working_dir`, `vars`, `env`, `env_files`, `depends_on`, `wait_for`, `service`, `inputs`, and `outputs`.
 
 ```yaml
 defaults:
@@ -699,7 +700,7 @@ tasks:
     command: bun run lint
 ```
 
-When multiple entries match the same task, they are merged in order: scalars (`shell`, `working_dir`, `service`) and map keys (`vars`, `env`) are overridden by later entries, while arrays (`env_files`, `depends_on`, `inputs`, `outputs`) are concatenated.
+When multiple entries match the same task, they are merged in order: scalars (`shell`, `working_dir`, `service`) and map keys (`vars`, `env`) are overridden by later entries, while arrays (`env_files`, `depends_on`, `wait_for`, `inputs`, `outputs`) are concatenated.
 The merged defaults act as a base layer, so any setting defined directly on the task itself takes precedence.
 
 ### Merging Config Files

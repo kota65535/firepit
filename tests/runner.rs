@@ -140,14 +140,58 @@ async fn test_wait_for_variant() {
     run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
 
+/// An entry naming the task it sits on orders nothing, rather than pairing that task's
+/// variants into a cycle. Reached through `defaults`, which puts the entry on every task
+/// including the one it names.
+#[tokio::test]
+async fn test_wait_for_self() {
+    setup();
+    let path = BASE_PATH.join("wait_for_self");
+    let tasks = vec![String::from("build"), String::from("other")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#lint-1"), String::from("Finished: Success"));
+    statuses.insert(String::from("#build"), String::from("Finished: Success"));
+    statuses.insert(String::from("#other"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#lint-1"), String::from("lint true"));
+    outputs.insert(String::from("#build"), String::from("build"));
+    outputs.insert(String::from("#other"), String::from("other"));
+
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+/// A var the waited-for task does not declare is ignored, as `depends_on` ignores it when
+/// picking the variant to create, so an entry copied from a `depends_on` keeps ordering.
+#[tokio::test]
+async fn test_wait_for_undeclared_var() {
+    setup();
+    let path = BASE_PATH.join("wait_for_undeclared_var");
+    std::fs::remove_file(path.join("order.txt")).ok();
+    let tasks = vec![String::from("app"), String::from("seed")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#migrate-1"), String::from("Finished: Success"));
+    statuses.insert(String::from("#app"), String::from("Finished: Success"));
+    statuses.insert(String::from("#seed"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#migrate-1"), String::from("migrate app"));
+    outputs.insert(String::from("#app"), String::from("app"));
+    outputs.insert(String::from("#seed"), String::from("migrate app,seed,"));
+
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
 /// `wait_for` in object form waits only for the variants whose vars match the given ones.
-/// Each variant marks itself after a different delay, so what a task lists when it runs shows
-/// which variants it waited for.
+/// The excluded variant is gated behind the waiters, so if a narrowed entry wrongly waited for
+/// it the run would deadlock and time out. Completing at all is what this asserts.
 #[tokio::test]
 async fn test_wait_for_vars() {
     setup();
     let path = BASE_PATH.join("wait_for_vars");
-    for m in ["mark_aaa_bbb", "mark_aaa_zzz", "mark_xxx_bbb"] {
+    for m in ["foo2.done", "foo3.done"] {
         std::fs::remove_file(path.join(m)).ok();
     }
     let tasks = vec![
@@ -173,17 +217,69 @@ async fn test_wait_for_vars() {
     outputs.insert(String::from("#bar-1"), String::from("bar aaa bbb"));
     outputs.insert(String::from("#bar-2"), String::from("bar aaa zzz"));
     outputs.insert(String::from("#bar-3"), String::from("bar xxx bbb"));
-    // Only the A: aaa, B: bbb variant has finished
-    outputs.insert(String::from("#foo3"), String::from("mark_aaa_bbb,"));
-    // Both A: aaa variants have, the A: xxx one has not
-    outputs.insert(String::from("#foo2"), String::from("mark_aaa_bbb,mark_aaa_zzz,"));
-    // All of them have
-    outputs.insert(
-        String::from("#foo"),
-        String::from("mark_aaa_bbb,mark_aaa_zzz,mark_xxx_bbb,"),
-    );
+    outputs.insert(String::from("#foo"), String::from("foo"));
+    outputs.insert(String::from("#foo2"), String::from("foo2"));
+    outputs.insert(String::from("#foo3"), String::from("foo3"));
 
     run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+/// A task named by `wait_for` does not gate the run: the waiter still runs after it fails.
+/// A `depends_on` in its place would have skipped the waiter with BadDeps.
+#[tokio::test]
+async fn test_wait_for_failure() {
+    setup();
+    let path = BASE_PATH.join("wait_for_failure");
+    let tasks = vec![String::from("format"), String::from("lint")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#lint"), String::from("Finished: Failure(3)"));
+    statuses.insert(String::from("#format"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#lint"), String::from("lint"));
+    outputs.insert(String::from("#format"), String::from("format"));
+
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+/// Re-running a task in watch mode does not re-run the tasks merely ordered after it,
+/// so `wait_for` never cascades.
+#[tokio::test]
+async fn test_wait_for_watch() {
+    setup();
+    let path = BASE_PATH.join("wait_for_watch");
+    let tasks = vec![String::from("format"), String::from("lint")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#lint"), String::from("Finished: Success"));
+    statuses.insert(String::from("#format"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#lint"), String::from("lint\nlint"));
+    outputs.insert(String::from("#format"), String::from("format"));
+
+    // `lint` re-runs once, `format` not at all
+    let mut runs = HashMap::new();
+    runs.insert(String::from("#lint"), 1);
+    runs.insert(String::from("#format"), 0);
+
+    run_task_with_watch(
+        &path,
+        tasks,
+        statuses,
+        Some(outputs),
+        None,
+        Some(runs),
+        None,
+        false,
+        async {
+            info!("Updating lint input");
+            let mut f = File::create(BASE_PATH.join("wait_for_watch").join("lint.txt")).unwrap();
+            f.write_all(b"lint").unwrap();
+        },
+    )
+    .await;
 }
 
 /// Unlike `depends_on`, `wait_for` does not add the task it names to the run.

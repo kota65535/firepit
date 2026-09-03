@@ -444,11 +444,18 @@ pub struct WaitFor {
 
 impl WaitFor {
     /// Returns whether the given task is one this entry waits for.
+    ///
+    /// A var the task does not declare is ignored, as `depends_on.vars` ignores it when picking
+    /// the variant to create. Comparing it instead would make an entry copied from a `depends_on`
+    /// silently match nothing, losing the ordering it was written for.
     pub fn matches(&self, task: &Task) -> bool {
         if self.task != task.orig_name {
             return false;
         }
-        self.vars.iter().all(|(k, v)| task.vars.get(k) == Some(v))
+        self.vars
+            .iter()
+            .filter(|(k, _)| task.vars.contains_key(*k))
+            .all(|(k, v)| task.vars.get(k) == Some(v))
     }
 }
 

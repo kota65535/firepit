@@ -1,0 +1,23 @@
+# `defaults` puts `wait_for: [lint]` on every task, including `lint` itself. Since a
+# parameterized dependency splits `lint` into variants that all carry that entry, pairing
+# them would order each variant both before and after its sibling. The entry must be ignored
+# where it names the task it sits on, or nothing in this config can run.
+defaults:
+  - wait_for:
+      - lint
+
+tasks:
+  lint:
+    vars:
+      fix: "false"
+    command: echo "lint {{ fix }}"
+
+  build:
+    command: echo "build"
+    depends_on:
+      - task: lint
+        vars:
+          fix: "true"
+
+  other:
+    command: echo "other"

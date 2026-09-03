@@ -637,6 +637,7 @@ pub struct TaskConfig {
     /// Template variables. A task variable shadows the project variable of the same name,
     /// and the `<name>=<value>` CLI argument overrides both.
     /// Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`,
+    /// `wait_for`, `wait_for.{task, vars}`,
     /// `service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`
     ///
     /// A variable declared without a value has no default, so it is required: give it a value

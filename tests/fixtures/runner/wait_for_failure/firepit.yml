@@ -1,0 +1,16 @@
+# Fail-fast stops every task on the first failure, which would race with `format` starting.
+# The TUI default (fail_fast off) is what this behavior is about, so pin it here.
+ui: tui
+
+# `lint` fails, but `format` only waits for it — it does not depend on it — so `format` still
+# runs. A `depends_on` here would have skipped `format` with BadDeps instead.
+tasks:
+  lint:
+    command: |
+      echo "lint"
+      exit 3
+
+  format:
+    command: echo "format"
+    wait_for:
+      - lint
