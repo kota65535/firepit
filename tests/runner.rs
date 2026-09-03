@@ -433,6 +433,19 @@ async fn test_finalized_by_failure() {
 }
 
 #[tokio::test]
+async fn test_finalized_by_dependent() {
+    setup();
+    let path = BASE_PATH.join("finalized_by_dependent");
+
+    // A finalizer that also depends on the task is skipped when the task fails
+    let tasks = vec![String::from("build")];
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#build"), String::from("Finished: Failure(1)"));
+    statuses.insert(String::from("#report"), String::from("Finished: BadDeps"));
+    run_task(&path, tasks, statuses, None, false).await.unwrap();
+}
+
+#[tokio::test]
 async fn test_vars() {
     setup();
 

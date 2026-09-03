@@ -183,7 +183,12 @@ impl Workspace {
                     finalizer_tasks.push(post.clone());
                 }
                 let finalizer = Self::task_config_mut(root_config, child_configs, &post)?;
-                if !finalizer.finalizes.contains(&name) {
+                // A finalizer that also depends on the task already waits for it, and the
+                // dependency is stricter: it requires the task to succeed. Keep that one, which
+                // also keeps the graph free of parallel edges.
+                let already_waits =
+                    finalizer.finalizes.contains(&name) || finalizer.depends_on.iter().any(|d| d.task() == name);
+                if !already_waits {
                     finalizer.finalizes.push(name.clone());
                 }
             }
