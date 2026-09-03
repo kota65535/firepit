@@ -523,6 +523,20 @@ Probe failure during that period will not be counted towards the maximum number 
 - **Template:** yes
 - **Description:** Dotenv files. Merged with the project `env_files`.
 
+### finalized_by
+
+- **Type:** <code>Array&lt;string&gt;</code>
+- **Required:** no
+- **Default:** `[]`
+- **Template:** yes
+- **Description:** Tasks to run after this task finishes, whether it succeeds or fails.
+They run only when this task is part of the run (as a target or a dependency),
+so running a finalizer on its own does not run the task it finalizes.
+```yaml
+finalized_by:
+  - cleanup
+```
+
 ### inputs
 
 - **Type:** <code>Array&lt;string&gt;</code>
