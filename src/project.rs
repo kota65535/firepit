@@ -42,21 +42,14 @@ impl Workspace {
         fail_fast: Option<bool>,
         use_pty: Option<bool>,
     ) -> anyhow::Result<Workspace> {
+        // List targe tasks
         let mut target_tasks = Vec::new();
         for task in tasks.iter() {
             let (project_name, task_name) = Task::split_name(task);
             match project_name {
                 // Full name
-                Some(project_name) => {
-                    let task = if project_name.is_empty() {
-                        root_config.task(task_name)?
-                    } else {
-                        child_configs
-                            .get(project_name)
-                            .with_context(|| format!("project {:?} is not defined", project_name))?
-                            .task(task_name)?
-                    };
-                    target_tasks.push(task.full_name());
+                Some(_) => {
+                    target_tasks.push(Self::task_config(root_config, child_configs, task)?.full_name());
                 }
                 // Simple name
                 None => {
@@ -83,26 +76,17 @@ impl Workspace {
             }
         }
 
+        // Override vars for target tasks
         let mut root_config = root_config.clone();
         let mut child_configs = child_configs.clone();
         for t in target_tasks.iter() {
-            let (project_name, task_name) = Task::split_name(t);
-            if let Some(project_name) = project_name {
-                let task = if project_name.is_empty() {
-                    root_config.task_mut(task_name)?
-                } else {
-                    child_configs
-                        .get_mut(project_name)
-                        .with_context(|| format!("project {:?} is not defined", project_name))?
-                        .task_mut(task_name)?
-                };
-                let vars_override = vars
-                    .clone()
-                    .into_iter()
-                    .filter(|(k, _)| task.vars.contains_key(k))
-                    .collect::<IndexMap<_, _>>();
-                task.vars.extend(vars_override);
-            }
+            let task = Self::task_config_mut(&mut root_config, &mut child_configs, t)?;
+            let vars_override = vars
+                .clone()
+                .into_iter()
+                .filter(|(k, _)| task.vars.contains_key(k))
+                .collect::<IndexMap<_, _>>();
+            task.vars.extend(vars_override);
         }
 
         let mut renderer = ConfigRenderer::new(&root_config, &child_configs, vars, watch);
@@ -147,33 +131,43 @@ impl Workspace {
         })
     }
 
-    /// Turns `finalized_by` into the finalizers of this run and their dependencies.
-    ///
-    /// For every task involved in the run (the targets and, transitively, their `depends_on`
-    /// and `finalized_by` tasks), each of its `finalized_by` tasks records the task in
-    /// `finalizes`, so it runs after the task finishes regardless of the result. Returns those
-    /// finalizers, excluding the ones that are targets themselves. Because this only happens
-    /// for tasks involved in the run, running a finalizer on its own does not pull in the task
-    /// it finalizes.
+    /// Looks up a task config by its full name, ex: `#foo` or `project#foo`.
+    fn task_config<'a>(
+        root_config: &'a ProjectConfig,
+        child_configs: &'a IndexMap<String, ProjectConfig>,
+        name: &str,
+    ) -> anyhow::Result<&'a TaskConfig> {
+        let (project_name, task_name) = Task::split_name(name);
+        match project_name {
+            Some("") | None => root_config.task(task_name),
+            Some(p) => child_configs
+                .get(p)
+                .with_context(|| format!("project {:?} is not defined", p))?
+                .task(task_name),
+        }
+    }
+
+    /// Mutable counterpart of [`Self::task_config`].
+    fn task_config_mut<'a>(
+        root_config: &'a mut ProjectConfig,
+        child_configs: &'a mut IndexMap<String, ProjectConfig>,
+        name: &str,
+    ) -> anyhow::Result<&'a mut TaskConfig> {
+        let (project_name, task_name) = Task::split_name(name);
+        match project_name {
+            Some("") | None => root_config.task_mut(task_name),
+            Some(p) => child_configs
+                .get_mut(p)
+                .with_context(|| format!("project {:?} is not defined", p))?
+                .task_mut(task_name),
+        }
+    }
+
     fn apply_finalized_by(
         root_config: &mut ProjectConfig,
         child_configs: &mut IndexMap<String, ProjectConfig>,
         target_tasks: &[String],
     ) -> anyhow::Result<Vec<String>> {
-        fn task_of<'a>(
-            root_config: &'a mut ProjectConfig,
-            child_configs: &'a mut IndexMap<String, ProjectConfig>,
-            name: &str,
-        ) -> anyhow::Result<&'a mut TaskConfig> {
-            let (project_name, task_name) = Task::split_name(name);
-            match project_name {
-                Some("") | None => root_config.task_mut(task_name),
-                Some(p) => child_configs
-                    .get_mut(p)
-                    .with_context(|| format!("project {:?} is not defined", p))?
-                    .task_mut(task_name),
-            }
-        }
         let mut finalizer_tasks = Vec::new();
         let mut visited = HashSet::new();
         let mut queue = target_tasks.to_vec();
@@ -181,18 +175,14 @@ impl Workspace {
             if !visited.insert(name.clone()) {
                 continue;
             }
-            let task = task_of(root_config, child_configs, &name)?;
-            queue.extend(task.depends_on.iter().map(|d| match d {
-                DependsOnConfig::String(s) => s.clone(),
-                DependsOnConfig::Struct(s) => s.task.clone(),
-            }));
-            let finalizers = task.finalized_by.clone();
-            for post in finalizers {
+            let task = Self::task_config(root_config, child_configs, &name)?;
+            queue.extend(task.depends_on.iter().map(|d| d.task().to_string()));
+            for post in task.finalized_by.clone() {
                 queue.push(post.clone());
                 if !target_tasks.contains(&post) && !finalizer_tasks.contains(&post) {
                     finalizer_tasks.push(post.clone());
                 }
-                let finalizer = task_of(root_config, child_configs, &post)?;
+                let finalizer = Self::task_config_mut(root_config, child_configs, &post)?;
                 if !finalizer.finalizes.contains(&name) {
                     finalizer.finalizes.push(name.clone());
                 }
@@ -268,12 +258,9 @@ impl Workspace {
                 task_config
                     .depends_on
                     .iter()
-                    .map(|d| match d {
-                        DependsOnConfig::String(s) => s.clone(),
-                        DependsOnConfig::Struct(s) => s.task.clone(),
-                    })
+                    .map(|d| d.task())
                     .filter(|d| !d.is_empty())
-                    .map(|d| Task::qualified_name(&task_config.project, &d)),
+                    .map(|d| Task::qualified_name(&task_config.project, d)),
             );
         }
 

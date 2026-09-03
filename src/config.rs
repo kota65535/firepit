@@ -274,11 +274,8 @@ impl ProjectConfig {
 
     fn validate(&self, tasks: &HashSet<String>) -> anyhow::Result<()> {
         for (_, t) in self.tasks.iter() {
-            for d in t.depends_on.iter().map(|d| match d {
-                DependsOnConfig::String(s) => s.clone(),
-                DependsOnConfig::Struct(s) => s.task.clone(),
-            }) {
-                if !tasks.contains(&d) {
+            for d in t.depends_on.iter().map(|d| d.task()) {
+                if !tasks.contains(d) {
                     anyhow::bail!("tasks.{}.depends_on: task {:?} is not defined.", t.name, d);
                 }
             }
@@ -850,6 +847,15 @@ pub struct LogConfig {
 pub enum DependsOnConfig {
     String(String),
     Struct(DependsOnConfigStruct),
+}
+
+impl DependsOnConfig {
+    pub fn task(&self) -> &str {
+        match self {
+            DependsOnConfig::String(s) => s,
+            DependsOnConfig::Struct(s) => &s.task,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
