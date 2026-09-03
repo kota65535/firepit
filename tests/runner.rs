@@ -96,6 +96,112 @@ async fn test_basic_failure() {
     run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
 
+/// `wait_for` orders the task after another one when both are going to run.
+/// `lint` sleeps before writing, so `format` can only see its line by waiting for it.
+#[tokio::test]
+async fn test_wait_for() {
+    setup();
+    let path = BASE_PATH.join("wait_for");
+    // Both tasks record their run in this file, so a leftover from an earlier run would let
+    // a broken ordering pass. Start from a clean state.
+    std::fs::remove_file(path.join("order.txt")).ok();
+    let tasks = vec![String::from("format"), String::from("lint")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#lint"), String::from("Finished: Success"));
+    statuses.insert(String::from("#format"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#lint"), String::from("lint"));
+    outputs.insert(String::from("#format"), String::from("lint,format,"));
+
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+/// `wait_for` names a task, so it orders against every variant that a parameterized
+/// dependency split it into. The variant suffix (-1, -2, ...) is internal.
+#[tokio::test]
+async fn test_wait_for_variant() {
+    setup();
+    let path = BASE_PATH.join("wait_for_variant");
+    std::fs::remove_file(path.join("order.txt")).ok();
+    let tasks = vec![String::from("format"), String::from("setup-app")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#migrate-1"), String::from("Finished: Success"));
+    statuses.insert(String::from("#setup-app"), String::from("Finished: Success"));
+    statuses.insert(String::from("#format"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#migrate-1"), String::from("migrate app"));
+    outputs.insert(String::from("#setup-app"), String::from("app"));
+    outputs.insert(String::from("#format"), String::from("migrate app,format,"));
+
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+/// `wait_for` in object form waits only for the variants whose vars match the given ones.
+/// Each variant marks itself after a different delay, so what a task lists when it runs shows
+/// which variants it waited for.
+#[tokio::test]
+async fn test_wait_for_vars() {
+    setup();
+    let path = BASE_PATH.join("wait_for_vars");
+    for m in ["mark_aaa_bbb", "mark_aaa_zzz", "mark_xxx_bbb"] {
+        std::fs::remove_file(path.join(m)).ok();
+    }
+    let tasks = vec![
+        String::from("foo"),
+        String::from("foo2"),
+        String::from("foo3"),
+        String::from("gen1"),
+        String::from("gen2"),
+        String::from("gen3"),
+    ];
+
+    let mut statuses = HashMap::new();
+    for t in [
+        "#foo", "#foo2", "#foo3", "#gen1", "#gen2", "#gen3", "#bar-1", "#bar-2", "#bar-3",
+    ] {
+        statuses.insert(String::from(t), String::from("Finished: Success"));
+    }
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#gen1"), String::from("gen1"));
+    outputs.insert(String::from("#gen2"), String::from("gen2"));
+    outputs.insert(String::from("#gen3"), String::from("gen3"));
+    outputs.insert(String::from("#bar-1"), String::from("bar aaa bbb"));
+    outputs.insert(String::from("#bar-2"), String::from("bar aaa zzz"));
+    outputs.insert(String::from("#bar-3"), String::from("bar xxx bbb"));
+    // Only the A: aaa, B: bbb variant has finished
+    outputs.insert(String::from("#foo3"), String::from("mark_aaa_bbb,"));
+    // Both A: aaa variants have, the A: xxx one has not
+    outputs.insert(String::from("#foo2"), String::from("mark_aaa_bbb,mark_aaa_zzz,"));
+    // All of them have
+    outputs.insert(
+        String::from("#foo"),
+        String::from("mark_aaa_bbb,mark_aaa_zzz,mark_xxx_bbb,"),
+    );
+
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+/// Unlike `depends_on`, `wait_for` does not add the task it names to the run.
+#[tokio::test]
+async fn test_wait_for_not_run() {
+    setup();
+    let path = BASE_PATH.join("wait_for_not_run");
+    let tasks = vec![String::from("format")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#format"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#format"), String::from("format"));
+
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
 #[tokio::test]
 #[rstest]
 #[case("")]

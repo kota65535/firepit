@@ -1,6 +1,6 @@
 use crate::config::{
     DependsOnConfig, DependsOnConfigStruct, DynamicVarsInner, HealthCheckConfig, ProjectConfig, ServiceConfig,
-    TaskConfig, VarsConfig,
+    TaskConfig, VarsConfig, WaitForConfig, WaitForConfigStruct,
 };
 use crate::log::OutputCollector;
 use crate::process::{ChildExit, Command, ProcessManager};
@@ -245,6 +245,24 @@ impl TaskConfig {
             }
         }
         config.depends_on = rendered_depends_on;
+
+        // Render wait_for task and vars
+        let mut rendered_wait_for = Vec::new();
+        for wait_for in config.wait_for.iter() {
+            let task = tera.render_str(wait_for.task(), context)?;
+            // Ignore if rendered task name is empty
+            if task.ends_with("#") {
+                continue;
+            }
+            match wait_for {
+                WaitForConfig::String(_) => rendered_wait_for.push(WaitForConfig::String(task)),
+                WaitForConfig::Struct(w) => {
+                    let vars = render_value_map(&w.vars, &mut tera, context).await?;
+                    rendered_wait_for.push(WaitForConfig::Struct(WaitForConfigStruct { task, vars }));
+                }
+            }
+        }
+        config.wait_for = rendered_wait_for;
 
         Ok(config)
     }

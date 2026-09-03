@@ -17,8 +17,36 @@ use tracing::{debug, info, warn};
 
 #[derive(Clone)]
 pub struct TaskGraph {
-    graph: DiGraph<Task, bool>,
+    graph: DiGraph<Task, Edge>,
     targets: Vec<String>,
+}
+
+/// Edge from a task to a task it waits for.
+#[derive(Debug, Clone, Copy)]
+struct Edge {
+    /// Whether the dependent task re-runs when this dependency re-runs, in watch mode.
+    cascade: bool,
+
+    /// Whether this edge only orders the two tasks, without making one depend on the other.
+    /// Such an edge comes from `wait_for`: it neither pulls the task into the run nor
+    /// blocks the dependent task when it fails.
+    ordering_only: bool,
+}
+
+impl Edge {
+    fn depends_on(cascade: bool) -> Self {
+        Edge {
+            cascade,
+            ordering_only: false,
+        }
+    }
+
+    fn wait_for() -> Self {
+        Edge {
+            cascade: false,
+            ordering_only: true,
+        }
+    }
 }
 
 pub struct VisitorMessage {
@@ -62,7 +90,7 @@ impl NodeResult {
 
 impl TaskGraph {
     pub fn new(tasks: &Vec<Task>, targets: Option<&Vec<String>>, force: bool) -> anyhow::Result<TaskGraph> {
-        let mut graph = DiGraph::<Task, bool>::new();
+        let mut graph = DiGraph::<Task, Edge>::new();
         let mut nodes = HashMap::new();
 
         // If `force` is true, we only add the target tasks as nodes to the graph
@@ -90,13 +118,39 @@ impl TaskGraph {
                 let to = nodes.get(&d.task);
                 match (from, to) {
                     (Some(from), Some(to)) => {
-                        graph.add_edge(*from, *to, d.cascade);
+                        graph.add_edge(*from, *to, Edge::depends_on(d.cascade));
                     }
                     // Ignore if the dependent task does not exist.
                     // This can occur when creating a subgraph by `transitive_closure`.
                     _ => {
                         warn!("Cannot find node for task {} and dependency {}", t.name, d.task);
                     }
+                }
+            }
+        }
+
+        // Add ordering-only edges from `wait_for`. Unlike `depends_on`, a task that is not a node
+        // is not an error here: `wait_for` only orders against tasks that are already in the run.
+        // An entry names a task rather than a node, so it matches every variant a parameterized
+        // dependency split that task into, narrowed down by the vars the entry gives.
+        for t in tasks {
+            let Some(from) = nodes.get(&t.name) else {
+                continue;
+            };
+            for w in &t.wait_for {
+                for to in tasks.iter().filter(|t| w.matches(t)).filter_map(|t| nodes.get(&t.name)) {
+                    // Exclude the task itself, which it matches when it is one of the variants
+                    // named by its own `wait_for`
+                    if to == from {
+                        continue;
+                    }
+                    // A dependency edge already orders the two tasks and is stricter, so keep it.
+                    // This also keeps the graph free of parallel edges, so an edge can be looked
+                    // up by its endpoints alone.
+                    if graph.find_edge(*from, *to).is_some() {
+                        continue;
+                    }
+                    graph.add_edge(*from, *to, Edge::wait_for());
                 }
             }
         }
@@ -152,17 +206,26 @@ impl TaskGraph {
             let mut visitor_rx = visitor_rx.resubscribe();
 
             let task = self.graph.node_weight(node_id).context("node not found")?.clone();
-            let neighbors = self.graph.neighbors_directed(node_id, Direction::Outgoing);
-            // Dependency tasks
-            let dep_tasks = neighbors
-                .clone()
-                .map(|n| self.graph.node_weight(n).cloned().context("node not found"))
-                .collect::<anyhow::Result<Vec<_>>>()?;
-            // Watch channels to receive the result of dependent tasks
-            let dep_rxs = neighbors
-                .clone()
-                .map(|n| rxs.get(&n).cloned().context("sender not found"))
-                .collect::<anyhow::Result<Vec<_>>>()?;
+            // Tasks this node waits for, and the watch channels to receive their results.
+            // Ordering-only tasks, from `wait_for`, are only awaited: unlike a dependency task,
+            // their failure does not stop this node from running.
+            let mut dep_tasks = Vec::new();
+            let mut dep_rxs = Vec::new();
+            let mut order_rxs = Vec::new();
+            for n in self.graph.neighbors_directed(node_id, Direction::Outgoing) {
+                let edge = self
+                    .graph
+                    .find_edge(node_id, n)
+                    .and_then(|e| self.graph.edge_weight(e))
+                    .context("edge not found")?;
+                dep_tasks.push(self.graph.node_weight(n).cloned().context("node not found")?);
+                let rx = rxs.get(&n).cloned().context("sender not found")?;
+                if edge.ordering_only {
+                    order_rxs.push(rx);
+                } else {
+                    dep_rxs.push(rx);
+                }
+            }
 
             let task_name = task.name.clone();
             let targets_remaining_cloned = targets_remaining.clone();
@@ -207,7 +270,7 @@ impl TaskGraph {
                                     };
                                 }
                                 // Normal branch, waiting for all dependency tasks
-                                Ok(deps_ok) = Self::wait_all_watches(dep_rxs.clone()) => {
+                                Ok(deps_ok) = Self::wait_all_watches(dep_rxs.clone(), order_rxs.clone()) => {
                                     break deps_ok;
                                 }
                             }
@@ -365,16 +428,28 @@ impl TaskGraph {
 
         match direction {
             Direction::Outgoing => {
-                depth_first_search(&self.graph, indices, visitor);
+                depth_first_search(&self.graph, indices, |event| {
+                    // An ordering-only edge does not pull its task into the run, so do not
+                    // follow it. The task still gets visited if a dependency edge reaches it,
+                    // or if it is a target itself.
+                    if let petgraph::visit::DfsEvent::TreeEdge(u, v) = event {
+                        if self.edge(u, v).map(|e| e.ordering_only).unwrap_or(false) {
+                            return Control::Prune;
+                        }
+                        return Control::Continue;
+                    }
+                    visitor(event)
+                });
             }
             Direction::Incoming => {
                 depth_first_search(Reversed(&self.graph), indices, |event| {
                     if let petgraph::visit::DfsEvent::TreeEdge(u, v) = event {
-                        if let Ok(edge_idx) = self.graph.find_edge(v, u).context("edge not found") {
-                            if let Some(cascade) = self.graph.edge_weight(edge_idx) {
-                                if !cascade {
-                                    return Control::Prune;
-                                }
+                        // The graph is reversed here, so the edge to look up runs from v to u.
+                        // Re-running a task does not re-run the ones merely ordered after it,
+                        // just as it does not re-run those that opted out of cascading.
+                        if let Some(edge) = self.edge(v, u) {
+                            if edge.ordering_only || !edge.cascade {
+                                return Control::Prune;
                             }
                         }
                         return Control::Continue;
@@ -397,6 +472,13 @@ impl TaskGraph {
         self.graph.node_weights().cloned().collect()
     }
 
+    fn edge(&self, from: NodeIndex, to: NodeIndex) -> Option<Edge> {
+        self.graph
+            .find_edge(from, to)
+            .and_then(|e| self.graph.edge_weight(e))
+            .copied()
+    }
+
     fn node_by_task(&self, name: &str) -> Option<(&Task, NodeIndex)> {
         for (i, n) in self.graph.node_weights().enumerate() {
             if n.name == *name {
@@ -406,24 +488,35 @@ impl TaskGraph {
         None
     }
 
-    async fn wait_all_watches(mut receivers: Vec<watch::Receiver<NodeResult>>) -> anyhow::Result<bool> {
-        for rx in receivers.iter_mut() {
-            if (*rx.borrow()).present() {
-                if !(*rx.borrow()).success() {
-                    return Ok(false);
-                }
-                continue;
-            }
-            loop {
-                if rx.changed().await.is_err() {
-                    anyhow::bail!("watch channel closed");
-                }
-                if (*rx.borrow()).present() {
-                    if !(*rx.borrow()).success() {
-                        return Ok(false);
+    /// Waits until every dependency and ordering-only task has finished.
+    ///
+    /// Returns whether all dependency tasks succeeded. An ordering-only task, from `wait_for`,
+    /// is awaited just the same, but its result is ignored: it orders the tasks without making
+    /// this one depend on it.
+    async fn wait_all_watches(
+        dep_receivers: Vec<watch::Receiver<NodeResult>>,
+        order_receivers: Vec<watch::Receiver<NodeResult>>,
+    ) -> anyhow::Result<bool> {
+        for (rx, required) in dep_receivers
+            .into_iter()
+            .map(|rx| (rx, true))
+            .chain(order_receivers.into_iter().map(|rx| (rx, false)))
+        {
+            let mut rx = rx;
+            if !(*rx.borrow()).present() {
+                loop {
+                    if rx.changed().await.is_err() {
+                        anyhow::bail!("watch channel closed");
                     }
-                    break;
+                    if (*rx.borrow()).present() {
+                        break;
+                    }
                 }
+            }
+            // A failed dependency makes this node skip its run, so there is nothing left to
+            // order against and no reason to wait for the remaining tasks
+            if required && !(*rx.borrow()).success() {
+                return Ok(false);
             }
         }
         Ok(true)

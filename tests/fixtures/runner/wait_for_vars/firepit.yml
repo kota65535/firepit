@@ -1,0 +1,53 @@
+# Each variant of `bar` marks itself after a different delay, so what a task sees when it runs
+# tells which variants it waited for.
+tasks:
+  bar:
+    vars:
+      A: a
+      B: b
+      delay: 0
+    command: |
+      sleep {{ delay }}
+      touch "mark_{{ A }}_{{ B }}"
+      echo "bar {{ A }} {{ B }}"
+
+  gen1:
+    command: echo gen1
+    depends_on:
+      - task: bar
+        vars: { A: aaa, B: bbb, delay: 0 }
+
+  gen2:
+    command: echo gen2
+    depends_on:
+      - task: bar
+        vars: { A: aaa, B: zzz, delay: 2 }
+
+  gen3:
+    command: echo gen3
+    depends_on:
+      - task: bar
+        vars: { A: xxx, B: bbb, delay: 4 }
+
+  # Waits for every variant of bar
+  foo:
+    command: ls mark_* | tr '\n' ','
+    wait_for:
+      - bar
+
+  # Waits only for the A: aaa variants, whatever their B and delay are
+  foo2:
+    command: ls mark_* | tr '\n' ','
+    wait_for:
+      - task: bar
+        vars:
+          A: aaa
+
+  # Waits only for the A: aaa, B: bbb variant
+  foo3:
+    command: ls mark_* | tr '\n' ','
+    wait_for:
+      - task: bar
+        vars:
+          A: aaa
+          B: bbb

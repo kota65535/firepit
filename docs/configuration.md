@@ -340,6 +340,90 @@ tasks:
         cascade: false # re-running codegen does not re-run build
 ```
 
+### Ordering Without Depending
+
+`depends_on` always pulls its tasks into the run. Sometimes you only want an ordering between
+tasks that you run together, without one task dragging in the other.
+
+Say you run `fire format lint` and want `lint` to go first, but `fire format` on its own should
+not run `lint` at all. That is what `wait_for` expresses.
+
+```yaml
+tasks:
+  lint:
+    command: cargo clippy
+
+  format:
+    command: cargo fmt
+    wait_for:
+      - lint
+```
+
+- `fire format lint` runs `lint`, then `format`.
+- `fire format` runs only `format`. The `wait_for` entry is ignored because `lint` is not in the run.
+
+Unlike a dependency, a task named by `wait_for` does not gate the run: if it fails, the task that
+waits for it still runs. Use `depends_on` when a failure should stop the dependent task.
+Re-running a task in [watch mode](#watch-mode) does not re-run the tasks merely ordered after it
+either, so `wait_for` never cascades.
+
+A `wait_for` entry must name a defined task, and the ordering it adds must not form a cycle with
+the other orderings.
+
+#### Waiting for Task Variants
+
+all the others.
+Naming a task that [parameterized dependencies](#parameterized-dependencies) split into variants
+orders against every variant of it, since the variants are the same task run with different
+variables.
+
+Writing the entry in object form narrows that down: only the variants whose vars match the ones
+given are waited for. Only the vars written there are compared, so the variants may differ in
+
+```yaml
+tasks:
+  migrate:
+    vars:
+      database:
+      region:
+    command: ./migrate.sh {{ database }} {{ region }}
+
+  setup-app:
+    command: echo "app is ready"
+    depends_on:
+      - task: migrate
+        vars: { database: app, region: us }
+
+  setup-analytics:
+    command: echo "analytics is ready"
+    depends_on:
+      - task: migrate
+        vars: { database: analytics, region: eu }
+
+  # After every migration
+  report:
+    command: ./report.sh
+    wait_for:
+      - migrate
+
+  # After the app migration only, whatever its region is
+  warm-app-cache:
+    command: ./warm-cache.sh
+    wait_for:
+      - task: migrate
+        vars:
+          database: app
+
+  # After the app migration in the us region only
+  verify-app-us:
+    command: ./verify.sh
+    wait_for:
+      - task: migrate
+        vars:
+          database: app
+          region: us
+```
+
 ## Services
 
 Most tasks run to completion and exit. A **service** is a long-running process that stays active until stopped—web servers, databases, file watchers, and the like.

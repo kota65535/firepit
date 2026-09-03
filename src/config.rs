@@ -282,6 +282,11 @@ impl ProjectConfig {
                     anyhow::bail!("tasks.{}.depends_on: task {:?} is not defined.", t.name, d);
                 }
             }
+            for w in t.wait_for.iter().map(|w| w.task()) {
+                if !tasks.contains(w) {
+                    anyhow::bail!("tasks.{}.wait_for: task {:?} is not defined.", t.name, w);
+                }
+            }
         }
         Ok(())
     }
@@ -312,6 +317,11 @@ impl ProjectConfig {
                         cascade: s.cascade,
                     }),
                 })
+                .collect();
+            v.wait_for = v
+                .wait_for
+                .iter()
+                .map(|w| w.with_task(Task::qualified_name(name, w.task())))
                 .collect();
         }
 
@@ -486,6 +496,11 @@ impl ProjectConfig {
                             }),
                         })
                         .collect(),
+                    wait_for: d
+                        .wait_for
+                        .iter()
+                        .map(|w| w.with_task(Task::qualified_name(&self.name, w.task())))
+                        .collect(),
                     ..d.clone()
                 })
             })
@@ -501,6 +516,7 @@ impl ProjectConfig {
             let mut eff_env: IndexMap<String, String> = IndexMap::new();
             let mut eff_env_files: Vec<String> = Vec::new();
             let mut eff_depends_on: Vec<DependsOnConfig> = Vec::new();
+            let mut eff_wait_for: Vec<WaitForConfig> = Vec::new();
             let mut eff_inputs: Vec<String> = Vec::new();
             let mut eff_outputs: Vec<String> = Vec::new();
             let mut matched = false;
@@ -534,6 +550,7 @@ impl ProjectConfig {
                 // Arrays: concatenate in order
                 eff_env_files.extend(default.env_files.clone());
                 eff_depends_on.extend(default.depends_on.clone());
+                eff_wait_for.extend(default.wait_for.clone());
                 eff_inputs.extend(default.inputs.clone());
                 eff_outputs.extend(default.outputs.clone());
             }
@@ -567,6 +584,9 @@ impl ProjectConfig {
 
             eff_depends_on.append(&mut task_config.depends_on);
             task_config.depends_on = eff_depends_on;
+
+            eff_wait_for.append(&mut task_config.wait_for);
+            task_config.wait_for = eff_wait_for;
 
             eff_inputs.append(&mut task_config.inputs);
             task_config.inputs = eff_inputs;
@@ -639,6 +659,23 @@ pub struct TaskConfig {
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
     pub depends_on: Vec<DependsOnConfig>,
+
+    /// Tasks to run after, without depending on them.
+    ///
+    /// Unlike `depends_on`, the listed tasks are not added to the run.
+    /// They only order this task after them when they are going to run anyway.
+    /// Naming a task orders this one after every variant of it. Write an entry in object form
+    /// to wait only for the variants whose vars match the given ones.
+    /// ```yaml
+    /// wait_for:
+    ///   - lint
+    ///   - task: migrate
+    ///     vars:
+    ///       database: app
+    /// ```
+    #[serde(default)]
+    #[schemars(extend("x-template" = true))]
+    pub wait_for: Vec<WaitForConfig>,
 
     /// Service configurations
     pub service: Option<ServiceConfig>,
@@ -810,6 +847,54 @@ pub struct DependsOnConfigStruct {
 
 fn default_cascade() -> bool {
     true
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(untagged)]
+#[schemars(extend("x-template" = true))]
+pub enum WaitForConfig {
+    String(String),
+    Struct(WaitForConfigStruct),
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct WaitForConfigStruct {
+    /// Name of the task to wait for
+    #[schemars(extend("x-template" = true))]
+    pub task: String,
+
+    /// Variables narrowing down which variants of the task to wait for.
+    /// Only the variables given here are compared, so the variants may differ in the others.
+    #[serde(default)]
+    #[schemars(extend("x-template" = true))]
+    pub vars: IndexMap<String, VarsConfig>,
+}
+
+impl WaitForConfig {
+    pub fn task(&self) -> &str {
+        match self {
+            WaitForConfig::String(s) => s,
+            WaitForConfig::Struct(s) => &s.task,
+        }
+    }
+
+    pub fn vars(&self) -> Option<&IndexMap<String, VarsConfig>> {
+        match self {
+            WaitForConfig::String(_) => None,
+            WaitForConfig::Struct(s) => Some(&s.vars),
+        }
+    }
+
+    /// Returns a copy of this entry with the task name replaced.
+    pub fn with_task(&self, task: String) -> Self {
+        match self {
+            WaitForConfig::String(_) => WaitForConfig::String(task),
+            WaitForConfig::Struct(s) => WaitForConfig::Struct(WaitForConfigStruct {
+                task,
+                vars: s.vars.clone(),
+            }),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
@@ -1125,6 +1210,11 @@ pub struct DefaultsConfig {
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
     pub depends_on: Vec<DependsOnConfig>,
+
+    /// Tasks to run after, without depending on them
+    #[serde(default)]
+    #[schemars(extend("x-template" = true))]
+    pub wait_for: Vec<WaitForConfig>,
 
     /// Service configurations
     pub service: Option<ServiceConfig>,

@@ -1,0 +1,13 @@
+tasks:
+  lint:
+    command: |
+      sleep 1
+      echo lint > order.txt
+      echo lint
+
+  format:
+    command: |
+      echo format >> order.txt
+      tr '\n' ',' < order.txt
+    wait_for:
+      - lint
