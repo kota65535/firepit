@@ -293,7 +293,6 @@ tasks:
 The `finalized_by` field is the opposite of `depends_on`: the listed tasks are executed **after** the task finishes, whether it succeeds or fails.
 This makes it suitable for cleanup tasks that must always run.
 Finalizers are only added to the run when the task they finalize is part of it, so running a finalizer alone does not run that task.
-A finalizer is not a target task: it is shown like a dependency task in the TUI, and its variables cannot be set from the command line.
 
 In this example, `fire build` runs `install`, `build`, and then `cleanup`, while `fire cleanup` runs only `cleanup`.
 
