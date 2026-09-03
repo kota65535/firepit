@@ -363,10 +363,16 @@ tasks:
 - `fire format lint` runs `lint`, then `format`.
 - `fire format` runs only `format`. The `wait_for` entry is ignored because `lint` is not in the run.
 
-Unlike a dependency, a task named by `wait_for` does not gate the run: if it fails, the task that
-waits for it still runs. Use `depends_on` when a failure should stop the dependent task.
+Unlike a dependency, a task named by `wait_for` does not gate the run: its failure does not skip
+the task waiting for it. Use `depends_on` when a failure should stop the dependent task.
 Re-running a task in [watch mode](#watch-mode) does not re-run the tasks merely ordered after it
 either, so `wait_for` never cascades.
+
+::: tip
+Not being gated is not a promise that the waiting task reaches the end. Unless fail-fast is
+turned off, a failure also stops the running tasks, so a waiting task released by that same
+failure may be stopped shortly after it starts. Run with `--no-ff` when it has to finish.
+:::
 
 A `wait_for` entry must name a defined task, and the ordering it adds must not form a cycle with
 the other orderings.
