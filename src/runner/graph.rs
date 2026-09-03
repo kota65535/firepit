@@ -129,16 +129,27 @@ impl TaskGraph {
             }
         }
 
+        // Index the nodes by the name their task was given in the config, which every variant a
+        // parameterized dependency split it into shares. A `wait_for` entry names a task rather
+        // than a node, so this is what it looks up.
+        let mut nodes_by_orig_name = HashMap::<&str, Vec<(&Task, NodeIndex)>>::new();
+        for t in tasks {
+            if let Some(idx) = nodes.get(&t.name) {
+                nodes_by_orig_name.entry(&t.orig_name).or_default().push((t, *idx));
+            }
+        }
+
         // Add ordering-only edges from `wait_for`. Unlike `depends_on`, a task that is not a node
         // is not an error here: `wait_for` only orders against tasks that are already in the run.
-        // An entry names a task rather than a node, so it matches every variant a parameterized
-        // dependency split that task into, narrowed down by the vars the entry gives.
+        // An entry orders against every variant of the task it names, narrowed down by the vars
+        // the entry gives.
         for t in tasks {
             let Some(from) = nodes.get(&t.name) else {
                 continue;
             };
             for w in &t.wait_for {
-                for to in tasks.iter().filter(|t| w.matches(t)).filter_map(|t| nodes.get(&t.name)) {
+                let candidates = nodes_by_orig_name.get(w.task.as_str()).into_iter().flatten();
+                for (_, to) in candidates.filter(|(t, _)| w.matches(t)) {
                     // Exclude the task itself, which it matches when it is one of the variants
                     // named by its own `wait_for`
                     if to == from {
