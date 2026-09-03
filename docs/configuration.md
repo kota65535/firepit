@@ -372,13 +372,13 @@ the other orderings.
 
 #### Waiting for Task Variants
 
-all the others.
 Naming a task that [parameterized dependencies](#parameterized-dependencies) split into variants
 orders against every variant of it, since the variants are the same task run with different
 variables.
 
 Writing the entry in object form narrows that down: only the variants whose vars match the ones
 given are waited for. Only the vars written there are compared, so the variants may differ in
+all the others.
 
 ```yaml
 tasks:
