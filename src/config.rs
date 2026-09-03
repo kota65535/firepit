@@ -687,6 +687,7 @@ pub struct TaskConfig {
     /// Tasks to run after this task finishes, whether it succeeds or fails.
     /// They run only when this task is part of the run (as a target or a dependency),
     /// so running a finalizer on its own does not run the task it finalizes.
+    /// A finalizer is not a target: its vars cannot be set by the CLI argument.
     /// ```yaml
     /// finalized_by:
     ///   - cleanup

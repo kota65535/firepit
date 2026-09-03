@@ -29,6 +29,9 @@ pub const WATCHER_DEBOUNCE_DURATION: Duration = Duration::from_millis(300);
 
 pub struct TaskRunner {
     pub target_tasks: Vec<String>,
+    /// Finalizers pulled into the run by `finalized_by`. Awaited like the targets before
+    /// quitting, but not targets themselves
+    pub finalizer_tasks: Vec<String>,
     pub tasks: Vec<Task>,
     pub task_graph: TaskGraph,
     pub manager: ProcessManager,
@@ -48,9 +51,12 @@ impl TaskRunner {
     pub fn new(ws: &Workspace) -> anyhow::Result<TaskRunner> {
         let all_tasks = ws.tasks();
         let target_tasks = ws.target_tasks.clone();
+        let finalizer_tasks = ws.finalizer_tasks.clone();
 
-        let task_graph_all = TaskGraph::new(&all_tasks, Some(&target_tasks), ws.force)?;
-        let task_graph = task_graph_all.transitive_closure(&target_tasks, Direction::Outgoing)?;
+        // The run must include the finalizers and wait for them to finish, just like the targets
+        let run_tasks = target_tasks.iter().chain(&finalizer_tasks).cloned().collect::<Vec<_>>();
+        let task_graph_all = TaskGraph::new(&all_tasks, Some(&run_tasks), ws.force)?;
+        let task_graph = task_graph_all.transitive_closure(&run_tasks, Direction::Outgoing)?;
         let tasks = task_graph.sort()?;
         debug!("Task graph:\n{:?}", task_graph);
 
@@ -67,6 +73,7 @@ impl TaskRunner {
         Ok(TaskRunner {
             tasks,
             target_tasks,
+            finalizer_tasks,
             task_graph,
             watcher: file_watcher,
             manager,

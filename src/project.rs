@@ -18,6 +18,9 @@ pub struct Workspace {
     pub root: Project,
     pub children: HashMap<String, Project>,
     pub target_tasks: Vec<String>,
+    /// Finalizers pulled into the run by `finalized_by`, in addition to the target tasks.
+    /// They are not targets: the CLI does not set their vars, and the UI does not highlight them.
+    pub finalizer_tasks: Vec<String>,
     pub concurrency: usize,
     pub force: bool,
     pub watch: bool,
@@ -107,8 +110,8 @@ impl Workspace {
         let mut renderer = ConfigRenderer::new(&root_config, &child_configs, vars, watch);
         let (mut root_config, mut child_configs) = renderer.render().await?;
         ProjectConfig::validate_multi(&root_config, &child_configs)?;
-        Self::apply_finalized_by(&mut root_config, &mut child_configs, &mut target_tasks)?;
-        Self::validate_vars(&root_config, &child_configs, &target_tasks, vars)?;
+        let finalizer_tasks = Self::apply_finalized_by(&mut root_config, &mut child_configs, &target_tasks)?;
+        Self::validate_vars(&root_config, &child_configs, &target_tasks, &finalizer_tasks, vars)?;
 
         let root = Project::new("", &root_config)?;
         let mut children = HashMap::new();
@@ -136,6 +139,7 @@ impl Workspace {
             root,
             children,
             target_tasks,
+            finalizer_tasks,
             concurrency: root_config.concurrency,
             force,
             watch,
@@ -145,18 +149,19 @@ impl Workspace {
         })
     }
 
-    /// Turns `finalized_by` into targets and dependencies for this run.
+    /// Turns `finalized_by` into the finalizers of this run and their dependencies.
     ///
     /// For every task involved in the run (the targets and, transitively, their `depends_on`
-    /// and `finalized_by` tasks), each of its `finalized_by` tasks is added to the targets and
-    /// records the task in `finalizes`, so it runs after the task finishes regardless of the result.
-    /// Because this only happens for tasks involved in the run, running a finalizer on its own
-    /// does not pull in the task it finalizes.
+    /// and `finalized_by` tasks), each of its `finalized_by` tasks records the task in
+    /// `finalizes`, so it runs after the task finishes regardless of the result. Returns those
+    /// finalizers, excluding the ones that are targets themselves. Because this only happens
+    /// for tasks involved in the run, running a finalizer on its own does not pull in the task
+    /// it finalizes.
     fn apply_finalized_by(
         root_config: &mut ProjectConfig,
         child_configs: &mut IndexMap<String, ProjectConfig>,
-        target_tasks: &mut Vec<String>,
-    ) -> anyhow::Result<()> {
+        target_tasks: &[String],
+    ) -> anyhow::Result<Vec<String>> {
         fn task_of<'a>(
             root_config: &'a mut ProjectConfig,
             child_configs: &'a mut IndexMap<String, ProjectConfig>,
@@ -171,8 +176,9 @@ impl Workspace {
                     .task_mut(task_name),
             }
         }
+        let mut finalizer_tasks = Vec::new();
         let mut visited = HashSet::new();
-        let mut queue = target_tasks.clone();
+        let mut queue = target_tasks.to_vec();
         while let Some(name) = queue.pop() {
             if !visited.insert(name.clone()) {
                 continue;
@@ -185,8 +191,8 @@ impl Workspace {
             let finalizers = task.finalized_by.clone();
             for post in finalizers {
                 queue.push(post.clone());
-                if !target_tasks.contains(&post) {
-                    target_tasks.push(post.clone());
+                if !target_tasks.contains(&post) && !finalizer_tasks.contains(&post) {
+                    finalizer_tasks.push(post.clone());
                 }
                 let finalizer = task_of(root_config, child_configs, &post)?;
                 if !finalizer.finalizes.contains(&name) {
@@ -194,7 +200,7 @@ impl Workspace {
                 }
             }
         }
-        Ok(())
+        Ok(finalizer_tasks)
     }
 
     /// Ensures that every var involved in the run has a value.
@@ -209,9 +215,11 @@ impl Workspace {
         root_config: &ProjectConfig,
         child_configs: &IndexMap<String, ProjectConfig>,
         target_tasks: &[String],
+        finalizer_tasks: &[String],
         cli_vars: &IndexMap<String, VarsConfig>,
     ) -> anyhow::Result<()> {
-        let (task_vars, project_vars) = Self::collect_unset_vars(root_config, child_configs, target_tasks, cli_vars);
+        let (task_vars, project_vars) =
+            Self::collect_unset_vars(root_config, child_configs, target_tasks, finalizer_tasks, cli_vars);
         if task_vars.is_empty() && project_vars.is_empty() {
             return Ok(());
         }
@@ -220,11 +228,13 @@ impl Workspace {
 
     /// Collects the unset vars involved in the run:
     /// per-task vars (with whether each var can be set by the CLI argument, which is the case
-    /// only for a target task's var) and per-project vars of the involved projects.
+    /// only for a target task's var, not a finalizer's) and per-project vars of the involved
+    /// projects.
     fn collect_unset_vars(
         root_config: &ProjectConfig,
         child_configs: &IndexMap<String, ProjectConfig>,
         target_tasks: &[String],
+        finalizer_tasks: &[String],
         cli_vars: &IndexMap<String, VarsConfig>,
     ) -> (UnsetTaskVars, UnsetProjectVars) {
         let task_configs = std::iter::once(root_config)
@@ -232,11 +242,11 @@ impl Workspace {
             .flat_map(|c| c.tasks.values().map(|t| (t.full_name(), t)))
             .collect::<HashMap<_, _>>();
 
-        // Walk the target tasks and their dependency tasks
+        // Walk the target tasks, the finalizers and their dependency tasks
         let target_task_set = target_tasks.iter().collect::<HashSet<_>>();
         let mut visited = HashSet::new();
         let mut involved_projects = HashSet::new();
-        let mut queue = target_tasks.to_vec();
+        let mut queue = target_tasks.iter().chain(finalizer_tasks).cloned().collect::<Vec<_>>();
         let mut task_vars: UnsetTaskVars = Vec::new();
         while let Some(task_name) = queue.pop() {
             if !visited.insert(task_name.clone()) {

@@ -171,13 +171,14 @@ pub async fn run() -> anyhow::Result<i32> {
     // Create & start UI
     let (app_tx, app_fut) = match root.ui {
         UI::Cui => {
-            let mut app = CuiApp::new(
-                &runner.target_tasks,
-                &ws.labels(),
-                !args.watch,
-                ws.fail_fast,
-                args.no_log_prefix,
-            )?;
+            // The CUI waits for the finalizers as well before quitting
+            let wait_tasks = runner
+                .target_tasks
+                .iter()
+                .chain(&runner.finalizer_tasks)
+                .cloned()
+                .collect::<Vec<_>>();
+            let mut app = CuiApp::new(&wait_tasks, &ws.labels(), !args.watch, ws.fail_fast, args.no_log_prefix)?;
             let runner_tx = runner.command_tx();
             let command_tx = app.command_tx();
             let fut = tokio_spawn!("app", async move { app.run(&runner_tx).await });

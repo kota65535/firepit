@@ -360,8 +360,26 @@ async fn test_finalized_by() {
     setup();
     let path = BASE_PATH.join("finalized_by");
 
-    // Finalizers run after the target, transitively
+    // Finalizers run after the target, transitively, without becoming targets
     let tasks = vec![String::from("build")];
+    let abs = path::absolute(&path).unwrap();
+    let (root, children) = ProjectConfig::new_multi(&abs).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &tasks,
+        &abs,
+        &IndexMap::new(),
+        false,
+        false,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(ws.target_tasks, vec!["#build"]);
+    assert_eq!(ws.finalizer_tasks, vec!["#cleanup", "#notify"]);
+
     let statuses = ["#install", "#build", "#cleanup", "#notify"]
         .iter()
         .map(|t| (t.to_string(), String::from("Finished: Success")))
