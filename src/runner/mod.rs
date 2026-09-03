@@ -131,8 +131,11 @@ impl TaskRunner {
 
         // Task futures
         let mut task_fut = FuturesUnordered::new();
-        let targets_remaining: HashSet<String> = self.target_tasks.iter().cloned().collect();
+        // The run is done when the targets and their finalizers are done
+        let targets_remaining: HashSet<String> =
+            self.target_tasks.iter().chain(&self.finalizer_tasks).cloned().collect();
         let targets_remaining = Arc::new(Mutex::new(targets_remaining));
+        let finalizer_tasks: HashSet<String> = self.finalizer_tasks.iter().cloned().collect();
 
         while !node_rx.is_closed() {
             tokio::select! {
@@ -140,8 +143,10 @@ impl TaskRunner {
                 Ok(event) = self.command_rx.recv() => {
                     match event {
                         RunnerCommand::StopTasks  => {
-                           info!("Stopping all tasks");
-                           self.manager.stop().await;
+                           // Finalizers are left running: they are meant to run to completion
+                           // after the tasks they finalize, failed or not
+                           info!("Stopping all tasks but finalizers");
+                           self.manager.stop_except(&finalizer_tasks).await;
                         }
                         RunnerCommand::StopTask { task } => {
                             info!("Stopping task: {}", task);

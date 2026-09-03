@@ -446,6 +446,79 @@ async fn test_finalized_by_dependent() {
 }
 
 #[tokio::test]
+async fn test_finalized_by_quit_on_done() {
+    setup();
+    let path = BASE_PATH.join("finalized_by");
+
+    // The runner waits for the finalizers before quitting on done
+    let tasks = vec![String::from("build")];
+    let statuses = ["#install", "#build", "#cleanup", "#notify"]
+        .iter()
+        .map(|t| (t.to_string(), String::from("Finished: Success")))
+        .collect::<HashMap<_, _>>();
+    run_task_inner(
+        &path,
+        tasks,
+        statuses,
+        None,
+        None,
+        None,
+        None,
+        IndexMap::new(),
+        false,
+        false,
+        true,
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn test_finalized_by_fail_fast() {
+    setup();
+    let path = BASE_PATH.join("finalized_by_fail_fast");
+
+    // A failure under fail-fast stops the other tasks, but a running finalizer completes
+    let tasks = vec![String::from("ok"), String::from("bad")];
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#ok"), String::from("Finished: Success"));
+    statuses.insert(String::from("#bad"), String::from("Finished: Failure(1)"));
+    statuses.insert(String::from("#slow-cleanup"), String::from("Finished: Success"));
+    run_task_with_fail_fast(&path, tasks, statuses, None).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_finalized_by_force() {
+    setup();
+    let path = BASE_PATH.join("finalized_by_force");
+    let tasks = vec![String::from("build")];
+
+    // Without force, the dependency and its finalizer run
+    let statuses = ["#prepare", "#build", "#cleanup"]
+        .iter()
+        .map(|t| (t.to_string(), String::from("Finished: Success")))
+        .collect::<HashMap<_, _>>();
+    run_task(&path, tasks.clone(), statuses, None, false).await.unwrap();
+
+    // With force, the dependency is skipped, and so is its finalizer
+    let statuses = HashMap::from([(String::from("#build"), String::from("Finished: Success"))]);
+    run_task(&path, tasks, statuses, None, true).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_finalized_by_service() {
+    setup();
+    let path = BASE_PATH.join("finalized_by_service");
+    let tasks = vec![String::from("server")];
+
+    let err = run_task(&path, tasks, HashMap::new(), None, false)
+        .await
+        .expect_err("should fail");
+    let msg = format!("{:#}", err);
+    assert!(msg.contains("not supported on a service task"), "{}", msg);
+}
+
+#[tokio::test]
 async fn test_vars() {
     setup();
 
@@ -892,6 +965,7 @@ async fn run_task(
         IndexMap::new(),
         force,
         false,
+        false,
     )
     .await
 }
@@ -914,6 +988,7 @@ async fn run_task_with_fail_fast(
         IndexMap::new(),
         false,
         true,
+        false,
     )
     .await
 }
@@ -937,6 +1012,7 @@ async fn run_task_with_vars(
         vars,
         force,
         false,
+        false,
     )
     .await
 }
@@ -955,6 +1031,7 @@ async fn run_task_inner(
     vars: IndexMap<String, VarsConfig>,
     force: bool,
     fail_fast: bool,
+    quit_on_done: bool,
 ) -> anyhow::Result<()> {
     let path = path::absolute(path)?;
     let (root, children) = ProjectConfig::new_multi(&path)?;
@@ -978,7 +1055,7 @@ async fn run_task_inner(
 
     // Start runner
     let runner_fut = tokio::spawn(async move {
-        runner.run(&app_tx, false).await.ok();
+        runner.run(&app_tx, quit_on_done).await.ok();
     });
 
     // Handle events and assert task statuses

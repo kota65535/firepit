@@ -92,7 +92,7 @@ impl Workspace {
         let mut renderer = ConfigRenderer::new(&root_config, &child_configs, vars, watch);
         let (mut root_config, mut child_configs) = renderer.render().await?;
         ProjectConfig::validate_multi(&root_config, &child_configs)?;
-        let finalizer_tasks = Self::apply_finalized_by(&mut root_config, &mut child_configs, &target_tasks)?;
+        let finalizer_tasks = Self::apply_finalized_by(&mut root_config, &mut child_configs, &target_tasks, force)?;
         Self::validate_vars(&root_config, &child_configs, &target_tasks, &finalizer_tasks, vars)?;
 
         let root = Project::new("", &root_config)?;
@@ -167,6 +167,7 @@ impl Workspace {
         root_config: &mut ProjectConfig,
         child_configs: &mut IndexMap<String, ProjectConfig>,
         target_tasks: &[String],
+        force: bool,
     ) -> anyhow::Result<Vec<String>> {
         let mut finalizer_tasks = Vec::new();
         let mut visited = HashSet::new();
@@ -176,7 +177,10 @@ impl Workspace {
                 continue;
             }
             let task = Self::task_config(root_config, child_configs, &name)?;
-            queue.extend(task.depends_on.iter().map(|d| d.task().to_string()));
+            // Dependencies are not run under `force`, so neither are their finalizers
+            if !force {
+                queue.extend(task.depends_on.iter().map(|d| d.task().to_string()));
+            }
             for post in task.finalized_by.clone() {
                 queue.push(post.clone());
                 if !target_tasks.contains(&post) && !finalizer_tasks.contains(&post) {

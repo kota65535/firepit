@@ -1,0 +1,16 @@
+tasks:
+  ok:
+    command: echo "ok"
+    finalized_by:
+      - slow-cleanup
+
+  # Still running when `bad` fails
+  slow-cleanup:
+    command: |
+      sleep 1
+      echo "slow-cleanup"
+
+  bad:
+    command: |
+      sleep 0.3
+      exit 1
