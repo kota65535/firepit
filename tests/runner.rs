@@ -509,13 +509,67 @@ async fn test_finalized_by_force() {
 async fn test_finalized_by_service() {
     setup();
     let path = BASE_PATH.join("finalized_by_service");
+    let tasks = vec![String::from("client")];
+
+    // The finalizer of a service runs when the service exits, not when it becomes ready
+    let statuses = ["#server", "#client", "#cleanup"]
+        .iter()
+        .map(|t| (t.to_string(), String::from("Finished: Success")))
+        .collect::<HashMap<_, _>>();
+    run_task(&path, tasks, statuses, None, false).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_finalized_by_service_quit() {
+    setup();
+    let path = path::absolute(BASE_PATH.join("finalized_by_service_quit")).unwrap();
     let tasks = vec![String::from("server")];
 
-    let err = run_task(&path, tasks, HashMap::new(), None, false)
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &tasks,
+        &path,
+        &IndexMap::new(),
+        false,
+        false,
+        None,
+        Some(false),
+    )
+    .await
+    .unwrap();
+    let mut runner = TaskRunner::new(&ws).unwrap();
+    let (app_tx, mut app_rx) = AppCommandChannel::new();
+    let runner_tx = runner.command_tx.clone();
+    let runner_fut = tokio::spawn(async move { runner.run(&app_tx, false).await });
+
+    // Quitting stops the service, and its finalizer runs before the runner is done
+    let mut statuses = HashMap::new();
+    let events = async {
+        while let Some(event) = app_rx.recv().await {
+            match event {
+                AppCommand::ReadyTask { task } => {
+                    statuses.insert(task, String::from("Ready"));
+                    runner_tx.quit();
+                }
+                AppCommand::FinishTask { task, result, .. } => {
+                    statuses.insert(task, format!("Finished: {:?}", result));
+                }
+                AppCommand::Done => break,
+                _ => {}
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(DEFAULT_TEST_TIMEOUT_SECONDS), events)
         .await
-        .expect_err("should fail");
-    let msg = format!("{:#}", err);
-    assert!(msg.contains("not supported on a service task"), "{}", msg);
+        .expect("timed out");
+    runner_fut.await.unwrap().unwrap();
+
+    let mut expected = HashMap::new();
+    expected.insert(String::from("#server"), String::from("Finished: Stopped"));
+    expected.insert(String::from("#cleanup"), String::from("Finished: Success"));
+    assert_eq!(expected, statuses);
 }
 
 #[tokio::test]

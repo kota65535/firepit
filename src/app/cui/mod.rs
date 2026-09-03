@@ -28,8 +28,9 @@ pub struct CuiApp {
     command_tx: AppCommandChannel,
     command_rx: mpsc::UnboundedReceiver<AppCommand>,
     signal_handler: SignalHandler,
-    /// Tasks to wait for before quitting on done: the targets and the finalizers
-    wait_tasks: Vec<String>,
+    target_tasks: Vec<String>,
+    /// Finalizers run while quitting, so their failures count unlike the tasks stopped by it
+    finalizer_tasks: HashSet<String>,
     labels: HashMap<String, String>,
     quit_on_done: bool,
     fail_fast: bool,
@@ -38,7 +39,8 @@ pub struct CuiApp {
 
 impl CuiApp {
     pub fn new(
-        wait_tasks: &[String],
+        target_tasks: &[String],
+        finalizer_tasks: &[String],
         labels: &HashMap<String, String>,
         quit_on_done: bool,
         fail_fast: bool,
@@ -51,7 +53,8 @@ impl CuiApp {
             command_tx,
             command_rx,
             signal_handler: SignalHandler::infer()?,
-            wait_tasks: wait_tasks.to_vec(),
+            target_tasks: target_tasks.to_vec(),
+            finalizer_tasks: finalizer_tasks.iter().cloned().collect(),
             labels: labels.clone(),
             fail_fast,
             quit_on_done,
@@ -113,7 +116,7 @@ impl CuiApp {
     }
 
     pub async fn run_inner(&mut self, runner_tx: &RunnerCommandChannel) -> anyhow::Result<i32> {
-        let mut tasks_remaining = self.wait_tasks.iter().cloned().collect::<HashSet<_>>();
+        let mut tasks_remaining = self.target_tasks.iter().cloned().collect::<HashSet<_>>();
         let mut failed_tasks = IndexMap::new();
         let mut quitting = false;
         while let Some(event) = self.command_rx.recv().await {
@@ -134,8 +137,8 @@ impl CuiApp {
                 } => {
                     debug!("Task {:?} finished", task);
 
-                    // Tasks stopped by the quit are not failures.
-                    if result.is_failure() && !quitting {
+                    // Tasks stopped by the quit are not failures, but the finalizers run through it
+                    if result.is_failure() && (!quitting || self.finalizer_tasks.contains(&task)) {
                         failed_tasks.insert(task.clone(), result);
                         eprintln!(
                             "{}",
@@ -143,7 +146,7 @@ impl CuiApp {
                         );
                     }
                     tasks_remaining.remove(&task);
-                    debug!("Tasks remaining: {:?}", tasks_remaining);
+                    debug!("Target tasks remaining: {:?}", tasks_remaining);
                 }
                 AppCommand::Quit => {
                     // Keep processing output while the runner shuts down. The
@@ -155,9 +158,11 @@ impl CuiApp {
                 AppCommand::Done if self.quit_on_done || quitting => break,
                 _ => {}
             }
-            if self.quit_on_done && tasks_remaining.is_empty() {
-                debug!("All tasks to wait for are done");
-                break;
+            // Quit once the targets are done. The runner then runs the finalizers and sends `Done`
+            if self.quit_on_done && !quitting && tasks_remaining.is_empty() {
+                debug!("Target tasks all done");
+                quitting = true;
+                runner_tx.quit();
             }
         }
 

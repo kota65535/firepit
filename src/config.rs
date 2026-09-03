@@ -289,11 +289,6 @@ impl ProjectConfig {
                     anyhow::bail!("tasks.{}.finalized_by: task {:?} is not defined.", t.name, d);
                 }
             }
-            // A service signals its result when it becomes ready, not when it exits, so there is
-            // no point at which its finalizers could run
-            if !t.finalized_by.is_empty() && t.is_service() {
-                anyhow::bail!("tasks.{}.finalized_by: not supported on a service task.", t.name);
-            }
         }
         Ok(())
     }
@@ -724,13 +719,6 @@ pub struct TaskConfig {
 impl TaskConfig {
     pub fn full_name(&self) -> String {
         format!("{}#{}", self.project, self.name)
-    }
-
-    pub fn is_service(&self) -> bool {
-        matches!(
-            self.service,
-            Some(ServiceConfig::Bool(true)) | Some(ServiceConfig::Struct(_))
-        )
     }
 
     pub fn full_orig_name(&self) -> String {

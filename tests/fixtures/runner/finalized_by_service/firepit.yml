@@ -1,9 +1,15 @@
 tasks:
+  # Exits on its own once the client is done with it
   server:
-    command: sleep 10
+    command: sleep 1
     service: true
     finalized_by:
       - cleanup
+
+  client:
+    command: echo "client"
+    depends_on:
+      - server
 
   cleanup:
     command: echo "cleanup"
