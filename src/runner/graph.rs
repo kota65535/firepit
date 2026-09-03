@@ -194,7 +194,12 @@ impl TaskGraph {
         }
     }
 
-    pub fn visit(&self, concurrency: usize, quit_on_done: bool) -> anyhow::Result<VisitorHandle> {
+    /// Starts a visitor for every node.
+    ///
+    /// `fail_fast` makes an ordering-only task's failure skip the task waiting for it, matching
+    /// what the flag asks for: stop on the first failure. Without it, such a failure is ignored,
+    /// since `wait_for` orders tasks without making one depend on the other.
+    pub fn visit(&self, concurrency: usize, quit_on_done: bool, fail_fast: bool) -> anyhow::Result<VisitorHandle> {
         // Each node has a watch channel to send the result for all dependent nodes
         let mut txs = HashMap::new();
         let mut rxs = HashMap::new();
@@ -284,7 +289,7 @@ impl TaskGraph {
                                     };
                                 }
                                 // Normal branch, waiting for all dependency tasks
-                                Ok(deps_ok) = Self::wait_all_watches(dep_rxs.clone(), order_rxs.clone()) => {
+                                Ok(deps_ok) = Self::wait_all_watches(dep_rxs.clone(), order_rxs.clone(), fail_fast) => {
                                     break deps_ok;
                                 }
                             }
@@ -504,17 +509,19 @@ impl TaskGraph {
 
     /// Waits until every dependency and ordering-only task has finished.
     ///
-    /// Returns whether all dependency tasks succeeded. An ordering-only task, from `wait_for`,
-    /// is awaited just the same, but its result is ignored: it orders the tasks without making
-    /// this one depend on it.
+    /// Returns whether the tasks whose result this node depends on succeeded. An ordering-only
+    /// task, from `wait_for`, is awaited just the same, but its result is ignored: it orders the
+    /// tasks without making this one depend on it. Under `fail_fast` its result does count, so
+    /// that a failure stops the run instead of releasing this node into a race with the stop.
     async fn wait_all_watches(
         dep_receivers: Vec<watch::Receiver<NodeResult>>,
         order_receivers: Vec<watch::Receiver<NodeResult>>,
+        fail_fast: bool,
     ) -> anyhow::Result<bool> {
         for (rx, required) in dep_receivers
             .into_iter()
             .map(|rx| (rx, true))
-            .chain(order_receivers.into_iter().map(|rx| (rx, false)))
+            .chain(order_receivers.into_iter().map(|rx| (rx, fail_fast)))
         {
             let mut rx = rx;
             if !(*rx.borrow()).present() {

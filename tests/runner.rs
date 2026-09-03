@@ -243,6 +243,26 @@ async fn test_wait_for_failure() {
     run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
 
+/// Fail-fast asks for the run to stop on the first failure, so there an ordering-only task's
+/// failure does skip the waiter, rather than releasing it to be stopped moments later.
+#[tokio::test]
+async fn test_wait_for_failure_fail_fast() {
+    setup();
+    let path = BASE_PATH.join("wait_for_failure");
+    let tasks = vec![String::from("format"), String::from("lint")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#lint"), String::from("Finished: Failure(3)"));
+    statuses.insert(String::from("#format"), String::from("Finished: BadDeps"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#lint"), String::from("lint"));
+
+    run_task_with_fail_fast(&path, tasks, statuses, Some(outputs))
+        .await
+        .unwrap();
+}
+
 /// Re-running a task in watch mode does not re-run the tasks merely ordered after it,
 /// so `wait_for` never cascades.
 #[tokio::test]
@@ -781,6 +801,29 @@ async fn run_task(
         None,
         IndexMap::new(),
         force,
+        false,
+    )
+    .await
+}
+
+/// Same as [`run_task`], with fail-fast enabled.
+async fn run_task_with_fail_fast(
+    path: &Path,
+    tasks: Vec<String>,
+    status_expected: HashMap<String, String>,
+    outputs_expected: Option<HashMap<String, String>>,
+) -> anyhow::Result<()> {
+    run_task_inner(
+        path,
+        tasks,
+        status_expected,
+        outputs_expected,
+        None,
+        None,
+        None,
+        IndexMap::new(),
+        false,
+        true,
     )
     .await
 }
@@ -803,6 +846,7 @@ async fn run_task_with_vars(
         None,
         vars,
         force,
+        false,
     )
     .await
 }
@@ -820,6 +864,7 @@ async fn run_task_inner(
     timeout_seconds: Option<u64>,
     vars: IndexMap<String, VarsConfig>,
     force: bool,
+    fail_fast: bool,
 ) -> anyhow::Result<()> {
     let path = path::absolute(path)?;
     let (root, children) = ProjectConfig::new_multi(&path)?;
@@ -831,7 +876,7 @@ async fn run_task_inner(
         &vars,
         force,
         false,
-        Some(false),
+        Some(fail_fast),
         Some(false),
     )
     .await?;

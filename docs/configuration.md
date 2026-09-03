@@ -368,11 +368,9 @@ the task waiting for it. Use `depends_on` when a failure should stop the depende
 Re-running a task in [watch mode](#watch-mode) does not re-run the tasks merely ordered after it
 either, so `wait_for` never cascades.
 
-::: tip
-Not being gated is not a promise that the waiting task reaches the end. Unless fail-fast is
-turned off, a failure also stops the running tasks, so a waiting task released by that same
-failure may be stopped shortly after it starts. Run with `--no-ff` when it has to finish.
-:::
+Fail-fast asks for the opposite, and it wins: with it enabled, which is the default outside the
+TUI, a failure stops the run, so the tasks merely waiting for the failed one are skipped too.
+Run with `--no-ff` to let them go ahead.
 
 A `wait_for` entry must name a defined task, and the ordering it adds must not form a cycle with
 the other orderings.
