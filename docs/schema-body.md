@@ -254,6 +254,13 @@ If omitted, all tasks are matched.
 - **Template:** yes
 - **Description:** Template variables
 
+### wait_for
+
+- **Type:** <code>Array&lt;<a href="#waitforconfig">WaitForConfig</a>&gt;</code>
+- **Required:** no
+- **Default:** `[]`
+- **Description:** Tasks to run after, without depending on them
+
 ### working_dir
 
 - **Type:** <code>string</code>
@@ -575,6 +582,25 @@ Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_o
 A variable declared without a value has no default, so it is required: give it a value
 with the CLI argument or the dependent task's `depends_on.vars`.
 
+### wait_for
+
+- **Type:** <code>Array&lt;<a href="#waitforconfig">WaitForConfig</a>&gt;</code>
+- **Required:** no
+- **Default:** `[]`
+- **Description:** Tasks to run after, without depending on them.
+
+Unlike `depends_on`, the listed tasks are not added to the run.
+They only order this task after them when they are going to run anyway.
+Naming a task orders this one after every variant of it. Write an entry in object form
+to wait only for the variants whose vars match the given ones.
+```yaml
+wait_for:
+  - lint
+  - task: migrate
+    vars:
+      database: app
+```
+
 ### working_dir
 
 - **Type:** <code>string</code>
@@ -615,3 +641,26 @@ defaults:
 
 - **Type:** <code><a href="#dynamicvars">DynamicVars</a> | any</code>
 - **Description:** Vars config
+
+## WaitForConfig
+
+- **Type:** <code>string | <a href="#waitforconfigstruct">WaitForConfigStruct</a></code>
+- **Template:** yes
+
+## WaitForConfigStruct
+
+### task
+
+- **Type:** <code>string</code>
+- **Required:** yes
+- **Template:** yes
+- **Description:** Name of the task to wait for
+
+### vars
+
+- **Type:** <code>Map&lt;string, <a href="#varsconfig">VarsConfig</a>&gt;</code>
+- **Required:** no
+- **Default:** `{}`
+- **Template:** yes
+- **Description:** Variables narrowing down which variants of the task to wait for.
+Only the variables given here are compared, so the variants may differ in the others.
