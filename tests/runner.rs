@@ -356,6 +356,42 @@ async fn test_basic_multi(#[case] dir: &str) {
 }
 
 #[tokio::test]
+async fn test_depends_post() {
+    setup();
+    let path = BASE_PATH.join("depends_post");
+
+    // Post tasks run after the target, transitively
+    let tasks = vec![String::from("build")];
+    let statuses = ["#install", "#build", "#cleanup", "#notify"]
+        .iter()
+        .map(|t| (t.to_string(), String::from("Finished: Success")))
+        .collect::<HashMap<_, _>>();
+    run_task(&path, tasks, statuses, None, false).await.unwrap();
+
+    // Running a post task alone does not run the task it follows
+    let tasks = vec![String::from("cleanup")];
+    let statuses = ["#cleanup", "#notify"]
+        .iter()
+        .map(|t| (t.to_string(), String::from("Finished: Success")))
+        .collect::<HashMap<_, _>>();
+    run_task(&path, tasks, statuses, None, false).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_depends_post_failure() {
+    setup();
+    let path = BASE_PATH.join("depends_post_failure");
+
+    // Post tasks run even if the task fails, while normal dependents are skipped
+    let tasks = vec![String::from("deploy")];
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#build"), String::from("Finished: Failure(1)"));
+    statuses.insert(String::from("#cleanup"), String::from("Finished: Success"));
+    statuses.insert(String::from("#deploy"), String::from("Finished: BadDeps"));
+    run_task(&path, tasks, statuses, None, false).await.unwrap();
+}
+
+#[tokio::test]
 async fn test_vars() {
     setup();
 

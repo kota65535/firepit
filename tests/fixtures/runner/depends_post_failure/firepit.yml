@@ -1,0 +1,15 @@
+tasks:
+  build:
+    command: |
+      echo "build"
+      exit 1
+    depends_post:
+      - cleanup
+
+  cleanup:
+    command: echo "cleanup"
+
+  deploy:
+    command: echo "deploy"
+    depends_on:
+      - build

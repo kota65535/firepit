@@ -1,4 +1,4 @@
-use crate::project::Task;
+use crate::project::{DependsOn, Task};
 use crate::tokio_spawn;
 use anyhow::Context;
 use futures::stream::FuturesUnordered;
@@ -31,13 +31,19 @@ struct Edge {
     /// Such an edge comes from `wait_for`: it neither pulls the task into the run nor
     /// blocks the dependent task when it fails.
     ordering_only: bool,
+
+    /// Whether the dependent task runs even if this dependency fails.
+    /// Such an edge comes from `depends_post`: the dependent task is a post task that must run
+    /// once this dependency has finished, whatever its result.
+    always: bool,
 }
 
 impl Edge {
-    fn depends_on(cascade: bool) -> Self {
+    fn depends_on(d: &DependsOn) -> Self {
         Edge {
-            cascade,
+            cascade: d.cascade,
             ordering_only: false,
+            always: d.always,
         }
     }
 
@@ -45,6 +51,7 @@ impl Edge {
         Edge {
             cascade: false,
             ordering_only: true,
+            always: false,
         }
     }
 }
@@ -118,7 +125,7 @@ impl TaskGraph {
                 let to = nodes.get(&d.task);
                 match (from, to) {
                     (Some(from), Some(to)) => {
-                        graph.add_edge(*from, *to, Edge::depends_on(d.cascade));
+                        graph.add_edge(*from, *to, Edge::depends_on(d));
                     }
                     // Ignore if the dependent task does not exist.
                     // This can occur when creating a subgraph by `transitive_closure`.
@@ -228,9 +235,10 @@ impl TaskGraph {
             // Tasks this node waits for, and the watch channels to receive their results.
             // Ordering-only tasks, from `wait_for`, are only awaited: unlike a dependency task,
             // their failure does not stop this node from running.
+            // A `depends_post` task is awaited too, but always runs afterwards: the tasks it
+            // follows are not required to succeed.
             let mut dep_tasks = Vec::new();
             let mut dep_rxs = Vec::new();
-            let mut order_rxs = Vec::new();
             for n in self.graph.neighbors_directed(node_id, Direction::Outgoing) {
                 let edge = self
                     .graph
@@ -239,11 +247,14 @@ impl TaskGraph {
                     .context("edge not found")?;
                 dep_tasks.push(self.graph.node_weight(n).cloned().context("node not found")?);
                 let rx = rxs.get(&n).cloned().context("sender not found")?;
-                if edge.ordering_only {
-                    order_rxs.push(rx);
+                let required = if edge.always {
+                    false
+                } else if edge.ordering_only {
+                    fail_fast
                 } else {
-                    dep_rxs.push(rx);
-                }
+                    true
+                };
+                dep_rxs.push((rx, required));
             }
 
             let task_name = task.name.clone();
@@ -289,7 +300,7 @@ impl TaskGraph {
                                     };
                                 }
                                 // Normal branch, waiting for all dependency tasks
-                                Ok(deps_ok) = Self::wait_all_watches(dep_rxs.clone(), order_rxs.clone(), fail_fast) => {
+                                Ok(deps_ok) = Self::wait_all_watches(dep_rxs.clone()) => {
                                     break deps_ok;
                                 }
                             }
@@ -507,23 +518,16 @@ impl TaskGraph {
         None
     }
 
-    /// Waits until every dependency and ordering-only task has finished.
+    /// Waits until every task this node waits for has finished.
     ///
-    /// Returns whether the tasks whose result this node depends on succeeded. An ordering-only
-    /// task, from `wait_for`, is awaited just the same, but its result is ignored: it orders the
-    /// tasks without making this one depend on it. Under `fail_fast` its result does count, so
-    /// that a failure stops the run instead of releasing this node into a race with the stop.
-    async fn wait_all_watches(
-        dep_receivers: Vec<watch::Receiver<NodeResult>>,
-        order_receivers: Vec<watch::Receiver<NodeResult>>,
-        fail_fast: bool,
-    ) -> anyhow::Result<bool> {
-        for (rx, required) in dep_receivers
-            .into_iter()
-            .map(|rx| (rx, true))
-            .chain(order_receivers.into_iter().map(|rx| (rx, fail_fast)))
-        {
-            let mut rx = rx;
+    /// Each receiver comes with whether the task is required to succeed. Returns false as soon
+    /// as a required task fails. An ordering-only task, from `wait_for`, is awaited just the
+    /// same, but its result is ignored: it orders the tasks without making this one depend on it.
+    /// Under `fail_fast` its result does count, so that a failure stops the run instead of
+    /// releasing this node into a race with the stop. A task followed by a `depends_post` task
+    /// is never required: the post task runs whatever the result.
+    async fn wait_all_watches(receivers: Vec<(watch::Receiver<NodeResult>, bool)>) -> anyhow::Result<bool> {
+        for (mut rx, required) in receivers {
             if !(*rx.borrow()).present() {
                 loop {
                     if rx.changed().await.is_err() {

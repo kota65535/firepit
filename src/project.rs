@@ -105,8 +105,9 @@ impl Workspace {
         }
 
         let mut renderer = ConfigRenderer::new(&root_config, &child_configs, vars, watch);
-        let (root_config, child_configs) = renderer.render().await?;
+        let (mut root_config, mut child_configs) = renderer.render().await?;
         ProjectConfig::validate_multi(&root_config, &child_configs)?;
+        Self::apply_depends_post(&mut root_config, &mut child_configs, &mut target_tasks)?;
         Self::validate_vars(&root_config, &child_configs, &target_tasks, vars)?;
 
         let root = Project::new("", &root_config)?;
@@ -142,6 +143,58 @@ impl Workspace {
             fail_fast,
             dir: current_dir.to_owned(),
         })
+    }
+
+    /// Turns `depends_post` into targets and dependencies for this run.
+    ///
+    /// For every task involved in the run (the targets and, transitively, their `depends_on`
+    /// and `depends_post` tasks), each of its `depends_post` tasks is added to the targets and
+    /// records the task in `post_of`, so it runs after the task finishes regardless of the result.
+    /// Because this only happens for tasks involved in the run, running a post task on its own
+    /// does not pull in the task it follows.
+    fn apply_depends_post(
+        root_config: &mut ProjectConfig,
+        child_configs: &mut IndexMap<String, ProjectConfig>,
+        target_tasks: &mut Vec<String>,
+    ) -> anyhow::Result<()> {
+        fn task_of<'a>(
+            root_config: &'a mut ProjectConfig,
+            child_configs: &'a mut IndexMap<String, ProjectConfig>,
+            name: &str,
+        ) -> anyhow::Result<&'a mut TaskConfig> {
+            let (project_name, task_name) = Task::split_name(name);
+            match project_name {
+                Some("") | None => root_config.task_mut(task_name),
+                Some(p) => child_configs
+                    .get_mut(p)
+                    .with_context(|| format!("project {:?} is not defined", p))?
+                    .task_mut(task_name),
+            }
+        }
+        let mut visited = HashSet::new();
+        let mut queue = target_tasks.clone();
+        while let Some(name) = queue.pop() {
+            if !visited.insert(name.clone()) {
+                continue;
+            }
+            let task = task_of(root_config, child_configs, &name)?;
+            queue.extend(task.depends_on.iter().map(|d| match d {
+                DependsOnConfig::String(s) => s.clone(),
+                DependsOnConfig::Struct(s) => s.task.clone(),
+            }));
+            let posts = task.depends_post.clone();
+            for post in posts {
+                queue.push(post.clone());
+                if !target_tasks.contains(&post) {
+                    target_tasks.push(post.clone());
+                }
+                let post_task = task_of(root_config, child_configs, &post)?;
+                if !post_task.post_of.contains(&name) {
+                    post_task.post_of.push(name.clone());
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Ensures that every var involved in the run has a value.
@@ -430,6 +483,9 @@ pub struct DependsOn {
     pub task: String,
 
     pub cascade: bool,
+
+    /// Run the dependent task even if this dependency fails (used by `depends_post`)
+    pub always: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -657,12 +713,19 @@ impl Task {
                     DependsOnConfig::String(s) => DependsOn {
                         task: Task::qualified_name(project_name, s),
                         cascade: true,
+                        always: false,
                     },
                     DependsOnConfig::Struct(s) => DependsOn {
                         task: Task::qualified_name(project_name, &s.task),
                         cascade: s.cascade,
+                        always: false,
                     },
                 })
+                .chain(task_config.post_of.iter().map(|t| DependsOn {
+                    task: t.clone(),
+                    cascade: true,
+                    always: true,
+                }))
                 .filter(|d| d.task != task_name) // Exclude the task itself
                 .collect(),
             wait_for: task_config
