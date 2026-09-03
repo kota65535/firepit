@@ -686,7 +686,7 @@ pub struct TaskConfig {
     /// so running a finalizer on its own does not run the task it finalizes.
     /// ```yaml
     /// finalized_by:
-    ///   - cleanup
+    ///   - db-down
     /// ```
     #[serde(default)]
     #[schemars(extend("x-template" = true))]

@@ -295,22 +295,26 @@ This makes it suitable for cleanup tasks that must always run.
 For a [service](#services), the finalizers run when it exits, not when it becomes ready, so they can tear down what the service left behind once it is stopped.
 Finalizers are only added to the run when the task they finalize is part of it, so running a finalizer alone does not run that task.
 
-In this example, `fire build` runs `install`, `build`, and then `cleanup`, while `fire cleanup` runs only `cleanup`.
+In this example, `fire test` starts the `db` service, runs `test`, and runs `db-down` once `db` is stopped, whether `test` passed or not.
+`fire db-down` runs only `db-down`.
 
 ```yaml
 tasks:
-  build:
-    command: docker build -t single:latest .
-    depends_on:
-      - install
+  db:
+    command: docker compose up db
+    service:
+      healthcheck:
+        command: docker compose exec db pg_isready
     finalized_by:
-      - cleanup
+      - db-down
 
-  install:
-    command: bun install
+  test:
+    command: cargo test
+    depends_on:
+      - db
 
-  cleanup:
-    command: docker image prune -f
+  db-down:
+    command: docker compose down
 ```
 
 ### Parameterized Dependencies
