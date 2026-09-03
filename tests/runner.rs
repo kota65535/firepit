@@ -386,6 +386,29 @@ async fn test_finalized_by() {
         .collect::<HashMap<_, _>>();
     run_task(&path, tasks, statuses, None, false).await.unwrap();
 
+    // A finalizer named as a target stays a target, and still runs after the task it finalizes
+    let tasks = vec![String::from("cleanup"), String::from("build")];
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &tasks,
+        &abs,
+        &IndexMap::new(),
+        false,
+        false,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(ws.target_tasks, vec!["#cleanup", "#build"]);
+    assert_eq!(ws.finalizer_tasks, vec!["#notify"]);
+    let statuses = ["#install", "#build", "#cleanup", "#notify"]
+        .iter()
+        .map(|t| (t.to_string(), String::from("Finished: Success")))
+        .collect::<HashMap<_, _>>();
+    run_task(&path, tasks, statuses, None, false).await.unwrap();
+
     // Running a finalizer alone does not run the task it finalizes
     let tasks = vec![String::from("cleanup")];
     let statuses = ["#cleanup", "#notify"]

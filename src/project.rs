@@ -18,8 +18,6 @@ pub struct Workspace {
     pub root: Project,
     pub children: HashMap<String, Project>,
     pub target_tasks: Vec<String>,
-    /// Finalizers pulled into the run by `finalized_by`, in addition to the target tasks.
-    /// They are not targets: the CLI does not set their vars, and the UI does not highlight them.
     pub finalizer_tasks: Vec<String>,
     pub concurrency: usize,
     pub force: bool,
