@@ -3,7 +3,7 @@ tasks:
     command: |
       echo "build"
       exit 1
-    depends_post:
+    finalized_by:
       - cleanup
 
   cleanup:

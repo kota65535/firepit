@@ -3,7 +3,7 @@ tasks:
     command: echo "build"
     depends_on:
       - install
-    depends_post:
+    finalized_by:
       - cleanup
 
   install:
@@ -11,7 +11,7 @@ tasks:
 
   cleanup:
     command: echo "cleanup"
-    depends_post:
+    finalized_by:
       - notify
 
   notify:

@@ -287,9 +287,9 @@ impl ProjectConfig {
                     anyhow::bail!("tasks.{}.wait_for: task {:?} is not defined.", t.name, w);
                 }
             }
-            for d in t.depends_post.iter() {
+            for d in t.finalized_by.iter() {
                 if !tasks.contains(d) {
-                    anyhow::bail!("tasks.{}.depends_post: task {:?} is not defined.", t.name, d);
+                    anyhow::bail!("tasks.{}.finalized_by: task {:?} is not defined.", t.name, d);
                 }
             }
         }
@@ -328,7 +328,7 @@ impl ProjectConfig {
                 .iter()
                 .map(|w| w.with_task(Task::qualified_name(name, w.task())))
                 .collect();
-            v.depends_post = v.depends_post.iter().map(|d| Task::qualified_name(name, d)).collect();
+            v.finalized_by = v.finalized_by.iter().map(|d| Task::qualified_name(name, d)).collect();
         }
 
         // Save raw data
@@ -686,19 +686,19 @@ pub struct TaskConfig {
 
     /// Tasks to run after this task finishes, whether it succeeds or fails.
     /// They run only when this task is part of the run (as a target or a dependency),
-    /// so running a post task on its own does not run this task.
+    /// so running a finalizer on its own does not run the task it finalizes.
     /// ```yaml
-    /// depends_post:
+    /// finalized_by:
     ///   - cleanup
     /// ```
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
-    pub depends_post: Vec<String>,
+    pub finalized_by: Vec<String>,
 
-    /// Tasks whose `depends_post` lists this task, filled per run by the workspace.
-    /// This task runs after all of them finish, whether they succeed or fail.
+    /// Tasks this task finalizes, filled per run by the workspace: those whose `finalized_by`
+    /// lists this task. This task runs after all of them finish, whether they succeed or fail.
     #[serde(skip)]
-    pub post_of: Vec<String>,
+    pub finalizes: Vec<String>,
 
     /// Service configurations
     pub service: Option<ServiceConfig>,

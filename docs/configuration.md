@@ -288,11 +288,11 @@ tasks:
       - compile
 ```
 
-### Post Tasks
+### Finalizers
 
-The `depends_post` field is the opposite of `depends_on`: the listed tasks are executed **after** the task finishes, whether it succeeds or fails.
+The `finalized_by` field is the opposite of `depends_on`: the listed tasks are executed **after** the task finishes, whether it succeeds or fails.
 This makes it suitable for cleanup tasks that must always run.
-Post tasks are only added to the run when the task itself is part of it, so running a post task alone does not run the task it follows.
+Finalizers are only added to the run when the task they finalize is part of it, so running a finalizer alone does not run that task.
 
 In this example, `fire build` runs `install`, `build`, and then `cleanup`, while `fire cleanup` runs only `cleanup`.
 
@@ -302,7 +302,7 @@ tasks:
     command: docker build -t single:latest .
     depends_on:
       - install
-    depends_post:
+    finalized_by:
       - cleanup
 
   install:

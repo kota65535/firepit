@@ -264,9 +264,9 @@ impl TaskConfig {
         }
         config.wait_for = rendered_wait_for;
 
-        // Render depends_post task names, ignoring the ones rendered empty
-        config.depends_post = config
-            .depends_post
+        // Render finalized_by task names, ignoring the ones rendered empty
+        config.finalized_by = config
+            .finalized_by
             .iter()
             .map(|t| tera.render_str(t, context))
             .filter(|t| !matches!(t, Ok(t) if t.ends_with('#')))

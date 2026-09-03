@@ -33,7 +33,7 @@ struct Edge {
     ordering_only: bool,
 
     /// Whether the dependent task runs even if this dependency fails.
-    /// Such an edge comes from `depends_post`: the dependent task is a post task that must run
+    /// Such an edge comes from `finalized_by`: the dependent task is a finalizer that must run
     /// once this dependency has finished, whatever its result.
     always: bool,
 }
@@ -235,8 +235,8 @@ impl TaskGraph {
             // Tasks this node waits for, and the watch channels to receive their results.
             // Ordering-only tasks, from `wait_for`, are only awaited: unlike a dependency task,
             // their failure does not stop this node from running.
-            // A `depends_post` task is awaited too, but always runs afterwards: the tasks it
-            // follows are not required to succeed.
+            // A finalizer, from `finalized_by`, awaits the tasks it finalizes too, but always runs
+            // afterwards: they are not required to succeed.
             let mut dep_tasks = Vec::new();
             let mut dep_rxs = Vec::new();
             for n in self.graph.neighbors_directed(node_id, Direction::Outgoing) {
@@ -524,8 +524,8 @@ impl TaskGraph {
     /// as a required task fails. An ordering-only task, from `wait_for`, is awaited just the
     /// same, but its result is ignored: it orders the tasks without making this one depend on it.
     /// Under `fail_fast` its result does count, so that a failure stops the run instead of
-    /// releasing this node into a race with the stop. A task followed by a `depends_post` task
-    /// is never required: the post task runs whatever the result.
+    /// releasing this node into a race with the stop. A task finalized by this node, via
+    /// `finalized_by`, is never required: the finalizer runs whatever the result.
     async fn wait_all_watches(receivers: Vec<(watch::Receiver<NodeResult>, bool)>) -> anyhow::Result<bool> {
         for (mut rx, required) in receivers {
             if !(*rx.borrow()).present() {

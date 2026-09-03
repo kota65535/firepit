@@ -107,7 +107,7 @@ impl Workspace {
         let mut renderer = ConfigRenderer::new(&root_config, &child_configs, vars, watch);
         let (mut root_config, mut child_configs) = renderer.render().await?;
         ProjectConfig::validate_multi(&root_config, &child_configs)?;
-        Self::apply_depends_post(&mut root_config, &mut child_configs, &mut target_tasks)?;
+        Self::apply_finalized_by(&mut root_config, &mut child_configs, &mut target_tasks)?;
         Self::validate_vars(&root_config, &child_configs, &target_tasks, vars)?;
 
         let root = Project::new("", &root_config)?;
@@ -145,14 +145,14 @@ impl Workspace {
         })
     }
 
-    /// Turns `depends_post` into targets and dependencies for this run.
+    /// Turns `finalized_by` into targets and dependencies for this run.
     ///
     /// For every task involved in the run (the targets and, transitively, their `depends_on`
-    /// and `depends_post` tasks), each of its `depends_post` tasks is added to the targets and
-    /// records the task in `post_of`, so it runs after the task finishes regardless of the result.
-    /// Because this only happens for tasks involved in the run, running a post task on its own
-    /// does not pull in the task it follows.
-    fn apply_depends_post(
+    /// and `finalized_by` tasks), each of its `finalized_by` tasks is added to the targets and
+    /// records the task in `finalizes`, so it runs after the task finishes regardless of the result.
+    /// Because this only happens for tasks involved in the run, running a finalizer on its own
+    /// does not pull in the task it finalizes.
+    fn apply_finalized_by(
         root_config: &mut ProjectConfig,
         child_configs: &mut IndexMap<String, ProjectConfig>,
         target_tasks: &mut Vec<String>,
@@ -182,15 +182,15 @@ impl Workspace {
                 DependsOnConfig::String(s) => s.clone(),
                 DependsOnConfig::Struct(s) => s.task.clone(),
             }));
-            let posts = task.depends_post.clone();
-            for post in posts {
+            let finalizers = task.finalized_by.clone();
+            for post in finalizers {
                 queue.push(post.clone());
                 if !target_tasks.contains(&post) {
                     target_tasks.push(post.clone());
                 }
-                let post_task = task_of(root_config, child_configs, &post)?;
-                if !post_task.post_of.contains(&name) {
-                    post_task.post_of.push(name.clone());
+                let finalizer = task_of(root_config, child_configs, &post)?;
+                if !finalizer.finalizes.contains(&name) {
+                    finalizer.finalizes.push(name.clone());
                 }
             }
         }
@@ -484,7 +484,7 @@ pub struct DependsOn {
 
     pub cascade: bool,
 
-    /// Run the dependent task even if this dependency fails (used by `depends_post`)
+    /// Run the dependent task even if this dependency fails: the dependent task is a finalizer
     pub always: bool,
 }
 
@@ -721,7 +721,7 @@ impl Task {
                         always: false,
                     },
                 })
-                .chain(task_config.post_of.iter().map(|t| DependsOn {
+                .chain(task_config.finalizes.iter().map(|t| DependsOn {
                     task: t.clone(),
                     cascade: true,
                     always: true,
