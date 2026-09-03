@@ -1,0 +1,29 @@
+# `region` is not declared by `migrate`, so `depends_on` ignores it when picking the variant
+# to create. `wait_for` must ignore it the same way: an entry copied from a `depends_on` has
+# to keep ordering, not silently match nothing.
+tasks:
+  migrate:
+    vars:
+      database: main
+    command: |
+      sleep 1
+      echo "migrate {{ database }}" > order.txt
+      echo "migrate {{ database }}"
+
+  app:
+    command: echo "app"
+    depends_on:
+      - task: migrate
+        vars:
+          database: app
+          region: us
+
+  seed:
+    command: |
+      echo seed >> order.txt
+      tr '\n' ',' < order.txt
+    wait_for:
+      - task: migrate
+        vars:
+          database: app
+          region: us

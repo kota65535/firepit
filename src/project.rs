@@ -7,6 +7,7 @@ use crate::template::ConfigRenderer;
 use anyhow::Context;
 use indexmap::IndexMap;
 use regex::Regex;
+use serde_json::Value as JsonValue;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -372,6 +373,10 @@ pub struct Task {
     /// Unique task name
     pub name: String,
 
+    /// Task name as written in the config, shared by all variants of the task.
+    /// Unlike `name`, it carries no internal variant suffix (-1, -2, ...)
+    pub orig_name: String,
+
     /// Label
     pub label: String,
 
@@ -389,6 +394,14 @@ pub struct Task {
 
     /// Dependency task names
     pub depends_on: Vec<DependsOn>,
+
+    /// Tasks to run after, without depending on them
+    pub wait_for: Vec<WaitFor>,
+
+    /// Resolved template variables of this task.
+    /// A variant of a task differs from its siblings only in these, so they are what
+    /// `wait_for` compares against to pick the variants to wait for.
+    pub vars: IndexMap<String, JsonValue>,
 
     /// Task working directory path (absolute).
     pub working_dir: PathBuf,
@@ -417,6 +430,33 @@ pub struct DependsOn {
     pub task: String,
 
     pub cascade: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct WaitFor {
+    /// Name of the task to wait for, as written in the config, so it names every variant of it
+    pub task: String,
+
+    /// Variables narrowing down which variants to wait for.
+    /// Only these are compared, so a variant may differ in the others. Empty means every variant.
+    pub vars: IndexMap<String, JsonValue>,
+}
+
+impl WaitFor {
+    /// Returns whether the given task is one this entry waits for.
+    ///
+    /// A var the task does not declare is ignored, as `depends_on.vars` ignores it when picking
+    /// the variant to create. Comparing it instead would make an entry copied from a `depends_on`
+    /// silently match nothing, losing the ordering it was written for.
+    pub fn matches(&self, task: &Task) -> bool {
+        if self.task != task.orig_name {
+            return false;
+        }
+        self.vars
+            .iter()
+            .filter(|(k, _)| task.vars.contains_key(*k))
+            .all(|(k, v)| task.vars.get(k) == Some(v))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -599,6 +639,7 @@ impl Task {
 
         Ok(Self {
             name: Task::qualified_name(project_name, &task_name),
+            orig_name: Task::qualified_name(project_name, &task_config.orig_name),
             // Default to the original name so that task variants do not expose
             // their internal suffix (-1, -2, ...) in the UI
             label: task_config
@@ -624,6 +665,15 @@ impl Task {
                 })
                 .filter(|d| d.task != task_name) // Exclude the task itself
                 .collect(),
+            wait_for: task_config
+                .wait_for
+                .iter()
+                .map(|w| WaitFor {
+                    task: Task::qualified_name(project_name, w.task()),
+                    vars: w.vars().map(Self::resolved_vars).unwrap_or_default(),
+                })
+                .collect(),
+            vars: Self::resolved_vars(&task_config.vars),
             is_service,
             probe,
             restart,
@@ -631,6 +681,17 @@ impl Task {
             inputs,
             outputs,
         })
+    }
+
+    /// Takes the values of rendered vars. Rendering resolves every var to a static value,
+    /// so a var that is still dynamic here has not been rendered and has no value to compare.
+    fn resolved_vars(vars: &IndexMap<String, VarsConfig>) -> IndexMap<String, JsonValue> {
+        vars.iter()
+            .filter_map(|(k, v)| match v {
+                VarsConfig::Static(v) => Some((k.clone(), v.clone())),
+                VarsConfig::Dynamic(_) => None,
+            })
+            .collect()
     }
 
     pub fn split_name(task_name: &str) -> (Option<&str>, &str) {

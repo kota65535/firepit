@@ -2,6 +2,8 @@ defaults:
   - tasks: "^(build|test)"
     depends_on:
       - install
+    wait_for:
+      - lint
     env:
       NODE_ENV: development
     shell:

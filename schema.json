@@ -220,6 +220,15 @@
           "default": {},
           "x-template": true
         },
+        "wait_for": {
+          "description": "Tasks to run after, without depending on them",
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/WaitForConfig"
+          },
+          "x-template": true
+        },
         "working_dir": {
           "description": "Working directory",
           "type": [
@@ -611,12 +620,21 @@
           "minimum": 0
         },
         "vars": {
-          "description": "Template variables. A task variable shadows the project variable of the same name,\nand the `<name>=<value>` CLI argument overrides both.\nCan be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`,\n`service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`\n\nA variable declared without a value has no default, so it is required: give it a value\nwith the CLI argument or the dependent task's `depends_on.vars`.",
+          "description": "Template variables. A task variable shadows the project variable of the same name,\nand the `<name>=<value>` CLI argument overrides both.\nCan be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`,\n`wait_for`, `wait_for.{task, vars}`,\n`service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`\n\nA variable declared without a value has no default, so it is required: give it a value\nwith the CLI argument or the dependent task's `depends_on.vars`.",
           "type": "object",
           "additionalProperties": {
             "$ref": "#/$defs/VarsConfig"
           },
           "default": {},
+          "x-template": true
+        },
+        "wait_for": {
+          "description": "Tasks to run after, without depending on them.\n\nUnlike `depends_on`, the listed tasks are not added to the run.\nThey only order this task after them when they are going to run anyway.\nNaming a task orders this one after every variant of it. Write an entry in object form\nto wait only for the variants whose vars match the given ones.\n```yaml\nwait_for:\n  - lint\n  - task: migrate\n    vars:\n      database: app\n```",
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/WaitForConfig"
+          },
           "x-template": true
         },
         "working_dir": {
@@ -657,6 +675,39 @@
           "$ref": "#/$defs/DynamicVars"
         },
         true
+      ]
+    },
+    "WaitForConfig": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/WaitForConfigStruct"
+        }
+      ],
+      "x-template": true
+    },
+    "WaitForConfigStruct": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "description": "Name of the task to wait for",
+          "type": "string",
+          "x-template": true
+        },
+        "vars": {
+          "description": "Variables narrowing down which variants of the task to wait for.\nOnly the variables given here are compared, so the variants may differ in the others.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/VarsConfig"
+          },
+          "default": {},
+          "x-template": true
+        }
+      },
+      "required": [
+        "task"
       ]
     }
   }

@@ -112,7 +112,7 @@ impl TaskRunner {
             future: mut visitor_fut,
         } = self
             .task_graph
-            .visit(self.concurrency, quit_on_done)
+            .visit(self.concurrency, quit_on_done, self.fail_fast)
             .context("error while visiting task graph")?;
 
         // Run file watcher
