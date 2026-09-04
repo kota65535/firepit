@@ -706,9 +706,10 @@ async fn render_value_map(
     Ok(ret)
 }
 
-/// Renders the templates in `depends_on.vars` values without inferring their type: the value is
-/// interpreted later according to the dependency task's declaration (inferred for a scalar var,
-/// parsed as the declared type for a typed var), like a CLI argument.
+/// Renders the templates in the vars given to another task (`depends_on`, `wait_for`,
+/// `finalized_by`) without inferring their type: the value is interpreted later according to that
+/// task's declaration (inferred for a scalar var, parsed as the declared type for a typed var),
+/// like a CLI argument.
 fn render_dep_vars(
     map: &IndexMap<String, VarsConfig>,
     tera: &mut Tera,
