@@ -474,3 +474,40 @@ async fn test_quote_filter() {
     };
     assert_eq!(exec.command, r#"echo "a b'c""#);
 }
+
+#[tokio::test]
+async fn test_dynamic_vars_cache() {
+    let path = Path::new("tests/fixtures/config/vars_dynamic_cache");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let mut renderer = ConfigRenderer::new(&root, &children, &IndexMap::new(), false);
+    let (_, children) = renderer.render().await.unwrap();
+
+    let env = |project: &str, key: &str| {
+        children
+            .get(project)
+            .unwrap()
+            .tasks
+            .get("show")
+            .unwrap()
+            .env
+            .get(key)
+            .unwrap()
+            .clone()
+    };
+
+    // `cache: true` with a shared `working_dir`: the var included by both projects runs once
+    assert_eq!(env("foo", "CACHED"), env("bar", "CACHED"));
+
+    // `cache: true` without one: each project runs the command in its own directory, so the
+    // output is never shared
+    assert_ne!(env("foo", "CACHED_PER_DIR"), env("bar", "CACHED_PER_DIR"));
+
+    // Caching is opt-in, so the same command without `cache: true` runs for every project
+    assert_ne!(env("foo", "UNCACHED"), env("bar", "UNCACHED"));
+    assert_ne!(env("foo", "UNCACHED"), env("foo", "CACHED"));
+
+    // The working directory is part of the cache key, so a command reading it is never given
+    // another project's value
+    assert!(env("foo", "CWD").ends_with("/foo"));
+    assert!(env("bar", "CWD").ends_with("/bar"));
+}

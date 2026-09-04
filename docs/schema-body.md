@@ -299,6 +299,16 @@ If omitted, all tasks are matched.
 
 ## DynamicVars
 
+### cache
+
+- **Type:** <code>boolean</code>
+- **Required:** no
+- **Default:** `false`
+- **Description:** Whether the command output is reused by the other variables running the same command in
+the same working directory. A variable shared by several projects runs in each project
+directory, so sharing one run across them takes an explicit `working_dir`. Leave it off
+for a command that must run every time, ex: allocating a resource.
+
 ### command
 
 - **Type:** <code>string</code>

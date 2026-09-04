@@ -295,7 +295,36 @@ tasks:
 ```
 
 The command's standard output, trimmed of surrounding whitespace, becomes the variable's value; standard error is ignored.
-In addition to `command`, a dynamic variable accepts the optional `shell`, `working_dir`, `env`, and `env_files` fields.
+In addition to `command`, a dynamic variable accepts the optional `shell`, `working_dir`, `env`, `env_files`, and `cache` fields.
+
+#### Reusing a Command Output
+
+A dynamic variable runs its command once for every project and task that declares it.
+A variable defined in a file that many projects include therefore runs its command once per project, which gets slow when the command is expensive.
+
+Set `cache: true` to run the command only once and reuse its output for the rest:
+
+```yaml
+# common.yml, included by every project
+vars:
+  branch:
+    command: git rev-parse --abbrev-ref HEAD
+    working_dir: "{{ root_dir }}"
+    cache: true
+```
+
+Variables share an output when everything the command runs with matches: the `command` itself, the `shell`, the resulting environment, and the working directory.
+`env_files` are compared by the values they define rather than by their paths, so each project reading its own dotenv file still shares an output as long as the values agree.
+
+The `working_dir` above is what makes the output shared.
+The branch is a property of the repository rather than of each project, so pinning the command to the root gives every declaration the same directory, and one run answers for all of them.
+Without it each project runs the command in its own directory and nothing is reused; Firepit warns when a `cache: true` variable runs more than once for that reason.
+
+A command whose output does depend on where it runs, such as `pwd` or one reading a relative path, keeps the project's own directory and its own value, so leave `cache` off for it.
+Leave it off as well for a command that must run every time, such as one allocating a resource.
+
+The output is reused within a single run of the config only.
+In watch mode, every reload runs the commands again.
 
 By default the type of the value is inferred from the output, like a scalar variable.
 Give the dynamic variable a `type` to interpret the output as a [typed variable](#typed-variables) instead: `string` keeps the output as is, and `array` or `object` parse the output as YAML, so a command can produce a list or a map.
