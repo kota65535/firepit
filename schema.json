@@ -314,6 +314,17 @@
             }
           ]
         },
+        "type": {
+          "description": "Type of the variable, following JSON Schema. The command output is interpreted as this\ntype; without it, the type is inferred from the output.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VarType"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "working_dir": {
           "description": "Working directory",
           "type": [
@@ -323,6 +334,7 @@
           "x-template": true
         }
       },
+      "additionalProperties": true,
       "required": [
         "command"
       ]
@@ -703,6 +715,23 @@
         }
       ]
     },
+    "TypedVars": {
+      "description": "Typed variable declaration",
+      "type": "object",
+      "properties": {
+        "default": {
+          "description": "Default value. Without it the variable is required."
+        },
+        "type": {
+          "description": "Type of the variable, following JSON Schema",
+          "$ref": "#/$defs/VarType"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "type"
+      ]
+    },
     "UI": {
       "type": "string",
       "enum": [
@@ -710,13 +739,36 @@
         "tui"
       ]
     },
+    "VarType": {
+      "description": "Variable types, following JSON Schema",
+      "type": "string",
+      "enum": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "array",
+        "object"
+      ]
+    },
     "VarsConfig": {
-      "description": "Vars config",
+      "description": "Vars config\n\nA variable is one of:\n- a scalar value (`foo: bar`), whose type is inferred from the value\n- a typed declaration (`foo: { type: array, default: [a, b] }`), see [`TypedVars`]\n- a dynamic variable (`foo: { command: ... }`), see [`DynamicVars`]\n\nArray and object values are only accepted as the `default` of a typed declaration, so that an\nobject is never ambiguous between a value and a declaration.\n\nAn object with `command` is dynamic (tried first, so `{ type, command }` is a typed dynamic\nvariable), otherwise an object with `type` is a typed declaration.",
       "anyOf": [
         {
           "$ref": "#/$defs/DynamicVars"
         },
-        true
+        {
+          "$ref": "#/$defs/TypedVars"
+        },
+        {
+          "description": "Scalar value. Arrays and objects must be declared with `type`.",
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ]
+        }
       ]
     },
     "WaitForConfig": {

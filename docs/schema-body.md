@@ -328,6 +328,13 @@ If omitted, all tasks are matched.
 - **Required:** no
 - **Description:** Shell configuration
 
+### type
+
+- **Type:** <code><a href="#vartype">VarType</a></code>
+- **Required:** no
+- **Description:** Type of the variable, following JSON Schema. The command output is interpreted as this
+type; without it, the type is inferred from the output.
+
 ### working_dir
 
 - **Type:** <code>string</code>
@@ -671,16 +678,49 @@ defaults:
       LOG_LEVEL: info
 ```
 
+## TypedVars
+
+### default
+
+- **Type:** <code>any</code>
+- **Required:** no
+- **Description:** Default value. Without it the variable is required.
+
+### type
+
+- **Type:** <code><a href="#vartype">VarType</a></code>
+- **Required:** yes
+- **Description:** Type of the variable, following JSON Schema
+
 ## UI
 
 - **Type:** <code>string</code>
 - **Options:** `cui`, `tui`
 - **Template:** no
 
+## VarType
+
+- **Type:** <code>string</code>
+- **Options:** `string`, `number`, `integer`, `boolean`, `array`, `object`
+- **Template:** no
+- **Description:** Variable types, following JSON Schema
+
 ## VarsConfig
 
-- **Type:** <code><a href="#dynamicvars">DynamicVars</a> | any</code>
+- **Type:** <code><a href="#dynamicvars">DynamicVars</a> | <a href="#typedvars">TypedVars</a> | string | number | boolean</code>
+- **Template:** no
 - **Description:** Vars config
+
+A variable is one of:
+- a scalar value (`foo: bar`), whose type is inferred from the value
+- a typed declaration (`foo: { type: array, default: [a, b] }`), see [`TypedVars`]
+- a dynamic variable (`foo: { command: ... }`), see [`DynamicVars`]
+
+Array and object values are only accepted as the `default` of a typed declaration, so that an
+object is never ambiguous between a value and a declaration.
+
+An object with `command` is dynamic (tried first, so `{ type, command }` is a typed dynamic
+variable), otherwise an object with `type` is a typed declaration.
 
 ## WaitForConfig
 
