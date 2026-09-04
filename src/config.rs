@@ -822,62 +822,6 @@ impl TypedVars {
     }
 }
 
-/// JSON Schema (2020-12) keywords accepted in a typed variable declaration, next to `type`.
-/// Anything else is rejected so that a typo does not pass silently.
-const SCHEMA_KEYWORDS: &[&str] = &[
-    // Validation
-    "enum",
-    "const",
-    "multipleOf",
-    "maximum",
-    "exclusiveMaximum",
-    "minimum",
-    "exclusiveMinimum",
-    "maxLength",
-    "minLength",
-    "pattern",
-    "format",
-    "maxItems",
-    "minItems",
-    "uniqueItems",
-    "maxContains",
-    "minContains",
-    "maxProperties",
-    "minProperties",
-    "required",
-    "dependentRequired",
-    // Applicators
-    "items",
-    "prefixItems",
-    "contains",
-    "properties",
-    "patternProperties",
-    "additionalProperties",
-    "propertyNames",
-    "dependentSchemas",
-    "unevaluatedItems",
-    "unevaluatedProperties",
-    "allOf",
-    "anyOf",
-    "oneOf",
-    "not",
-    "if",
-    "then",
-    "else",
-    // Annotations
-    "title",
-    "description",
-    "examples",
-    "deprecated",
-    "readOnly",
-    "writeOnly",
-    "contentEncoding",
-    "contentMediaType",
-    "$comment",
-    "$defs",
-    "$ref",
-];
-
 /// Extra JSON Schema keywords of a variable declaration, as written in the config.
 pub type VarSchema = serde_json::Map<String, JsonValue>;
 
@@ -898,8 +842,14 @@ fn validate_var_schema(ty: Option<VarType>, schema: &VarSchema) -> anyhow::Resul
     if schema.is_empty() {
         return Ok(());
     }
+    // Only keywords the validator knows (JSON Schema 2020-12), so that a typo does not pass
+    // silently. Annotation keywords such as `title` or `description` are not accepted either.
     for key in schema.keys() {
-        anyhow::ensure!(SCHEMA_KEYWORDS.contains(&key.as_str()), "unknown keyword {:?}", key);
+        anyhow::ensure!(
+            jsonschema::Draft::Draft202012.is_known_keyword(key),
+            "unknown keyword {:?}",
+            key
+        );
     }
     let ty = ty.context("JSON Schema keywords require `type`")?;
     let full = var_schema(ty, schema);

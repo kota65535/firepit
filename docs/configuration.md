@@ -183,7 +183,7 @@ fire deploy env=qa   # error: failed to render var "env": "qa" is not one of ["d
 ```
 
 The keywords require `type`, since the applicable keywords depend on it.
-An unknown keyword is a configuration error, so a typo such as `patern` does not pass silently.
+An unknown keyword is a configuration error, so a typo such as `patern` does not pass silently; annotation keywords such as `title` or `description` are not accepted either.
 `pattern` is unanchored, as in JSON Schema: write `^...$` to match the whole value.
 
 ### Required Variables
