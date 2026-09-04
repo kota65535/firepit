@@ -239,8 +239,8 @@ Set `cache: true` to run the command only once and reuse its output for the rest
 ```yaml
 # common.yml, included by every project
 vars:
-  aws_account:
-    command: aws sts get-caller-identity --query Account --output text
+  branch:
+    command: git rev-parse --abbrev-ref HEAD
     working_dir: "{{ root_dir }}"
     cache: true
 ```
@@ -249,10 +249,11 @@ Variables share an output when everything the command runs with matches: the `co
 `env_files` are compared by the values they define rather than by their paths, so each project reading its own dotenv file still shares an output as long as the values agree.
 
 The `working_dir` above is what makes the output shared.
-Without it, each project runs the command in its own directory, and nothing is reused — Firepit warns when a `cache: true` variable ends up running more than once for that reason.
-Setting it says the command's output does not depend on where it runs, which is exactly the condition for reusing the output; a command that does depend on its directory, such as `pwd` or one reading a relative path, keeps the project's own directory and its own value.
+The branch is a property of the repository rather than of each project, so pinning the command to the root gives every declaration the same directory, and one run answers for all of them.
+Without it each project runs the command in its own directory and nothing is reused; Firepit warns when a `cache: true` variable runs more than once for that reason.
 
-Leave `cache` off for a command that must run every time, such as one allocating a resource.
+A command whose output does depend on where it runs, such as `pwd` or one reading a relative path, keeps the project's own directory and its own value, so leave `cache` off for it.
+Leave it off as well for a command that must run every time, such as one allocating a resource.
 
 The output is reused within a single run of the config only.
 In watch mode, every reload runs the commands again.
