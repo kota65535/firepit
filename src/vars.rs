@@ -1,13 +1,200 @@
-//! Types and JSON Schema validation of typed variables.
+//! Template variables: their declarations, types, and JSON Schema validation.
 //!
-//! A typed variable declaration is a JSON Schema: its `type` plus any other keyword written next
-//! to it (`enum`, `pattern`, `minimum`, `items`, ...). This module converts a value to the declared
-//! type and delegates the validation to the `jsonschema` crate.
+//! A variable is a scalar value, a typed declaration or a dynamic variable, see [`VarsConfig`].
+//! A typed declaration is a JSON Schema: its `type` plus any other keyword written next to it
+//! (`enum`, `pattern`, `minimum`, `items`, ...). This module converts a value to the declared type
+//! and delegates the validation to the `jsonschema` crate.
 
+use crate::config::{absolute_or_join, deserialize_hash_map, ShellConfig};
 use anyhow::Context;
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use indexmap::IndexMap;
+use schemars::{json_schema, JsonSchema, Schema, SchemaGenerator};
+use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::Value as JsonValue;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+/// Vars config
+///
+/// A variable is one of:
+/// - a scalar value (`foo: bar`), whose type is inferred from the value
+/// - a typed declaration (`foo: { type: array, default: [a, b] }`), see [`TypedVars`]
+/// - a dynamic variable (`foo: { command: ... }`), see [`DynamicVars`]
+///
+/// Array and object values are only accepted as the `default` of a typed declaration, so that an
+/// object is never ambiguous between a value and a declaration.
+///
+/// An object with `command` is dynamic (tried first, so `{ type, command }` is a typed dynamic
+/// variable), otherwise an object with `type` is a typed declaration.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(
+    untagged,
+    expecting = "a scalar value, a typed declaration with `type` (and optionally `default`), or a dynamic variable with `command`"
+)]
+pub enum VarsConfig {
+    Dynamic(Box<DynamicVars>),
+    Typed(TypedVars),
+    Static(
+        #[serde(deserialize_with = "deserialize_scalar")]
+        #[schemars(schema_with = "scalar_schema")]
+        JsonValue,
+    ),
+}
+
+impl VarsConfig {
+    /// Returns whether the variable is declared without a value, ex: `foo:` or
+    /// `foo: { type: string }`.
+    /// Such a variable has no default, so it is required: it must be given a value before the
+    /// task runs, by the `<name>=<value>` CLI argument or the dependent task's `depends_on.vars`.
+    pub fn is_unset(&self) -> bool {
+        match self {
+            VarsConfig::Static(JsonValue::Null) => true,
+            VarsConfig::Typed(t) => t.default.as_ref().is_none_or(JsonValue::is_null),
+            _ => false,
+        }
+    }
+
+    /// Returns the config to use when `value` overrides this declaration (from the CLI argument
+    /// or `depends_on.vars`): a typed declaration keeps its type, so the value is interpreted
+    /// according to it; otherwise the value replaces the declaration as is.
+    pub fn with_value(&self, value: &VarsConfig) -> VarsConfig {
+        let declared = match self {
+            VarsConfig::Typed(t) => Some((t.r#type, &t.schema)),
+            VarsConfig::Dynamic(d) => d.r#type.map(|t| (t, &d.schema)),
+            VarsConfig::Static(_) => None,
+        };
+        match (declared, value) {
+            (Some((r#type, schema)), VarsConfig::Static(v)) => VarsConfig::Typed(TypedVars {
+                r#type,
+                default: Some(v.clone()),
+                schema: schema.clone(),
+            }),
+            _ => value.clone(),
+        }
+    }
+
+    /// Checks the declaration itself: the JSON Schema keywords must be known, require `type`,
+    /// and form a valid schema.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error describing the offending keyword.
+    pub fn validate(&self) -> anyhow::Result<()> {
+        match self {
+            VarsConfig::Typed(t) => validate_var_declaration(Some(t.r#type), &t.schema),
+            VarsConfig::Dynamic(d) => validate_var_declaration(d.r#type, &d.schema),
+            VarsConfig::Static(_) => Ok(()),
+        }
+    }
+}
+
+/// Accepts only scalar values; arrays and objects must be declared with `type`.
+fn deserialize_scalar<'de, D: Deserializer<'de>>(deserializer: D) -> Result<JsonValue, D::Error> {
+    let value = JsonValue::deserialize(deserializer)?;
+    if value.is_array() || value.is_object() {
+        return Err(de::Error::custom(
+            "array and object values must be declared with `type`",
+        ));
+    }
+    Ok(value)
+}
+
+fn scalar_schema(_: &mut SchemaGenerator) -> Schema {
+    json_schema!({
+        "type": ["string", "number", "boolean", "null"],
+        "description": "Scalar value. Arrays and objects must be declared with `type`."
+    })
+}
+
+/// Typed variable declaration
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct TypedVars {
+    /// Type of the variable, following JSON Schema
+    #[serde(rename = "type")]
+    pub r#type: VarType,
+
+    /// Default value. Without it the variable is required.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default: Option<JsonValue>,
+
+    /// Any other JSON Schema keyword (`enum`, `pattern`, `minimum`, `items`, ...) validates the value.
+    #[serde(flatten)]
+    pub schema: VarSchema,
+}
+
+impl TypedVars {
+    /// Checks `value` against the JSON Schema keywords of the declaration.
+    pub fn check(&self, value: &JsonValue) -> anyhow::Result<()> {
+        check_var_value(self.r#type, &self.schema, value)
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct DynamicVars {
+    /// Command
+    #[schemars(extend("x-template" = true))]
+    pub command: String,
+
+    /// Type of the variable, following JSON Schema. The command output is interpreted as this
+    /// type; without it, the type is inferred from the output.
+    #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
+    pub r#type: Option<VarType>,
+
+    /// Any other JSON Schema keyword (`enum`, `pattern`, `minimum`, `items`, ...) validates the
+    /// output. Requires `type`.
+    #[serde(flatten)]
+    pub schema: VarSchema,
+
+    /// Shell configuration
+    pub shell: Option<ShellConfig>,
+
+    /// Environment variables
+    #[serde(default, deserialize_with = "deserialize_hash_map")]
+    #[schemars(extend("x-template" = true))]
+    pub env: IndexMap<String, String>,
+
+    /// Dotenv files
+    #[serde(default)]
+    #[schemars(extend("x-template" = true))]
+    pub env_files: Vec<String>,
+
+    /// Working directory
+    #[schemars(extend("x-template" = true))]
+    pub working_dir: Option<String>,
+
+    /// Whether the command output is reused by the other variables running the same command in
+    /// the same working directory. A variable shared by several projects runs in each project
+    /// directory, so sharing one run across them takes an explicit `working_dir`. Leave it off
+    /// for a command that must run every time, ex: allocating a resource.
+    #[serde(default)]
+    pub cache: bool,
+
+    #[serde(skip)]
+    pub inner: Option<DynamicVarsInner>,
+}
+
+impl DynamicVars {
+    pub fn env_file_paths(&self, dir: &Path) -> Vec<PathBuf> {
+        self.env_files.iter().map(|f| absolute_or_join(f, dir)).collect()
+    }
+
+    pub fn working_dir_path(&self, dir: &Path) -> PathBuf {
+        match self.working_dir.clone() {
+            Some(wd) => absolute_or_join(&wd, dir),
+            None => dir.to_path_buf(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DynamicVarsInner {
+    pub name: String,
+    pub command: String,
+    pub shell: ShellConfig,
+    pub working_dir: PathBuf,
+    pub env: HashMap<String, String>,
+    pub cache: bool,
+}
 
 /// Extra JSON Schema keywords of a variable declaration, as written in the config.
 pub type VarSchema = serde_json::Map<String, JsonValue>;

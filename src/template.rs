@@ -1,11 +1,11 @@
 use crate::config::{
-    DependsOnConfig, DependsOnConfigStruct, DynamicVarsInner, FinalizedByConfig, FinalizedByConfigStruct,
-    HealthCheckConfig, ProjectConfig, ServiceConfig, TaskConfig, VarsConfig, WaitForConfig, WaitForConfigStruct,
+    DependsOnConfig, DependsOnConfigStruct, FinalizedByConfig, FinalizedByConfigStruct, HealthCheckConfig,
+    ProjectConfig, ServiceConfig, TaskConfig, WaitForConfig, WaitForConfigStruct,
 };
 use crate::log::OutputCollector;
 use crate::process::{ChildExit, Command, ProcessManager};
 use crate::project::{Env, Task};
-use crate::vars::check_var_value;
+use crate::vars::{check_var_value, DynamicVarsInner, VarsConfig};
 use crate::DYNAMIC_VAR_STOP_TIMEOUT;
 use anyhow::Context;
 use async_recursion::async_recursion;

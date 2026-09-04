@@ -1,9 +1,9 @@
 use crate::config::{
-    default_stop_timeout, DependsOnConfig, HealthCheckConfig, ProjectConfig, Restart, ServiceConfig, TaskConfig,
-    VarsConfig, UI,
+    default_stop_timeout, DependsOnConfig, HealthCheckConfig, ProjectConfig, Restart, ServiceConfig, TaskConfig, UI,
 };
 use crate::probe::{ExecProbe, LogLineProbe, Probe};
 use crate::template::ConfigRenderer;
+use crate::vars::VarsConfig;
 use anyhow::Context;
 use indexmap::IndexMap;
 use regex::Regex;

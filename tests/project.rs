@@ -1,6 +1,7 @@
 use assertables::{assert_err, assert_ok};
-use firepit::config::{ProjectConfig, VarsConfig};
+use firepit::config::ProjectConfig;
 use firepit::project::Workspace;
+use firepit::vars::VarsConfig;
 use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::path::Path;

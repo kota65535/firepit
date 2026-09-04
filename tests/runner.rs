@@ -1,8 +1,9 @@
 use firepit::app::command::{AppCommand, AppCommandChannel};
-use firepit::config::{ProjectConfig, VarsConfig};
+use firepit::config::ProjectConfig;
 use firepit::project::Workspace;
 use firepit::runner::command::RunnerCommandChannel;
 use firepit::runner::TaskRunner;
+use firepit::vars::VarsConfig;
 use indexmap::IndexMap;
 use rstest::rstest;
 use serde_json::Value;

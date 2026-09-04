@@ -1,11 +1,12 @@
 use crate::app::cui::lib::{BOLD, BOLD_YELLOW};
 use crate::app::cui::CuiApp;
 use crate::app::tui::TuiApp;
-use crate::config::{ProjectConfig, VarsConfig, UI};
+use crate::config::{ProjectConfig, UI};
 use crate::log::init_logger;
 use crate::project::Workspace;
 use crate::runner::TaskRunner;
 use crate::tokio_spawn;
+use crate::vars::VarsConfig;
 use anyhow::Context;
 use clap::Parser;
 use indexmap::IndexMap;
