@@ -1,0 +1,13 @@
+tasks:
+  build:
+    command: |
+      echo "build"
+      exit 1
+    finalized_by:
+      - report
+
+  # Depends on build and finalizes it: the dependency wins, so it is skipped when build fails
+  report:
+    command: echo "report"
+    depends_on:
+      - build

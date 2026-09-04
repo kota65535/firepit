@@ -274,17 +274,19 @@ impl ProjectConfig {
 
     fn validate(&self, tasks: &HashSet<String>) -> anyhow::Result<()> {
         for (_, t) in self.tasks.iter() {
-            for d in t.depends_on.iter().map(|d| match d {
-                DependsOnConfig::String(s) => s.clone(),
-                DependsOnConfig::Struct(s) => s.task.clone(),
-            }) {
-                if !tasks.contains(&d) {
+            for d in t.depends_on.iter().map(|d| d.task()) {
+                if !tasks.contains(d) {
                     anyhow::bail!("tasks.{}.depends_on: task {:?} is not defined.", t.name, d);
                 }
             }
             for w in t.wait_for.iter().map(|w| w.task()) {
                 if !tasks.contains(w) {
                     anyhow::bail!("tasks.{}.wait_for: task {:?} is not defined.", t.name, w);
+                }
+            }
+            for f in t.finalized_by.iter().map(|f| f.task()) {
+                if !tasks.contains(f) {
+                    anyhow::bail!("tasks.{}.finalized_by: task {:?} is not defined.", t.name, f);
                 }
             }
         }
@@ -322,6 +324,11 @@ impl ProjectConfig {
                 .wait_for
                 .iter()
                 .map(|w| w.with_task(Task::qualified_name(name, w.task())))
+                .collect();
+            v.finalized_by = v
+                .finalized_by
+                .iter()
+                .map(|f| f.with_task(Task::qualified_name(name, f.task())))
                 .collect();
         }
 
@@ -678,6 +685,26 @@ pub struct TaskConfig {
     #[schemars(extend("x-template" = true))]
     pub wait_for: Vec<WaitForConfig>,
 
+    /// Tasks to run after this task finishes, whether it succeeds or fails.
+    /// They run only when this task is part of the run (as a target or a dependency),
+    /// so running a finalizer on its own does not run the task it finalizes.
+    /// Write an entry in object form to override the finalizer's `vars`, as with `depends_on`.
+    /// ```yaml
+    /// finalized_by:
+    ///   - db-down
+    ///   - task: notify
+    ///     vars:
+    ///       channel: ci
+    /// ```
+    #[serde(default)]
+    #[schemars(extend("x-template" = true))]
+    pub finalized_by: Vec<FinalizedByConfig>,
+
+    /// Tasks this task finalizes, filled per run by the workspace: those whose `finalized_by`
+    /// lists this task. This task runs after all of them finish, whether they succeed or fail.
+    #[serde(skip)]
+    pub finalizes: Vec<String>,
+
     /// Service configurations
     pub service: Option<ServiceConfig>,
 
@@ -830,6 +857,15 @@ pub enum DependsOnConfig {
     Struct(DependsOnConfigStruct),
 }
 
+impl DependsOnConfig {
+    pub fn task(&self) -> &str {
+        match self {
+            DependsOnConfig::String(s) => s,
+            DependsOnConfig::Struct(s) => &s.task,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct DependsOnConfigStruct {
     /// Dependency task name
@@ -891,6 +927,46 @@ impl WaitForConfig {
         match self {
             WaitForConfig::String(_) => WaitForConfig::String(task),
             WaitForConfig::Struct(s) => WaitForConfig::Struct(WaitForConfigStruct {
+                task,
+                vars: s.vars.clone(),
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(untagged)]
+#[schemars(extend("x-template" = true))]
+pub enum FinalizedByConfig {
+    String(String),
+    Struct(FinalizedByConfigStruct),
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct FinalizedByConfigStruct {
+    /// Finalizer task name
+    #[schemars(extend("x-template" = true))]
+    pub task: String,
+
+    /// Variables to override the finalizer task vars.
+    #[serde(default)]
+    #[schemars(extend("x-template" = true))]
+    pub vars: IndexMap<String, VarsConfig>,
+}
+
+impl FinalizedByConfig {
+    pub fn task(&self) -> &str {
+        match self {
+            FinalizedByConfig::String(s) => s,
+            FinalizedByConfig::Struct(s) => &s.task,
+        }
+    }
+
+    /// Returns a copy of this entry with the task name replaced.
+    pub fn with_task(&self, task: String) -> Self {
+        match self {
+            FinalizedByConfig::String(_) => FinalizedByConfig::String(task),
+            FinalizedByConfig::Struct(s) => FinalizedByConfig::Struct(FinalizedByConfigStruct {
                 task,
                 vars: s.vars.clone(),
             }),

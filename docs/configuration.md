@@ -288,6 +288,52 @@ tasks:
       - compile
 ```
 
+### Finalizers
+
+The `finalized_by` field is the opposite of `depends_on`: the listed tasks are executed **after** the task finishes, whether it succeeds or fails.
+This makes it suitable for cleanup tasks that must always run.
+For a [service](#services), the finalizers run when it exits, not when it becomes ready, so they can tear down what the service left behind once it is stopped.
+Finalizers are only added to the run when the task they finalize is part of it, so running a finalizer alone does not run that task.
+
+In this example, `fire test` starts the `db` service, runs `test`, and runs `db-down` once `db` is stopped, whether `test` passed or not.
+`fire db-down` runs only `db-down`.
+
+```yaml
+tasks:
+  db:
+    command: docker compose up db
+    service:
+      healthcheck:
+        command: docker compose exec db pg_isready
+    finalized_by:
+      - db-down
+
+  test:
+    command: cargo test
+    depends_on:
+      - db
+
+  db-down:
+    command: docker compose down
+```
+
+As with [parameterized dependencies](#parameterized-dependencies), writing a finalizer in object form overrides its `vars`, and each set of `vars` runs its own variant of the finalizer.
+
+```yaml
+tasks:
+  build:
+    command: bun run build
+    finalized_by:
+      - task: notify
+        vars:
+          channel: builds # runs: ./notify.sh builds
+
+  notify:
+    vars:
+      channel:
+    command: ./notify.sh {{ channel }}
+```
+
 ### Parameterized Dependencies
 
 Writing a dependency in object form lets you override its `vars`.

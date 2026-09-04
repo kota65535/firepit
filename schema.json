@@ -405,6 +405,39 @@
         "command"
       ]
     },
+    "FinalizedByConfig": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/FinalizedByConfigStruct"
+        }
+      ],
+      "x-template": true
+    },
+    "FinalizedByConfigStruct": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "description": "Finalizer task name",
+          "type": "string",
+          "x-template": true
+        },
+        "vars": {
+          "description": "Variables to override the finalizer task vars.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/VarsConfig"
+          },
+          "default": {},
+          "x-template": true
+        }
+      },
+      "required": [
+        "task"
+      ]
+    },
     "HealthCheckConfig": {
       "anyOf": [
         {
@@ -561,6 +594,15 @@
           "default": [],
           "items": {
             "type": "string"
+          },
+          "x-template": true
+        },
+        "finalized_by": {
+          "description": "Tasks to run after this task finishes, whether it succeeds or fails.\nThey run only when this task is part of the run (as a target or a dependency),\nso running a finalizer on its own does not run the task it finalizes.\nWrite an entry in object form to override the finalizer's `vars`, as with `depends_on`.\n```yaml\nfinalized_by:\n  - db-down\n  - task: notify\n    vars:\n      channel: ci\n```",
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/FinalizedByConfig"
           },
           "x-template": true
         },

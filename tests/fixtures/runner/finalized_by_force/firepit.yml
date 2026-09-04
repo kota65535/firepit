@@ -1,0 +1,13 @@
+tasks:
+  build:
+    command: echo "build"
+    depends_on:
+      - prepare
+
+  prepare:
+    command: echo "prepare"
+    finalized_by:
+      - cleanup
+
+  cleanup:
+    command: echo "cleanup"

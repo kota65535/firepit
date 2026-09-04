@@ -173,6 +173,7 @@ pub async fn run() -> anyhow::Result<i32> {
         UI::Cui => {
             let mut app = CuiApp::new(
                 &runner.target_tasks,
+                &runner.finalizer_tasks,
                 &ws.labels(),
                 !args.watch,
                 ws.fail_fast,
