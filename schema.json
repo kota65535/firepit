@@ -281,7 +281,7 @@
       "type": "object",
       "properties": {
         "cache": {
-          "description": "Whether the command output is reused by the other variables that run the same command.\nThe working directory is not part of the match, so a variable shared by several projects\nruns its command only once. Leave it off for a command whose output depends on where it\nruns, or that must run every time, ex: allocating a resource.",
+          "description": "Whether the command output is reused by the other variables running the same command in\nthe same working directory. A variable shared by several projects runs in each project\ndirectory, so sharing one run across them takes an explicit `working_dir`. Leave it off\nfor a command that must run every time, ex: allocating a resource.",
           "type": "boolean",
           "default": false
         },
