@@ -8,6 +8,8 @@ pub struct Task {
     pub name: String,
     pub label: String,
     pub is_target: bool,
+    /// Whether the task is a finalizer, which runs after its target task finishes
+    pub is_finalizer: bool,
     pub pid: Option<u32>,
     pub restart: u64,
     pub max_restart: Option<u64>,
@@ -25,6 +27,7 @@ impl Task {
             name: name.to_string(),
             label: label.unwrap_or(name).to_string(),
             is_target,
+            is_finalizer: false,
             pid: None,
             restart: 0,
             max_restart: None,
