@@ -19,7 +19,7 @@ use std::path;
 use tracing::info;
 
 /// Name of the variable that receives the task arguments passed after `--`.
-const TASK_ARGS_VAR_NAME: &str = "args";
+pub const TASK_ARGS_VAR_NAME: &str = "args";
 
 /// Firepit: Simple task & service runner with a comfortable TUI
 #[derive(Parser, Debug)]
@@ -92,7 +92,7 @@ pub struct Args {
 }
 
 impl Args {
-    /// Determine the fail-fast setting based on the command line arguments
+    /// Determine the fail-fast setting based on the CLI arguments
     fn fail_fast(&self) -> Option<bool> {
         match (self._fail_fast, self._no_fail_fast) {
             (true, false) => Some(true),

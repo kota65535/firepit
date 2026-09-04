@@ -23,6 +23,10 @@ One or more tasks to run. Tasks run in parallel by default, respecting dependenc
 Template variables to override. Variable are in "Name=Value" format (e.g. `ENV=prod`, `DEBUG=true`).
 The value is interpreted according to the variable's declaration: inferred for a scalar variable, parsed as the declared type for a [typed variable](/configuration#typed-variables) (e.g. `FILES="[a, b]"` for an `array`).
 
+Only a variable declared in `vars`, at the project level or in the task being run, can be
+overridden. A name matching no declaration is an error, so that a typo does not pass silently.
+The `args` variable is the exception: it needs no declaration (see [Args](#args)).
+
 ### Args
 
 Arguments after `--` are shell-escaped, joined with a space, and assigned to the `args` template variable, so they can be referenced in task commands as `{{ args }}`.

@@ -88,12 +88,25 @@ tasks:
 ```
 
 A task level variable shadows the project level variable of the same name.
-Variables given on the command line as `Name=Value` override both: project level variables, and
+Variables given by the `Name=Value` CLI argument override both: project level variables, and
 task level variables of the tasks you run.
+
+Only a declared variable can be overridden, so a name matching no declaration is an error
+instead of being silently ignored.
 
 ```
 fire build              # runs: docker build -t docker.io/example/server:latest .
 fire build app=client   # runs: docker build -t docker.io/example/client:latest .
+fire build tag=v2       # error: vars given by the CLI argument are not declared in any project or task: "tag"
+```
+
+This applies to a variable used only inside another variable's template too: declare it with a
+default value to make it overridable.
+
+```yaml
+vars:
+  tag: latest
+  image: docker.io/example/server:{{ tag }}
 ```
 
 Firepit performs template processing using [Tera](https://keats.github.io/tera/).

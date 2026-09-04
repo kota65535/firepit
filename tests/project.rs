@@ -366,6 +366,76 @@ async fn test_unset_task_var_given_by_cli() {
 }
 
 #[tokio::test]
+async fn test_undeclared_cli_var() {
+    // `regoin` is a typo of `region`, matching no var declaration, so it is an error
+    let path = Path::new("tests/fixtures/project/required_vars");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let result = Workspace::new(
+        &root,
+        &children,
+        &[String::from("#plain")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::from([(
+            String::from("regoin"),
+            VarsConfig::Static(serde_json::Value::from("us-east-1")),
+        )]),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await;
+    assert_err!(result);
+}
+
+#[tokio::test]
+async fn test_args_cli_var_needs_no_declaration() {
+    // The `args` var receives the arguments after `--`, so it is accepted undeclared
+    let path = Path::new("tests/fixtures/project/required_vars");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let result = Workspace::new(
+        &root,
+        &children,
+        &[String::from("#plain")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::from([(
+            String::from("args"),
+            VarsConfig::Static(serde_json::Value::from("--nocapture")),
+        )]),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await;
+    assert_ok!(result);
+}
+
+#[tokio::test]
+async fn test_cli_var_declared_by_other_task() {
+    // `region` is declared by the `required` task, which is not involved in this run.
+    // The declaration is looked up across all projects and tasks, so this is not an error
+    let path = Path::new("tests/fixtures/project/required_vars");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let result = Workspace::new(
+        &root,
+        &children,
+        &[String::from("#plain")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::from([(
+            String::from("region"),
+            VarsConfig::Static(serde_json::Value::from("us-east-1")),
+        )]),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await;
+    assert_ok!(result);
+}
+
+#[tokio::test]
 async fn test_multi() {
     let path = Path::new("tests/fixtures/project/multi");
     let (root, children) = ProjectConfig::new_multi(path).unwrap();
