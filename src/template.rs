@@ -45,14 +45,16 @@ const DYNAMIC_VAR_HINT_THRESHOLD: Duration = Duration::from_secs(1);
 #[derive(Debug, Default)]
 pub struct DynamicVarCache {
     outputs: HashMap<DynamicVarKey, String>,
-    runs: HashMap<DynamicVarKey, DynamicVarRuns>,
+    /// Keyed by variable name as well, so that the runs reported to the user all come from the
+    /// one variable named in the report, and not from another that happens to run the same
+    /// command. The working directory stays out of the key: a variable shared by several projects
+    /// runs in a different directory in each, which is exactly the case worth reporting.
+    runs: HashMap<(String, DynamicVarKey), DynamicVarRuns>,
 }
 
 /// How often one dynamic variable command has run, and how much time it has taken in total.
 #[derive(Debug)]
 struct DynamicVarRuns {
-    /// Name of the variable that ran the command first, used to point the user at it
-    name: String,
     count: usize,
     elapsed: Duration,
 }
@@ -76,35 +78,37 @@ impl DynamicVarCache {
     /// with the same command, so counting both would report a variable that is already cached.
     fn record_run(&mut self, key: &DynamicVarKey, name: &str, elapsed: Duration) {
         self.runs
-            .entry(key.clone())
+            .entry((name.to_string(), key.clone()))
             .and_modify(|r| {
                 r.count += 1;
                 r.elapsed += elapsed;
             })
-            .or_insert_with(|| DynamicVarRuns {
-                name: name.to_string(),
-                count: 1,
-                elapsed,
-            });
+            .or_insert(DynamicVarRuns { count: 1, elapsed });
     }
 
-    /// Returns the uncached commands that ran more than once and took long enough to be worth
-    /// caching.
-    fn uncached_hints(&self) -> Vec<&DynamicVarRuns> {
+    /// Returns the name and the runs of the uncached variables that ran their command more than
+    /// once and took long enough for caching to be worth considering.
+    fn uncached_hints(&self) -> Vec<(&str, &DynamicVarRuns)> {
         self.runs
-            .values()
-            .filter(|r| r.count > 1 && r.elapsed >= DYNAMIC_VAR_HINT_THRESHOLD)
+            .iter()
+            .filter(|(_, r)| r.count > 1 && r.elapsed >= DYNAMIC_VAR_HINT_THRESHOLD)
+            .map(|((name, _), r)| (name.as_str(), r))
             .collect()
     }
 
-    /// Tells the user about the commands worth caching, which they have no other way of noticing
+    /// Tells the user about the variables worth caching, which they have no other way of noticing
     /// than the config taking a long time to render.
+    ///
+    /// Whether caching is actually correct depends on the command, which nothing here can tell, so
+    /// the condition is stated rather than the advice given outright: a repeated `cat VERSION`
+    /// shows up here too, and reusing its output across projects would be wrong.
     fn warn_uncached(&self) {
-        for runs in self.uncached_hints() {
+        for (name, runs) in self.uncached_hints() {
             warn!(
                 "Dynamic var {:?} ran its command {} times, taking {:.1}s in total. \
-                 Set `cache: true` on it to run the command once and reuse its output.",
-                runs.name,
+                 If its output does not depend on the directory it runs in, set `cache: true` \
+                 on it to run the command once and reuse its output.",
+                name,
                 runs.count,
                 runs.elapsed.as_secs_f64(),
             );
@@ -1035,11 +1039,15 @@ mod tests {
         // Ran twice and slow in total, even though neither run reaches the threshold alone
         cache.record_run(&key("slow"), "slow", long / 2);
         cache.record_run(&key("slow"), "slow", long / 2);
+        // Two variables sharing a command are counted apart, so neither reaches two runs and the
+        // report cannot blame one of them for the other's execution
+        cache.record_run(&key("shared"), "twin-a", long);
+        cache.record_run(&key("shared"), "twin-b", long);
 
         let hints = cache.uncached_hints();
         assert_eq!(hints.len(), 1);
-        assert_eq!(hints[0].name, "slow");
-        assert_eq!(hints[0].count, 2);
+        assert_eq!(hints[0].0, "slow");
+        assert_eq!(hints[0].1.count, 2);
     }
 
     fn quote(value: JsonValue) -> tera::Result<String> {
