@@ -74,7 +74,13 @@ impl ProjectConfig {
         Ok(context)
     }
 
-    pub async fn render(&self, context: &tera::Context) -> anyhow::Result<ProjectConfig> {
+    /// Renders the project config, along with the context of each of its tasks. A task context
+    /// runs the commands of the task's dynamic vars, so it is returned to be reused instead of
+    /// being built a second time.
+    pub async fn render(
+        &self,
+        context: &tera::Context,
+    ) -> anyhow::Result<(ProjectConfig, HashMap<String, tera::Context>)> {
         let mut tera = new_tera();
 
         let mut config = self.clone();
@@ -95,17 +101,20 @@ impl ProjectConfig {
         // Render env_files
         config.env_files = render_env_files(&config.env_files, &mut tera, context)?;
 
-        // Render tasks
+        // Render tasks.
+        // A task inherits from the project config rendered above, ex: its working_dir.
+        let project = config.clone();
         let mut rendered_tasks = IndexMap::new();
+        let mut task_contexts = HashMap::new();
 
-        for (task_name, task_config) in config.tasks.iter_mut() {
-            let task_context = task_config.context(self, context).await?;
-            let task_config = task_config.render(&task_context).await?;
-            rendered_tasks.insert(task_name.clone(), task_config);
+        for (task_name, task_config) in project.tasks.iter() {
+            let task_context = task_config.context(&project, context).await?;
+            rendered_tasks.insert(task_name.clone(), task_config.render(&task_context).await?);
+            task_contexts.insert(task_config.full_name(), task_context);
         }
         config.tasks = rendered_tasks;
 
-        Ok(config)
+        Ok((config, task_contexts))
     }
 }
 
@@ -331,30 +340,25 @@ impl ConfigRenderer {
 
         // Root project task contexts
         let root_context = self.root_config.context(&context, &self.vars).await?;
-        let mut root_config = self
+        let (mut root_config, root_task_contexts) = self
             .root_config
             .render(&root_context)
             .await
             .with_context(|| "failed to render config of project root")?;
-        for t in self.root_config.tasks.values() {
-            tasks.push(t.full_name());
-            task_contexts.insert(t.full_name(), t.context(&root_config, &root_context).await?);
-        }
+        tasks.extend(root_task_contexts.keys().cloned());
+        task_contexts.extend(root_task_contexts);
 
         // Project task contexts
         let mut child_configs = IndexMap::new();
         for (k, c) in self.child_configs.iter_mut() {
             let project_context = c.context(&context, &self.vars).await?;
-            child_configs.insert(
-                k.clone(),
-                c.render(&project_context)
-                    .await
-                    .with_context(|| format!("failed to render config of project {:?}", c.name))?,
-            );
-            for t in c.tasks.values() {
-                tasks.push(t.full_name());
-                task_contexts.insert(t.full_name(), t.context(c, &project_context).await?);
-            }
+            let (child_config, child_task_contexts) = c
+                .render(&project_context)
+                .await
+                .with_context(|| format!("failed to render config of project {:?}", c.name))?;
+            child_configs.insert(k.clone(), child_config);
+            tasks.extend(child_task_contexts.keys().cloned());
+            task_contexts.extend(child_task_contexts);
         }
 
         tasks.sort();
