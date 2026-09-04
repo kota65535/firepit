@@ -94,12 +94,12 @@ impl Workspace {
                         .with_context(|| format!("project {:?} is not defined", project_name))?
                         .task_mut(task_name)?
                 };
-                let vars_override = vars
-                    .clone()
-                    .into_iter()
-                    .filter(|(k, _)| task.vars.contains_key(k))
-                    .collect::<IndexMap<_, _>>();
-                task.vars.extend(vars_override);
+                // A typed task var keeps its type, so the CLI value is interpreted according to it.
+                for (k, v) in vars.iter() {
+                    if let Some(declared) = task.vars.get_mut(k) {
+                        *declared = declared.with_value(v);
+                    }
+                }
             }
         }
 

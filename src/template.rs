@@ -42,13 +42,20 @@ impl ProjectConfig {
 
         // Render project-level vars.
         // CLI Argument vars override project-level vars.
-        for (k, v) in vars
+        // A CLI value for a typed project var is interpreted according to the declared type.
+        let merged = vars
             .iter()
-            .chain(self.vars.iter().filter(|(k, _)| !vars.contains_key(*k)))
-        {
+            .map(|(k, v)| (k, self.vars.get(k).map_or_else(|| v.clone(), |d| d.with_value(v))))
+            .chain(
+                self.vars
+                    .iter()
+                    .filter(|(k, _)| !vars.contains_key(*k))
+                    .map(|(k, v)| (k, v.clone())),
+            );
+        for (k, v) in merged {
             let rk = tera.render_str(k, &context)?;
             if !rk.is_empty() {
-                let v = match v {
+                let v = match &v {
                     VarsConfig::Dynamic(s) => {
                         let mut s = s.clone();
                         s.command = tera.render_str(&s.command, &context)?;
@@ -64,9 +71,11 @@ impl ProjectConfig {
                         });
                         VarsConfig::Dynamic(s)
                     }
-                    VarsConfig::Static(_) => v.clone(),
+                    VarsConfig::Static(_) | VarsConfig::Typed(_) => v.clone(),
                 };
-                let rv = render_value(&v, &mut tera, &context).await?;
+                let rv = render_value(&v, &mut tera, &context)
+                    .await
+                    .with_context(|| format!("failed to render var {:?}", rk))?;
                 context.insert(rk, &rv);
             }
         }
@@ -147,9 +156,11 @@ impl TaskConfig {
                         });
                         VarsConfig::Dynamic(s)
                     }
-                    VarsConfig::Static(_) => v.clone(),
+                    VarsConfig::Static(_) | VarsConfig::Typed(_) => v.clone(),
                 };
-                let rv = render_value(&v, &mut tera, &context).await?;
+                let rv = render_value(&v, &mut tera, &context)
+                    .await
+                    .with_context(|| format!("failed to render var {:?}", rk))?;
                 context.insert(rk, &rv);
             }
         }
@@ -444,7 +455,9 @@ impl ConfigRenderer {
             // Merge depends_on vars into dependency task vars.
             // Only the vars that already exist in the dependency task are merged to avoid unnecessary variant tasks.
             for (k, v) in depends_on.vars.iter().filter(|(k, _)| dep_task.vars.contains_key(*k)) {
-                variant_task.vars.insert(k.clone(), v.clone());
+                // A typed var of the dependency keeps its type, so the value is interpreted according to it.
+                let merged = dep_task.vars[k].with_value(v);
+                variant_task.vars.insert(k.clone(), merged);
             }
 
             // Create context from dependency task
@@ -611,6 +624,17 @@ async fn render_value(value: &VarsConfig, tera: &mut Tera, context: &tera::Conte
                 JsonValue::Object(rendered_map)
             }
         },
+        VarsConfig::Typed(t) => match &t.default {
+            // Unset: reported as an error when the task is run
+            None | Some(JsonValue::Null) => JsonValue::Null,
+            // Templates in the default are rendered, then the whole value is interpreted as the
+            // declared type. No type inference here: `type: string` keeps "1.10" a string.
+            Some(default) => {
+                let value = t.r#type.coerce(render_templates(default, tera, context)?)?;
+                t.constraints.check(&value)?;
+                value
+            }
+        },
         VarsConfig::Dynamic(s) => {
             let inner = s.inner.clone().context("dynamic vars inner value should be present")?;
             let name = inner.name;
@@ -629,10 +653,41 @@ async fn render_value(value: &VarsConfig, tera: &mut Tera, context: &tera::Conte
                 .await
                 .context(format!("failed to render dynamic var {:?}", name))?;
             let trimmed = output.trim().to_string();
-            render_value(&VarsConfig::Static(JsonValue::from(trimmed)), tera, context).await?
+            match s.r#type {
+                // Typed: the output is interpreted as the declared type, no inference
+                Some(t) => {
+                    let value = t.coerce(JsonValue::from(trimmed))?;
+                    s.constraints.check(&value)?;
+                    value
+                }
+                None => render_value(&VarsConfig::Static(JsonValue::from(trimmed)), tera, context).await?,
+            }
         }
     };
     Ok(rendered)
+}
+
+/// Renders the templates of every string in `value`, recursively, keeping the structure and the
+/// types of the other values as they are.
+fn render_templates(value: &JsonValue, tera: &mut Tera, context: &tera::Context) -> anyhow::Result<JsonValue> {
+    Ok(match value {
+        JsonValue::String(s) => JsonValue::String(
+            tera.render_str(s, context)
+                .with_context(|| format!("failed to render {:?}", s))?,
+        ),
+        JsonValue::Array(items) => JsonValue::Array(
+            items
+                .iter()
+                .map(|v| render_templates(v, tera, context))
+                .collect::<anyhow::Result<_>>()?,
+        ),
+        JsonValue::Object(map) => JsonValue::Object(
+            map.iter()
+                .map(|(k, v)| Ok((k.clone(), render_templates(v, tera, context)?)))
+                .collect::<anyhow::Result<_>>()?,
+        ),
+        other => other.clone(),
+    })
 }
 
 /// Executes a command and returns the output as a string.

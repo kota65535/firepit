@@ -230,18 +230,10 @@ fn parse_tasks_or_vars(
     for item in items.iter() {
         match item.split_once('=') {
             Some((k, v)) => {
-                let value = match serde_json::from_str::<Value>(v) {
-                    Ok(parsed) => parsed,
-                    Err(_) => {
-                        let unquoted = if let Some(stripped) = strip_matching_quotes(v) {
-                            stripped
-                        } else {
-                            v
-                        };
-                        Value::String(unquoted.to_string())
-                    }
-                };
-                vars.insert(k.to_string(), value);
+                // Keep the raw string: it is interpreted later according to the declared var
+                // (inferred for a scalar var, parsed as the declared type for a typed var).
+                let unquoted = strip_matching_quotes(v).unwrap_or(v);
+                vars.insert(k.to_string(), Value::String(unquoted.to_string()));
             }
             None => tasks.push(item.to_string()),
         }
@@ -366,7 +358,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn parse_tasks_and_vars_handles_strings_and_json() {
+    fn parse_tasks_and_vars_keeps_raw_strings() {
         let inputs = vec![
             "build".to_string(),
             "count=10".to_string(),
@@ -379,11 +371,11 @@ mod tests {
         let (tasks, vars) = parse_tasks_or_vars(&inputs, &[]).unwrap();
 
         assert_eq!(tasks, vec!["build".to_string()]);
-        assert_eq!(vars.get("count"), Some(&json!(10)));
+        assert_eq!(vars.get("count"), Some(&json!("10")));
         assert_eq!(vars.get("quoted"), Some(&json!("foo=bar")));
         assert_eq!(vars.get("raw"), Some(&json!("foo=bar")));
         assert_eq!(vars.get("single"), Some(&json!("baz=qux")));
-        assert_eq!(vars.get("flag"), Some(&json!(true)));
+        assert_eq!(vars.get("flag"), Some(&json!("true")));
     }
 
     #[test]

@@ -202,6 +202,156 @@ async fn test_vars_from_cli() {
 }
 
 #[tokio::test]
+async fn test_vars_typed() {
+    setup();
+
+    let path = BASE_PATH.join("vars_typed");
+    let tasks = [
+        "version",
+        "count",
+        "ratio",
+        "flag",
+        "list",
+        "map",
+        "dependent",
+        "dyn_string",
+        "dyn_array",
+    ]
+    .map(String::from)
+    .to_vec();
+
+    let mut stats = HashMap::new();
+    let mut outputs = HashMap::new();
+    for (task, out) in [
+        ("#version", "1.10\nok"),
+        ("#count", "1\nok"),
+        ("#ratio", "0.5"),
+        ("#flag", "on"),
+        ("#list", "a,1.10\nok"),
+        ("#map", "1,1\nok"),
+        ("#required-1", "x 'y z'"),
+        ("#dependent", "dependent"),
+        ("#dyn_string", "1e10\nok"),
+        ("#dyn_array", "a,b\nok"),
+    ] {
+        stats.insert(task.to_string(), String::from("Finished: Success"));
+        outputs.insert(task.to_string(), out.to_string());
+    }
+    run_task_with_vars(&path, tasks, stats, Some(outputs), IndexMap::new(), false)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn test_vars_typed_cli() {
+    setup();
+
+    // CLI values arrive as raw strings and are interpreted according to the declared type
+    let path = BASE_PATH.join("vars_typed");
+    let tasks = ["version", "count", "flag", "list", "required"]
+        .map(String::from)
+        .to_vec();
+
+    let mut stats = HashMap::new();
+    let mut outputs = HashMap::new();
+    for (task, out) in [
+        ("#version", "2.0\nok"),
+        ("#count", "42\nok"),
+        ("#flag", "off"),
+        ("#list", "p,q\nok"),
+        ("#required", "1 two"),
+    ] {
+        stats.insert(task.to_string(), String::from("Finished: Success"));
+        outputs.insert(task.to_string(), out.to_string());
+    }
+    let vars = IndexMap::from([
+        ("version".to_string(), VarsConfig::Static(Value::from("2.0"))),
+        ("count".to_string(), VarsConfig::Static(Value::from("42"))),
+        ("flag".to_string(), VarsConfig::Static(Value::from("false"))),
+        ("list".to_string(), VarsConfig::Static(Value::from("[p, q]"))),
+        ("target".to_string(), VarsConfig::Static(Value::from("[1, two]"))),
+    ]);
+    run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn test_vars_typed_mismatch() {
+    setup();
+
+    // A value that does not match the declared type is an error
+    let path = BASE_PATH.join("vars_typed");
+    let vars = IndexMap::from([("port".to_string(), VarsConfig::Static(Value::from("http")))]);
+    let err = run_task_with_vars(&path, vec![String::from("bad")], HashMap::new(), None, vars, false)
+        .await
+        .expect_err("type mismatch should fail");
+    let msg = format!("{:#}", err);
+    assert!(msg.contains("\"port\"") && msg.contains("integer"), "{msg}");
+}
+
+#[tokio::test]
+async fn test_vars_typed_dynamic_mismatch() {
+    setup();
+
+    // A dynamic var whose command output does not match the declared type is an error
+    let path = BASE_PATH.join("vars_typed_bad");
+    let err = run_task(&path, vec![String::from("dyn_bad")], HashMap::new(), None, false)
+        .await
+        .expect_err("type mismatch should fail");
+    let msg = format!("{:#}", err);
+    assert!(msg.contains("\"port\"") && msg.contains("integer"), "{msg}");
+}
+
+#[tokio::test]
+async fn test_vars_constraints() {
+    setup();
+
+    let path = BASE_PATH.join("vars_constraints");
+    let tasks = ["env", "version", "port", "region"].map(String::from).to_vec();
+
+    let mut stats = HashMap::new();
+    let mut outputs = HashMap::new();
+    for (task, out) in [
+        ("#env", "prod"),
+        ("#version", "1.2.3"),
+        ("#port", "1024"),
+        ("#region", "ap-northeast-1"),
+    ] {
+        stats.insert(task.to_string(), String::from("Finished: Success"));
+        outputs.insert(task.to_string(), out.to_string());
+    }
+    // Valid CLI overrides pass the constraints
+    let vars = IndexMap::from([
+        ("env".to_string(), VarsConfig::Static(Value::from("prod"))),
+        ("port".to_string(), VarsConfig::Static(Value::from("1024"))),
+    ]);
+    run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn test_vars_constraints_violation() {
+    setup();
+
+    let path = BASE_PATH.join("vars_constraints");
+    for (var, value, expected) in [
+        ("env", "qa", "is not one of"),
+        ("version", "1.2", "does not match pattern"),
+        ("port", "80", "is less than minimum"),
+        ("port", "70000", "is greater than maximum"),
+    ] {
+        let vars = IndexMap::from([(var.to_string(), VarsConfig::Static(Value::from(value)))]);
+        let err = run_task_with_vars(&path, vec![var.to_string()], HashMap::new(), None, vars, false)
+            .await
+            .expect_err("constraint violation should fail");
+        let msg = format!("{:#}", err);
+        assert!(msg.contains(&format!("{:?}", var)) && msg.contains(expected), "{msg}");
+    }
+}
+
+#[tokio::test]
 async fn test_vars_required() {
     setup();
 

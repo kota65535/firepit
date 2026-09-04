@@ -1,0 +1,30 @@
+# Value constraints, following JSON Schema. They require `type`.
+vars:
+  env:
+    type: string
+    enum: [dev, staging, prod]
+    default: dev
+  version:
+    type: string
+    pattern: '^\d+\.\d+\.\d+$'
+    default: 1.2.3
+  port:
+    type: integer
+    minimum: 1024
+    maximum: 65535
+    default: 8080
+  # Constraints apply to dynamic vars as well
+  region:
+    type: string
+    enum: [us-east-1, ap-northeast-1]
+    command: echo ap-northeast-1
+
+tasks:
+  env:
+    command: echo "{{ env }}"
+  version:
+    command: echo "{{ version }}"
+  port:
+    command: echo "{{ port }}"
+  region:
+    command: echo "{{ region }}"

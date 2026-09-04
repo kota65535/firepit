@@ -3,10 +3,14 @@ vars:
   number: 1
   string: foo
   boolean: true
-  array: [1, 2]
+  array:
+    type: array
+    default: [1, 2]
   map:
-    a: 1
-    b: 2
+    type: object
+    default:
+      a: 1
+      b: 2
 
 # Test that vars are interpolated and have correct types
 tasks:

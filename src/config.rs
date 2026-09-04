@@ -296,6 +296,16 @@ impl ProjectConfig {
         // Name
         data.name = name.to_string();
 
+        // Var declarations
+        for (k, v) in data.vars.iter() {
+            v.validate().with_context(|| format!("vars.{}", k))?;
+        }
+        for (t, task) in data.tasks.iter() {
+            for (k, v) in task.vars.iter() {
+                v.validate().with_context(|| format!("tasks.{}.vars.{}", t, k))?;
+            }
+        }
+
         // Task name & dependency task name
         for (k, v) in data.tasks.iter_mut() {
             v.name = k.clone();
@@ -698,19 +708,265 @@ fn absolute_or_join(path: &str, dir: &Path) -> PathBuf {
 }
 
 /// Vars config
+///
+/// A variable is one of:
+/// - a scalar value (`foo: bar`), whose type is inferred from the value
+/// - a typed declaration (`foo: { type: array, default: [a, b] }`), see [`TypedVars`]
+/// - a dynamic variable (`foo: { command: ... }`), see [`DynamicVars`]
+///
+/// Array and object values are only accepted as the `default` of a typed declaration, so that an
+/// object is never ambiguous between a value and a declaration.
+///
+/// An object with `command` is dynamic (tried first, so `{ type, command }` is a typed dynamic
+/// variable), otherwise an object with `type` is a typed declaration.
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
-#[serde(untagged)]
+#[serde(
+    untagged,
+    expecting = "a scalar value, a typed declaration with `type` (and optionally `default`), or a dynamic variable with `command`"
+)]
 pub enum VarsConfig {
     Dynamic(Box<DynamicVars>),
-    Static(JsonValue),
+    Typed(TypedVars),
+    Static(
+        #[serde(deserialize_with = "deserialize_scalar")]
+        #[schemars(schema_with = "scalar_schema")]
+        JsonValue,
+    ),
 }
 
 impl VarsConfig {
-    /// Returns whether the variable is declared without a value, ex: `foo:`.
+    /// Returns whether the variable is declared without a value, ex: `foo:` or
+    /// `foo: { type: string }`.
     /// Such a variable has no default, so it is required: it must be given a value before the
     /// task runs, by the `<name>=<value>` CLI argument or the dependent task's `depends_on.vars`.
     pub fn is_unset(&self) -> bool {
-        matches!(self, VarsConfig::Static(JsonValue::Null))
+        match self {
+            VarsConfig::Static(JsonValue::Null) => true,
+            VarsConfig::Typed(t) => t.default.as_ref().is_none_or(JsonValue::is_null),
+            _ => false,
+        }
+    }
+
+    /// Returns the config to use when `value` overrides this declaration (from the CLI argument
+    /// or `depends_on.vars`): a typed declaration keeps its type, so the value is interpreted
+    /// according to it; otherwise the value replaces the declaration as is.
+    pub fn with_value(&self, value: &VarsConfig) -> VarsConfig {
+        let declared = match self {
+            VarsConfig::Typed(t) => Some((t.r#type, &t.constraints)),
+            VarsConfig::Dynamic(d) => d.r#type.map(|t| (t, &d.constraints)),
+            VarsConfig::Static(_) => None,
+        };
+        match (declared, value) {
+            (Some((r#type, constraints)), VarsConfig::Static(v)) => VarsConfig::Typed(TypedVars {
+                r#type,
+                default: Some(v.clone()),
+                constraints: constraints.clone(),
+            }),
+            _ => value.clone(),
+        }
+    }
+
+    /// Checks the declaration itself: the constraints require `type` and must apply to it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error describing the offending keyword.
+    pub fn validate(&self) -> anyhow::Result<()> {
+        match self {
+            VarsConfig::Typed(t) => t.constraints.validate(Some(t.r#type)),
+            VarsConfig::Dynamic(d) => d.constraints.validate(d.r#type),
+            VarsConfig::Static(_) => Ok(()),
+        }
+    }
+}
+
+/// Accepts only scalar values; arrays and objects must be declared with `type`.
+fn deserialize_scalar<'de, D: Deserializer<'de>>(deserializer: D) -> Result<JsonValue, D::Error> {
+    let value = JsonValue::deserialize(deserializer)?;
+    if value.is_array() || value.is_object() {
+        return Err(de::Error::custom(
+            "array and object values must be declared with `type`",
+        ));
+    }
+    Ok(value)
+}
+
+fn scalar_schema(_: &mut SchemaGenerator) -> Schema {
+    json_schema!({
+        "type": ["string", "number", "boolean", "null"],
+        "description": "Scalar value. Arrays and objects must be declared with `type`."
+    })
+}
+
+/// Typed variable declaration
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct TypedVars {
+    /// Type of the variable, following JSON Schema
+    #[serde(rename = "type")]
+    pub r#type: VarType,
+
+    /// Default value. Without it the variable is required.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default: Option<JsonValue>,
+
+    #[serde(flatten)]
+    pub constraints: VarConstraints,
+}
+
+/// Value constraints, following JSON Schema. They require `type`.
+#[derive(Debug, Clone, Default, Deserialize, Serialize, JsonSchema)]
+pub struct VarConstraints {
+    /// Allowed values
+    #[serde(rename = "enum", default, skip_serializing_if = "Option::is_none")]
+    pub r#enum: Option<Vec<JsonValue>>,
+
+    /// Regular expression the value must match (unanchored, as in JSON Schema). `string` only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pattern: Option<String>,
+
+    /// Inclusive lower bound. `number` and `integer` only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minimum: Option<f64>,
+
+    /// Inclusive upper bound. `number` and `integer` only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum: Option<f64>,
+}
+
+impl VarConstraints {
+    pub fn is_empty(&self) -> bool {
+        self.r#enum.is_none() && self.pattern.is_none() && self.minimum.is_none() && self.maximum.is_none()
+    }
+
+    /// Checks that the constraints apply to `ty`, at config load time.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `ty` is missing, a keyword does not apply to it, an `enum` value
+    /// has another type, or `pattern` is not a valid regular expression.
+    pub fn validate(&self, ty: Option<VarType>) -> anyhow::Result<()> {
+        if self.is_empty() {
+            return Ok(());
+        }
+        let ty = ty.context("`enum`, `pattern`, `minimum` and `maximum` require `type`")?;
+        if let Some(values) = &self.r#enum {
+            anyhow::ensure!(!values.is_empty(), "`enum` must not be empty");
+            for v in values {
+                anyhow::ensure!(ty.matches(v), "`enum` value {} is not {}", v, ty.as_str());
+            }
+        }
+        if let Some(pattern) = &self.pattern {
+            anyhow::ensure!(ty == VarType::String, "`pattern` is only for type string");
+            Regex::new(pattern).with_context(|| format!("invalid `pattern` {:?}", pattern))?;
+        }
+        if self.minimum.is_some() || self.maximum.is_some() {
+            anyhow::ensure!(
+                matches!(ty, VarType::Number | VarType::Integer),
+                "`minimum` and `maximum` are only for type number and integer"
+            );
+        }
+        Ok(())
+    }
+
+    /// Checks a value (already converted to the declared type) against the constraints.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the violated constraint.
+    pub fn check(&self, value: &JsonValue) -> anyhow::Result<()> {
+        if let Some(values) = &self.r#enum {
+            anyhow::ensure!(
+                values.contains(value),
+                "{} is not one of {}",
+                value,
+                JsonValue::Array(values.clone())
+            );
+        }
+        if let (Some(pattern), Some(s)) = (&self.pattern, value.as_str()) {
+            anyhow::ensure!(
+                Regex::new(pattern)?.is_match(s),
+                "{} does not match pattern {:?}",
+                value,
+                pattern
+            );
+        }
+        if let Some(n) = value.as_f64() {
+            if let Some(min) = self.minimum {
+                anyhow::ensure!(n >= min, "{} is less than minimum {}", value, min);
+            }
+            if let Some(max) = self.maximum {
+                anyhow::ensure!(n <= max, "{} is greater than maximum {}", value, max);
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Variable types, following JSON Schema
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum VarType {
+    String,
+    Number,
+    Integer,
+    Boolean,
+    Array,
+    Object,
+}
+
+impl VarType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            VarType::String => "string",
+            VarType::Number => "number",
+            VarType::Integer => "integer",
+            VarType::Boolean => "boolean",
+            VarType::Array => "array",
+            VarType::Object => "object",
+        }
+    }
+
+    fn matches(&self, value: &JsonValue) -> bool {
+        match self {
+            VarType::String => value.is_string(),
+            VarType::Number => value.is_number(),
+            VarType::Integer => value.is_i64() || value.is_u64(),
+            VarType::Boolean => value.is_boolean(),
+            VarType::Array => value.is_array(),
+            VarType::Object => value.is_object(),
+        }
+    }
+
+    /// Interprets `value` as this type: a string given for a non-string type (ex: the CLI
+    /// argument `list="[a, b]"`) is parsed as YAML, then the value is checked against the type.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the string cannot be parsed or the value does not match the type.
+    pub fn coerce(&self, value: JsonValue) -> anyhow::Result<JsonValue> {
+        let value = match value {
+            JsonValue::String(s) if *self != VarType::String => serde_yaml::from_str::<JsonValue>(&s)
+                .with_context(|| format!("failed to read {:?} as {}", s, self.as_str()))?,
+            v => v,
+        };
+        anyhow::ensure!(
+            self.matches(&value),
+            "expected {}, got {}",
+            self.as_str(),
+            json_type_name(&value)
+        );
+        Ok(value)
+    }
+}
+
+fn json_type_name(value: &JsonValue) -> &'static str {
+    match value {
+        JsonValue::Null => "null",
+        JsonValue::Bool(_) => "boolean",
+        JsonValue::Number(_) => "number",
+        JsonValue::String(_) => "string",
+        JsonValue::Array(_) => "array",
+        JsonValue::Object(_) => "object",
     }
 }
 
@@ -719,6 +975,14 @@ pub struct DynamicVars {
     /// Command
     #[schemars(extend("x-template" = true))]
     pub command: String,
+
+    /// Type of the variable, following JSON Schema. The command output is interpreted as this
+    /// type; without it, the type is inferred from the output.
+    #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
+    pub r#type: Option<VarType>,
+
+    #[serde(flatten)]
+    pub constraints: VarConstraints,
 
     /// Shell configuration
     pub shell: Option<ShellConfig>,

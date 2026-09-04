@@ -1,0 +1,5 @@
+# `pattern` is only for `type: string`
+vars:
+  port:
+    type: integer
+    pattern: '^\d+$'

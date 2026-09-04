@@ -149,6 +149,25 @@ fn test_bad_type() {
     assert_starts_with!(err.to_string(), "cannot parse config file");
 }
 
+#[test]
+fn test_bad_vars_object() {
+    // An array/object value must be declared with `type`; a bare object is rejected
+    let path = Path::new("tests/fixtures/config/bad_vars_object");
+    let err = ProjectConfig::new_multi(path).expect_err("");
+    let msg = format!("{:#}", err);
+    assert_starts_with!(msg, "cannot parse config file");
+    assert!(msg.contains("`type`"), "{msg}");
+}
+
+#[test]
+fn test_bad_vars_constraint() {
+    // A constraint that does not apply to the declared type is a config error
+    let path = Path::new("tests/fixtures/config/bad_vars_constraint");
+    let err = ProjectConfig::new_multi(path).expect_err("");
+    let msg = format!("{:#}", err);
+    assert!(msg.contains("vars.port") && msg.contains("pattern"), "{msg}");
+}
+
 fn depends_on_names(task: &firepit::config::TaskConfig) -> Vec<String> {
     task.depends_on
         .iter()

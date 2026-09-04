@@ -7,8 +7,10 @@ vars:
   num: 42
   flag: true
   words:
-    - foo
-    - bar baz
+    type: array
+    default:
+      - foo
+      - bar baz
 
 tasks:
   text:
