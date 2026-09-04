@@ -1,9 +1,9 @@
 use crate::config::{
-    default_stop_timeout, DependsOnConfig, HealthCheckConfig, ProjectConfig, Restart, ServiceConfig, TaskConfig,
-    VarsConfig, UI,
+    default_stop_timeout, DependsOnConfig, HealthCheckConfig, ProjectConfig, Restart, ServiceConfig, TaskConfig, UI,
 };
 use crate::probe::{ExecProbe, LogLineProbe, Probe};
 use crate::template::ConfigRenderer;
+use crate::vars::VarsConfig;
 use anyhow::Context;
 use indexmap::IndexMap;
 use regex::Regex;
@@ -81,12 +81,12 @@ impl Workspace {
         let mut child_configs = child_configs.clone();
         for t in target_tasks.iter() {
             let task = Self::task_config_mut(&mut root_config, &mut child_configs, t)?;
-            let vars_override = vars
-                .clone()
-                .into_iter()
-                .filter(|(k, _)| task.vars.contains_key(k))
-                .collect::<IndexMap<_, _>>();
-            task.vars.extend(vars_override);
+            // A typed task var keeps its type, so the CLI value is interpreted according to it.
+            for (k, v) in vars.iter() {
+                if let Some(declared) = task.vars.get_mut(k) {
+                    *declared = declared.with_value(v);
+                }
+            }
         }
 
         let mut renderer = ConfigRenderer::new(&root_config, &child_configs, vars, watch);
@@ -761,7 +761,7 @@ impl Task {
         vars.iter()
             .filter_map(|(k, v)| match v {
                 VarsConfig::Static(v) => Some((k.clone(), v.clone())),
-                VarsConfig::Dynamic(_) => None,
+                VarsConfig::Dynamic(_) | VarsConfig::Typed(_) => None,
             })
             .collect()
     }

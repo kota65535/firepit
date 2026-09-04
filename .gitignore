@@ -166,3 +166,4 @@ tests/fixtures/runner/wait_for_variant/order.txt
 tests/fixtures/runner/wait_for_vars/foo2.done
 tests/fixtures/runner/wait_for_vars/foo3.done
 tests/fixtures/runner/wait_for_undeclared_var/order.txt
+tests/fixtures/runner/wait_for_typed_vars/order.txt

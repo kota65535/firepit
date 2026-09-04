@@ -2,6 +2,7 @@ use crate::project::Task;
 use crate::template::new_tera;
 use crate::template::ROOT_DIR_CONTEXT_KEY;
 use crate::util::merge_yaml;
+use crate::vars::VarsConfig;
 use anyhow::Context;
 use derivative::Derivative;
 use indexmap::IndexMap;
@@ -9,10 +10,9 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use schemars::{json_schema, JsonSchema, Schema, SchemaGenerator};
 use serde::{de, Deserialize, Deserializer, Serialize};
-use serde_json::Value as JsonValue;
 use serde_yaml::Value;
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -312,6 +312,21 @@ impl ProjectConfig {
 
         // Name
         data.name = name.to_string();
+
+        // Var declarations
+        for (k, v) in data.vars.iter() {
+            v.validate().with_context(|| format!("vars.{}", k))?;
+        }
+        for (t, task) in data.tasks.iter() {
+            for (k, v) in task.vars.iter() {
+                v.validate().with_context(|| format!("tasks.{}.vars.{}", t, k))?;
+            }
+        }
+        for (i, default) in data.defaults.iter().enumerate() {
+            for (k, v) in default.vars.iter() {
+                v.validate().with_context(|| format!("defaults[{}].vars.{}", i, k))?;
+            }
+        }
 
         // Task name & dependency task name
         for (k, v) in data.tasks.iter_mut() {
@@ -770,87 +785,13 @@ impl TaskConfig {
     }
 }
 
-fn absolute_or_join(path: &str, dir: &Path) -> PathBuf {
+pub(crate) fn absolute_or_join(path: &str, dir: &Path) -> PathBuf {
     let p = Path::new(path);
     if p.is_absolute() {
         p.to_path_buf()
     } else {
         dir.join(p)
     }
-}
-
-/// Vars config
-#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
-#[serde(untagged)]
-pub enum VarsConfig {
-    Dynamic(Box<DynamicVars>),
-    Static(JsonValue),
-}
-
-impl VarsConfig {
-    /// Returns whether the variable is declared without a value, ex: `foo:`.
-    /// Such a variable has no default, so it is required: it must be given a value before the
-    /// task runs, by the `<name>=<value>` CLI argument or the dependent task's `depends_on.vars`.
-    pub fn is_unset(&self) -> bool {
-        matches!(self, VarsConfig::Static(JsonValue::Null))
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
-pub struct DynamicVars {
-    /// Command
-    #[schemars(extend("x-template" = true))]
-    pub command: String,
-
-    /// Shell configuration
-    pub shell: Option<ShellConfig>,
-
-    /// Environment variables
-    #[serde(default, deserialize_with = "deserialize_hash_map")]
-    #[schemars(extend("x-template" = true))]
-    pub env: IndexMap<String, String>,
-
-    /// Dotenv files
-    #[serde(default)]
-    #[schemars(extend("x-template" = true))]
-    pub env_files: Vec<String>,
-
-    /// Working directory
-    #[schemars(extend("x-template" = true))]
-    pub working_dir: Option<String>,
-
-    /// Whether the command output is reused by the other variables running the same command in
-    /// the same working directory. A variable shared by several projects runs in each project
-    /// directory, so sharing one run across them takes an explicit `working_dir`. Leave it off
-    /// for a command that must run every time, ex: allocating a resource.
-    #[serde(default)]
-    pub cache: bool,
-
-    #[serde(skip)]
-    pub inner: Option<DynamicVarsInner>,
-}
-
-impl DynamicVars {
-    pub fn env_file_paths(&self, dir: &Path) -> Vec<PathBuf> {
-        self.env_files.iter().map(|f| absolute_or_join(f, dir)).collect()
-    }
-
-    pub fn working_dir_path(&self, dir: &Path) -> PathBuf {
-        match self.working_dir.clone() {
-            Some(wd) => absolute_or_join(&wd, dir),
-            None => dir.to_path_buf(),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct DynamicVarsInner {
-    pub name: String,
-    pub command: String,
-    pub shell: ShellConfig,
-    pub working_dir: PathBuf,
-    pub env: HashMap<String, String>,
-    pub cache: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
@@ -1345,7 +1286,7 @@ pub enum UI {
 
 /// Deserializes IndexMap while converting number to string, which is the default behavior.
 /// This is necessary when using serde(untagged), as it strictly checks types.
-fn deserialize_hash_map<'de, D>(deserializer: D) -> Result<IndexMap<String, String>, D::Error>
+pub(crate) fn deserialize_hash_map<'de, D>(deserializer: D) -> Result<IndexMap<String, String>, D::Error>
 where
     D: Deserializer<'de>,
 {

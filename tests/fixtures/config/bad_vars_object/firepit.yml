@@ -1,0 +1,4 @@
+# An object value without `type` or `command` is not a valid var
+vars:
+  map:
+    a: 1

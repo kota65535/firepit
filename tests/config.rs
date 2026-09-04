@@ -149,6 +149,46 @@ fn test_bad_type() {
     assert_starts_with!(err.to_string(), "cannot parse config file");
 }
 
+#[test]
+fn test_bad_vars_object() {
+    // An array/object value must be declared with `type`; a bare object is rejected
+    let path = Path::new("tests/fixtures/config/bad_vars_object");
+    let err = ProjectConfig::new_multi(path).expect_err("");
+    let msg = format!("{:#}", err);
+    assert_starts_with!(msg, "cannot parse config file");
+    assert!(msg.contains("`type`"), "{msg}");
+}
+
+#[test]
+fn test_bad_vars_constraint() {
+    // An unknown keyword (here a typo of `pattern`) is a config error
+    let path = Path::new("tests/fixtures/config/bad_vars_constraint");
+    let err = ProjectConfig::new_multi(path).expect_err("");
+    let msg = format!("{:#}", err);
+    assert!(msg.contains("vars.version") && msg.contains("patern"), "{msg}");
+}
+
+#[test]
+fn test_bad_vars_default_constraint() {
+    // Declarations supplied through `defaults` are validated as well
+    let path = Path::new("tests/fixtures/config/bad_vars_default_constraint");
+    let err = ProjectConfig::new_multi(path).expect_err("");
+    let msg = format!("{:#}", err);
+    assert!(
+        msg.contains("defaults[0].vars.version") && msg.contains("patern"),
+        "{msg}"
+    );
+}
+
+#[test]
+fn test_bad_vars_nested_constraint() {
+    // Unknown keywords are rejected inside subschemas (`items`, `properties`, `anyOf`, ...) too
+    let path = Path::new("tests/fixtures/config/bad_vars_nested_constraint");
+    let err = ProjectConfig::new_multi(path).expect_err("");
+    let msg = format!("{:#}", err);
+    assert!(msg.contains("vars.tags") && msg.contains("items.patern"), "{msg}");
+}
+
 fn depends_on_names(task: &firepit::config::TaskConfig) -> Vec<String> {
     task.depends_on
         .iter()

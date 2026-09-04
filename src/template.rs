@@ -1,15 +1,16 @@
 use crate::config::{
-    DependsOnConfig, DependsOnConfigStruct, DynamicVarsInner, FinalizedByConfig, FinalizedByConfigStruct,
-    HealthCheckConfig, ProjectConfig, ServiceConfig, TaskConfig, VarsConfig, WaitForConfig, WaitForConfigStruct,
+    DependsOnConfig, DependsOnConfigStruct, FinalizedByConfig, FinalizedByConfigStruct, HealthCheckConfig,
+    ProjectConfig, ServiceConfig, TaskConfig, WaitForConfig, WaitForConfigStruct,
 };
 use crate::log::OutputCollector;
 use crate::process::{ChildExit, Command, ProcessManager};
 use crate::project::{Env, Task};
+use crate::vars::{check_var_value, DynamicVarsInner, VarsConfig};
 use crate::DYNAMIC_VAR_STOP_TIMEOUT;
 use anyhow::Context;
 use async_recursion::async_recursion;
 use indexmap::IndexMap;
-use serde_json::{Map, Value as JsonValue};
+use serde_json::Value as JsonValue;
 use serde_yaml::Value;
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -187,13 +188,20 @@ impl ProjectConfig {
 
         // Render project-level vars.
         // CLI Argument vars override project-level vars.
-        for (k, v) in vars
+        // A CLI value for a typed project var is interpreted according to the declared type.
+        let merged = vars
             .iter()
-            .chain(self.vars.iter().filter(|(k, _)| !vars.contains_key(*k)))
-        {
+            .map(|(k, v)| (k, self.vars.get(k).map_or_else(|| v.clone(), |d| d.with_value(v))))
+            .chain(
+                self.vars
+                    .iter()
+                    .filter(|(k, _)| !vars.contains_key(*k))
+                    .map(|(k, v)| (k, v.clone())),
+            );
+        for (k, v) in merged {
             let rk = tera.render_str(k, &context)?;
             if !rk.is_empty() {
-                let v = match v {
+                let v = match &v {
                     VarsConfig::Dynamic(s) => {
                         let mut s = s.clone();
                         s.command = tera.render_str(&s.command, &context)?;
@@ -210,9 +218,11 @@ impl ProjectConfig {
                         });
                         VarsConfig::Dynamic(s)
                     }
-                    VarsConfig::Static(_) => v.clone(),
+                    VarsConfig::Static(_) | VarsConfig::Typed(_) => v.clone(),
                 };
-                let rv = render_value(&v, &mut tera, &context, cache).await?;
+                let rv = render_value(&v, &mut tera, &context, cache)
+                    .await
+                    .with_context(|| format!("failed to render var {:?}", rk))?;
                 context.insert(rk, &rv);
             }
         }
@@ -309,9 +319,11 @@ impl TaskConfig {
                         });
                         VarsConfig::Dynamic(s)
                     }
-                    VarsConfig::Static(_) => v.clone(),
+                    VarsConfig::Static(_) | VarsConfig::Typed(_) => v.clone(),
                 };
-                let rv = render_value(&v, &mut tera, &context, cache).await?;
+                let rv = render_value(&v, &mut tera, &context, cache)
+                    .await
+                    .with_context(|| format!("failed to render var {:?}", rk))?;
                 context.insert(rk, &rv);
             }
         }
@@ -323,7 +335,7 @@ impl TaskConfig {
         let mut tera = new_tera();
 
         // Render task-level vars
-        config.vars = render_value_map(&config.vars, &mut tera, context, DynamicVar::FromContext, cache).await?;
+        config.vars = render_value_map(&config.vars, &mut tera, context, cache).await?;
 
         // Render label
         if let Some(l) = config.label {
@@ -396,7 +408,7 @@ impl TaskConfig {
                     let task = tera.render_str(&dep.task, context)?;
                     // Ignore if rendered task name is empty
                     if !task.ends_with("#") {
-                        let vars = render_value_map(&dep.vars, &mut tera, context, DynamicVar::Rejected, cache).await?;
+                        let vars = render_dep_vars(&dep.vars, &mut tera, context)?;
                         rendered_depends_on.push(DependsOnConfig::Struct(DependsOnConfigStruct {
                             task,
                             vars,
@@ -419,7 +431,7 @@ impl TaskConfig {
             match wait_for {
                 WaitForConfig::String(_) => rendered_wait_for.push(WaitForConfig::String(task)),
                 WaitForConfig::Struct(w) => {
-                    let vars = render_value_map(&w.vars, &mut tera, context, DynamicVar::Rejected, cache).await?;
+                    let vars = render_dep_vars(&w.vars, &mut tera, context)?;
                     rendered_wait_for.push(WaitForConfig::Struct(WaitForConfigStruct { task, vars }));
                 }
             }
@@ -437,7 +449,7 @@ impl TaskConfig {
             match finalized_by {
                 FinalizedByConfig::String(_) => rendered_finalized_by.push(FinalizedByConfig::String(task)),
                 FinalizedByConfig::Struct(f) => {
-                    let vars = render_value_map(&f.vars, &mut tera, context, DynamicVar::Rejected, cache).await?;
+                    let vars = render_dep_vars(&f.vars, &mut tera, context)?;
                     rendered_finalized_by.push(FinalizedByConfig::Struct(FinalizedByConfigStruct { task, vars }));
                 }
             }
@@ -669,6 +681,43 @@ impl ConfigRenderer {
             .await?;
         }
 
+        // The vars of a `wait_for` narrow down the variants to wait for by comparing them with the
+        // variants' resolved vars, so resolve them the same way: through the declarations of the
+        // referenced task (typed vars keep their type, scalar vars are inferred).
+        for wait_for in task_config.wait_for.iter_mut() {
+            let WaitForConfig::Struct(wait_for) = wait_for else {
+                continue;
+            };
+            if wait_for.vars.is_empty() {
+                continue;
+            };
+            let (dep_task, _) = Self::get_task(&wait_for.task, raw_root_config, raw_child_configs).context(format!(
+                "unknown task {:?} referred to by {:?}",
+                wait_for.task, task_name
+            ))?;
+            let dep_context = contexts
+                .get(&dep_task.full_name())
+                .context(format!("unknown task {:?}", dep_task.full_name()))?;
+            let mut tera = new_tera();
+            let mut resolved = IndexMap::new();
+            for (k, v) in wait_for.vars.iter() {
+                let rv = match dep_task.vars.get(k) {
+                    Some(declared) => {
+                        let merged = declared.with_value(v);
+                        VarsConfig::Static(
+                            render_value(&merged, &mut tera, dep_context, cache)
+                                .await
+                                .with_context(|| format!("failed to render var {:?}", k))?,
+                        )
+                    }
+                    // Not declared by the task: ignored when matching, kept as is
+                    None => v.clone(),
+                };
+                resolved.insert(k.clone(), rv);
+            }
+            wait_for.vars = resolved;
+        }
+
         Self::set_task(task_config, root_config, child_configs);
 
         Ok(())
@@ -701,7 +750,9 @@ impl ConfigRenderer {
         // Merge the given vars into the task vars.
         // Only the vars that already exist in the task are merged to avoid unnecessary variant tasks.
         for (k, v) in vars.iter().filter(|(k, _)| dep_task.vars.contains_key(*k)) {
-            variant_task.vars.insert(k.clone(), v.clone());
+            // A typed var of the task keeps its type, so the value is interpreted according to it.
+            let merged = dep_task.vars[k].with_value(v);
+            variant_task.vars.insert(k.clone(), merged);
         }
 
         // Create context from dependency task
@@ -801,21 +852,13 @@ fn render_env_files(env_files: &[String], tera: &mut Tera, context: &tera::Conte
     Ok(ret)
 }
 
-/// How [`render_value_map`] resolves a dynamic var.
-enum DynamicVar {
-    /// The var has already run while the task context was built, so its value is taken from the
-    /// context instead of running the command a second time.
-    FromContext,
-    /// The var is passed to another task by `depends_on`, `wait_for` or `finalized_by`, which
-    /// takes a value, not a command.
-    Rejected,
-}
-
+/// Resolves the vars of a task to their values. A dynamic var has already run while the task
+/// context was built, so its value is taken from the context instead of running the command a
+/// second time.
 async fn render_value_map(
     map: &IndexMap<String, VarsConfig>,
     tera: &mut Tera,
     context: &tera::Context,
-    dynamic: DynamicVar,
     cache: &mut DynamicVarCache,
 ) -> anyhow::Result<IndexMap<String, VarsConfig>> {
     let mut ret = IndexMap::new();
@@ -825,19 +868,40 @@ async fn render_value_map(
             let rv = match v {
                 // Unset vars stay unset; they are reported as an error when the task is run
                 _ if v.is_unset() => JsonValue::Null,
-                VarsConfig::Dynamic(_) => match dynamic {
-                    DynamicVar::FromContext => context
-                        .get(&rk)
-                        .cloned()
-                        .with_context(|| format!("dynamic var {:?} has no rendered value", rk))?,
-                    DynamicVar::Rejected => anyhow::bail!(
-                        "var {:?} cannot be dynamic here. Declare it as a project-level or task-level var and pass its value instead",
-                        rk
-                    ),
-                },
-                VarsConfig::Static(_) => render_value(v, tera, context, cache).await?,
+                VarsConfig::Dynamic(_) => context
+                    .get(&rk)
+                    .cloned()
+                    .with_context(|| format!("dynamic var {:?} has no rendered value", rk))?,
+                VarsConfig::Static(_) | VarsConfig::Typed(_) => render_value(v, tera, context, cache).await?,
             };
             ret.insert(rk, VarsConfig::Static(rv));
+        }
+    }
+    Ok(ret)
+}
+
+/// Renders the templates in the vars given to another task (`depends_on`, `wait_for`,
+/// `finalized_by`) without inferring their type: the value is interpreted later according to that
+/// task's declaration (inferred for a scalar var, parsed as the declared type for a typed var),
+/// like a CLI argument. Such a var has no shell of its own, so it cannot be dynamic.
+fn render_dep_vars(
+    map: &IndexMap<String, VarsConfig>,
+    tera: &mut Tera,
+    context: &tera::Context,
+) -> anyhow::Result<IndexMap<String, VarsConfig>> {
+    let mut ret = IndexMap::new();
+    for (k, v) in map.iter() {
+        let rk = tera.render_str(k, context)?;
+        if !rk.is_empty() {
+            let rv = match v {
+                VarsConfig::Static(s) => VarsConfig::Static(render_templates(s, tera, context)?),
+                VarsConfig::Dynamic(_) => anyhow::bail!(
+                    "var {:?} cannot be dynamic here. Declare it as a project-level or task-level var and pass its value instead",
+                    rk
+                ),
+                other => other.clone(),
+            };
+            ret.insert(rk, rv);
         }
     }
     Ok(ret)
@@ -851,41 +915,17 @@ async fn render_value(
     cache: &mut DynamicVarCache,
 ) -> anyhow::Result<JsonValue> {
     let rendered = match value {
-        VarsConfig::Static(s) => match s {
-            JsonValue::String(s) => {
-                let str = tera
-                    .render_str(s, context)
-                    .context(format!("failed to render {:?}", s))?;
-                if str.is_empty() {
-                    return Ok(JsonValue::String(str));
-                }
-                let yaml_value =
-                    serde_yaml::from_str::<Value>(&str).context(format!("failed to read YAML value {:?}", str))?;
-                match yaml_value {
-                    Value::Null => JsonValue::Null,
-                    Value::Bool(b) => JsonValue::Bool(b),
-                    Value::Number(n) => yaml_number_to_json_number(&n).unwrap_or(JsonValue::Null),
-                    Value::String(s) => JsonValue::String(s),
-                    _ => JsonValue::String(str),
-                }
-            }
-            JsonValue::Number(_) | JsonValue::Bool(_) | JsonValue::Null => s.clone(),
-            JsonValue::Array(items) => {
-                let mut rendered_items = Vec::with_capacity(items.len());
-                for item in items {
-                    rendered_items.push(render_value(&VarsConfig::Static(item.clone()), tera, context, cache).await?);
-                }
-                JsonValue::Array(rendered_items)
-            }
-            JsonValue::Object(map) => {
-                let mut rendered_map = Map::with_capacity(map.len());
-                for (k, v) in map.iter() {
-                    rendered_map.insert(
-                        k.clone(),
-                        render_value(&VarsConfig::Static(v.clone()), tera, context, cache).await?,
-                    );
-                }
-                JsonValue::Object(rendered_map)
+        // A scalar var: the templates are rendered, then the type is inferred from the result
+        VarsConfig::Static(s) => infer_scalar(render_templates(s, tera, context)?)?,
+        VarsConfig::Typed(t) => match &t.default {
+            // Unset: reported as an error when the task is run
+            None | Some(JsonValue::Null) => JsonValue::Null,
+            // Templates in the default are rendered, then the whole value is interpreted as the
+            // declared type. No type inference here: `type: string` keeps "1.10" a string.
+            Some(default) => {
+                let value = t.r#type.coerce(render_templates(default, tera, context)?)?;
+                t.check(&value)?;
+                value
             }
         },
         VarsConfig::Dynamic(s) => {
@@ -918,10 +958,60 @@ async fn render_value(
                     trimmed
                 }
             };
-            render_value(&VarsConfig::Static(JsonValue::from(trimmed)), tera, context, cache).await?
+            match s.r#type {
+                // Typed: the output is interpreted as the declared type, no inference
+                Some(t) => {
+                    let value = t.coerce(JsonValue::from(trimmed))?;
+                    check_var_value(t, &s.schema, &value)?;
+                    value
+                }
+                None => infer_scalar(JsonValue::from(trimmed))?,
+            }
         }
     };
     Ok(rendered)
+}
+
+/// Infers the type of a rendered scalar var from its string form: `"8080"` becomes a number and
+/// `"true"` a boolean. An empty string, or a string that reads as an array or a map, stays a string.
+fn infer_scalar(value: JsonValue) -> anyhow::Result<JsonValue> {
+    let JsonValue::String(str) = value else {
+        return Ok(value);
+    };
+    if str.is_empty() {
+        return Ok(JsonValue::String(str));
+    }
+    let yaml = serde_yaml::from_str::<Value>(&str).context(format!("failed to read YAML value {:?}", str))?;
+    Ok(match yaml {
+        Value::Null => JsonValue::Null,
+        Value::Bool(b) => JsonValue::Bool(b),
+        Value::Number(n) => yaml_number_to_json_number(&n).unwrap_or(JsonValue::Null),
+        Value::String(s) => JsonValue::String(s),
+        _ => JsonValue::String(str),
+    })
+}
+
+/// Renders the templates of every string in `value`, recursively, keeping the structure and the
+/// types of the other values as they are.
+fn render_templates(value: &JsonValue, tera: &mut Tera, context: &tera::Context) -> anyhow::Result<JsonValue> {
+    Ok(match value {
+        JsonValue::String(s) => JsonValue::String(
+            tera.render_str(s, context)
+                .with_context(|| format!("failed to render {:?}", s))?,
+        ),
+        JsonValue::Array(items) => JsonValue::Array(
+            items
+                .iter()
+                .map(|v| render_templates(v, tera, context))
+                .collect::<anyhow::Result<_>>()?,
+        ),
+        JsonValue::Object(map) => JsonValue::Object(
+            map.iter()
+                .map(|(k, v)| Ok((k.clone(), render_templates(v, tera, context)?)))
+                .collect::<anyhow::Result<_>>()?,
+        ),
+        other => other.clone(),
+    })
 }
 
 /// Executes a command and returns the output as a string.

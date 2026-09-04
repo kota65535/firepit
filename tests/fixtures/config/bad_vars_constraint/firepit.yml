@@ -1,0 +1,5 @@
+# Unknown keywords are rejected, so a typo in a JSON Schema keyword does not pass silently
+vars:
+  version:
+    type: string
+    patern: '^\d+$'

@@ -1,0 +1,7 @@
+# Unknown keywords are rejected inside nested schemas too
+vars:
+  tags:
+    type: array
+    items:
+      type: string
+      patern: "^[a-z]+$"

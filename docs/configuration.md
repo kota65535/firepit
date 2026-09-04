@@ -121,6 +121,72 @@ There are also some built-in variables available for use in templates.
 | `task`         | string              | The task name.                                                         |
 | `watch`        | boolean             | `true` if running in watch mode, `false` otherwise.                    |
 
+### Typed Variables
+
+A variable written as a plain value is a _scalar_: a string, number, boolean, or `null`, with the type inferred from the value.
+To declare an array or a map, or to fix the type of a variable, write it in object form with a `type` and an optional `default`.
+The types follow JSON Schema: `string`, `number`, `integer`, `boolean`, `array`, and `object`.
+
+```yaml
+vars:
+  version:
+    type: string
+    default: "1.10" # stays a string; a scalar `version: 1.10` would be the number 1.1
+  replicas:
+    type: integer
+    default: 1
+  files:
+    type: array
+    default: [src/a.ts, src/b.ts]
+  labels:
+    type: object
+    default:
+      team: platform
+```
+
+Array and map values are only accepted as the `default` of a typed variable, so that an object is never ambiguous between a value and a declaration.
+Omitting `default` makes the variable [required](#required-variables).
+
+A value given from outside the config file—the `Name=Value` CLI argument or a [dependency override](#parameterized-dependencies)—is interpreted according to the declared type.
+For a scalar variable the type is inferred from the value (`count=10` is a number, `flag=true` a boolean); for a typed variable the value is parsed as YAML and checked against the type, so a `string` variable keeps `version=1.10` as is, and an `array` variable accepts `files="[a, b]"`.
+A value that does not match the declared type is an error.
+
+### Validation
+
+A typed variable accepts any [JSON Schema](https://json-schema.org/draft/2020-12/json-schema-validation) keyword next to `type`, such as `enum`, `pattern`, `minimum`, `maximum`, `minLength`, `items`, or `uniqueItems`.
+The value—the `default`, a CLI argument, a dependency override, or a dynamic variable's output—is validated against them before any task runs, and a violation is an error.
+
+```yaml
+vars:
+  env:
+    type: string
+    enum: [dev, staging, prod]
+    default: dev
+  version:
+    type: string
+    pattern: '^\d+\.\d+\.\d+$'
+  port:
+    type: integer
+    minimum: 1024
+    maximum: 65535
+    default: 8080
+  tags:
+    type: array
+    items:
+      type: string
+      pattern: "^[a-z]+$"
+    minItems: 1
+    default: [web]
+```
+
+```
+fire deploy env=qa   # error: failed to render var "env": "qa" is not one of ["dev","staging","prod"]
+```
+
+The keywords require `type`, since the applicable keywords depend on it.
+An unknown keyword is a configuration error, so a typo such as `patern` does not pass silently; annotation keywords such as `title` or `description` are not accepted either.
+`pattern` is unanchored, as in JSON Schema: write `^...$` to match the whole value.
+
 ### Required Variables
 
 A variable declared without a value has no default, so it is required: give it a value with the
@@ -183,7 +249,9 @@ tasks:
 
   fmt:
     vars:
-      files: []
+      files:
+        type: array
+        default: []
     command: prettier --write {{ files | quote }}
 ```
 
@@ -205,7 +273,7 @@ The `args` variable does not need it either, since arguments after `--` are alre
 
 ### Dynamic Variables
 
-The variables shown so far are _static_: their values are plain JSON (string, number, boolean, array, or map).
+The variables shown so far are _static_: their values are written in the config file.
 A variable can instead be _dynamic_, taking its value from the output of a command.
 Write the variable in object form and specify a `command`:
 
@@ -257,6 +325,19 @@ Leave it off as well for a command that must run every time, such as one allocat
 
 The output is reused within a single run of the config only.
 In watch mode, every reload runs the commands again.
+
+By default the type of the value is inferred from the output, like a scalar variable.
+Give the dynamic variable a `type` to interpret the output as a [typed variable](#typed-variables) instead: `string` keeps the output as is, and `array` or `object` parse the output as YAML, so a command can produce a list or a map.
+
+```yaml
+vars:
+  branch:
+    type: string # "1e10" stays a string
+    command: git rev-parse --abbrev-ref HEAD
+  packages:
+    type: array
+    command: ls -d packages/*/ | jq -R . | jq -sc .
+```
 
 ## Environment Variables
 

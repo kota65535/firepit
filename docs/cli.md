@@ -20,7 +20,8 @@ One or more tasks to run. Tasks run in parallel by default, respecting dependenc
 
 ### Vars
 
-Template variables to override. Variable are in "Name=Value" format (e.g. `ENV=prod`, `DEBUG=true`)
+Template variables to override. Variable are in "Name=Value" format (e.g. `ENV=prod`, `DEBUG=true`).
+The value is interpreted according to the variable's declaration: inferred for a scalar variable, parsed as the declared type for a [typed variable](/configuration#typed-variables) (e.g. `FILES="[a, b]"` for an `array`).
 
 ### Args
 

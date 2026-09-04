@@ -1,0 +1,9 @@
+# A typed dynamic var whose command output does not match the type.
+# Kept apart from vars_typed: dynamic vars are rendered for every task of the project.
+tasks:
+  dyn_bad:
+    vars:
+      port:
+        type: integer
+        command: echo abc
+    command: echo "{{ port }}"

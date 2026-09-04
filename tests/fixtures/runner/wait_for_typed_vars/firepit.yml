@@ -1,0 +1,28 @@
+# The vars of a `wait_for` are resolved through the referenced task's declarations, so a value
+# for a `type: string` var is compared as a string: "8080" here must match the variant below,
+# even though it looks like a number. Ordering is proved through order.txt, as in wait_for_variant.
+tasks:
+  serve:
+    vars:
+      port:
+        type: string
+    command: |
+      sleep 1
+      echo "serve {{ port }}" >> order.txt
+      echo "serve {{ port }}"
+
+  app:
+    command: echo app
+    depends_on:
+      - task: serve
+        vars:
+          port: "8080"
+
+  check:
+    command: |
+      echo check >> order.txt
+      tr '\n' ',' < order.txt
+    wait_for:
+      - task: serve
+        vars:
+          port: "8080"
