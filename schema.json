@@ -280,6 +280,11 @@
     "DynamicVars": {
       "type": "object",
       "properties": {
+        "cache": {
+          "description": "Whether the command output is reused by the other variables that run the same command.\nThe working directory is not part of the match, so a variable shared by several projects\nruns its command only once. Leave it off for a command whose output depends on where it\nruns, or that must run every time, ex: allocating a resource.",
+          "type": "boolean",
+          "default": false
+        },
         "command": {
           "description": "Command",
           "type": "string",
