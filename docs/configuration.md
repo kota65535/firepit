@@ -88,7 +88,7 @@ tasks:
 ```
 
 A task level variable shadows the project level variable of the same name.
-Variables given on the command line as `Name=Value` override both: project level variables, and
+Variables given by the `Name=Value` CLI argument override both: project level variables, and
 task level variables of the tasks you run.
 
 ```
@@ -216,7 +216,7 @@ The `Name=Value` CLI argument only overrides a declared variable, so a name matc
 declaration is an error:
 
 ```
-fire deploy verison=1.2.3  # error: vars given by the command line argument are not declared in any project or task: "verison"
+fire deploy verison=1.2.3  # error: vars given by the CLI argument are not declared in any project or task: "verison"
 ```
 
 This also applies to a variable used only inside another variable's template: declare it with a

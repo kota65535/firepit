@@ -92,7 +92,7 @@ pub struct Args {
 }
 
 impl Args {
-    /// Determine the fail-fast setting based on the command line arguments
+    /// Determine the fail-fast setting based on the CLI arguments
     fn fail_fast(&self) -> Option<bool> {
         match (self._fail_fast, self._no_fail_fast) {
             (true, false) => Some(true),

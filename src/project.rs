@@ -230,7 +230,7 @@ impl Workspace {
             return Ok(());
         }
         anyhow::bail!(
-            "vars given by the command line argument are not declared in any project or task: {}",
+            "vars given by the CLI argument are not declared in any project or task: {}",
             undeclared.join(", ")
         )
     }
