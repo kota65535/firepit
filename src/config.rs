@@ -861,8 +861,8 @@ impl VarsConfig {
     /// Returns an error describing the offending keyword.
     pub fn validate(&self) -> anyhow::Result<()> {
         match self {
-            VarsConfig::Typed(t) => validate_var_schema(Some(t.r#type), &t.schema),
-            VarsConfig::Dynamic(d) => validate_var_schema(d.r#type, &d.schema),
+            VarsConfig::Typed(t) => validate_var_declaration(Some(t.r#type), &t.schema),
+            VarsConfig::Dynamic(d) => validate_var_declaration(d.r#type, &d.schema),
             VarsConfig::Static(_) => Ok(()),
         }
     }
@@ -905,7 +905,7 @@ pub struct TypedVars {
 impl TypedVars {
     /// Checks `value` against the JSON Schema keywords of the declaration.
     pub fn check(&self, value: &JsonValue) -> anyhow::Result<()> {
-        check_var_schema(self.r#type, &self.schema, value)
+        check_var_value(self.r#type, &self.schema, value)
     }
 }
 
@@ -925,7 +925,7 @@ fn var_schema(ty: VarType, schema: &VarSchema) -> JsonValue {
 ///
 /// Returns an error when a keyword is unknown, `type` is missing, or the schema is not a valid
 /// JSON Schema (ex: `minimum: "abc"`, an invalid `pattern`).
-fn validate_var_schema(ty: Option<VarType>, schema: &VarSchema) -> anyhow::Result<()> {
+fn validate_var_declaration(ty: Option<VarType>, schema: &VarSchema) -> anyhow::Result<()> {
     if schema.is_empty() {
         return Ok(());
     }
@@ -988,7 +988,7 @@ fn subschema_path(schema: &JsonValue, sub: &JsonValue) -> Option<String> {
 /// # Errors
 ///
 /// Returns an error listing the violated constraints.
-pub fn check_var_schema(ty: VarType, schema: &VarSchema, value: &JsonValue) -> anyhow::Result<()> {
+pub fn check_var_value(ty: VarType, schema: &VarSchema, value: &JsonValue) -> anyhow::Result<()> {
     if schema.is_empty() {
         return Ok(());
     }

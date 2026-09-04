@@ -1,5 +1,5 @@
 use crate::config::{
-    check_var_schema, DependsOnConfig, DependsOnConfigStruct, DynamicVarsInner, FinalizedByConfig,
+    check_var_value, DependsOnConfig, DependsOnConfigStruct, DynamicVarsInner, FinalizedByConfig,
     FinalizedByConfigStruct, HealthCheckConfig, ProjectConfig, ServiceConfig, TaskConfig, VarsConfig, WaitForConfig,
     WaitForConfigStruct,
 };
@@ -962,7 +962,7 @@ async fn render_value(
                 // Typed: the output is interpreted as the declared type, no inference
                 Some(t) => {
                     let value = t.coerce(JsonValue::from(trimmed))?;
-                    check_var_schema(t, &s.schema, &value)?;
+                    check_var_value(t, &s.schema, &value)?;
                     value
                 }
                 None => infer_scalar(JsonValue::from(trimmed))?,
