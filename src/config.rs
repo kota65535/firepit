@@ -929,7 +929,7 @@ fn validate_var_schema(ty: Option<VarType>, schema: &VarSchema) -> anyhow::Resul
     if schema.is_empty() {
         return Ok(());
     }
-    check_known_keywords(&JsonValue::Object(schema.clone()))?;
+    check_known_keywords(&JsonValue::Object(schema.clone()), "")?;
     let ty = ty.context("JSON Schema keywords require `type`")?;
     let full = var_schema(ty, schema);
     jsonschema::meta::validate(&full).map_err(|e| anyhow::anyhow!("invalid schema: {}", e))?;
@@ -940,15 +940,47 @@ fn validate_var_schema(ty: Option<VarType>, schema: &VarSchema) -> anyhow::Resul
 /// Checks that every keyword of `schema`, and of the subschemas it applies (`items`, `properties`,
 /// `anyOf`, ...), is one the validator knows (JSON Schema 2020-12), so that a typo does not pass
 /// silently. Annotation keywords such as `title` or `description` are not accepted either.
-fn check_known_keywords(schema: &JsonValue) -> anyhow::Result<()> {
+/// `path` locates the schema in the declaration, for the error message.
+fn check_known_keywords(schema: &JsonValue, path: &str) -> anyhow::Result<()> {
     let draft = jsonschema::Draft::Draft202012;
     for key in schema.as_object().into_iter().flat_map(|o| o.keys()) {
-        anyhow::ensure!(draft.is_known_keyword(key), "unknown keyword {:?}", key);
+        anyhow::ensure!(
+            draft.is_known_keyword(key),
+            "unknown keyword {:?}",
+            format!("{}{}", path, key)
+        );
     }
     for sub in draft.subresources_of(schema) {
-        check_known_keywords(sub)?;
+        let sub_path = subschema_path(schema, sub)
+            .map(|p| format!("{}{}.", path, p))
+            .unwrap_or_default();
+        check_known_keywords(sub, &sub_path)?;
     }
     Ok(())
+}
+
+/// Locates `sub`, a subschema yielded by `subresources_of(schema)`, in `schema`: it is the value
+/// of a keyword, or an element of an array or map that is. Returns the path such as `items`,
+/// `anyOf.1` or `properties.name`.
+fn subschema_path(schema: &JsonValue, sub: &JsonValue) -> Option<String> {
+    for (key, value) in schema.as_object()? {
+        if std::ptr::eq(value, sub) {
+            return Some(key.clone());
+        }
+        if let Some(i) = value
+            .as_array()
+            .and_then(|a| a.iter().position(|v| std::ptr::eq(v, sub)))
+        {
+            return Some(format!("{}.{}", key, i));
+        }
+        if let Some((name, _)) = value
+            .as_object()
+            .and_then(|o| o.iter().find(|(_, v)| std::ptr::eq(*v, sub)))
+        {
+            return Some(format!("{}.{}", key, name));
+        }
+    }
+    None
 }
 
 /// Checks a value (already converted to `ty`) against the variable's JSON Schema.

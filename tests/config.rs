@@ -186,7 +186,7 @@ fn test_bad_vars_nested_constraint() {
     let path = Path::new("tests/fixtures/config/bad_vars_nested_constraint");
     let err = ProjectConfig::new_multi(path).expect_err("");
     let msg = format!("{:#}", err);
-    assert!(msg.contains("vars.tags") && msg.contains("patern"), "{msg}");
+    assert!(msg.contains("vars.tags") && msg.contains("items.patern"), "{msg}");
 }
 
 fn depends_on_names(task: &firepit::config::TaskConfig) -> Vec<String> {
