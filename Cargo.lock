@@ -953,7 +953,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "shlex",
- "strum 0.26.3",
+ "strum 0.28.0",
  "tera",
  "tokio",
  "tracing",
