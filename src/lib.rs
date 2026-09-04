@@ -11,6 +11,7 @@ pub mod project;
 pub mod runner;
 pub mod template;
 pub mod util;
+pub mod vars;
 
 /// Grace period between `SIGINT` and `SIGKILL` for a readiness probe process.
 /// Probes are short-lived checks with nothing to clean up, and a probe that is
