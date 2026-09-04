@@ -296,7 +296,7 @@ impl ProjectConfig {
                 }
                 // A finalizer must finish, which a service does not do on its own
                 if services.contains(f) {
-                    anyhow::bail!("tasks.{}.finalized_by: task {:?} is a service.", t.name, f);
+                    anyhow::bail!("tasks.{}.finalized_by: task {:?} must not be a service.", t.name, f);
                 }
             }
         }

@@ -552,7 +552,11 @@ async fn test_finalized_by_service_finalizer(#[case] dir: &str, #[case] finalize
         .await
         .expect_err("should fail");
     let msg = format!("{:#}", err);
-    assert!(msg.contains(&format!("task {:?} is a service", finalizer)), "{}", msg);
+    assert!(
+        msg.contains(&format!("task {:?} must not be a service", finalizer)),
+        "{}",
+        msg
+    );
 }
 
 #[tokio::test]
