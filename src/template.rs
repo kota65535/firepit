@@ -161,7 +161,7 @@ impl TaskConfig {
         let mut tera = new_tera();
 
         // Render task-level vars
-        config.vars = render_value_map(&config.vars, &mut tera, context).await?;
+        config.vars = render_value_map(&config.vars, &mut tera, context, DynamicVar::FromContext).await?;
 
         // Render label
         if let Some(l) = config.label {
@@ -234,7 +234,7 @@ impl TaskConfig {
                     let task = tera.render_str(&dep.task, context)?;
                     // Ignore if rendered task name is empty
                     if !task.ends_with("#") {
-                        let vars = render_value_map(&dep.vars, &mut tera, context).await?;
+                        let vars = render_value_map(&dep.vars, &mut tera, context, DynamicVar::Rejected).await?;
                         rendered_depends_on.push(DependsOnConfig::Struct(DependsOnConfigStruct {
                             task,
                             vars,
@@ -257,7 +257,7 @@ impl TaskConfig {
             match wait_for {
                 WaitForConfig::String(_) => rendered_wait_for.push(WaitForConfig::String(task)),
                 WaitForConfig::Struct(w) => {
-                    let vars = render_value_map(&w.vars, &mut tera, context).await?;
+                    let vars = render_value_map(&w.vars, &mut tera, context, DynamicVar::Rejected).await?;
                     rendered_wait_for.push(WaitForConfig::Struct(WaitForConfigStruct { task, vars }));
                 }
             }
@@ -275,7 +275,7 @@ impl TaskConfig {
             match finalized_by {
                 FinalizedByConfig::String(_) => rendered_finalized_by.push(FinalizedByConfig::String(task)),
                 FinalizedByConfig::Struct(f) => {
-                    let vars = render_value_map(&f.vars, &mut tera, context).await?;
+                    let vars = render_value_map(&f.vars, &mut tera, context, DynamicVar::Rejected).await?;
                     rendered_finalized_by.push(FinalizedByConfig::Struct(FinalizedByConfigStruct { task, vars }));
                 }
             }
@@ -634,22 +634,42 @@ fn render_env_files(env_files: &[String], tera: &mut Tera, context: &tera::Conte
     Ok(ret)
 }
 
+/// How [`render_value_map`] resolves a dynamic var.
+enum DynamicVar {
+    /// The var has already run while the task context was built, so its value is taken from the
+    /// context instead of running the command a second time.
+    FromContext,
+    /// The var is passed to another task by `depends_on`, `wait_for` or `finalized_by`, which
+    /// takes a value, not a command.
+    Rejected,
+}
+
 async fn render_value_map(
     map: &IndexMap<String, VarsConfig>,
     tera: &mut Tera,
     context: &tera::Context,
+    dynamic: DynamicVar,
 ) -> anyhow::Result<IndexMap<String, VarsConfig>> {
     let mut ret = IndexMap::new();
     for (k, v) in map.iter() {
         let rk = tera.render_str(k, context)?;
         if !rk.is_empty() {
-            // Unset vars stay unset; they are reported as an error when the task is run
-            let rv = if v.is_unset() {
-                VarsConfig::Static(JsonValue::Null)
-            } else {
-                VarsConfig::Static(render_value(v, tera, context).await?)
+            let rv = match v {
+                // Unset vars stay unset; they are reported as an error when the task is run
+                _ if v.is_unset() => JsonValue::Null,
+                VarsConfig::Dynamic(_) => match dynamic {
+                    DynamicVar::FromContext => context
+                        .get(&rk)
+                        .cloned()
+                        .with_context(|| format!("dynamic var {:?} has no rendered value", rk))?,
+                    DynamicVar::Rejected => anyhow::bail!(
+                        "var {:?} cannot be dynamic here. Declare it as a project-level or task-level var and pass its value instead",
+                        rk
+                    ),
+                },
+                VarsConfig::Static(_) => render_value(v, tera, context).await?,
             };
-            ret.insert(rk, rv);
+            ret.insert(rk, VarsConfig::Static(rv));
         }
     }
     Ok(ret)
