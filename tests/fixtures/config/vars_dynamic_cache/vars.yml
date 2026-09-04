@@ -1,0 +1,15 @@
+vars:
+  # `mktemp -u` only prints a name, so every run gives a different value
+  cached:
+    command: mktemp -u
+    working_dir: "{{ root_dir }}"
+    cache: true
+  # Same command and `cache: true`, but each project runs it in its own directory, so the cache
+  # never hits
+  cached_per_dir:
+    command: mktemp -u
+    cache: true
+  uncached:
+    command: mktemp -u
+  cwd:
+    command: pwd

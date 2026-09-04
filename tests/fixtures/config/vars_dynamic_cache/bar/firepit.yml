@@ -1,0 +1,11 @@
+includes:
+  - "{{ root_dir }}/vars.yml"
+
+tasks:
+  show:
+    command: echo
+    env:
+      CACHED: "{{ cached }}"
+      CACHED_PER_DIR: "{{ cached_per_dir }}"
+      UNCACHED: "{{ uncached }}"
+      CWD: "{{ cwd }}"

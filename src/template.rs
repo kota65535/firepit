@@ -11,9 +11,11 @@ use async_recursion::async_recursion;
 use indexmap::IndexMap;
 use serde_json::{Map, Value as JsonValue};
 use serde_yaml::Value;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::path::PathBuf;
+use std::time::{Duration, Instant};
 use tera::Tera;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 pub struct ConfigRenderer {
     root_config: ProjectConfig,
@@ -29,11 +31,154 @@ pub const PROJECT_CONTEXT_KEY: &str = "project";
 pub const TASK_CONTEXT_KEY: &str = "task";
 pub const WATCH_CONTEXT_KEY: &str = "watch";
 
+/// How long the repeated runs of one uncached dynamic variable have to take in total before the
+/// user is told about `cache: true`. Below this, running the command again is not worth a warning.
+const DYNAMIC_VAR_HINT_THRESHOLD: Duration = Duration::from_secs(1);
+
+/// Outputs of the dynamic variable commands that have already run, so that a variable with
+/// `cache: true` included by several projects or tasks runs its command only once.
+///
+/// The cache lives for a single [`ConfigRenderer::render`] call. Re-rendering the config, which is
+/// what happens on every watch event, starts from an empty cache and runs the commands again.
+///
+/// Every run is timed, cached or not, so that [`DynamicVarCache::warn_runs`] can point out both a
+/// variable that would benefit from `cache: true` and one that has it without ever hitting.
+#[derive(Debug, Default)]
+pub struct DynamicVarCache {
+    outputs: HashMap<DynamicVarKey, String>,
+    runs: HashMap<DynamicVarRunKey, DynamicVarRuns>,
+}
+
+/// How often one dynamic variable declaration has run its command, and how long that took.
+#[derive(Debug)]
+struct DynamicVarRuns {
+    count: usize,
+    elapsed: Duration,
+}
+
+impl DynamicVarCache {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn get(&self, key: &DynamicVarKey) -> Option<&String> {
+        self.outputs.get(key)
+    }
+
+    fn insert(&mut self, key: DynamicVarKey, output: String) {
+        self.outputs.insert(key, output);
+    }
+
+    /// Records that the command of `key` has run once more, taking `elapsed`.
+    fn record_run(&mut self, key: DynamicVarRunKey, elapsed: Duration) {
+        self.runs
+            .entry(key)
+            .and_modify(|r| {
+                r.count += 1;
+                r.elapsed += elapsed;
+            })
+            .or_insert(DynamicVarRuns { count: 1, elapsed });
+    }
+
+    /// Tells the user about the variables whose command ran more than once, which they have no
+    /// other way of noticing than the config taking a long time to render.
+    ///
+    /// A run key ignores the working directory, so a variable shared by several projects lands on
+    /// one entry however many directories it ran in. That is what makes both cases visible: an
+    /// uncached variable worth caching, and a cached one that never hits because each project runs
+    /// it somewhere else.
+    fn warn_runs(&self) {
+        for (key, runs) in self.runs.iter() {
+            if runs.count < 2 {
+                continue;
+            }
+            if key.cached {
+                warn!(
+                    "Dynamic var {:?} has `cache: true` but ran its command {} times, because it \
+                     runs in a different directory each time. Set `working_dir` on it to give \
+                     every run the same directory, or drop `cache: true`.",
+                    key.name, runs.count,
+                );
+            } else if runs.elapsed >= DYNAMIC_VAR_HINT_THRESHOLD {
+                warn!(
+                    "Dynamic var {:?} ran its command {} times, taking {:.1}s in total. \
+                     Set `cache: true` on it to run the command once and reuse its output.",
+                    key.name,
+                    runs.count,
+                    runs.elapsed.as_secs_f64(),
+                );
+            }
+        }
+    }
+}
+
+/// A dynamic variable command, apart from the directory it runs in.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct DynamicVarCommand {
+    shell_command: String,
+    shell_args: Vec<String>,
+    command: String,
+    // BTreeMap, not HashMap, because HashMap is not hashable
+    env: BTreeMap<String, String>,
+}
+
+impl DynamicVarCommand {
+    fn new(inner: &DynamicVarsInner) -> Self {
+        Self {
+            shell_command: inner.shell.command.clone(),
+            shell_args: inner.shell.args.clone(),
+            command: inner.command.clone(),
+            env: inner.env.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+        }
+    }
+}
+
+/// What makes two `cache: true` dynamic variables share a command output: the same command run in
+/// the same directory. A variable shared by several projects runs in each project directory, so
+/// sharing one run across them takes an explicit `working_dir`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct DynamicVarKey {
+    command: DynamicVarCommand,
+    working_dir: PathBuf,
+}
+
+impl DynamicVarKey {
+    fn new(inner: &DynamicVarsInner) -> Self {
+        Self {
+            command: DynamicVarCommand::new(inner),
+            working_dir: inner.working_dir.clone(),
+        }
+    }
+}
+
+/// What the warnings count runs by: one declaration, wherever it ran.
+///
+/// The variable name keeps the runs of two variables that share a command apart, so that neither
+/// is reported for the other's executions, and `cached` keeps a cached variable from being
+/// reported as one that should be cached.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct DynamicVarRunKey {
+    name: String,
+    cached: bool,
+    command: DynamicVarCommand,
+}
+
+impl DynamicVarRunKey {
+    fn new(inner: &DynamicVarsInner) -> Self {
+        Self {
+            name: inner.name.clone(),
+            cached: inner.cache,
+            command: DynamicVarCommand::new(inner),
+        }
+    }
+}
+
 impl ProjectConfig {
     pub async fn context(
         &self,
         context: &tera::Context,
         vars: &IndexMap<String, VarsConfig>,
+        cache: &mut DynamicVarCache,
     ) -> anyhow::Result<tera::Context> {
         let mut tera = new_tera();
         let mut context = context.clone();
@@ -61,12 +206,13 @@ impl ProjectConfig {
                             shell: s.shell.clone().unwrap_or(self.shell.clone()),
                             env: Env::new().with(&s.env_file_paths(&self.dir), &s.env).load()?,
                             working_dir: s.working_dir_path(&self.working_dir_path()),
+                            cache: s.cache,
                         });
                         VarsConfig::Dynamic(s)
                     }
                     VarsConfig::Static(_) => v.clone(),
                 };
-                let rv = render_value(&v, &mut tera, &context).await?;
+                let rv = render_value(&v, &mut tera, &context, cache).await?;
                 context.insert(rk, &rv);
             }
         }
@@ -80,6 +226,7 @@ impl ProjectConfig {
     pub async fn render(
         &self,
         context: &tera::Context,
+        cache: &mut DynamicVarCache,
     ) -> anyhow::Result<(ProjectConfig, HashMap<String, tera::Context>)> {
         let mut tera = new_tera();
 
@@ -108,8 +255,8 @@ impl ProjectConfig {
         let mut task_contexts = HashMap::new();
 
         for (task_name, task_config) in project.tasks.iter() {
-            let task_context = task_config.context(&project, context).await?;
-            rendered_tasks.insert(task_name.clone(), task_config.render(&task_context).await?);
+            let task_context = task_config.context(&project, context, cache).await?;
+            rendered_tasks.insert(task_name.clone(), task_config.render(&task_context, cache).await?);
             task_contexts.insert(task_config.full_name(), task_context);
         }
         config.tasks = rendered_tasks;
@@ -119,7 +266,12 @@ impl ProjectConfig {
 }
 
 impl TaskConfig {
-    pub async fn context(&self, config: &ProjectConfig, context: &tera::Context) -> anyhow::Result<tera::Context> {
+    pub async fn context(
+        &self,
+        config: &ProjectConfig,
+        context: &tera::Context,
+        cache: &mut DynamicVarCache,
+    ) -> anyhow::Result<tera::Context> {
         let mut tera = new_tera();
         let mut context = context.clone();
         context.insert(TASK_CONTEXT_KEY, &self.full_orig_name());
@@ -153,24 +305,25 @@ impl TaskConfig {
                                 .unwrap_or(self.shell.clone().unwrap_or(config.shell.clone())),
                             env: Env::new().with(&s.env_file_paths(&config.dir), &s.env).load()?,
                             working_dir: s.working_dir_path(&self.working_dir_path(&config.working_dir_path())),
+                            cache: s.cache,
                         });
                         VarsConfig::Dynamic(s)
                     }
                     VarsConfig::Static(_) => v.clone(),
                 };
-                let rv = render_value(&v, &mut tera, &context).await?;
+                let rv = render_value(&v, &mut tera, &context, cache).await?;
                 context.insert(rk, &rv);
             }
         }
         Ok(context)
     }
 
-    pub async fn render(&self, context: &tera::Context) -> anyhow::Result<TaskConfig> {
+    pub async fn render(&self, context: &tera::Context, cache: &mut DynamicVarCache) -> anyhow::Result<TaskConfig> {
         let mut config = self.clone();
         let mut tera = new_tera();
 
         // Render task-level vars
-        config.vars = render_value_map(&config.vars, &mut tera, context, DynamicVar::FromContext).await?;
+        config.vars = render_value_map(&config.vars, &mut tera, context, DynamicVar::FromContext, cache).await?;
 
         // Render label
         if let Some(l) = config.label {
@@ -243,7 +396,7 @@ impl TaskConfig {
                     let task = tera.render_str(&dep.task, context)?;
                     // Ignore if rendered task name is empty
                     if !task.ends_with("#") {
-                        let vars = render_value_map(&dep.vars, &mut tera, context, DynamicVar::Rejected).await?;
+                        let vars = render_value_map(&dep.vars, &mut tera, context, DynamicVar::Rejected, cache).await?;
                         rendered_depends_on.push(DependsOnConfig::Struct(DependsOnConfigStruct {
                             task,
                             vars,
@@ -266,7 +419,7 @@ impl TaskConfig {
             match wait_for {
                 WaitForConfig::String(_) => rendered_wait_for.push(WaitForConfig::String(task)),
                 WaitForConfig::Struct(w) => {
-                    let vars = render_value_map(&w.vars, &mut tera, context, DynamicVar::Rejected).await?;
+                    let vars = render_value_map(&w.vars, &mut tera, context, DynamicVar::Rejected, cache).await?;
                     rendered_wait_for.push(WaitForConfig::Struct(WaitForConfigStruct { task, vars }));
                 }
             }
@@ -284,7 +437,7 @@ impl TaskConfig {
             match finalized_by {
                 FinalizedByConfig::String(_) => rendered_finalized_by.push(FinalizedByConfig::String(task)),
                 FinalizedByConfig::Struct(f) => {
-                    let vars = render_value_map(&f.vars, &mut tera, context, DynamicVar::Rejected).await?;
+                    let vars = render_value_map(&f.vars, &mut tera, context, DynamicVar::Rejected, cache).await?;
                     rendered_finalized_by.push(FinalizedByConfig::Struct(FinalizedByConfigStruct { task, vars }));
                 }
             }
@@ -334,15 +487,16 @@ impl ConfigRenderer {
 
     pub async fn render(&mut self) -> anyhow::Result<(ProjectConfig, IndexMap<String, ProjectConfig>)> {
         let context = self.base_context();
+        let mut cache = DynamicVarCache::new();
         let mut task_contexts = HashMap::new();
         let mut tasks = Vec::new();
         let mut num_variants = HashMap::new();
 
         // Root project task contexts
-        let root_context = self.root_config.context(&context, &self.vars).await?;
+        let root_context = self.root_config.context(&context, &self.vars, &mut cache).await?;
         let (mut root_config, root_task_contexts) = self
             .root_config
-            .render(&root_context)
+            .render(&root_context, &mut cache)
             .await
             .with_context(|| "failed to render config of project root")?;
         tasks.extend(root_task_contexts.keys().cloned());
@@ -351,9 +505,9 @@ impl ConfigRenderer {
         // Project task contexts
         let mut child_configs = IndexMap::new();
         for (k, c) in self.child_configs.iter_mut() {
-            let project_context = c.context(&context, &self.vars).await?;
+            let project_context = c.context(&context, &self.vars, &mut cache).await?;
             let (child_config, child_task_contexts) = c
-                .render(&project_context)
+                .render(&project_context, &mut cache)
                 .await
                 .with_context(|| format!("failed to render config of project {:?}", c.name))?;
             child_configs.insert(k.clone(), child_config);
@@ -371,9 +525,12 @@ impl ConfigRenderer {
                 &mut self.child_configs,
                 &mut num_variants,
                 &mut task_contexts,
+                &mut cache,
             )
             .await?;
         }
+
+        cache.warn_runs();
 
         Ok((root_config.clone(), child_configs.clone()))
     }
@@ -437,6 +594,7 @@ impl ConfigRenderer {
     }
 
     #[async_recursion]
+    #[allow(clippy::too_many_arguments)]
     async fn render_variant_tasks(
         task_name: &str,
         root_config: &mut ProjectConfig,
@@ -445,6 +603,7 @@ impl ConfigRenderer {
         raw_child_configs: &mut IndexMap<String, ProjectConfig>,
         num_variants: &mut HashMap<String, usize>,
         contexts: &mut HashMap<String, tera::Context>,
+        cache: &mut DynamicVarCache,
     ) -> anyhow::Result<()> {
         // Get task config
         let (task_config, _project_config) =
@@ -482,6 +641,7 @@ impl ConfigRenderer {
                 raw_child_configs,
                 num_variants,
                 contexts,
+                cache,
             )
             .await?;
         }
@@ -504,6 +664,7 @@ impl ConfigRenderer {
                 raw_child_configs,
                 num_variants,
                 contexts,
+                cache,
             )
             .await?;
         }
@@ -528,6 +689,7 @@ impl ConfigRenderer {
         raw_child_configs: &mut IndexMap<String, ProjectConfig>,
         num_variants: &mut HashMap<String, usize>,
         contexts: &mut HashMap<String, tera::Context>,
+        cache: &mut DynamicVarCache,
     ) -> anyhow::Result<String> {
         // Get the raw config of the referenced task
         let (dep_task, dep_project) = Self::get_task(dep_task_name, raw_root_config, raw_child_configs).context(
@@ -546,10 +708,10 @@ impl ConfigRenderer {
         let dep_context = contexts
             .get(&dep_task.full_name())
             .context(format!("unknown task {:?}", dep_task.full_name()))?;
-        let variant_context = variant_task.context(dep_project, dep_context).await?;
+        let variant_context = variant_task.context(dep_project, dep_context, cache).await?;
 
         // Render
-        let mut rendered_variant_task = variant_task.render(&variant_context).await?;
+        let mut rendered_variant_task = variant_task.render(&variant_context, cache).await?;
 
         debug!(
             "Variant?: {:?}, dependent: {:?}\ncontext: {:#?}\nvars: {:#?}",
@@ -604,6 +766,7 @@ impl ConfigRenderer {
             raw_child_configs,
             num_variants,
             contexts,
+            cache,
         )
         .await?;
 
@@ -653,6 +816,7 @@ async fn render_value_map(
     tera: &mut Tera,
     context: &tera::Context,
     dynamic: DynamicVar,
+    cache: &mut DynamicVarCache,
 ) -> anyhow::Result<IndexMap<String, VarsConfig>> {
     let mut ret = IndexMap::new();
     for (k, v) in map.iter() {
@@ -671,7 +835,7 @@ async fn render_value_map(
                         rk
                     ),
                 },
-                VarsConfig::Static(_) => render_value(v, tera, context).await?,
+                VarsConfig::Static(_) => render_value(v, tera, context, cache).await?,
             };
             ret.insert(rk, VarsConfig::Static(rv));
         }
@@ -680,7 +844,12 @@ async fn render_value_map(
 }
 
 #[async_recursion]
-async fn render_value(value: &VarsConfig, tera: &mut Tera, context: &tera::Context) -> anyhow::Result<JsonValue> {
+async fn render_value(
+    value: &VarsConfig,
+    tera: &mut Tera,
+    context: &tera::Context,
+    cache: &mut DynamicVarCache,
+) -> anyhow::Result<JsonValue> {
     let rendered = match value {
         VarsConfig::Static(s) => match s {
             JsonValue::String(s) => {
@@ -704,7 +873,7 @@ async fn render_value(value: &VarsConfig, tera: &mut Tera, context: &tera::Conte
             JsonValue::Array(items) => {
                 let mut rendered_items = Vec::with_capacity(items.len());
                 for item in items {
-                    rendered_items.push(render_value(&VarsConfig::Static(item.clone()), tera, context).await?);
+                    rendered_items.push(render_value(&VarsConfig::Static(item.clone()), tera, context, cache).await?);
                 }
                 JsonValue::Array(rendered_items)
             }
@@ -713,7 +882,7 @@ async fn render_value(value: &VarsConfig, tera: &mut Tera, context: &tera::Conte
                 for (k, v) in map.iter() {
                     rendered_map.insert(
                         k.clone(),
-                        render_value(&VarsConfig::Static(v.clone()), tera, context).await?,
+                        render_value(&VarsConfig::Static(v.clone()), tera, context, cache).await?,
                     );
                 }
                 JsonValue::Object(rendered_map)
@@ -721,23 +890,35 @@ async fn render_value(value: &VarsConfig, tera: &mut Tera, context: &tera::Conte
         },
         VarsConfig::Dynamic(s) => {
             let inner = s.inner.clone().context("dynamic vars inner value should be present")?;
-            let name = inner.name;
-            let command = inner.command;
-            let shell = inner.shell;
-            let working_dir = inner.working_dir;
-            let mut args = Vec::new();
-            args.extend(shell.args);
-            args.push(command);
-            let command = Command::new(shell.command)
-                .with_args(args)
-                .with_envs(inner.env)
-                .with_current_dir(working_dir)
-                .to_owned();
-            let output = execute_command(&command)
-                .await
-                .context(format!("failed to render dynamic var {:?}", name))?;
-            let trimmed = output.trim().to_string();
-            render_value(&VarsConfig::Static(JsonValue::from(trimmed)), tera, context).await?
+            let key = DynamicVarKey::new(&inner);
+            let cached = inner.cache.then(|| cache.get(&key)).flatten();
+            let trimmed = match cached {
+                Some(cached) => {
+                    debug!("Dynamic var {:?} reuses the cached output {:?}", inner.name, cached);
+                    cached.clone()
+                }
+                None => {
+                    let mut args = Vec::new();
+                    args.extend(inner.shell.args.clone());
+                    args.push(inner.command.clone());
+                    let command = Command::new(inner.shell.command.clone())
+                        .with_args(args)
+                        .with_envs(inner.env.clone())
+                        .with_current_dir(inner.working_dir.clone())
+                        .to_owned();
+                    let started = Instant::now();
+                    let output = execute_command(&command)
+                        .await
+                        .context(format!("failed to render dynamic var {:?}", inner.name))?;
+                    cache.record_run(DynamicVarRunKey::new(&inner), started.elapsed());
+                    let trimmed = output.trim().to_string();
+                    if inner.cache {
+                        cache.insert(key, trimmed.clone());
+                    }
+                    trimmed
+                }
+            };
+            render_value(&VarsConfig::Static(JsonValue::from(trimmed)), tera, context, cache).await?
         }
     };
     Ok(rendered)
@@ -864,6 +1045,51 @@ fn scalar_to_string(value: &JsonValue) -> tera::Result<String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn run_key(name: &str, command: &str, cached: bool) -> DynamicVarRunKey {
+        DynamicVarRunKey {
+            name: String::from(name),
+            cached,
+            command: DynamicVarCommand {
+                shell_command: String::from("sh"),
+                shell_args: vec![String::from("-c")],
+                command: String::from(command),
+                env: BTreeMap::new(),
+            },
+        }
+    }
+
+    /// The warnings themselves only reach the user through the log, so this covers the counting
+    /// they read: which runs land on one entry and which stay apart.
+    #[test]
+    fn test_record_run() {
+        let mut cache = DynamicVarCache::new();
+        let long = DYNAMIC_VAR_HINT_THRESHOLD;
+
+        // One declaration running in several directories lands on a single entry
+        cache.record_run(run_key("slow", "slow", false), long / 2);
+        cache.record_run(run_key("slow", "slow", false), long / 2);
+        // Two variables sharing a command are counted apart, so neither is reported for the
+        // other's execution
+        cache.record_run(run_key("twin-a", "shared", false), long);
+        cache.record_run(run_key("twin-b", "shared", false), long);
+        // A cached variable is counted apart from an uncached one running the same command, so
+        // neither is reported as the other kind
+        cache.record_run(run_key("both", "both", true), long);
+        cache.record_run(run_key("both", "both", false), long);
+
+        let runs = |name: &str, command: &str, cached: bool| {
+            cache
+                .runs
+                .get(&run_key(name, command, cached))
+                .map(|r| (r.count, r.elapsed))
+        };
+        assert_eq!(runs("slow", "slow", false), Some((2, long)));
+        assert_eq!(runs("twin-a", "shared", false), Some((1, long)));
+        assert_eq!(runs("twin-b", "shared", false), Some((1, long)));
+        assert_eq!(runs("both", "both", true), Some((1, long)));
+        assert_eq!(runs("both", "both", false), Some((1, long)));
+    }
 
     fn quote(value: JsonValue) -> tera::Result<String> {
         let args = HashMap::new();

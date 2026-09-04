@@ -819,6 +819,13 @@ pub struct DynamicVars {
     #[schemars(extend("x-template" = true))]
     pub working_dir: Option<String>,
 
+    /// Whether the command output is reused by the other variables running the same command in
+    /// the same working directory. A variable shared by several projects runs in each project
+    /// directory, so sharing one run across them takes an explicit `working_dir`. Leave it off
+    /// for a command that must run every time, ex: allocating a resource.
+    #[serde(default)]
+    pub cache: bool,
+
     #[serde(skip)]
     pub inner: Option<DynamicVarsInner>,
 }
@@ -843,6 +850,7 @@ pub struct DynamicVarsInner {
     pub shell: ShellConfig,
     pub working_dir: PathBuf,
     pub env: HashMap<String, String>,
+    pub cache: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
