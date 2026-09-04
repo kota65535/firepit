@@ -929,19 +929,62 @@ fn validate_var_schema(ty: Option<VarType>, schema: &VarSchema) -> anyhow::Resul
     if schema.is_empty() {
         return Ok(());
     }
-    // Only keywords the validator knows (JSON Schema 2020-12), so that a typo does not pass
-    // silently. Annotation keywords such as `title` or `description` are not accepted either.
-    for key in schema.keys() {
-        anyhow::ensure!(
-            jsonschema::Draft::Draft202012.is_known_keyword(key),
-            "unknown keyword {:?}",
-            key
-        );
-    }
+    check_known_keywords(schema, "")?;
     let ty = ty.context("JSON Schema keywords require `type`")?;
     let full = var_schema(ty, schema);
     jsonschema::meta::validate(&full).map_err(|e| anyhow::anyhow!("invalid schema: {}", e))?;
     jsonschema::validator_for(&full).map_err(|e| anyhow::anyhow!("invalid schema: {}", e))?;
+    Ok(())
+}
+
+/// Checks that every keyword of `schema`, and of the subschemas it applies, is one the validator
+/// knows (JSON Schema 2020-12), so that a typo does not pass silently. Annotation keywords such as
+/// `title` or `description` are not accepted either. `path` locates nested errors.
+fn check_known_keywords(schema: &VarSchema, path: &str) -> anyhow::Result<()> {
+    for (key, value) in schema {
+        anyhow::ensure!(
+            jsonschema::Draft::Draft202012.is_known_keyword(key),
+            "unknown keyword {:?}",
+            format!("{}{}", path, key)
+        );
+        let path = format!("{}{}.", path, key);
+        match key.as_str() {
+            // A subschema
+            "items"
+            | "contains"
+            | "additionalProperties"
+            | "propertyNames"
+            | "not"
+            | "if"
+            | "then"
+            | "else"
+            | "unevaluatedItems"
+            | "unevaluatedProperties"
+            | "additionalItems"
+            | "contentSchema" => {
+                if let Some(sub) = value.as_object() {
+                    check_known_keywords(sub, &path)?;
+                }
+            }
+            // An array of subschemas
+            "prefixItems" | "allOf" | "anyOf" | "oneOf" => {
+                for (i, sub) in value.as_array().into_iter().flatten().enumerate() {
+                    if let Some(sub) = sub.as_object() {
+                        check_known_keywords(sub, &format!("{}{}.", path, i))?;
+                    }
+                }
+            }
+            // A map of subschemas
+            "properties" | "patternProperties" | "dependentSchemas" | "$defs" | "definitions" => {
+                for (name, sub) in value.as_object().into_iter().flatten() {
+                    if let Some(sub) = sub.as_object() {
+                        check_known_keywords(sub, &format!("{}{}.", path, name))?;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
     Ok(())
 }
 
