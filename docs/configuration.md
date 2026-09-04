@@ -152,8 +152,8 @@ A value that does not match the declared type is an error.
 
 ### Validation
 
-A typed variable can constrain its value with the JSON Schema keywords `enum`, `pattern`, `minimum`, and `maximum`.
-The value—the `default`, a CLI argument, a dependency override, or a dynamic variable's output—is checked before any task runs, and a violation is an error.
+A typed variable accepts any [JSON Schema](https://json-schema.org/draft/2020-12/json-schema-validation) keyword next to `type`, such as `enum`, `pattern`, `minimum`, `maximum`, `minLength`, `items`, or `uniqueItems`.
+The value—the `default`, a CLI argument, a dependency override, or a dynamic variable's output—is validated against them before any task runs, and a violation is an error.
 
 ```yaml
 vars:
@@ -169,17 +169,22 @@ vars:
     minimum: 1024
     maximum: 65535
     default: 8080
+  tags:
+    type: array
+    items:
+      type: string
+      pattern: "^[a-z]+$"
+    minItems: 1
+    default: [web]
 ```
 
 ```
 fire deploy env=qa   # error: failed to render var "env": "qa" is not one of ["dev","staging","prod"]
 ```
 
-- `enum` lists the allowed values. Each value must have the declared type.
-- `pattern` is a regular expression the value must match. It is unanchored, as in JSON Schema, so write `^...$` to match the whole value. Only for `string`.
-- `minimum` and `maximum` are inclusive bounds. Only for `number` and `integer`.
-
-The constraints require `type`, since the applicable keywords depend on it.
+The keywords require `type`, since the applicable keywords depend on it.
+An unknown keyword is a configuration error, so a typo such as `patern` does not pass silently.
+`pattern` is unanchored, as in JSON Schema: write `^...$` to match the whole value.
 
 ### Required Variables
 

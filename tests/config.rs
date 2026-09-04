@@ -161,11 +161,11 @@ fn test_bad_vars_object() {
 
 #[test]
 fn test_bad_vars_constraint() {
-    // A constraint that does not apply to the declared type is a config error
+    // An unknown keyword (here a typo of `pattern`) is a config error
     let path = Path::new("tests/fixtures/config/bad_vars_constraint");
     let err = ProjectConfig::new_multi(path).expect_err("");
     let msg = format!("{:#}", err);
-    assert!(msg.contains("vars.port") && msg.contains("pattern"), "{msg}");
+    assert!(msg.contains("vars.version") && msg.contains("patern"), "{msg}");
 }
 
 fn depends_on_names(task: &firepit::config::TaskConfig) -> Vec<String> {

@@ -752,29 +752,30 @@ impl VarsConfig {
     /// according to it; otherwise the value replaces the declaration as is.
     pub fn with_value(&self, value: &VarsConfig) -> VarsConfig {
         let declared = match self {
-            VarsConfig::Typed(t) => Some((t.r#type, &t.constraints)),
-            VarsConfig::Dynamic(d) => d.r#type.map(|t| (t, &d.constraints)),
+            VarsConfig::Typed(t) => Some((t.r#type, &t.schema)),
+            VarsConfig::Dynamic(d) => d.r#type.map(|t| (t, &d.schema)),
             VarsConfig::Static(_) => None,
         };
         match (declared, value) {
-            (Some((r#type, constraints)), VarsConfig::Static(v)) => VarsConfig::Typed(TypedVars {
+            (Some((r#type, schema)), VarsConfig::Static(v)) => VarsConfig::Typed(TypedVars {
                 r#type,
                 default: Some(v.clone()),
-                constraints: constraints.clone(),
+                schema: schema.clone(),
             }),
             _ => value.clone(),
         }
     }
 
-    /// Checks the declaration itself: the constraints require `type` and must apply to it.
+    /// Checks the declaration itself: the JSON Schema keywords must be known, require `type`,
+    /// and form a valid schema.
     ///
     /// # Errors
     ///
     /// Returns an error describing the offending keyword.
     pub fn validate(&self) -> anyhow::Result<()> {
         match self {
-            VarsConfig::Typed(t) => t.constraints.validate(Some(t.r#type)),
-            VarsConfig::Dynamic(d) => d.constraints.validate(d.r#type),
+            VarsConfig::Typed(t) => validate_var_schema(Some(t.r#type), &t.schema),
+            VarsConfig::Dynamic(d) => validate_var_schema(d.r#type, &d.schema),
             VarsConfig::Static(_) => Ok(()),
         }
     }
@@ -809,97 +810,118 @@ pub struct TypedVars {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default: Option<JsonValue>,
 
+    /// Any other JSON Schema keyword (`enum`, `pattern`, `minimum`, `items`, ...) validates the value.
     #[serde(flatten)]
-    pub constraints: VarConstraints,
+    pub schema: VarSchema,
 }
 
-/// Value constraints, following JSON Schema. They require `type`.
-#[derive(Debug, Clone, Default, Deserialize, Serialize, JsonSchema)]
-pub struct VarConstraints {
-    /// Allowed values
-    #[serde(rename = "enum", default, skip_serializing_if = "Option::is_none")]
-    pub r#enum: Option<Vec<JsonValue>>,
-
-    /// Regular expression the value must match (unanchored, as in JSON Schema). `string` only.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub pattern: Option<String>,
-
-    /// Inclusive lower bound. `number` and `integer` only.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub minimum: Option<f64>,
-
-    /// Inclusive upper bound. `number` and `integer` only.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub maximum: Option<f64>,
-}
-
-impl VarConstraints {
-    pub fn is_empty(&self) -> bool {
-        self.r#enum.is_none() && self.pattern.is_none() && self.minimum.is_none() && self.maximum.is_none()
-    }
-
-    /// Checks that the constraints apply to `ty`, at config load time.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when `ty` is missing, a keyword does not apply to it, an `enum` value
-    /// has another type, or `pattern` is not a valid regular expression.
-    pub fn validate(&self, ty: Option<VarType>) -> anyhow::Result<()> {
-        if self.is_empty() {
-            return Ok(());
-        }
-        let ty = ty.context("`enum`, `pattern`, `minimum` and `maximum` require `type`")?;
-        if let Some(values) = &self.r#enum {
-            anyhow::ensure!(!values.is_empty(), "`enum` must not be empty");
-            for v in values {
-                anyhow::ensure!(ty.matches(v), "`enum` value {} is not {}", v, ty.as_str());
-            }
-        }
-        if let Some(pattern) = &self.pattern {
-            anyhow::ensure!(ty == VarType::String, "`pattern` is only for type string");
-            Regex::new(pattern).with_context(|| format!("invalid `pattern` {:?}", pattern))?;
-        }
-        if self.minimum.is_some() || self.maximum.is_some() {
-            anyhow::ensure!(
-                matches!(ty, VarType::Number | VarType::Integer),
-                "`minimum` and `maximum` are only for type number and integer"
-            );
-        }
-        Ok(())
-    }
-
-    /// Checks a value (already converted to the declared type) against the constraints.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error naming the violated constraint.
+impl TypedVars {
+    /// Checks `value` against the JSON Schema keywords of the declaration.
     pub fn check(&self, value: &JsonValue) -> anyhow::Result<()> {
-        if let Some(values) = &self.r#enum {
-            anyhow::ensure!(
-                values.contains(value),
-                "{} is not one of {}",
-                value,
-                JsonValue::Array(values.clone())
-            );
-        }
-        if let (Some(pattern), Some(s)) = (&self.pattern, value.as_str()) {
-            anyhow::ensure!(
-                Regex::new(pattern)?.is_match(s),
-                "{} does not match pattern {:?}",
-                value,
-                pattern
-            );
-        }
-        if let Some(n) = value.as_f64() {
-            if let Some(min) = self.minimum {
-                anyhow::ensure!(n >= min, "{} is less than minimum {}", value, min);
-            }
-            if let Some(max) = self.maximum {
-                anyhow::ensure!(n <= max, "{} is greater than maximum {}", value, max);
-            }
-        }
-        Ok(())
+        check_var_schema(self.r#type, &self.schema, value)
     }
+}
+
+/// JSON Schema (2020-12) keywords accepted in a typed variable declaration, next to `type`.
+/// Anything else is rejected so that a typo does not pass silently.
+const SCHEMA_KEYWORDS: &[&str] = &[
+    // Validation
+    "enum",
+    "const",
+    "multipleOf",
+    "maximum",
+    "exclusiveMaximum",
+    "minimum",
+    "exclusiveMinimum",
+    "maxLength",
+    "minLength",
+    "pattern",
+    "format",
+    "maxItems",
+    "minItems",
+    "uniqueItems",
+    "maxContains",
+    "minContains",
+    "maxProperties",
+    "minProperties",
+    "required",
+    "dependentRequired",
+    // Applicators
+    "items",
+    "prefixItems",
+    "contains",
+    "properties",
+    "patternProperties",
+    "additionalProperties",
+    "propertyNames",
+    "dependentSchemas",
+    "unevaluatedItems",
+    "unevaluatedProperties",
+    "allOf",
+    "anyOf",
+    "oneOf",
+    "not",
+    "if",
+    "then",
+    "else",
+    // Annotations
+    "title",
+    "description",
+    "examples",
+    "deprecated",
+    "readOnly",
+    "writeOnly",
+    "contentEncoding",
+    "contentMediaType",
+    "$comment",
+    "$defs",
+    "$ref",
+];
+
+/// Extra JSON Schema keywords of a variable declaration, as written in the config.
+pub type VarSchema = serde_json::Map<String, JsonValue>;
+
+/// Builds the JSON Schema of a variable: its `type` plus the extra keywords.
+fn var_schema(ty: VarType, schema: &VarSchema) -> JsonValue {
+    let mut full = schema.clone();
+    full.insert("type".to_string(), JsonValue::from(ty.as_str()));
+    JsonValue::Object(full)
+}
+
+/// Checks a variable declaration's schema at config load time.
+///
+/// # Errors
+///
+/// Returns an error when a keyword is unknown, `type` is missing, or the schema is not a valid
+/// JSON Schema (ex: `minimum: "abc"`, an invalid `pattern`).
+fn validate_var_schema(ty: Option<VarType>, schema: &VarSchema) -> anyhow::Result<()> {
+    if schema.is_empty() {
+        return Ok(());
+    }
+    for key in schema.keys() {
+        anyhow::ensure!(SCHEMA_KEYWORDS.contains(&key.as_str()), "unknown keyword {:?}", key);
+    }
+    let ty = ty.context("JSON Schema keywords require `type`")?;
+    let full = var_schema(ty, schema);
+    jsonschema::meta::validate(&full).map_err(|e| anyhow::anyhow!("invalid schema: {}", e))?;
+    jsonschema::validator_for(&full).map_err(|e| anyhow::anyhow!("invalid schema: {}", e))?;
+    Ok(())
+}
+
+/// Checks a value (already converted to `ty`) against the variable's JSON Schema.
+///
+/// # Errors
+///
+/// Returns an error listing the violated constraints.
+pub fn check_var_schema(ty: VarType, schema: &VarSchema, value: &JsonValue) -> anyhow::Result<()> {
+    if schema.is_empty() {
+        return Ok(());
+    }
+    // ponytail: the schema is compiled on every check; cache it if vars get numerous
+    let validator = jsonschema::validator_for(&var_schema(ty, schema)).map_err(|e| anyhow::anyhow!("{}", e))?;
+    let errors = validator.iter_errors(value).map(|e| e.to_string()).collect::<Vec<_>>();
+    anyhow::ensure!(errors.is_empty(), "{}", errors.join("; "));
+    Ok(())
 }
 
 /// Variable types, following JSON Schema
@@ -981,8 +1003,10 @@ pub struct DynamicVars {
     #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
     pub r#type: Option<VarType>,
 
+    /// Any other JSON Schema keyword (`enum`, `pattern`, `minimum`, `items`, ...) validates the
+    /// output. Requires `type`.
     #[serde(flatten)]
-    pub constraints: VarConstraints,
+    pub schema: VarSchema,
 
     /// Shell configuration
     pub shell: Option<ShellConfig>,

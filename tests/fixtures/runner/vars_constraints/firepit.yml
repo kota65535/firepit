@@ -13,6 +13,14 @@ vars:
     minimum: 1024
     maximum: 65535
     default: 8080
+  # Any JSON Schema keyword works, including nested ones for arrays
+  tags:
+    type: array
+    items:
+      type: string
+      pattern: "^[a-z]+$"
+    minItems: 1
+    default: [a, b]
   # Constraints apply to dynamic vars as well
   region:
     type: string
@@ -28,3 +36,5 @@ tasks:
     command: echo "{{ port }}"
   region:
     command: echo "{{ region }}"
+  tags:
+    command: echo "{{ tags | join(sep=',') }}"

@@ -308,7 +308,7 @@ async fn test_vars_constraints() {
     setup();
 
     let path = BASE_PATH.join("vars_constraints");
-    let tasks = ["env", "version", "port", "region"].map(String::from).to_vec();
+    let tasks = ["env", "version", "port", "region", "tags"].map(String::from).to_vec();
 
     let mut stats = HashMap::new();
     let mut outputs = HashMap::new();
@@ -317,6 +317,7 @@ async fn test_vars_constraints() {
         ("#version", "1.2.3"),
         ("#port", "1024"),
         ("#region", "ap-northeast-1"),
+        ("#tags", "x,y"),
     ] {
         stats.insert(task.to_string(), String::from("Finished: Success"));
         outputs.insert(task.to_string(), out.to_string());
@@ -325,6 +326,7 @@ async fn test_vars_constraints() {
     let vars = IndexMap::from([
         ("env".to_string(), VarsConfig::Static(Value::from("prod"))),
         ("port".to_string(), VarsConfig::Static(Value::from("1024"))),
+        ("tags".to_string(), VarsConfig::Static(Value::from("[x, y]"))),
     ]);
     run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
         .await
@@ -338,9 +340,11 @@ async fn test_vars_constraints_violation() {
     let path = BASE_PATH.join("vars_constraints");
     for (var, value, expected) in [
         ("env", "qa", "is not one of"),
-        ("version", "1.2", "does not match pattern"),
-        ("port", "80", "is less than minimum"),
-        ("port", "70000", "is greater than maximum"),
+        ("version", "1.2", "does not match"),
+        ("port", "80", "less than the minimum"),
+        ("port", "70000", "greater than the maximum"),
+        ("tags", "[a, B1]", "does not match"),
+        ("tags", "[]", "has less than 1 item"),
     ] {
         let vars = IndexMap::from([(var.to_string(), VarsConfig::Static(Value::from(value)))]);
         let err = run_task_with_vars(&path, vec![var.to_string()], HashMap::new(), None, vars, false)

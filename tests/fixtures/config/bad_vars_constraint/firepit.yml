@@ -1,5 +1,5 @@
-# `pattern` is only for `type: string`
+# Unknown keywords are rejected, so a typo in a JSON Schema keyword does not pass silently
 vars:
-  port:
-    type: integer
-    pattern: '^\d+$'
+  version:
+    type: string
+    patern: '^\d+$'

@@ -24,6 +24,7 @@ globmatch = "0.3.0"
 human-panic = "2.0.2"
 indexmap = { version = "2.7.1", features = ["serde"] }
 itertools = "0.15.0"
+jsonschema = { version = "0.53.0", default-features = false }
 libc = "0.2.162"
 nix = { version = "0.26.2", features = ["signal"] }
 notify = "8.0.0"

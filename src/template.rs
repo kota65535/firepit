@@ -1,6 +1,6 @@
 use crate::config::{
-    DependsOnConfig, DependsOnConfigStruct, DynamicVarsInner, HealthCheckConfig, ProjectConfig, ServiceConfig,
-    TaskConfig, VarsConfig,
+    check_var_schema, DependsOnConfig, DependsOnConfigStruct, DynamicVarsInner, HealthCheckConfig, ProjectConfig,
+    ServiceConfig, TaskConfig, VarsConfig,
 };
 use crate::log::OutputCollector;
 use crate::process::{ChildExit, Command, ProcessManager};
@@ -631,7 +631,7 @@ async fn render_value(value: &VarsConfig, tera: &mut Tera, context: &tera::Conte
             // declared type. No type inference here: `type: string` keeps "1.10" a string.
             Some(default) => {
                 let value = t.r#type.coerce(render_templates(default, tera, context)?)?;
-                t.constraints.check(&value)?;
+                t.check(&value)?;
                 value
             }
         },
@@ -657,7 +657,7 @@ async fn render_value(value: &VarsConfig, tera: &mut Tera, context: &tera::Conte
                 // Typed: the output is interpreted as the declared type, no inference
                 Some(t) => {
                     let value = t.coerce(JsonValue::from(trimmed))?;
-                    s.constraints.check(&value)?;
+                    check_var_schema(t, &s.schema, &value)?;
                     value
                 }
                 None => render_value(&VarsConfig::Static(JsonValue::from(trimmed)), tera, context).await?,
