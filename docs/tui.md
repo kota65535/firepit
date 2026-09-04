@@ -44,16 +44,21 @@ The sidebar on the left displays a list of running tasks and their statuses.
 The highlighted task is the currently selected task whose logs are shown in the main view.
 Task statuses are indicated by the following icons:
 
-| Icon | Name       | Detail                                                  |
-| ---- | ---------- | ------------------------------------------------------- |
-| 🪵   | Planned    | The task is waiting for running                         |
-| 🔥   | Running    | The task is currently executing                         |
-| ✅   | Success    | The task has completed successfully                     |
-| 🍖   | Ready      | The service task is ready to use                        |
-| 🥬   | Up to date | The task is already up to date and does not need to run |
-| ❌   | Failure    | The task has completed with an error                    |
-| 🚫   | Stopped    | The task has been manually stopped                      |
-| ⚠️    | Skipped    | The task has been skipped due to failed dependencies    |
+| Icon | Name       | Detail                                                                    |
+| ---- | ---------- | ------------------------------------------------------------------------- |
+| 🪵   | Planned    | The task is waiting for running                                           |
+| 🔥   | Running    | The task is currently executing                                           |
+| ✅   | Success    | The task has completed successfully                                       |
+| 🍖   | Ready      | The service task is ready to use                                          |
+| 🥬   | Up to date | The task is still fresh, already up to date and does not need to run      |
+| ♻️    | Reloading  | The task is restarting because one of its input files has changed         |
+| ❌   | Failure    | The task has completed with an error, or the service did not become ready |
+| 🚫   | Stopped    | The task has been manually stopped                                        |
+| ⚠️    | Skipped    | The task has been skipped due to failed dependencies                      |
+| ❗   | Error      | The task could not be run because of an error during execution            |
+| ❓   | Unknown    | The task has finished, but its result could not be determined             |
+
+[Finalizer](/configuration#finalizers) tasks show 🪣 and 💧 in place of 🪵 and 🔥, since they put the fire out rather than keep it burning.
 
 ## Main View
 

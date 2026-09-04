@@ -7,6 +7,7 @@ use crate::template::ConfigRenderer;
 use anyhow::Context;
 use indexmap::IndexMap;
 use regex::Regex;
+use serde_json::Value as JsonValue;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -17,6 +18,7 @@ pub struct Workspace {
     pub root: Project,
     pub children: HashMap<String, Project>,
     pub target_tasks: Vec<String>,
+    pub finalizer_tasks: Vec<String>,
     pub concurrency: usize,
     pub force: bool,
     pub watch: bool,
@@ -40,21 +42,14 @@ impl Workspace {
         fail_fast: Option<bool>,
         use_pty: Option<bool>,
     ) -> anyhow::Result<Workspace> {
+        // List targe tasks
         let mut target_tasks = Vec::new();
         for task in tasks.iter() {
             let (project_name, task_name) = Task::split_name(task);
             match project_name {
                 // Full name
-                Some(project_name) => {
-                    let task = if project_name.is_empty() {
-                        root_config.task(task_name)?
-                    } else {
-                        child_configs
-                            .get(project_name)
-                            .with_context(|| format!("project {:?} is not defined", project_name))?
-                            .task(task_name)?
-                    };
-                    target_tasks.push(task.full_name());
+                Some(_) => {
+                    target_tasks.push(Self::task_config(root_config, child_configs, task)?.full_name());
                 }
                 // Simple name
                 None => {
@@ -81,32 +76,24 @@ impl Workspace {
             }
         }
 
+        // Override vars for target tasks
         let mut root_config = root_config.clone();
         let mut child_configs = child_configs.clone();
         for t in target_tasks.iter() {
-            let (project_name, task_name) = Task::split_name(t);
-            if let Some(project_name) = project_name {
-                let task = if project_name.is_empty() {
-                    root_config.task_mut(task_name)?
-                } else {
-                    child_configs
-                        .get_mut(project_name)
-                        .with_context(|| format!("project {:?} is not defined", project_name))?
-                        .task_mut(task_name)?
-                };
-                // A typed task var keeps its type, so the CLI value is interpreted according to it.
-                for (k, v) in vars.iter() {
-                    if let Some(declared) = task.vars.get_mut(k) {
-                        *declared = declared.with_value(v);
-                    }
+            let task = Self::task_config_mut(&mut root_config, &mut child_configs, t)?;
+            // A typed task var keeps its type, so the CLI value is interpreted according to it.
+            for (k, v) in vars.iter() {
+                if let Some(declared) = task.vars.get_mut(k) {
+                    *declared = declared.with_value(v);
                 }
             }
         }
 
         let mut renderer = ConfigRenderer::new(&root_config, &child_configs, vars, watch);
-        let (root_config, child_configs) = renderer.render().await?;
+        let (mut root_config, mut child_configs) = renderer.render().await?;
         ProjectConfig::validate_multi(&root_config, &child_configs)?;
-        Self::validate_vars(&root_config, &child_configs, &target_tasks, vars)?;
+        let finalizer_tasks = Self::apply_finalized_by(&mut root_config, &mut child_configs, &target_tasks, force)?;
+        Self::validate_vars(&root_config, &child_configs, &target_tasks, &finalizer_tasks, vars)?;
 
         let root = Project::new("", &root_config)?;
         let mut children = HashMap::new();
@@ -134,6 +121,7 @@ impl Workspace {
             root,
             children,
             target_tasks,
+            finalizer_tasks,
             concurrency: root_config.concurrency,
             force,
             watch,
@@ -141,6 +129,80 @@ impl Workspace {
             fail_fast,
             dir: current_dir.to_owned(),
         })
+    }
+
+    /// Looks up a task config by its full name, ex: `#foo` or `project#foo`.
+    fn task_config<'a>(
+        root_config: &'a ProjectConfig,
+        child_configs: &'a IndexMap<String, ProjectConfig>,
+        name: &str,
+    ) -> anyhow::Result<&'a TaskConfig> {
+        let (project_name, task_name) = Task::split_name(name);
+        match project_name {
+            Some("") | None => root_config.task(task_name),
+            Some(p) => child_configs
+                .get(p)
+                .with_context(|| format!("project {:?} is not defined", p))?
+                .task(task_name),
+        }
+    }
+
+    /// Mutable counterpart of [`Self::task_config`].
+    fn task_config_mut<'a>(
+        root_config: &'a mut ProjectConfig,
+        child_configs: &'a mut IndexMap<String, ProjectConfig>,
+        name: &str,
+    ) -> anyhow::Result<&'a mut TaskConfig> {
+        let (project_name, task_name) = Task::split_name(name);
+        match project_name {
+            Some("") | None => root_config.task_mut(task_name),
+            Some(p) => child_configs
+                .get_mut(p)
+                .with_context(|| format!("project {:?} is not defined", p))?
+                .task_mut(task_name),
+        }
+    }
+
+    fn apply_finalized_by(
+        root_config: &mut ProjectConfig,
+        child_configs: &mut IndexMap<String, ProjectConfig>,
+        target_tasks: &[String],
+        force: bool,
+    ) -> anyhow::Result<Vec<String>> {
+        let mut finalizer_tasks = Vec::new();
+        let mut visited = HashSet::new();
+        let mut queue = target_tasks.to_vec();
+        while let Some(name) = queue.pop() {
+            if !visited.insert(name.clone()) {
+                continue;
+            }
+            let task = Self::task_config(root_config, child_configs, &name)?;
+            // Dependencies are not run under `force`, so neither are their finalizers
+            if !force {
+                queue.extend(task.depends_on.iter().map(|d| d.task().to_string()));
+            }
+            let finalizers = task
+                .finalized_by
+                .iter()
+                .map(|f| f.task().to_string())
+                .collect::<Vec<_>>();
+            for post in finalizers {
+                queue.push(post.clone());
+                if !target_tasks.contains(&post) && !finalizer_tasks.contains(&post) {
+                    finalizer_tasks.push(post.clone());
+                }
+                let finalizer = Self::task_config_mut(root_config, child_configs, &post)?;
+                // A finalizer that also depends on the task already waits for it, and the
+                // dependency is stricter: it requires the task to succeed. Keep that one, which
+                // also keeps the graph free of parallel edges.
+                let already_waits =
+                    finalizer.finalizes.contains(&name) || finalizer.depends_on.iter().any(|d| d.task() == name);
+                if !already_waits {
+                    finalizer.finalizes.push(name.clone());
+                }
+            }
+        }
+        Ok(finalizer_tasks)
     }
 
     /// Ensures that every var involved in the run has a value.
@@ -155,9 +217,11 @@ impl Workspace {
         root_config: &ProjectConfig,
         child_configs: &IndexMap<String, ProjectConfig>,
         target_tasks: &[String],
+        finalizer_tasks: &[String],
         cli_vars: &IndexMap<String, VarsConfig>,
     ) -> anyhow::Result<()> {
-        let (task_vars, project_vars) = Self::collect_unset_vars(root_config, child_configs, target_tasks, cli_vars);
+        let (task_vars, project_vars) =
+            Self::collect_unset_vars(root_config, child_configs, target_tasks, finalizer_tasks, cli_vars);
         if task_vars.is_empty() && project_vars.is_empty() {
             return Ok(());
         }
@@ -166,11 +230,13 @@ impl Workspace {
 
     /// Collects the unset vars involved in the run:
     /// per-task vars (with whether each var can be set by the CLI argument, which is the case
-    /// only for a target task's var) and per-project vars of the involved projects.
+    /// only for a target task's var, not a finalizer's) and per-project vars of the involved
+    /// projects.
     fn collect_unset_vars(
         root_config: &ProjectConfig,
         child_configs: &IndexMap<String, ProjectConfig>,
         target_tasks: &[String],
+        finalizer_tasks: &[String],
         cli_vars: &IndexMap<String, VarsConfig>,
     ) -> (UnsetTaskVars, UnsetProjectVars) {
         let task_configs = std::iter::once(root_config)
@@ -178,11 +244,11 @@ impl Workspace {
             .flat_map(|c| c.tasks.values().map(|t| (t.full_name(), t)))
             .collect::<HashMap<_, _>>();
 
-        // Walk the target tasks and their dependency tasks
+        // Walk the target tasks, the finalizers and their dependency tasks
         let target_task_set = target_tasks.iter().collect::<HashSet<_>>();
         let mut visited = HashSet::new();
         let mut involved_projects = HashSet::new();
-        let mut queue = target_tasks.to_vec();
+        let mut queue = target_tasks.iter().chain(finalizer_tasks).cloned().collect::<Vec<_>>();
         let mut task_vars: UnsetTaskVars = Vec::new();
         while let Some(task_name) = queue.pop() {
             if !visited.insert(task_name.clone()) {
@@ -206,12 +272,9 @@ impl Workspace {
                 task_config
                     .depends_on
                     .iter()
-                    .map(|d| match d {
-                        DependsOnConfig::String(s) => s.clone(),
-                        DependsOnConfig::Struct(s) => s.task.clone(),
-                    })
+                    .map(|d| d.task())
                     .filter(|d| !d.is_empty())
-                    .map(|d| Task::qualified_name(&task_config.project, &d)),
+                    .map(|d| Task::qualified_name(&task_config.project, d)),
             );
         }
 
@@ -372,6 +435,10 @@ pub struct Task {
     /// Unique task name
     pub name: String,
 
+    /// Task name as written in the config, shared by all variants of the task.
+    /// Unlike `name`, it carries no internal variant suffix (-1, -2, ...)
+    pub orig_name: String,
+
     /// Label
     pub label: String,
 
@@ -389,6 +456,14 @@ pub struct Task {
 
     /// Dependency task names
     pub depends_on: Vec<DependsOn>,
+
+    /// Tasks to run after, without depending on them
+    pub wait_for: Vec<WaitFor>,
+
+    /// Resolved template variables of this task.
+    /// A variant of a task differs from its siblings only in these, so they are what
+    /// `wait_for` compares against to pick the variants to wait for.
+    pub vars: IndexMap<String, JsonValue>,
 
     /// Task working directory path (absolute).
     pub working_dir: PathBuf,
@@ -417,6 +492,36 @@ pub struct DependsOn {
     pub task: String,
 
     pub cascade: bool,
+
+    /// Run the dependent task even if this dependency fails: the dependent task is a finalizer
+    pub always: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct WaitFor {
+    /// Name of the task to wait for, as written in the config, so it names every variant of it
+    pub task: String,
+
+    /// Variables narrowing down which variants to wait for.
+    /// Only these are compared, so a variant may differ in the others. Empty means every variant.
+    pub vars: IndexMap<String, JsonValue>,
+}
+
+impl WaitFor {
+    /// Returns whether the given task is one this entry waits for.
+    ///
+    /// A var the task does not declare is ignored, as `depends_on.vars` ignores it when picking
+    /// the variant to create. Comparing it instead would make an entry copied from a `depends_on`
+    /// silently match nothing, losing the ordering it was written for.
+    pub fn matches(&self, task: &Task) -> bool {
+        if self.task != task.orig_name {
+            return false;
+        }
+        self.vars
+            .iter()
+            .filter(|(k, _)| task.vars.contains_key(*k))
+            .all(|(k, v)| task.vars.get(k) == Some(v))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -599,6 +704,7 @@ impl Task {
 
         Ok(Self {
             name: Task::qualified_name(project_name, &task_name),
+            orig_name: Task::qualified_name(project_name, &task_config.orig_name),
             // Default to the original name so that task variants do not expose
             // their internal suffix (-1, -2, ...) in the UI
             label: task_config
@@ -616,14 +722,30 @@ impl Task {
                     DependsOnConfig::String(s) => DependsOn {
                         task: Task::qualified_name(project_name, s),
                         cascade: true,
+                        always: false,
                     },
                     DependsOnConfig::Struct(s) => DependsOn {
                         task: Task::qualified_name(project_name, &s.task),
                         cascade: s.cascade,
+                        always: false,
                     },
                 })
+                .chain(task_config.finalizes.iter().map(|t| DependsOn {
+                    task: t.clone(),
+                    cascade: true,
+                    always: true,
+                }))
                 .filter(|d| d.task != task_name) // Exclude the task itself
                 .collect(),
+            wait_for: task_config
+                .wait_for
+                .iter()
+                .map(|w| WaitFor {
+                    task: Task::qualified_name(project_name, w.task()),
+                    vars: w.vars().map(Self::resolved_vars).unwrap_or_default(),
+                })
+                .collect(),
+            vars: Self::resolved_vars(&task_config.vars),
             is_service,
             probe,
             restart,
@@ -631,6 +753,17 @@ impl Task {
             inputs,
             outputs,
         })
+    }
+
+    /// Takes the values of rendered vars. Rendering resolves every var to a static value,
+    /// so a var that is still dynamic here has not been rendered and has no value to compare.
+    fn resolved_vars(vars: &IndexMap<String, VarsConfig>) -> IndexMap<String, JsonValue> {
+        vars.iter()
+            .filter_map(|(k, v)| match v {
+                VarsConfig::Static(v) => Some((k.clone(), v.clone())),
+                VarsConfig::Dynamic(_) | VarsConfig::Typed(_) => None,
+            })
+            .collect()
     }
 
     pub fn split_name(task_name: &str) -> (Option<&str>, &str) {

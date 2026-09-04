@@ -96,6 +96,250 @@ async fn test_basic_failure() {
     run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
 
+/// `wait_for` orders the task after another one when both are going to run.
+/// `lint` sleeps before writing, so `format` can only see its line by waiting for it.
+#[tokio::test]
+async fn test_wait_for() {
+    setup();
+    let path = BASE_PATH.join("wait_for");
+    // Both tasks record their run in this file, so a leftover from an earlier run would let
+    // a broken ordering pass. Start from a clean state.
+    std::fs::remove_file(path.join("order.txt")).ok();
+    let tasks = vec![String::from("format"), String::from("lint")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#lint"), String::from("Finished: Success"));
+    statuses.insert(String::from("#format"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#lint"), String::from("lint"));
+    outputs.insert(String::from("#format"), String::from("lint,format,"));
+
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+/// `wait_for` names a task, so it orders against every variant that a parameterized
+/// dependency split it into. The variant suffix (-1, -2, ...) is internal.
+#[tokio::test]
+async fn test_wait_for_variant() {
+    setup();
+    let path = BASE_PATH.join("wait_for_variant");
+    std::fs::remove_file(path.join("order.txt")).ok();
+    let tasks = vec![String::from("format"), String::from("setup-app")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#migrate-1"), String::from("Finished: Success"));
+    statuses.insert(String::from("#setup-app"), String::from("Finished: Success"));
+    statuses.insert(String::from("#format"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#migrate-1"), String::from("migrate app"));
+    outputs.insert(String::from("#setup-app"), String::from("app"));
+    outputs.insert(String::from("#format"), String::from("migrate app,format,"));
+
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+/// A `wait_for` var value is compared through the referenced task's declaration: for a
+/// `type: string` var, "8080" is a string on both sides and the narrowed entry matches.
+#[tokio::test]
+async fn test_wait_for_typed_vars() {
+    setup();
+    let path = BASE_PATH.join("wait_for_typed_vars");
+    std::fs::remove_file(path.join("order.txt")).ok();
+    let tasks = vec![String::from("check"), String::from("app")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#serve-1"), String::from("Finished: Success"));
+    statuses.insert(String::from("#app"), String::from("Finished: Success"));
+    statuses.insert(String::from("#check"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#serve-1"), String::from("serve 8080"));
+    outputs.insert(String::from("#app"), String::from("app"));
+    outputs.insert(String::from("#check"), String::from("serve 8080,check,"));
+
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+/// An entry naming the task it sits on orders nothing, rather than pairing that task's
+/// variants into a cycle. Reached through `defaults`, which puts the entry on every task
+/// including the one it names.
+#[tokio::test]
+async fn test_wait_for_self() {
+    setup();
+    let path = BASE_PATH.join("wait_for_self");
+    let tasks = vec![String::from("build"), String::from("other")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#lint-1"), String::from("Finished: Success"));
+    statuses.insert(String::from("#build"), String::from("Finished: Success"));
+    statuses.insert(String::from("#other"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#lint-1"), String::from("lint true"));
+    outputs.insert(String::from("#build"), String::from("build"));
+    outputs.insert(String::from("#other"), String::from("other"));
+
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+/// A var the waited-for task does not declare is ignored, as `depends_on` ignores it when
+/// picking the variant to create, so an entry copied from a `depends_on` keeps ordering.
+#[tokio::test]
+async fn test_wait_for_undeclared_var() {
+    setup();
+    let path = BASE_PATH.join("wait_for_undeclared_var");
+    std::fs::remove_file(path.join("order.txt")).ok();
+    let tasks = vec![String::from("app"), String::from("seed")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#migrate-1"), String::from("Finished: Success"));
+    statuses.insert(String::from("#app"), String::from("Finished: Success"));
+    statuses.insert(String::from("#seed"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#migrate-1"), String::from("migrate app"));
+    outputs.insert(String::from("#app"), String::from("app"));
+    outputs.insert(String::from("#seed"), String::from("migrate app,seed,"));
+
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+/// `wait_for` in object form waits only for the variants whose vars match the given ones.
+/// The excluded variant is gated behind the waiters, so if a narrowed entry wrongly waited for
+/// it the run would deadlock and time out. Completing at all is what this asserts.
+#[tokio::test]
+async fn test_wait_for_vars() {
+    setup();
+    let path = BASE_PATH.join("wait_for_vars");
+    for m in ["foo2.done", "foo3.done"] {
+        std::fs::remove_file(path.join(m)).ok();
+    }
+    let tasks = vec![
+        String::from("foo"),
+        String::from("foo2"),
+        String::from("foo3"),
+        String::from("gen1"),
+        String::from("gen2"),
+        String::from("gen3"),
+    ];
+
+    let mut statuses = HashMap::new();
+    for t in [
+        "#foo", "#foo2", "#foo3", "#gen1", "#gen2", "#gen3", "#bar-1", "#bar-2", "#bar-3",
+    ] {
+        statuses.insert(String::from(t), String::from("Finished: Success"));
+    }
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#gen1"), String::from("gen1"));
+    outputs.insert(String::from("#gen2"), String::from("gen2"));
+    outputs.insert(String::from("#gen3"), String::from("gen3"));
+    outputs.insert(String::from("#bar-1"), String::from("bar aaa bbb"));
+    outputs.insert(String::from("#bar-2"), String::from("bar aaa zzz"));
+    outputs.insert(String::from("#bar-3"), String::from("bar xxx bbb"));
+    outputs.insert(String::from("#foo"), String::from("foo"));
+    outputs.insert(String::from("#foo2"), String::from("foo2"));
+    outputs.insert(String::from("#foo3"), String::from("foo3"));
+
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+/// A task named by `wait_for` does not gate the run: the waiter still runs after it fails.
+/// A `depends_on` in its place would have skipped the waiter with BadDeps.
+#[tokio::test]
+async fn test_wait_for_failure() {
+    setup();
+    let path = BASE_PATH.join("wait_for_failure");
+    let tasks = vec![String::from("format"), String::from("lint")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#lint"), String::from("Finished: Failure(3)"));
+    statuses.insert(String::from("#format"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#lint"), String::from("lint"));
+    outputs.insert(String::from("#format"), String::from("format"));
+
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+/// Fail-fast asks for the run to stop on the first failure, so there an ordering-only task's
+/// failure does skip the waiter, rather than releasing it to be stopped moments later.
+#[tokio::test]
+async fn test_wait_for_failure_fail_fast() {
+    setup();
+    let path = BASE_PATH.join("wait_for_failure");
+    let tasks = vec![String::from("format"), String::from("lint")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#lint"), String::from("Finished: Failure(3)"));
+    statuses.insert(String::from("#format"), String::from("Finished: BadDeps"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#lint"), String::from("lint"));
+
+    run_task_with_fail_fast(&path, tasks, statuses, Some(outputs))
+        .await
+        .unwrap();
+}
+
+/// Re-running a task in watch mode does not re-run the tasks merely ordered after it,
+/// so `wait_for` never cascades.
+#[tokio::test]
+async fn test_wait_for_watch() {
+    setup();
+    let path = BASE_PATH.join("wait_for_watch");
+    let tasks = vec![String::from("format"), String::from("lint")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#lint"), String::from("Finished: Success"));
+    statuses.insert(String::from("#format"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#lint"), String::from("lint\nlint"));
+    outputs.insert(String::from("#format"), String::from("format"));
+
+    // `lint` re-runs once, `format` not at all
+    let mut runs = HashMap::new();
+    runs.insert(String::from("#lint"), 1);
+    runs.insert(String::from("#format"), 0);
+
+    run_task_with_watch(
+        &path,
+        tasks,
+        statuses,
+        Some(outputs),
+        None,
+        Some(runs),
+        None,
+        false,
+        async {
+            info!("Updating lint input");
+            let mut f = File::create(BASE_PATH.join("wait_for_watch").join("lint.txt")).unwrap();
+            f.write_all(b"lint").unwrap();
+        },
+    )
+    .await;
+}
+
+/// Unlike `depends_on`, `wait_for` does not add the task it names to the run.
+#[tokio::test]
+async fn test_wait_for_not_run() {
+    setup();
+    let path = BASE_PATH.join("wait_for_not_run");
+    let tasks = vec![String::from("format")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#format"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#format"), String::from("format"));
+
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
 #[tokio::test]
 #[rstest]
 #[case("")]
@@ -131,6 +375,263 @@ async fn test_basic_multi(#[case] dir: &str) {
     outputs.insert(String::from("bar#bar"), String::from("bar"));
 
     run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_finalized_by() {
+    setup();
+    let path = BASE_PATH.join("finalized_by");
+
+    // Finalizers run after the target, transitively, without becoming targets
+    let tasks = vec![String::from("build")];
+    let abs = path::absolute(&path).unwrap();
+    let (root, children) = ProjectConfig::new_multi(&abs).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &tasks,
+        &abs,
+        &IndexMap::new(),
+        false,
+        false,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(ws.target_tasks, vec!["#build"]);
+    assert_eq!(ws.finalizer_tasks, vec!["#cleanup", "#notify"]);
+
+    let statuses = ["#install", "#build", "#cleanup", "#notify"]
+        .iter()
+        .map(|t| (t.to_string(), String::from("Finished: Success")))
+        .collect::<HashMap<_, _>>();
+    run_task(&path, tasks, statuses, None, false).await.unwrap();
+
+    // A finalizer named as a target stays a target, and still runs after the task it finalizes
+    let tasks = vec![String::from("cleanup"), String::from("build")];
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &tasks,
+        &abs,
+        &IndexMap::new(),
+        false,
+        false,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(ws.target_tasks, vec!["#cleanup", "#build"]);
+    assert_eq!(ws.finalizer_tasks, vec!["#notify"]);
+    let statuses = ["#install", "#build", "#cleanup", "#notify"]
+        .iter()
+        .map(|t| (t.to_string(), String::from("Finished: Success")))
+        .collect::<HashMap<_, _>>();
+    run_task(&path, tasks, statuses, None, false).await.unwrap();
+
+    // Running a finalizer alone does not run the task it finalizes
+    let tasks = vec![String::from("cleanup")];
+    let statuses = ["#cleanup", "#notify"]
+        .iter()
+        .map(|t| (t.to_string(), String::from("Finished: Success")))
+        .collect::<HashMap<_, _>>();
+    run_task(&path, tasks, statuses, None, false).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_finalized_by_failure() {
+    setup();
+    let path = BASE_PATH.join("finalized_by_failure");
+
+    // Finalizers run even if the task fails, while normal dependents are skipped
+    let tasks = vec![String::from("deploy")];
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#build"), String::from("Finished: Failure(1)"));
+    statuses.insert(String::from("#cleanup"), String::from("Finished: Success"));
+    statuses.insert(String::from("#deploy"), String::from("Finished: BadDeps"));
+    run_task(&path, tasks, statuses, None, false).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_finalized_by_dependent() {
+    setup();
+    let path = BASE_PATH.join("finalized_by_dependent");
+
+    // A finalizer that also depends on the task is skipped when the task fails
+    let tasks = vec![String::from("build")];
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#build"), String::from("Finished: Failure(1)"));
+    statuses.insert(String::from("#report"), String::from("Finished: BadDeps"));
+    run_task(&path, tasks, statuses, None, false).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_finalized_by_quit_on_done() {
+    setup();
+    let path = BASE_PATH.join("finalized_by");
+
+    // The runner waits for the finalizers before quitting on done
+    let tasks = vec![String::from("build")];
+    let statuses = ["#install", "#build", "#cleanup", "#notify"]
+        .iter()
+        .map(|t| (t.to_string(), String::from("Finished: Success")))
+        .collect::<HashMap<_, _>>();
+    run_task_inner(
+        &path,
+        tasks,
+        statuses,
+        None,
+        None,
+        None,
+        None,
+        IndexMap::new(),
+        false,
+        false,
+        true,
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn test_finalized_by_fail_fast() {
+    setup();
+    let path = BASE_PATH.join("finalized_by_fail_fast");
+
+    // A failure under fail-fast stops the other tasks, but a running finalizer completes
+    let tasks = vec![String::from("ok"), String::from("bad")];
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#ok"), String::from("Finished: Success"));
+    statuses.insert(String::from("#bad"), String::from("Finished: Failure(1)"));
+    statuses.insert(String::from("#slow-cleanup"), String::from("Finished: Success"));
+    run_task_with_fail_fast(&path, tasks, statuses, None).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_finalized_by_force() {
+    setup();
+    let path = BASE_PATH.join("finalized_by_force");
+    let tasks = vec![String::from("build")];
+
+    // Without force, the dependency and its finalizer run
+    let statuses = ["#prepare", "#build", "#cleanup"]
+        .iter()
+        .map(|t| (t.to_string(), String::from("Finished: Success")))
+        .collect::<HashMap<_, _>>();
+    run_task(&path, tasks.clone(), statuses, None, false).await.unwrap();
+
+    // With force, the dependency is skipped, and so is its finalizer
+    let statuses = HashMap::from([(String::from("#build"), String::from("Finished: Success"))]);
+    run_task(&path, tasks, statuses, None, true).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_finalized_by_vars() {
+    setup();
+    let path = BASE_PATH.join("finalized_by_vars");
+    let tasks = vec![String::from("build-a"), String::from("build-b")];
+
+    // A finalizer given vars runs as a variant, one per set of vars
+    let statuses = ["#build-a", "#build-b", "#cleanup-1", "#cleanup-2"]
+        .iter()
+        .map(|t| (t.to_string(), String::from("Finished: Success")))
+        .collect::<HashMap<_, _>>();
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#build-a"), String::from("build-a"));
+    outputs.insert(String::from("#build-b"), String::from("build-b"));
+    outputs.insert(String::from("#cleanup-1"), String::from("cleanup a"));
+    outputs.insert(String::from("#cleanup-2"), String::from("cleanup b"));
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_finalized_by_service() {
+    setup();
+    let path = BASE_PATH.join("finalized_by_service");
+    let tasks = vec![String::from("client")];
+
+    // The finalizer of a service runs when the service exits, not when it becomes ready
+    let statuses = ["#server", "#client", "#cleanup"]
+        .iter()
+        .map(|t| (t.to_string(), String::from("Finished: Success")))
+        .collect::<HashMap<_, _>>();
+    run_task(&path, tasks, statuses, None, false).await.unwrap();
+}
+
+#[tokio::test]
+#[rstest]
+#[case("finalized_by_service_finalizer", "#cleanup")]
+#[case("finalized_by_service_finalizer_variant", "#cleanup-1")]
+async fn test_finalized_by_service_finalizer(#[case] dir: &str, #[case] finalizer: &str) {
+    setup();
+    let path = BASE_PATH.join(dir);
+    let tasks = vec![String::from("server")];
+
+    // A service cannot be a finalizer, as it would never finish, not even as a variant of one
+    let err = run_task(&path, tasks, HashMap::new(), None, false)
+        .await
+        .expect_err("should fail");
+    let msg = format!("{:#}", err);
+    assert!(
+        msg.contains(&format!("task {:?} must not be a service", finalizer)),
+        "{}",
+        msg
+    );
+}
+
+#[tokio::test]
+async fn test_finalized_by_service_quit() {
+    setup();
+    let path = path::absolute(BASE_PATH.join("finalized_by_service_quit")).unwrap();
+    let tasks = vec![String::from("server")];
+
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &tasks,
+        &path,
+        &IndexMap::new(),
+        false,
+        false,
+        None,
+        Some(false),
+    )
+    .await
+    .unwrap();
+    let mut runner = TaskRunner::new(&ws).unwrap();
+    let (app_tx, mut app_rx) = AppCommandChannel::new();
+    let runner_tx = runner.command_tx.clone();
+    let runner_fut = tokio::spawn(async move { runner.run(&app_tx, false).await });
+
+    // Quitting stops the service, and its finalizer runs before the runner is done
+    let mut statuses = HashMap::new();
+    let events = async {
+        while let Some(event) = app_rx.recv().await {
+            match event {
+                AppCommand::ReadyTask { task } => {
+                    statuses.insert(task, String::from("Ready"));
+                    runner_tx.quit();
+                }
+                AppCommand::FinishTask { task, result, .. } => {
+                    statuses.insert(task, format!("Finished: {:?}", result));
+                }
+                AppCommand::Done => break,
+                _ => {}
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(DEFAULT_TEST_TIMEOUT_SECONDS), events)
+        .await
+        .expect("timed out");
+    runner_fut.await.unwrap().unwrap();
+
+    let mut expected = HashMap::new();
+    expected.insert(String::from("#server"), String::from("Finished: Stopped"));
+    expected.insert(String::from("#cleanup"), String::from("Finished: Success"));
+    assert_eq!(expected, statuses);
 }
 
 #[tokio::test]
@@ -736,6 +1237,31 @@ async fn run_task(
         None,
         IndexMap::new(),
         force,
+        false,
+        false,
+    )
+    .await
+}
+
+/// Same as [`run_task`], with fail-fast enabled.
+async fn run_task_with_fail_fast(
+    path: &Path,
+    tasks: Vec<String>,
+    status_expected: HashMap<String, String>,
+    outputs_expected: Option<HashMap<String, String>>,
+) -> anyhow::Result<()> {
+    run_task_inner(
+        path,
+        tasks,
+        status_expected,
+        outputs_expected,
+        None,
+        None,
+        None,
+        IndexMap::new(),
+        false,
+        true,
+        false,
     )
     .await
 }
@@ -758,6 +1284,8 @@ async fn run_task_with_vars(
         None,
         vars,
         force,
+        false,
+        false,
     )
     .await
 }
@@ -775,6 +1303,8 @@ async fn run_task_inner(
     timeout_seconds: Option<u64>,
     vars: IndexMap<String, VarsConfig>,
     force: bool,
+    fail_fast: bool,
+    quit_on_done: bool,
 ) -> anyhow::Result<()> {
     let path = path::absolute(path)?;
     let (root, children) = ProjectConfig::new_multi(&path)?;
@@ -786,7 +1316,7 @@ async fn run_task_inner(
         &vars,
         force,
         false,
-        Some(false),
+        Some(fail_fast),
         Some(false),
     )
     .await?;
@@ -798,7 +1328,7 @@ async fn run_task_inner(
 
     // Start runner
     let runner_fut = tokio::spawn(async move {
-        runner.run(&app_tx, false).await.ok();
+        runner.run(&app_tx, quit_on_done).await.ok();
     });
 
     // Handle events and assert task statuses

@@ -190,6 +190,10 @@ fn depends_on_names(task: &firepit::config::TaskConfig) -> Vec<String> {
         .collect()
 }
 
+fn wait_for_names(task: &firepit::config::TaskConfig) -> Vec<String> {
+    task.wait_for.iter().map(|w| w.task().to_string()).collect()
+}
+
 #[test]
 fn test_defaults_regex() {
     let path = Path::new("tests/fixtures/config/defaults_regex");
@@ -220,6 +224,12 @@ fn test_defaults_regex() {
     let lint = root.tasks.get("lint").unwrap();
     assert_eq!(lint.shell, None);
     assert!(lint.env.get("NODE_ENV").is_none());
+
+    // `wait_for` from defaults is qualified and applied to the matching tasks only
+    assert_eq!(wait_for_names(build), vec!["#lint"]);
+    assert_eq!(wait_for_names(test), vec!["#lint"]);
+    assert!(install.wait_for.is_empty());
+    assert!(lint.wait_for.is_empty());
 }
 
 #[test]
@@ -390,6 +400,19 @@ async fn test_render_ignores_empty_depends_on() {
 
     let with_env = root.tasks.get("with-env").unwrap();
     assert_eq!(depends_on_names(with_env), vec!["#setup"]);
+}
+
+#[tokio::test]
+async fn test_render_ignores_empty_wait_for() {
+    let path = Path::new("tests/fixtures/config/render_empty_entries");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let mut renderer = ConfigRenderer::new(&root, &children, &IndexMap::new(), false);
+    let (root, children) = renderer.render().await.unwrap();
+
+    assert!(children.is_empty());
+
+    let run = root.tasks.get("run").unwrap();
+    assert_eq!(wait_for_names(run), vec!["#setup"]);
 }
 
 #[test]

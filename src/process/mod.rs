@@ -12,7 +12,7 @@
 mod child;
 mod command;
 
-use std::{io, sync::Arc, time::Duration};
+use std::{collections::HashSet, io, sync::Arc, time::Duration};
 
 pub use self::child::{Child, ChildExit};
 pub use command::Command;
@@ -110,6 +110,11 @@ impl ProcessManager {
 
     pub async fn stop(&self) -> Vec<ChildExit> {
         self.stop_inner(|_c| true).await
+    }
+
+    /// Stops all children except those with the given labels.
+    pub async fn stop_except(&self, labels: &HashSet<String>) -> Vec<ChildExit> {
+        self.stop_inner(|c| !labels.contains(c.label())).await
     }
 
     async fn stop_inner<F>(&self, mut filter: F) -> Vec<ChildExit>

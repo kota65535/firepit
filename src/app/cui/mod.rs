@@ -29,6 +29,8 @@ pub struct CuiApp {
     command_rx: mpsc::UnboundedReceiver<AppCommand>,
     signal_handler: SignalHandler,
     target_tasks: Vec<String>,
+    /// Finalizers run while quitting, so their failures count unlike the tasks stopped by it
+    finalizer_tasks: HashSet<String>,
     labels: HashMap<String, String>,
     quit_on_done: bool,
     fail_fast: bool,
@@ -38,6 +40,7 @@ pub struct CuiApp {
 impl CuiApp {
     pub fn new(
         target_tasks: &[String],
+        finalizer_tasks: &[String],
         labels: &HashMap<String, String>,
         quit_on_done: bool,
         fail_fast: bool,
@@ -51,6 +54,7 @@ impl CuiApp {
             command_rx,
             signal_handler: SignalHandler::infer()?,
             target_tasks: target_tasks.to_vec(),
+            finalizer_tasks: finalizer_tasks.iter().cloned().collect(),
             labels: labels.clone(),
             fail_fast,
             quit_on_done,
@@ -133,8 +137,8 @@ impl CuiApp {
                 } => {
                     debug!("Task {:?} finished", task);
 
-                    // Tasks stopped by the quit are not failures.
-                    if result.is_failure() && !quitting {
+                    // Tasks stopped by the quit are not failures, but the finalizers run through it
+                    if result.is_failure() && (!quitting || self.finalizer_tasks.contains(&task)) {
                         failed_tasks.insert(task.clone(), result);
                         eprintln!(
                             "{}",
@@ -154,9 +158,11 @@ impl CuiApp {
                 AppCommand::Done if self.quit_on_done || quitting => break,
                 _ => {}
             }
-            if self.quit_on_done && tasks_remaining.is_empty() {
+            // Quit once the targets are done. The runner then runs the finalizers and sends `Done`
+            if self.quit_on_done && !quitting && tasks_remaining.is_empty() {
                 debug!("Target tasks all done");
-                break;
+                quitting = true;
+                runner_tx.quit();
             }
         }
 

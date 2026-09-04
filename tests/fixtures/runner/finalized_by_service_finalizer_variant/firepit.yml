@@ -1,0 +1,15 @@
+tasks:
+  server:
+    command: sleep 30
+    service: true
+    finalized_by:
+      - task: cleanup
+        vars:
+          port: 12345
+
+  # A variant of a service cannot be a finalizer either
+  cleanup:
+    vars:
+      port: 12000
+    command: nc -kl {{ port }}
+    service: true

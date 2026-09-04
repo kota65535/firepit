@@ -260,26 +260,43 @@ impl ProjectConfig {
     }
 
     pub fn validate_multi(root: &ProjectConfig, children: &IndexMap<String, ProjectConfig>) -> anyhow::Result<()> {
-        let mut tasks = root.tasks.values().map(|t| t.full_name()).collect::<HashSet<_>>();
-        for p in children.values() {
-            tasks.extend(p.tasks.values().map(|t| t.full_name()).collect::<HashSet<_>>());
-        }
+        let all_tasks = iter::once(root)
+            .chain(children.values())
+            .flat_map(|p| p.tasks.values())
+            .collect::<Vec<_>>();
+        let tasks = all_tasks.iter().map(|t| t.full_name()).collect::<HashSet<_>>();
+        let services = all_tasks
+            .iter()
+            .filter(|t| t.is_service())
+            .map(|t| t.full_name())
+            .collect::<HashSet<_>>();
         for config in iter::once(root).chain(children.values()) {
             config
-                .validate(&tasks)
+                .validate(&tasks, &services)
                 .context(format!("invalid config file: {:?}", config.path))?;
         }
         Ok(())
     }
 
-    fn validate(&self, tasks: &HashSet<String>) -> anyhow::Result<()> {
+    fn validate(&self, tasks: &HashSet<String>, services: &HashSet<String>) -> anyhow::Result<()> {
         for (_, t) in self.tasks.iter() {
-            for d in t.depends_on.iter().map(|d| match d {
-                DependsOnConfig::String(s) => s.clone(),
-                DependsOnConfig::Struct(s) => s.task.clone(),
-            }) {
-                if !tasks.contains(&d) {
+            for d in t.depends_on.iter().map(|d| d.task()) {
+                if !tasks.contains(d) {
                     anyhow::bail!("tasks.{}.depends_on: task {:?} is not defined.", t.name, d);
+                }
+            }
+            for w in t.wait_for.iter().map(|w| w.task()) {
+                if !tasks.contains(w) {
+                    anyhow::bail!("tasks.{}.wait_for: task {:?} is not defined.", t.name, w);
+                }
+            }
+            for f in t.finalized_by.iter().map(|f| f.task()) {
+                if !tasks.contains(f) {
+                    anyhow::bail!("tasks.{}.finalized_by: task {:?} is not defined.", t.name, f);
+                }
+                // A finalizer must finish, which a service does not do on its own
+                if services.contains(f) {
+                    anyhow::bail!("tasks.{}.finalized_by: task {:?} must not be a service.", t.name, f);
                 }
             }
         }
@@ -327,6 +344,16 @@ impl ProjectConfig {
                         cascade: s.cascade,
                     }),
                 })
+                .collect();
+            v.wait_for = v
+                .wait_for
+                .iter()
+                .map(|w| w.with_task(Task::qualified_name(name, w.task())))
+                .collect();
+            v.finalized_by = v
+                .finalized_by
+                .iter()
+                .map(|f| f.with_task(Task::qualified_name(name, f.task())))
                 .collect();
         }
 
@@ -501,6 +528,11 @@ impl ProjectConfig {
                             }),
                         })
                         .collect(),
+                    wait_for: d
+                        .wait_for
+                        .iter()
+                        .map(|w| w.with_task(Task::qualified_name(&self.name, w.task())))
+                        .collect(),
                     ..d.clone()
                 })
             })
@@ -516,6 +548,7 @@ impl ProjectConfig {
             let mut eff_env: IndexMap<String, String> = IndexMap::new();
             let mut eff_env_files: Vec<String> = Vec::new();
             let mut eff_depends_on: Vec<DependsOnConfig> = Vec::new();
+            let mut eff_wait_for: Vec<WaitForConfig> = Vec::new();
             let mut eff_inputs: Vec<String> = Vec::new();
             let mut eff_outputs: Vec<String> = Vec::new();
             let mut matched = false;
@@ -549,6 +582,7 @@ impl ProjectConfig {
                 // Arrays: concatenate in order
                 eff_env_files.extend(default.env_files.clone());
                 eff_depends_on.extend(default.depends_on.clone());
+                eff_wait_for.extend(default.wait_for.clone());
                 eff_inputs.extend(default.inputs.clone());
                 eff_outputs.extend(default.outputs.clone());
             }
@@ -582,6 +616,9 @@ impl ProjectConfig {
 
             eff_depends_on.append(&mut task_config.depends_on);
             task_config.depends_on = eff_depends_on;
+
+            eff_wait_for.append(&mut task_config.wait_for);
+            task_config.wait_for = eff_wait_for;
 
             eff_inputs.append(&mut task_config.inputs);
             task_config.inputs = eff_inputs;
@@ -632,6 +669,7 @@ pub struct TaskConfig {
     /// Template variables. A task variable shadows the project variable of the same name,
     /// and the `<name>=<value>` CLI argument overrides both.
     /// Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`,
+    /// `wait_for`, `wait_for.{task, vars}`,
     /// `service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`
     ///
     /// A variable declared without a value has no default, so it is required: give it a value
@@ -655,6 +693,43 @@ pub struct TaskConfig {
     #[schemars(extend("x-template" = true))]
     pub depends_on: Vec<DependsOnConfig>,
 
+    /// Tasks to run after, without depending on them.
+    ///
+    /// Unlike `depends_on`, the listed tasks are not added to the run.
+    /// They only order this task after them when they are going to run anyway.
+    /// Naming a task orders this one after every variant of it. Write an entry in object form
+    /// to wait only for the variants whose vars match the given ones.
+    /// ```yaml
+    /// wait_for:
+    ///   - lint
+    ///   - task: migrate
+    ///     vars:
+    ///       database: app
+    /// ```
+    #[serde(default)]
+    #[schemars(extend("x-template" = true))]
+    pub wait_for: Vec<WaitForConfig>,
+
+    /// Tasks to run after this task finishes, whether it succeeds or fails.
+    /// They run only when this task is part of the run (as a target or a dependency),
+    /// so running a finalizer on its own does not run the task it finalizes.
+    /// Write an entry in object form to override the finalizer's `vars`, as with `depends_on`.
+    /// ```yaml
+    /// finalized_by:
+    ///   - db-down
+    ///   - task: notify
+    ///     vars:
+    ///       channel: ci
+    /// ```
+    #[serde(default)]
+    #[schemars(extend("x-template" = true))]
+    pub finalized_by: Vec<FinalizedByConfig>,
+
+    /// Tasks this task finalizes, filled per run by the workspace: those whose `finalized_by`
+    /// lists this task. This task runs after all of them finish, whether they succeed or fail.
+    #[serde(skip)]
+    pub finalizes: Vec<String>,
+
     /// Service configurations
     pub service: Option<ServiceConfig>,
 
@@ -677,6 +752,13 @@ pub struct TaskConfig {
 impl TaskConfig {
     pub fn full_name(&self) -> String {
         format!("{}#{}", self.project, self.name)
+    }
+
+    pub fn is_service(&self) -> bool {
+        matches!(
+            self.service,
+            Some(ServiceConfig::Bool(true)) | Some(ServiceConfig::Struct(_))
+        )
     }
 
     pub fn full_orig_name(&self) -> String {
@@ -1035,6 +1117,15 @@ pub enum DependsOnConfig {
     Struct(DependsOnConfigStruct),
 }
 
+impl DependsOnConfig {
+    pub fn task(&self) -> &str {
+        match self {
+            DependsOnConfig::String(s) => s,
+            DependsOnConfig::Struct(s) => &s.task,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct DependsOnConfigStruct {
     /// Dependency task name
@@ -1053,6 +1144,94 @@ pub struct DependsOnConfigStruct {
 
 fn default_cascade() -> bool {
     true
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(untagged)]
+#[schemars(extend("x-template" = true))]
+pub enum WaitForConfig {
+    String(String),
+    Struct(WaitForConfigStruct),
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct WaitForConfigStruct {
+    /// Name of the task to wait for
+    #[schemars(extend("x-template" = true))]
+    pub task: String,
+
+    /// Variables narrowing down which variants of the task to wait for.
+    /// Only the variables given here are compared, so the variants may differ in the others.
+    #[serde(default)]
+    #[schemars(extend("x-template" = true))]
+    pub vars: IndexMap<String, VarsConfig>,
+}
+
+impl WaitForConfig {
+    pub fn task(&self) -> &str {
+        match self {
+            WaitForConfig::String(s) => s,
+            WaitForConfig::Struct(s) => &s.task,
+        }
+    }
+
+    pub fn vars(&self) -> Option<&IndexMap<String, VarsConfig>> {
+        match self {
+            WaitForConfig::String(_) => None,
+            WaitForConfig::Struct(s) => Some(&s.vars),
+        }
+    }
+
+    /// Returns a copy of this entry with the task name replaced.
+    pub fn with_task(&self, task: String) -> Self {
+        match self {
+            WaitForConfig::String(_) => WaitForConfig::String(task),
+            WaitForConfig::Struct(s) => WaitForConfig::Struct(WaitForConfigStruct {
+                task,
+                vars: s.vars.clone(),
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(untagged)]
+#[schemars(extend("x-template" = true))]
+pub enum FinalizedByConfig {
+    String(String),
+    Struct(FinalizedByConfigStruct),
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct FinalizedByConfigStruct {
+    /// Finalizer task name
+    #[schemars(extend("x-template" = true))]
+    pub task: String,
+
+    /// Variables to override the finalizer task vars.
+    #[serde(default)]
+    #[schemars(extend("x-template" = true))]
+    pub vars: IndexMap<String, VarsConfig>,
+}
+
+impl FinalizedByConfig {
+    pub fn task(&self) -> &str {
+        match self {
+            FinalizedByConfig::String(s) => s,
+            FinalizedByConfig::Struct(s) => &s.task,
+        }
+    }
+
+    /// Returns a copy of this entry with the task name replaced.
+    pub fn with_task(&self, task: String) -> Self {
+        match self {
+            FinalizedByConfig::String(_) => FinalizedByConfig::String(task),
+            FinalizedByConfig::Struct(s) => FinalizedByConfig::Struct(FinalizedByConfigStruct {
+                task,
+                vars: s.vars.clone(),
+            }),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
@@ -1368,6 +1547,11 @@ pub struct DefaultsConfig {
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
     pub depends_on: Vec<DependsOnConfig>,
+
+    /// Tasks to run after, without depending on them
+    #[serde(default)]
+    #[schemars(extend("x-template" = true))]
+    pub wait_for: Vec<WaitForConfig>,
 
     /// Service configurations
     pub service: Option<ServiceConfig>,

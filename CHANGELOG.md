@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.27.0] - 2026-09-04
+
+### 🚀 Features
+
+- *(config)* Add wait_for to order tasks without depending on them (#396)
+- *(config)* Add finalized_by to run tasks after a task finishes (#399)
+
+### 🐛 Bug Fixes
+
+- *(config)* Reject a service as a finalizer (#400)
+
 ## [0.26.0] - 2026-08-27
 
 ### 🚀 Features

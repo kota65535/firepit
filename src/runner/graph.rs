@@ -1,4 +1,4 @@
-use crate::project::Task;
+use crate::project::{DependsOn, Task};
 use crate::tokio_spawn;
 use anyhow::Context;
 use futures::stream::FuturesUnordered;
@@ -17,8 +17,44 @@ use tracing::{debug, info, warn};
 
 #[derive(Clone)]
 pub struct TaskGraph {
-    graph: DiGraph<Task, bool>,
-    targets: Vec<String>,
+    graph: DiGraph<Task, Edge>,
+    /// Tasks whose completion ends the visit: the targets and their finalizers
+    awaited: Vec<String>,
+}
+
+/// Edge from a task to a task it waits for.
+#[derive(Debug, Clone, Copy)]
+struct Edge {
+    /// Whether the dependent task re-runs when this dependency re-runs, in watch mode.
+    cascade: bool,
+
+    /// Whether this edge only orders the two tasks, without making one depend on the other.
+    /// Such an edge comes from `wait_for`: it neither pulls the task into the run nor
+    /// blocks the dependent task when it fails.
+    ordering_only: bool,
+
+    /// Whether the dependent task runs even if this dependency fails.
+    /// Such an edge comes from `finalized_by`: the dependent task is a finalizer that must run
+    /// once this dependency has finished, whatever its result.
+    always: bool,
+}
+
+impl Edge {
+    fn depends_on(d: &DependsOn) -> Self {
+        Edge {
+            cascade: d.cascade,
+            ordering_only: false,
+            always: d.always,
+        }
+    }
+
+    fn wait_for() -> Self {
+        Edge {
+            cascade: false,
+            ordering_only: true,
+            always: false,
+        }
+    }
 }
 
 pub struct VisitorMessage {
@@ -47,13 +83,15 @@ pub struct CallbackMessage(pub NodeResult);
 #[derive(Debug, Clone)]
 pub enum NodeResult {
     None,
+    /// A service is ready. Its dependents may proceed while it keeps running
+    Ready,
     Success,
     Failure,
 }
 
 impl NodeResult {
     pub fn success(&self) -> bool {
-        matches!(self, NodeResult::Success)
+        matches!(self, NodeResult::Success | NodeResult::Ready)
     }
     pub fn present(&self) -> bool {
         !matches!(self, NodeResult::None)
@@ -61,17 +99,17 @@ impl NodeResult {
 }
 
 impl TaskGraph {
-    pub fn new(tasks: &Vec<Task>, targets: Option<&Vec<String>>, force: bool) -> anyhow::Result<TaskGraph> {
-        let mut graph = DiGraph::<Task, bool>::new();
+    pub fn new(tasks: &Vec<Task>, awaited: Option<&Vec<String>>, force: bool) -> anyhow::Result<TaskGraph> {
+        let mut graph = DiGraph::<Task, Edge>::new();
         let mut nodes = HashMap::new();
 
-        // If `force` is true, we only add the target tasks as nodes to the graph
+        // If `force` is true, we only add the awaited tasks as nodes to the graph
         if force {
-            let target_set = targets
+            let awaited_set = awaited
                 .map(|t| t.iter().cloned().collect::<HashSet<_>>())
                 .unwrap_or_default();
             for t in tasks {
-                if target_set.contains(&t.name) {
+                if awaited_set.contains(&t.name) {
                     let idx = graph.add_node(t.clone());
                     nodes.insert(t.name.clone(), idx);
                 }
@@ -90,7 +128,7 @@ impl TaskGraph {
                 let to = nodes.get(&d.task);
                 match (from, to) {
                     (Some(from), Some(to)) => {
-                        graph.add_edge(*from, *to, d.cascade);
+                        graph.add_edge(*from, *to, Edge::depends_on(d));
                     }
                     // Ignore if the dependent task does not exist.
                     // This can occur when creating a subgraph by `transitive_closure`.
@@ -101,12 +139,52 @@ impl TaskGraph {
             }
         }
 
-        // If targets are not given, consider all tasks as target
-        let targets = targets
+        // Index the nodes by the name their task was given in the config, which every variant a
+        // parameterized dependency split it into shares. A `wait_for` entry names a task rather
+        // than a node, so this is what it looks up.
+        let mut nodes_by_orig_name = HashMap::<&str, Vec<(&Task, NodeIndex)>>::new();
+        for t in tasks {
+            if let Some(idx) = nodes.get(&t.name) {
+                nodes_by_orig_name.entry(&t.orig_name).or_default().push((t, *idx));
+            }
+        }
+
+        // Add ordering-only edges from `wait_for`. Unlike `depends_on`, a task that is not a node
+        // is not an error here: `wait_for` only orders against tasks that are already in the run.
+        // An entry orders against every variant of the task it names, narrowed down by the vars
+        // the entry gives.
+        for t in tasks {
+            let Some(from) = nodes.get(&t.name) else {
+                continue;
+            };
+            for w in &t.wait_for {
+                // An entry that matches the waiting task names the task it is written on. Every
+                // variant of a task carries the same entry, so pairing them would order each
+                // variant both before and after its siblings, which is a cycle. Such an entry
+                // orders nothing. Note this leaves the useful case alone: an entry whose vars
+                // exclude the waiting task still orders it after the variants they do match.
+                if w.matches(t) {
+                    continue;
+                }
+                let candidates = nodes_by_orig_name.get(w.task.as_str()).into_iter().flatten();
+                for (_, to) in candidates.filter(|(t, _)| w.matches(t)) {
+                    // A dependency edge already orders the two tasks and is stricter, so keep it.
+                    // This also keeps the graph free of parallel edges, so an edge can be looked
+                    // up by its endpoints alone.
+                    if graph.find_edge(*from, *to).is_some() {
+                        continue;
+                    }
+                    graph.add_edge(*from, *to, Edge::wait_for());
+                }
+            }
+        }
+
+        // If awaited tasks are not given, consider all tasks as awaited
+        let awaited = awaited
             .cloned()
             .unwrap_or_else(|| tasks.iter().map(|t| t.name.clone()).collect());
 
-        let ret = TaskGraph { graph, targets };
+        let ret = TaskGraph { graph, awaited };
 
         ret.sort()?;
 
@@ -126,46 +204,70 @@ impl TaskGraph {
         }
     }
 
-    pub fn visit(&self, concurrency: usize, quit_on_done: bool) -> anyhow::Result<VisitorHandle> {
-        // Each node has a watch channel to send the result for all dependent nodes
+    /// Starts a visitor for every node.
+    ///
+    /// `fail_fast` makes an ordering-only task's failure skip the task waiting for it, matching
+    /// what the flag asks for: stop on the first failure. Without it, such a failure is ignored,
+    /// since `wait_for` orders tasks without making one depend on the other.
+    pub fn visit(&self, concurrency: usize, quit_on_done: bool, fail_fast: bool) -> anyhow::Result<VisitorHandle> {
+        // Each node has a watch channel to send the result for all dependent nodes.
+        // A service sends it when it becomes ready, so a second channel tells when the node has
+        // finished, which is what its finalizers wait for.
         let mut txs = HashMap::new();
         let mut rxs = HashMap::new();
+        let mut done_txs = HashMap::new();
+        let mut done_rxs = HashMap::new();
         for node_id in self.graph.node_identifiers() {
             let (tx, rx) = watch::channel::<NodeResult>(NodeResult::None);
             txs.insert(node_id, tx);
             rxs.insert(node_id, rx);
+            let (tx, rx) = watch::channel::<NodeResult>(NodeResult::None);
+            done_txs.insert(node_id, tx);
+            done_rxs.insert(node_id, rx);
         }
         // Channel to notify nodes
         let (node_tx, node_rx) = mpsc::channel(max(concurrency, 1));
         // Channel to stop or restart visitor
         let (visitor_tx, visitor_rx) = broadcast::channel(1024);
 
-        // Remaining target tasks
-        let targets_remaining: HashSet<String> = self.targets.iter().cloned().collect();
-        let targets_remaining = Arc::new(Mutex::new(targets_remaining));
+        // Remaining awaited tasks
+        let awaited_remaining: HashSet<String> = self.awaited.iter().cloned().collect();
+        let awaited_remaining = Arc::new(Mutex::new(awaited_remaining));
 
         // Run visitor thread for all nodes
         let nodes_fut = FuturesUnordered::new();
         for node_id in self.graph.node_identifiers() {
             let tx = txs.remove(&node_id).context("sender not found")?;
+            let done_tx = done_txs.remove(&node_id).context("sender not found")?;
             let node_tx = node_tx.clone();
             let mut visitor_rx = visitor_rx.resubscribe();
 
             let task = self.graph.node_weight(node_id).context("node not found")?.clone();
-            let neighbors = self.graph.neighbors_directed(node_id, Direction::Outgoing);
-            // Dependency tasks
-            let dep_tasks = neighbors
-                .clone()
-                .map(|n| self.graph.node_weight(n).cloned().context("node not found"))
-                .collect::<anyhow::Result<Vec<_>>>()?;
-            // Watch channels to receive the result of dependent tasks
-            let dep_rxs = neighbors
-                .clone()
-                .map(|n| rxs.get(&n).cloned().context("sender not found"))
-                .collect::<anyhow::Result<Vec<_>>>()?;
+            // Tasks this node waits for, and the watch channels to receive their results.
+            // Ordering-only tasks, from `wait_for`, are only awaited: unlike a dependency task,
+            // their failure does not stop this node from running.
+            // A finalizer, from `finalized_by`, waits for the tasks it finalizes to finish, not
+            // just to be ready, and always runs afterwards: they are not required to succeed.
+            let mut dep_tasks = Vec::new();
+            let mut dep_rxs = Vec::new();
+            for n in self.graph.neighbors_directed(node_id, Direction::Outgoing) {
+                let edge = self
+                    .graph
+                    .find_edge(node_id, n)
+                    .and_then(|e| self.graph.edge_weight(e))
+                    .context("edge not found")?;
+                dep_tasks.push(self.graph.node_weight(n).cloned().context("node not found")?);
+                let (rx, required) = if edge.always {
+                    (done_rxs.get(&n).cloned().context("sender not found")?, false)
+                } else {
+                    let rx = rxs.get(&n).cloned().context("sender not found")?;
+                    (rx, !edge.ordering_only || fail_fast)
+                };
+                dep_rxs.push((rx, required));
+            }
 
             let task_name = task.name.clone();
-            let targets_remaining_cloned = targets_remaining.clone();
+            let awaited_remaining_cloned = awaited_remaining.clone();
             let visitor_tx_cloned = visitor_tx.clone();
             nodes_fut.push(tokio_spawn!("node", { name = task_name }, async move {
                 let mut ignore_deps = false;
@@ -200,6 +302,7 @@ impl TaskGraph {
                                                 ignore_deps = force;
                                                 num_runs += 1;
                                                 tx.send(NodeResult::None).ok();
+                                                done_tx.send(NodeResult::None).ok();
                                                 continue 'start;
                                             }
                                             continue
@@ -217,7 +320,7 @@ impl TaskGraph {
                     info!("Dependencies finished. ok: {:?}", deps_ok);
 
                     // Loop for restarting service tasks
-                    'send: loop {
+                    let result = 'send: loop {
                         let (callback_tx, mut callback_rx) = mpsc::channel::<CallbackMessage>(1);
                         let message = VisitorMessage {
                             node: task.clone(),
@@ -244,6 +347,7 @@ impl TaskGraph {
                                                         ignore_deps = force;
                                                         num_runs += 1;
                                                         tx.send(NodeResult::None).ok();
+                                                        done_tx.send(NodeResult::None).ok();
                                                         continue 'start;
                                                     }
                                                     continue 'recv
@@ -255,20 +359,20 @@ impl TaskGraph {
                                             match result {
                                                 Some(CallbackMessage(result)) => {
                                                     match result {
-                                                        NodeResult::Success | NodeResult::Failure => {
+                                                        NodeResult::Ready => {
+                                                            // The service is ready: release the dependents and keep
+                                                            // waiting for the process to finish or restart.
                                                             // Send errors indicate that there are no receivers that
                                                             // happen when this node has no dependents
+                                                            debug!("Result: {:?}, still waiting for callback", result);
+                                                            tx.send(NodeResult::Success).ok();
+                                                            continue 'recv;
+                                                        }
+                                                        NodeResult::Success | NodeResult::Failure => {
                                                             tx.send(result.clone()).ok();
-
-                                                            // Service task should continue recv loop so that it can restart
-                                                            // even after reaching the READY state
-                                                            if result.success() && task.is_service {
-                                                                debug!("Result: {:?}, still waiting for callback", result);
-                                                                continue 'recv;
-                                                            }
                                                             // Finish the visitor
                                                             debug!("Result: {:?}", result);
-                                                            break 'send;
+                                                            break 'send result;
                                                         }
                                                         NodeResult::None => {
                                                             // No result means we should restart the task
@@ -283,7 +387,7 @@ impl TaskGraph {
                                                     // that the node processing is finished, we assume that it is finished.
                                                     warn!("Callback sender dropped");
                                                     tx.send(NodeResult::Failure).ok();
-                                                    break 'send;
+                                                    break 'send NodeResult::Failure;
                                                 }
                                             }
                                         }
@@ -295,19 +399,21 @@ impl TaskGraph {
                                 // We act as if we have been canceled.
                                 warn!("Cannot send to the runner: {:?}", e);
                                 tx.send(NodeResult::Failure).ok();
-                                break 'send;
+                                break 'send NodeResult::Failure;
                             }
                         };
-                    }
+                    };
 
                     debug!("Visitor finished");
-                    let targets_done = {
-                        let mut t = targets_remaining_cloned.lock().expect("not poisoned");
+                    // Release the finalizers
+                    done_tx.send(result).ok();
+                    let awaited_done = {
+                        let mut t = awaited_remaining_cloned.lock().expect("not poisoned");
                         t.remove(&task.name);
                         t.is_empty()
                     };
-                    if quit_on_done && targets_done {
-                        debug!("All target node done, stopping visitors");
+                    if quit_on_done && awaited_done {
+                        debug!("All awaited nodes done, stopping visitors");
                         visitor_tx_cloned.send(VisitorCommand::Stop).ok();
                     }
 
@@ -324,6 +430,7 @@ impl TaskGraph {
                                         num_runs += 1;
                                         ignore_deps = force;
                                         tx.send(NodeResult::None).ok();
+                                        done_tx.send(NodeResult::None).ok();
                                         continue 'start;
                                     }
                                 }
@@ -365,16 +472,28 @@ impl TaskGraph {
 
         match direction {
             Direction::Outgoing => {
-                depth_first_search(&self.graph, indices, visitor);
+                depth_first_search(&self.graph, indices, |event| {
+                    // An ordering-only edge does not pull its task into the run, so do not
+                    // follow it. The task still gets visited if a dependency edge reaches it,
+                    // or if it is a target itself.
+                    if let petgraph::visit::DfsEvent::TreeEdge(u, v) = event {
+                        if self.edge(u, v).map(|e| e.ordering_only).unwrap_or(false) {
+                            return Control::Prune;
+                        }
+                        return Control::Continue;
+                    }
+                    visitor(event)
+                });
             }
             Direction::Incoming => {
                 depth_first_search(Reversed(&self.graph), indices, |event| {
                     if let petgraph::visit::DfsEvent::TreeEdge(u, v) = event {
-                        if let Ok(edge_idx) = self.graph.find_edge(v, u).context("edge not found") {
-                            if let Some(cascade) = self.graph.edge_weight(edge_idx) {
-                                if !cascade {
-                                    return Control::Prune;
-                                }
+                        // The graph is reversed here, so the edge to look up runs from v to u.
+                        // Re-running a task does not re-run the ones merely ordered after it,
+                        // just as it does not re-run those that opted out of cascading.
+                        if let Some(edge) = self.edge(v, u) {
+                            if edge.ordering_only || !edge.cascade {
+                                return Control::Prune;
                             }
                         }
                         return Control::Continue;
@@ -397,6 +516,13 @@ impl TaskGraph {
         self.graph.node_weights().cloned().collect()
     }
 
+    fn edge(&self, from: NodeIndex, to: NodeIndex) -> Option<Edge> {
+        self.graph
+            .find_edge(from, to)
+            .and_then(|e| self.graph.edge_weight(e))
+            .copied()
+    }
+
     fn node_by_task(&self, name: &str) -> Option<(&Task, NodeIndex)> {
         for (i, n) in self.graph.node_weights().enumerate() {
             if n.name == *name {
@@ -406,24 +532,30 @@ impl TaskGraph {
         None
     }
 
-    async fn wait_all_watches(mut receivers: Vec<watch::Receiver<NodeResult>>) -> anyhow::Result<bool> {
-        for rx in receivers.iter_mut() {
-            if (*rx.borrow()).present() {
-                if !(*rx.borrow()).success() {
-                    return Ok(false);
-                }
-                continue;
-            }
-            loop {
-                if rx.changed().await.is_err() {
-                    anyhow::bail!("watch channel closed");
-                }
-                if (*rx.borrow()).present() {
-                    if !(*rx.borrow()).success() {
-                        return Ok(false);
+    /// Waits until every task this node waits for has finished.
+    ///
+    /// Each receiver comes with whether the task is required to succeed. Returns false as soon
+    /// as a required task fails. An ordering-only task, from `wait_for`, is awaited just the
+    /// same, but its result is ignored: it orders the tasks without making this one depend on it.
+    /// Under `fail_fast` its result does count, so that a failure stops the run instead of
+    /// releasing this node into a race with the stop. A task finalized by this node, via
+    /// `finalized_by`, is never required: the finalizer runs whatever the result.
+    async fn wait_all_watches(receivers: Vec<(watch::Receiver<NodeResult>, bool)>) -> anyhow::Result<bool> {
+        for (mut rx, required) in receivers {
+            if !(*rx.borrow()).present() {
+                loop {
+                    if rx.changed().await.is_err() {
+                        anyhow::bail!("watch channel closed");
                     }
-                    break;
+                    if (*rx.borrow()).present() {
+                        break;
+                    }
                 }
+            }
+            // A failed dependency makes this node skip its run, so there is nothing left to
+            // order against and no reason to wait for the remaining tasks
+            if required && !(*rx.borrow()).success() {
+                return Ok(false);
             }
         }
         Ok(true)

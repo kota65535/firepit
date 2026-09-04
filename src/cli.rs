@@ -173,6 +173,7 @@ pub async fn run() -> anyhow::Result<i32> {
         UI::Cui => {
             let mut app = CuiApp::new(
                 &runner.target_tasks,
+                &runner.finalizer_tasks,
                 &ws.labels(),
                 !args.watch,
                 ws.fail_fast,
@@ -184,7 +185,7 @@ pub async fn run() -> anyhow::Result<i32> {
             (command_tx, fut)
         }
         UI::Tui => {
-            let mut app = TuiApp::new(&runner.target_tasks, &dep_tasks, &ws.labels())?;
+            let mut app = TuiApp::new(&runner.target_tasks, &dep_tasks, &runner.finalizer_tasks, &ws.labels())?;
             let runner_tx = runner.command_tx();
             let command_tx = app.command_tx();
             let fut = tokio_spawn!("app", async move { app.run(&runner_tx).await });

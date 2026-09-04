@@ -1,0 +1,14 @@
+# `format` is merely ordered after `lint`, so re-running `lint` in watch mode must not re-run
+# `format`. Compare `depends_on`, which does cascade.
+tasks:
+  lint:
+    command: echo "lint"
+    inputs:
+      - "lint.txt"
+
+  format:
+    command: echo "format"
+    wait_for:
+      - lint
+    inputs:
+      - "format.txt"

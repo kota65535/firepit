@@ -1,6 +1,7 @@
 use crate::config::{
-    check_var_schema, DependsOnConfig, DependsOnConfigStruct, DynamicVarsInner, HealthCheckConfig, ProjectConfig,
-    ServiceConfig, TaskConfig, VarsConfig,
+    check_var_schema, DependsOnConfig, DependsOnConfigStruct, DynamicVarsInner, FinalizedByConfig,
+    FinalizedByConfigStruct, HealthCheckConfig, ProjectConfig, ServiceConfig, TaskConfig, VarsConfig, WaitForConfig,
+    WaitForConfigStruct,
 };
 use crate::log::OutputCollector;
 use crate::process::{ChildExit, Command, ProcessManager};
@@ -257,6 +258,42 @@ impl TaskConfig {
         }
         config.depends_on = rendered_depends_on;
 
+        // Render wait_for task and vars
+        let mut rendered_wait_for = Vec::new();
+        for wait_for in config.wait_for.iter() {
+            let task = tera.render_str(wait_for.task(), context)?;
+            // Ignore if rendered task name is empty
+            if task.ends_with("#") {
+                continue;
+            }
+            match wait_for {
+                WaitForConfig::String(_) => rendered_wait_for.push(WaitForConfig::String(task)),
+                WaitForConfig::Struct(w) => {
+                    let vars = render_dep_vars(&w.vars, &mut tera, context)?;
+                    rendered_wait_for.push(WaitForConfig::Struct(WaitForConfigStruct { task, vars }));
+                }
+            }
+        }
+        config.wait_for = rendered_wait_for;
+
+        // Render finalized_by task and vars
+        let mut rendered_finalized_by = Vec::new();
+        for finalized_by in config.finalized_by.iter() {
+            let task = tera.render_str(finalized_by.task(), context)?;
+            // Ignore if rendered task name is empty
+            if task.ends_with("#") {
+                continue;
+            }
+            match finalized_by {
+                FinalizedByConfig::String(_) => rendered_finalized_by.push(FinalizedByConfig::String(task)),
+                FinalizedByConfig::Struct(f) => {
+                    let vars = render_dep_vars(&f.vars, &mut tera, context)?;
+                    rendered_finalized_by.push(FinalizedByConfig::Struct(FinalizedByConfigStruct { task, vars }));
+                }
+            }
+        }
+        config.finalized_by = rendered_finalized_by;
+
         Ok(config)
     }
 
@@ -442,84 +479,11 @@ impl ConfigRenderer {
             if depends_on.vars.is_empty() {
                 continue;
             };
-
-            // Get raw dependency task config
-            let (dep_task, dep_project) = Self::get_task(&depends_on.task, raw_root_config, raw_child_configs)
-                .context(format!(
-                    "unknown dependency task {:?} for {:?}",
-                    depends_on.task, task_name
-                ))?;
-
-            let mut variant_task = dep_task.clone();
-
-            // Merge depends_on vars into dependency task vars.
-            // Only the vars that already exist in the dependency task are merged to avoid unnecessary variant tasks.
-            for (k, v) in depends_on.vars.iter().filter(|(k, _)| dep_task.vars.contains_key(*k)) {
-                // A typed var of the dependency keeps its type, so the value is interpreted according to it.
-                let merged = dep_task.vars[k].with_value(v);
-                variant_task.vars.insert(k.clone(), merged);
-            }
-
-            // Create context from dependency task
-            let dep_context = contexts
-                .get(&dep_task.full_name())
-                .context(format!("unknown task {:?}", dep_task.full_name()))?;
-            let variant_context = variant_task.context(dep_project, dep_context).await?;
-
-            // Render
-            let mut rendered_variant_task = variant_task.render(&variant_context).await?;
-
-            debug!(
-                "Variant?: {:?}, dependent: {:?}\ncontext: {:#?}\nvars: {:#?}",
-                rendered_variant_task.full_name(),
-                task_name,
-                variant_context,
-                rendered_variant_task.vars,
-            );
-
-            // Two variants are equal when their original names and contexts are same
-            if let Some(same_variant) =
-                Self::get_variant_tasks(&rendered_variant_task.full_name(), root_config, child_configs)
-                    .iter()
-                    .find(|t| {
-                        contexts
-                            .get(&t.full_name())
-                            .map(|c| *c == variant_context)
-                            .unwrap_or(false)
-                    })
-            {
-                // Replace the depends_on task name with the variant with the same vars
-                depends_on.task = same_variant.full_name();
-                continue;
-            }
-
-            // Name
-            let suffix = num_variants
-                .entry(dep_task.full_orig_name())
-                .and_modify(|v| *v += 1)
-                .or_insert(1);
-            let variant_task_name = format!("{}-{}", dep_task.full_name(), suffix);
-            rendered_variant_task.name = Task::split_name(&variant_task_name).1.to_string();
-
-            info!(
-                "Variant: {:?}, dependent: {:?}\ncontext: {:#?}\nvars: {:#?}",
-                rendered_variant_task.full_name(),
-                task_name,
-                variant_context,
-                rendered_variant_task.vars
-            );
-
-            contexts.insert(variant_task_name.clone(), variant_context);
-
-            // Add task variant config
-            Self::set_task(rendered_variant_task, root_config, child_configs);
-
             // Replace the depends_on task name with the variant name
-            depends_on.task = variant_task_name.clone();
-
-            // Render dependency tasks recursively
-            Self::render_variant_tasks(
-                &variant_task_name,
+            depends_on.task = Self::render_variant_task(
+                task_name,
+                &depends_on.task,
+                &depends_on.vars,
                 root_config,
                 child_configs,
                 raw_root_config,
@@ -530,9 +494,167 @@ impl ConfigRenderer {
             .await?;
         }
 
+        // A finalizer specified with vars is a variant as well
+        for finalized_by in task_config.finalized_by.iter_mut() {
+            let FinalizedByConfig::Struct(finalized_by) = finalized_by else {
+                continue;
+            };
+            if finalized_by.vars.is_empty() {
+                continue;
+            };
+            finalized_by.task = Self::render_variant_task(
+                task_name,
+                &finalized_by.task,
+                &finalized_by.vars,
+                root_config,
+                child_configs,
+                raw_root_config,
+                raw_child_configs,
+                num_variants,
+                contexts,
+            )
+            .await?;
+        }
+
+        // The vars of a `wait_for` narrow down the variants to wait for by comparing them with the
+        // variants' resolved vars, so resolve them the same way: through the declarations of the
+        // referenced task (typed vars keep their type, scalar vars are inferred).
+        for wait_for in task_config.wait_for.iter_mut() {
+            let WaitForConfig::Struct(wait_for) = wait_for else {
+                continue;
+            };
+            if wait_for.vars.is_empty() {
+                continue;
+            };
+            let (dep_task, _) = Self::get_task(&wait_for.task, raw_root_config, raw_child_configs).context(format!(
+                "unknown task {:?} referred to by {:?}",
+                wait_for.task, task_name
+            ))?;
+            let dep_context = contexts
+                .get(&dep_task.full_name())
+                .context(format!("unknown task {:?}", dep_task.full_name()))?;
+            let mut tera = new_tera();
+            let mut resolved = IndexMap::new();
+            for (k, v) in wait_for.vars.iter() {
+                let rv = match dep_task.vars.get(k) {
+                    Some(declared) => {
+                        let merged = declared.with_value(v);
+                        VarsConfig::Static(
+                            render_value(&merged, &mut tera, dep_context)
+                                .await
+                                .with_context(|| format!("failed to render var {:?}", k))?,
+                        )
+                    }
+                    // Not declared by the task: ignored when matching, kept as is
+                    None => v.clone(),
+                };
+                resolved.insert(k.clone(), rv);
+            }
+            wait_for.vars = resolved;
+        }
+
         Self::set_task(task_config, root_config, child_configs);
 
         Ok(())
+    }
+
+    /// Renders the variant of the task `dep_task_name` with the given vars merged, for the task
+    /// `task_name` that refers to it, and returns the variant name. An existing variant with the
+    /// same vars is reused.
+    #[async_recursion]
+    #[allow(clippy::too_many_arguments)]
+    async fn render_variant_task(
+        task_name: &str,
+        dep_task_name: &str,
+        vars: &IndexMap<String, VarsConfig>,
+        root_config: &mut ProjectConfig,
+        child_configs: &mut IndexMap<String, ProjectConfig>,
+        raw_root_config: &mut ProjectConfig,
+        raw_child_configs: &mut IndexMap<String, ProjectConfig>,
+        num_variants: &mut HashMap<String, usize>,
+        contexts: &mut HashMap<String, tera::Context>,
+    ) -> anyhow::Result<String> {
+        // Get the raw config of the referenced task
+        let (dep_task, dep_project) = Self::get_task(dep_task_name, raw_root_config, raw_child_configs).context(
+            format!("unknown task {:?} referred to by {:?}", dep_task_name, task_name),
+        )?;
+
+        let mut variant_task = dep_task.clone();
+
+        // Merge the given vars into the task vars.
+        // Only the vars that already exist in the task are merged to avoid unnecessary variant tasks.
+        for (k, v) in vars.iter().filter(|(k, _)| dep_task.vars.contains_key(*k)) {
+            // A typed var of the task keeps its type, so the value is interpreted according to it.
+            let merged = dep_task.vars[k].with_value(v);
+            variant_task.vars.insert(k.clone(), merged);
+        }
+
+        // Create context from dependency task
+        let dep_context = contexts
+            .get(&dep_task.full_name())
+            .context(format!("unknown task {:?}", dep_task.full_name()))?;
+        let variant_context = variant_task.context(dep_project, dep_context).await?;
+
+        // Render
+        let mut rendered_variant_task = variant_task.render(&variant_context).await?;
+
+        debug!(
+            "Variant?: {:?}, dependent: {:?}\ncontext: {:#?}\nvars: {:#?}",
+            rendered_variant_task.full_name(),
+            task_name,
+            variant_context,
+            rendered_variant_task.vars,
+        );
+
+        // Two variants are equal when their original names and contexts are same
+        if let Some(same_variant) =
+            Self::get_variant_tasks(&rendered_variant_task.full_name(), root_config, child_configs)
+                .iter()
+                .find(|t| {
+                    contexts
+                        .get(&t.full_name())
+                        .map(|c| *c == variant_context)
+                        .unwrap_or(false)
+                })
+        {
+            // Reuse the variant with the same vars
+            return Ok(same_variant.full_name());
+        }
+
+        // Name
+        let suffix = num_variants
+            .entry(dep_task.full_orig_name())
+            .and_modify(|v| *v += 1)
+            .or_insert(1);
+        let variant_task_name = format!("{}-{}", dep_task.full_name(), suffix);
+        rendered_variant_task.name = Task::split_name(&variant_task_name).1.to_string();
+
+        info!(
+            "Variant: {:?}, dependent: {:?}\ncontext: {:#?}\nvars: {:#?}",
+            rendered_variant_task.full_name(),
+            task_name,
+            variant_context,
+            rendered_variant_task.vars
+        );
+
+        contexts.insert(variant_task_name.clone(), variant_context);
+
+        // Add task variant config
+        Self::set_task(rendered_variant_task, root_config, child_configs);
+
+        // Render dependency tasks recursively
+        Self::render_variant_tasks(
+            &variant_task_name,
+            root_config,
+            child_configs,
+            raw_root_config,
+            raw_child_configs,
+            num_variants,
+            contexts,
+        )
+        .await?;
+
+        Ok(variant_task_name)
     }
 }
 

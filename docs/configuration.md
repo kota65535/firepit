@@ -108,6 +108,7 @@ Template processing is supported in the following fields:
 - `env_files`
 - `working_dir`
 - `depends_on`
+- `wait_for`
 
 There are also some built-in variables available for use in templates.
 
@@ -368,6 +369,52 @@ tasks:
       - compile
 ```
 
+### Finalizers
+
+The `finalized_by` field is the opposite of `depends_on`: the listed tasks are executed **after** the task finishes, whether it succeeds or fails.
+This makes it suitable for cleanup tasks that must always run.
+For a [service](#services), the finalizers run when it exits, not when it becomes ready, so they can tear down what the service left behind once it is stopped.
+Finalizers are only added to the run when the task they finalize is part of it, so running a finalizer alone does not run that task.
+
+In this example, `fire test` starts the `db` service, runs `test`, and runs `db-down` once `db` is stopped, whether `test` passed or not.
+`fire db-down` runs only `db-down`.
+
+```yaml
+tasks:
+  db:
+    command: docker compose up db
+    service:
+      healthcheck:
+        command: docker compose exec db pg_isready
+    finalized_by:
+      - db-down
+
+  test:
+    command: cargo test
+    depends_on:
+      - db
+
+  db-down:
+    command: docker compose down
+```
+
+As with [parameterized dependencies](#parameterized-dependencies), writing a finalizer in object form overrides its `vars`, and each set of `vars` runs its own variant of the finalizer.
+
+```yaml
+tasks:
+  build:
+    command: bun run build
+    finalized_by:
+      - task: notify
+        vars:
+          channel: builds # runs: ./notify.sh builds
+
+  notify:
+    vars:
+      channel:
+    command: ./notify.sh {{ channel }}
+```
+
 ### Parameterized Dependencies
 
 Writing a dependency in object form lets you override its `vars`.
@@ -419,6 +466,90 @@ tasks:
       - install # cascade: true (default)
       - task: codegen
         cascade: false # re-running codegen does not re-run build
+```
+
+### Ordering Without Depending
+
+`depends_on` always pulls its tasks into the run. Sometimes you only want an ordering between
+tasks that you run together, without one task dragging in the other.
+
+Say you run `fire format lint` and want `lint` to go first, but `fire format` on its own should
+not run `lint` at all. That is what `wait_for` expresses.
+
+```yaml
+tasks:
+  lint:
+    command: cargo clippy
+
+  format:
+    command: cargo fmt
+    wait_for:
+      - lint
+```
+
+- `fire format lint` runs `lint`, then `format`.
+- `fire format` runs only `format`. The `wait_for` entry is ignored because `lint` is not in the run.
+
+Unlike a dependency, a task named by `wait_for` does not gate the run: its failure does not skip
+the task waiting for it. Use `depends_on` when a failure should stop the dependent task.
+Re-running a task in [watch mode](#watch-mode) does not re-run the tasks merely ordered after it
+either, so `wait_for` never cascades.
+
+A `wait_for` entry must name a defined task, and the ordering it adds must not form a cycle with
+the other orderings.
+
+#### Waiting for Task Variants
+
+Naming a task that [parameterized dependencies](#parameterized-dependencies) split into variants
+orders against every variant of it, since the variants are the same task run with different
+variables.
+
+Writing the entry in object form narrows that down: only the variants whose vars match the ones
+given are waited for. Only the vars written there are compared, so the variants may differ in
+all the others.
+
+```yaml
+tasks:
+  migrate:
+    vars:
+      database:
+      region:
+    command: ./migrate.sh {{ database }} {{ region }}
+
+  setup-app:
+    command: echo "app is ready"
+    depends_on:
+      - task: migrate
+        vars: { database: app, region: us }
+
+  setup-analytics:
+    command: echo "analytics is ready"
+    depends_on:
+      - task: migrate
+        vars: { database: analytics, region: eu }
+
+  # After every migration
+  report:
+    command: ./report.sh
+    wait_for:
+      - migrate
+
+  # After the app migration only, whatever its region is
+  warm-app-cache:
+    command: ./warm-cache.sh
+    wait_for:
+      - task: migrate
+        vars:
+          database: app
+
+  # After the app migration in the us region only
+  verify-app-us:
+    command: ./verify.sh
+    wait_for:
+      - task: migrate
+        vars:
+          database: app
+          region: us
 ```
 
 ## Services
@@ -673,7 +804,7 @@ The `tasks` selector decides which tasks an entry applies to:
 - An **array** is treated as an explicit list of task names.
 - If **omitted**, the entry applies to all tasks. (Note that an empty string `""` or empty list `[]` matches nothing.)
 
-An entry can set `shell`, `working_dir`, `vars`, `env`, `env_files`, `depends_on`, `service`, `inputs`, and `outputs`.
+An entry can set `shell`, `working_dir`, `vars`, `env`, `env_files`, `depends_on`, `wait_for`, `service`, `inputs`, and `outputs`.
 
 ```yaml
 defaults:
@@ -696,7 +827,7 @@ tasks:
     command: bun run lint
 ```
 
-When multiple entries match the same task, they are merged in order: scalars (`shell`, `working_dir`, `service`) and map keys (`vars`, `env`) are overridden by later entries, while arrays (`env_files`, `depends_on`, `inputs`, `outputs`) are concatenated.
+When multiple entries match the same task, they are merged in order: scalars (`shell`, `working_dir`, `service`) and map keys (`vars`, `env`) are overridden by later entries, while arrays (`env_files`, `depends_on`, `wait_for`, `inputs`, `outputs`) are concatenated.
 The merged defaults act as a base layer, so any setting defined directly on the task itself takes precedence.
 
 ### Merging Config Files

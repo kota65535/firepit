@@ -1,0 +1,22 @@
+tasks:
+  migrate:
+    vars:
+      database:
+    command: |
+      sleep 1
+      echo "migrate {{ database }}" >> order.txt
+      echo "migrate {{ database }}"
+
+  setup-app:
+    command: echo app
+    depends_on:
+      - task: migrate
+        vars:
+          database: app
+
+  format:
+    command: |
+      echo format >> order.txt
+      tr '\n' ',' < order.txt
+    wait_for:
+      - migrate

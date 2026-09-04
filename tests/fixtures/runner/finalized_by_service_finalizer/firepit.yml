@@ -1,0 +1,11 @@
+tasks:
+  server:
+    command: sleep 30
+    service: true
+    finalized_by:
+      - cleanup
+
+  # A service cannot be a finalizer
+  cleanup:
+    command: sleep 30
+    service: true

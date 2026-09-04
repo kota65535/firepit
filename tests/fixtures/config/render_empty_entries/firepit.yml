@@ -15,6 +15,9 @@ tasks:
       - setup
       - "{% if env %}setup{% endif %}"
       - task: "{% if env %}setup{% endif %}"
+    wait_for:
+      - setup
+      - "{% if env %}setup{% endif %}"
     env_files:
       - .env.task
       - "{% if env %}.env.task.{{ env }}{% endif %}"

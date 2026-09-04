@@ -1,0 +1,18 @@
+tasks:
+  build:
+    command: echo "build"
+    depends_on:
+      - install
+    finalized_by:
+      - cleanup
+
+  install:
+    command: echo "install"
+
+  cleanup:
+    command: echo "cleanup"
+    finalized_by:
+      - notify
+
+  notify:
+    command: echo "notify"

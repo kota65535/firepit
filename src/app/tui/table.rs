@@ -55,21 +55,23 @@ impl TaskTable<'_> {
                 };
                 let name_cell = Cell::new(Text::styled(r.label.clone(), style));
                 let status_cell = match r.status() {
-                    TaskStatus::Planned => Cell::new(Text::raw("\u{1FAB5}")), // 🪵
-                    TaskStatus::Running(_) => Cell::new(Text::raw("\u{1F525}")), // 🔥
-                    TaskStatus::Ready => Cell::new(Text::raw("\u{1F356}")),   // 🍖
+                    // A finalizer puts the fire out, so it gets a water bucket instead of a log
+                    TaskStatus::Planned if r.is_finalizer => Cell::new(Text::raw("\u{1FAA3}")), // 🪣
+                    TaskStatus::Planned => Cell::new(Text::raw("\u{1FAB5}")),                   // 🪵
+                    TaskStatus::Running(_) if r.is_finalizer => Cell::new(Text::raw("\u{1F4A7}")), // 💧
+                    TaskStatus::Running(_) => Cell::new(Text::raw("\u{1F525}")),                // 🔥
+                    TaskStatus::Ready => Cell::new(Text::raw("\u{1F356}")),                     // 🍖
                     TaskStatus::Finished(r, _) => {
                         // Append `\u{FE0F}` (Variation Selector-16) so that the terminal treat the emoji as full-width
                         match r {
                             TaskResult::Success => Cell::new(Text::raw("\u{2705}\u{FE0F}")), // ✅
                             TaskResult::Failure(_) | TaskResult::NotReady => Cell::new(Text::raw("\u{274C}\u{FE0F}")), // ❌
                             TaskResult::UpToDate => Cell::new(Text::raw("\u{1F96C}")), // 🥬
-                            TaskResult::BadDeps | TaskResult::Stopped => {
-                                Cell::new(Text::raw("\u{26A0}\u{FE0F}")) // ⚠️
-                            }
+                            TaskResult::BadDeps => Cell::new(Text::raw("\u{26A0}\u{FE0F}")), // ⚠️
+                            TaskResult::Stopped => Cell::new(Text::raw("\u{1F6AB}")),  // 🚫
                             TaskResult::Reloading => Cell::new(Text::raw("\u{267B}\u{FE0F}")), // ♻️
-                            TaskResult::Error => Cell::new(Text::raw("\u{2757}\u{FE0F}")),     // ❗
-                            TaskResult::Unknown => Cell::new(Text::raw("\u{2753}\u{FE0F}")),   // ❓
+                            TaskResult::Error => Cell::new(Text::raw("\u{2757}\u{FE0F}")), // ❗
+                            TaskResult::Unknown => Cell::new(Text::raw("\u{2753}\u{FE0F}")), // ❓
                         }
                     }
                 };

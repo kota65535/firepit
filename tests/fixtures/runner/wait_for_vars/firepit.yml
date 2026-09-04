@@ -1,0 +1,67 @@
+# Proving that a narrowed `wait_for` does NOT wait for the variants it excludes cannot be done
+# by timing — checking that a mark is "not there yet" only holds if the run keeps to a schedule.
+# Instead the excluded variant is gated behind the waiters: `bar` with `A: xxx` refuses to finish
+# until both `foo2` and `foo3` have. If either of them waited for it, the two would wait on each
+# other and the test would hit its timeout. So the run completing at all is the proof.
+tasks:
+  bar:
+    vars:
+      A: a
+      B: b
+      gated: ""
+    command: |
+      if [ -n "{{ gated }}" ]; then
+        # Longer than the test timeout on purpose: if the gate never opens the test must fail,
+        # not quietly give up waiting and pass.
+        for _ in $(seq 1 300); do
+          [ -f foo2.done ] && [ -f foo3.done ] && break
+          sleep 0.1
+        done
+      fi
+      echo "bar {{ A }} {{ B }}"
+
+  gen1:
+    command: echo gen1
+    depends_on:
+      - task: bar
+        vars: { A: aaa, B: bbb }
+
+  gen2:
+    command: echo gen2
+    depends_on:
+      - task: bar
+        vars: { A: aaa, B: zzz }
+
+  gen3:
+    command: echo gen3
+    depends_on:
+      - task: bar
+        vars: { A: xxx, B: bbb, gated: "yes" }
+
+  # Waits for every variant, so it also waits for the gated one — which is fine, the gate
+  # opens once foo2 and foo3 are done.
+  foo:
+    command: echo foo
+    wait_for:
+      - bar
+
+  # Waits only for the A: aaa variants, whatever their B is
+  foo2:
+    command: |
+      touch foo2.done
+      echo foo2
+    wait_for:
+      - task: bar
+        vars:
+          A: aaa
+
+  # Waits only for the A: aaa, B: bbb variant
+  foo3:
+    command: |
+      touch foo3.done
+      echo foo3
+    wait_for:
+      - task: bar
+        vars:
+          A: aaa
+          B: bbb
