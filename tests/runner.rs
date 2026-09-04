@@ -506,6 +506,25 @@ async fn test_finalized_by_force() {
 }
 
 #[tokio::test]
+async fn test_finalized_by_vars() {
+    setup();
+    let path = BASE_PATH.join("finalized_by_vars");
+    let tasks = vec![String::from("build-a"), String::from("build-b")];
+
+    // A finalizer given vars runs as a variant, one per set of vars
+    let statuses = ["#build-a", "#build-b", "#cleanup-1", "#cleanup-2"]
+        .iter()
+        .map(|t| (t.to_string(), String::from("Finished: Success")))
+        .collect::<HashMap<_, _>>();
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#build-a"), String::from("build-a"));
+    outputs.insert(String::from("#build-b"), String::from("build-b"));
+    outputs.insert(String::from("#cleanup-1"), String::from("cleanup a"));
+    outputs.insert(String::from("#cleanup-2"), String::from("cleanup b"));
+    run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
+}
+
+#[tokio::test]
 async fn test_finalized_by_service() {
     setup();
     let path = BASE_PATH.join("finalized_by_service");

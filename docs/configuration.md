@@ -317,6 +317,23 @@ tasks:
     command: docker compose down
 ```
 
+As with [parameterized dependencies](#parameterized-dependencies), writing a finalizer in object form overrides its `vars`, and each set of `vars` runs its own variant of the finalizer.
+
+```yaml
+tasks:
+  build:
+    command: bun run build
+    finalized_by:
+      - task: notify
+        vars:
+          channel: builds # runs: ./notify.sh builds
+
+  notify:
+    vars:
+      channel:
+    command: ./notify.sh {{ channel }}
+```
+
 ### Parameterized Dependencies
 
 Writing a dependency in object form lets you override its `vars`.

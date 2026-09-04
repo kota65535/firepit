@@ -181,7 +181,12 @@ impl Workspace {
             if !force {
                 queue.extend(task.depends_on.iter().map(|d| d.task().to_string()));
             }
-            for post in task.finalized_by.clone() {
+            let finalizers = task
+                .finalized_by
+                .iter()
+                .map(|f| f.task().to_string())
+                .collect::<Vec<_>>();
+            for post in finalizers {
                 queue.push(post.clone());
                 if !target_tasks.contains(&post) && !finalizer_tasks.contains(&post) {
                     finalizer_tasks.push(post.clone());

@@ -284,9 +284,9 @@ impl ProjectConfig {
                     anyhow::bail!("tasks.{}.wait_for: task {:?} is not defined.", t.name, w);
                 }
             }
-            for d in t.finalized_by.iter() {
-                if !tasks.contains(d) {
-                    anyhow::bail!("tasks.{}.finalized_by: task {:?} is not defined.", t.name, d);
+            for f in t.finalized_by.iter().map(|f| f.task()) {
+                if !tasks.contains(f) {
+                    anyhow::bail!("tasks.{}.finalized_by: task {:?} is not defined.", t.name, f);
                 }
             }
         }
@@ -325,7 +325,11 @@ impl ProjectConfig {
                 .iter()
                 .map(|w| w.with_task(Task::qualified_name(name, w.task())))
                 .collect();
-            v.finalized_by = v.finalized_by.iter().map(|d| Task::qualified_name(name, d)).collect();
+            v.finalized_by = v
+                .finalized_by
+                .iter()
+                .map(|f| f.with_task(Task::qualified_name(name, f.task())))
+                .collect();
         }
 
         // Save raw data
@@ -684,13 +688,17 @@ pub struct TaskConfig {
     /// Tasks to run after this task finishes, whether it succeeds or fails.
     /// They run only when this task is part of the run (as a target or a dependency),
     /// so running a finalizer on its own does not run the task it finalizes.
+    /// Write an entry in object form to override the finalizer's `vars`, as with `depends_on`.
     /// ```yaml
     /// finalized_by:
     ///   - db-down
+    ///   - task: notify
+    ///     vars:
+    ///       channel: ci
     /// ```
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
-    pub finalized_by: Vec<String>,
+    pub finalized_by: Vec<FinalizedByConfig>,
 
     /// Tasks this task finalizes, filled per run by the workspace: those whose `finalized_by`
     /// lists this task. This task runs after all of them finish, whether they succeed or fail.
@@ -919,6 +927,46 @@ impl WaitForConfig {
         match self {
             WaitForConfig::String(_) => WaitForConfig::String(task),
             WaitForConfig::Struct(s) => WaitForConfig::Struct(WaitForConfigStruct {
+                task,
+                vars: s.vars.clone(),
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(untagged)]
+#[schemars(extend("x-template" = true))]
+pub enum FinalizedByConfig {
+    String(String),
+    Struct(FinalizedByConfigStruct),
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct FinalizedByConfigStruct {
+    /// Finalizer task name
+    #[schemars(extend("x-template" = true))]
+    pub task: String,
+
+    /// Variables to override the finalizer task vars.
+    #[serde(default)]
+    #[schemars(extend("x-template" = true))]
+    pub vars: IndexMap<String, VarsConfig>,
+}
+
+impl FinalizedByConfig {
+    pub fn task(&self) -> &str {
+        match self {
+            FinalizedByConfig::String(s) => s,
+            FinalizedByConfig::Struct(s) => &s.task,
+        }
+    }
+
+    /// Returns a copy of this entry with the task name replaced.
+    pub fn with_task(&self, task: String) -> Self {
+        match self {
+            FinalizedByConfig::String(_) => FinalizedByConfig::String(task),
+            FinalizedByConfig::Struct(s) => FinalizedByConfig::Struct(FinalizedByConfigStruct {
                 task,
                 vars: s.vars.clone(),
             }),

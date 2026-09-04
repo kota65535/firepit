@@ -1,0 +1,19 @@
+tasks:
+  build-a:
+    command: echo "build-a"
+    finalized_by:
+      - task: cleanup
+        vars:
+          dir: a
+
+  build-b:
+    command: echo "build-b"
+    finalized_by:
+      - task: cleanup
+        vars:
+          dir: b
+
+  cleanup:
+    vars:
+      dir:
+    command: echo "cleanup {{ dir }}"
