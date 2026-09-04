@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.28.0] - 2026-09-04
+
+### 🚀 Features
+
+- *(tui)* Clean up task status icons (#402)
+- *(config)* Add cache to reuse a dynamic var output (#403)
+- *(vars)* Add typed variable declarations with validation (#401)
+- *(config)* Reject a var given by the CLI argument that is not declared (#405)
+
+### 🐛 Bug Fixes
+
+- *(config)* Render task-level dynamic vars (#404)
+
 ## [0.27.0] - 2026-09-04
 
 ### 🚀 Features
