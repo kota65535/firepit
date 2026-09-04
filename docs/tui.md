@@ -50,7 +50,7 @@ Task statuses are indicated by the following icons:
 | 🔥   | Running    | The task is currently executing                                           |
 | ✅   | Success    | The task has completed successfully                                       |
 | 🍖   | Ready      | The service task is ready to use                                          |
-| 🥬   | Up to date | The task is already up to date and does not need to run                   |
+| 🥬   | Up to date | The task is still fresh, already up to date and does not need to run      |
 | ♻️    | Reloading  | The task is restarting because one of its input files has changed         |
 | ❌   | Failure    | The task has completed with an error, or the service did not become ready |
 | 🚫   | Stopped    | The task has been manually stopped                                        |
