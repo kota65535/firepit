@@ -245,7 +245,7 @@ impl TaskConfig {
                     let task = tera.render_str(&dep.task, context)?;
                     // Ignore if rendered task name is empty
                     if !task.ends_with("#") {
-                        let vars = render_value_map(&dep.vars, &mut tera, context).await?;
+                        let vars = render_dep_vars(&dep.vars, &mut tera, context)?;
                         rendered_depends_on.push(DependsOnConfig::Struct(DependsOnConfigStruct {
                             task,
                             vars,
@@ -577,6 +577,28 @@ async fn render_value_map(
                 VarsConfig::Static(JsonValue::Null)
             } else {
                 VarsConfig::Static(render_value(v, tera, context).await?)
+            };
+            ret.insert(rk, rv);
+        }
+    }
+    Ok(ret)
+}
+
+/// Renders the templates in `depends_on.vars` values without inferring their type: the value is
+/// interpreted later according to the dependency task's declaration (inferred for a scalar var,
+/// parsed as the declared type for a typed var), like a CLI argument.
+fn render_dep_vars(
+    map: &IndexMap<String, VarsConfig>,
+    tera: &mut Tera,
+    context: &tera::Context,
+) -> anyhow::Result<IndexMap<String, VarsConfig>> {
+    let mut ret = IndexMap::new();
+    for (k, v) in map.iter() {
+        let rk = tera.render_str(k, context)?;
+        if !rk.is_empty() {
+            let rv = match v {
+                VarsConfig::Static(s) => VarsConfig::Static(render_templates(s, tera, context)?),
+                other => other.clone(),
             };
             ret.insert(rk, rv);
         }

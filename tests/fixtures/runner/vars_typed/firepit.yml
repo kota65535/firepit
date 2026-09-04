@@ -72,6 +72,22 @@ tasks:
           target: "[x, y z]"
     command: echo "dependent"
 
+  # A `depends_on.vars` value is interpreted as the declared type, not inferred: "8080" stays a string
+  required_str:
+    vars:
+      port:
+        type: string
+    command: |
+      echo "{{ port }}"
+      echo "{% if port is string %}ok{% endif %}"
+
+  dependent_str:
+    depends_on:
+      - task: required_str
+        vars:
+          port: "8080"
+    command: echo "dependent_str"
+
   bad:
     vars:
       port:

@@ -214,6 +214,7 @@ async fn test_vars_typed() {
         "list",
         "map",
         "dependent",
+        "dependent_str",
         "dyn_string",
         "dyn_array",
     ]
@@ -231,6 +232,8 @@ async fn test_vars_typed() {
         ("#map", "1,1\nok"),
         ("#required-1", "x 'y z'"),
         ("#dependent", "dependent"),
+        ("#required_str-1", "8080\nok"),
+        ("#dependent_str", "dependent_str"),
         ("#dyn_string", "1e10\nok"),
         ("#dyn_array", "a,b\nok"),
     ] {
