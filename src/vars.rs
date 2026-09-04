@@ -333,6 +333,12 @@ impl VarType {
                 .with_context(|| format!("failed to read {:?} as {}", s, self.as_str()))?,
             v => v,
         };
+        // JSON Schema counts a number with a zero fractional part, ex: `1.0`, as an integer.
+        // Normalize it so that it renders as `1` and equals the integer in `enum` and the like.
+        let value = match (self, value.as_f64()) {
+            (VarType::Integer, Some(f)) if f.fract() == 0.0 && f.abs() < i64::MAX as f64 => JsonValue::from(f as i64),
+            _ => value,
+        };
         anyhow::ensure!(
             self.matches(&value),
             "expected {}, got {}",

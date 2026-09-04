@@ -771,7 +771,8 @@ async fn test_vars_typed_cli() {
     }
     let vars = IndexMap::from([
         ("version".to_string(), VarsConfig::Static(Value::from("2.0"))),
-        ("count".to_string(), VarsConfig::Static(Value::from("42"))),
+        // `42.0` is an integer for JSON Schema, and renders as `42`
+        ("count".to_string(), VarsConfig::Static(Value::from("42.0"))),
         ("flag".to_string(), VarsConfig::Static(Value::from("false"))),
         ("list".to_string(), VarsConfig::Static(Value::from("[p, q]"))),
         ("target".to_string(), VarsConfig::Static(Value::from("[1, two]"))),
