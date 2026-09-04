@@ -662,8 +662,7 @@ async fn test_vars() {
     outputs.insert(String::from("#array"), String::from("1,2\nok"));
     outputs.insert(String::from("#map"), String::from("1,2\nok"));
 
-    let vars = IndexMap::from([("offset".to_string(), VarsConfig::Static(Value::from(10)))]);
-    run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
+    run_task_with_vars(&path, tasks, stats, Some(outputs), IndexMap::new(), false)
         .await
         .unwrap();
 }

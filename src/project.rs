@@ -1,3 +1,4 @@
+use crate::cli::TASK_ARGS_VAR_NAME;
 use crate::config::{
     default_stop_timeout, DependsOnConfig, HealthCheckConfig, ProjectConfig, Restart, ServiceConfig, TaskConfig, UI,
 };
@@ -94,6 +95,7 @@ impl Workspace {
         ProjectConfig::validate_multi(&root_config, &child_configs)?;
         let finalizer_tasks = Self::apply_finalized_by(&mut root_config, &mut child_configs, &target_tasks, force)?;
         Self::validate_vars(&root_config, &child_configs, &target_tasks, &finalizer_tasks, vars)?;
+        Self::validate_cli_vars(&root_config, &child_configs, vars)?;
 
         let root = Project::new("", &root_config)?;
         let mut children = HashMap::new();
@@ -203,6 +205,34 @@ impl Workspace {
             }
         }
         Ok(finalizer_tasks)
+    }
+
+    /// Ensures that every var given by the `Name=Value` CLI argument is declared in the config.
+    ///
+    /// The CLI argument only overrides a declared var, so a name matching no project var nor
+    /// task var declaration has no effect and is almost always a typo. The `args` var, which
+    /// receives the arguments after `--`, needs no declaration, so it is always accepted.
+    fn validate_cli_vars(
+        root_config: &ProjectConfig,
+        child_configs: &IndexMap<String, ProjectConfig>,
+        cli_vars: &IndexMap<String, VarsConfig>,
+    ) -> anyhow::Result<()> {
+        let declared = std::iter::once(root_config)
+            .chain(child_configs.values())
+            .flat_map(|c| c.vars.keys().chain(c.tasks.values().flat_map(|t| t.vars.keys())))
+            .collect::<HashSet<_>>();
+        let undeclared = cli_vars
+            .keys()
+            .filter(|k| k.as_str() != TASK_ARGS_VAR_NAME && !declared.contains(k))
+            .map(|k| format!("{:?}", k))
+            .collect::<Vec<_>>();
+        if undeclared.is_empty() {
+            return Ok(());
+        }
+        anyhow::bail!(
+            "vars given by the command line argument are not declared in any project or task: {}",
+            undeclared.join(", ")
+        )
     }
 
     /// Ensures that every var involved in the run has a value.

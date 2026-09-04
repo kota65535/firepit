@@ -1,4 +1,6 @@
 vars:
+  # A var overridden by the CLI must be declared, here with a default value
+  cli_number: 0
   # CLI vars should be evaluated before all vars
   number: "{{ cli_number + 1 | int }}"
   string: foo

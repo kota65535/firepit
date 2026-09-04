@@ -212,6 +212,22 @@ running any of them without the `Name=Value` CLI argument is an error.
 Only the tasks being run, their dependency tasks, and the projects they belong to are checked.
 To declare a variable whose default value is empty, write an empty string (`version: ""`) instead.
 
+The `Name=Value` CLI argument only overrides a declared variable, so a name matching no
+declaration is an error:
+
+```
+fire deploy verison=1.2.3  # error: vars given by the command line argument are not declared in any project or task: "verison"
+```
+
+This also applies to a variable used only inside another variable's template: declare it with a
+default value to make it overridable.
+
+```yaml
+vars:
+  tag: latest
+  image: myapp:{{ tag }}
+```
+
 ### Passing Arguments
 
 The `args` variable is a convenient convention for forwarding command-line arguments to a task.

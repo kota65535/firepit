@@ -19,7 +19,7 @@ use std::path;
 use tracing::info;
 
 /// Name of the variable that receives the task arguments passed after `--`.
-const TASK_ARGS_VAR_NAME: &str = "args";
+pub const TASK_ARGS_VAR_NAME: &str = "args";
 
 /// Firepit: Simple task & service runner with a comfortable TUI
 #[derive(Parser, Debug)]
