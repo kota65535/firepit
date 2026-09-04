@@ -1,0 +1,11 @@
+# Var declarations in `defaults` are validated like the others
+defaults:
+  - tasks: [build]
+    vars:
+      version:
+        type: string
+        patern: '^\d+$'
+
+tasks:
+  build:
+    command: echo build

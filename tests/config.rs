@@ -168,6 +168,18 @@ fn test_bad_vars_constraint() {
     assert!(msg.contains("vars.version") && msg.contains("patern"), "{msg}");
 }
 
+#[test]
+fn test_bad_vars_default_constraint() {
+    // Declarations supplied through `defaults` are validated as well
+    let path = Path::new("tests/fixtures/config/bad_vars_default_constraint");
+    let err = ProjectConfig::new_multi(path).expect_err("");
+    let msg = format!("{:#}", err);
+    assert!(
+        msg.contains("defaults[0].vars.version") && msg.contains("patern"),
+        "{msg}"
+    );
+}
+
 fn depends_on_names(task: &firepit::config::TaskConfig) -> Vec<String> {
     task.depends_on
         .iter()

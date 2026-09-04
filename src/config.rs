@@ -305,6 +305,11 @@ impl ProjectConfig {
                 v.validate().with_context(|| format!("tasks.{}.vars.{}", t, k))?;
             }
         }
+        for (i, default) in data.defaults.iter().enumerate() {
+            for (k, v) in default.vars.iter() {
+                v.validate().with_context(|| format!("defaults[{}].vars.{}", i, k))?;
+            }
+        }
 
         // Task name & dependency task name
         for (k, v) in data.tasks.iter_mut() {
