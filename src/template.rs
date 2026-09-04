@@ -10,7 +10,7 @@ use crate::DYNAMIC_VAR_STOP_TIMEOUT;
 use anyhow::Context;
 use async_recursion::async_recursion;
 use indexmap::IndexMap;
-use serde_json::{Map, Value as JsonValue};
+use serde_json::Value as JsonValue;
 use serde_yaml::Value;
 use std::collections::HashMap;
 use tera::Tera;
@@ -694,13 +694,8 @@ async fn render_value_map(
     for (k, v) in map.iter() {
         let rk = tera.render_str(k, context)?;
         if !rk.is_empty() {
-            // Unset vars stay unset; they are reported as an error when the task is run
-            let rv = if v.is_unset() {
-                VarsConfig::Static(JsonValue::Null)
-            } else {
-                VarsConfig::Static(render_value(v, tera, context).await?)
-            };
-            ret.insert(rk, rv);
+            // An unset var renders to null and is reported as an error when the task is run
+            ret.insert(rk, VarsConfig::Static(render_value(v, tera, context).await?));
         }
     }
     Ok(ret)
@@ -732,43 +727,8 @@ fn render_dep_vars(
 #[async_recursion]
 async fn render_value(value: &VarsConfig, tera: &mut Tera, context: &tera::Context) -> anyhow::Result<JsonValue> {
     let rendered = match value {
-        VarsConfig::Static(s) => match s {
-            JsonValue::String(s) => {
-                let str = tera
-                    .render_str(s, context)
-                    .context(format!("failed to render {:?}", s))?;
-                if str.is_empty() {
-                    return Ok(JsonValue::String(str));
-                }
-                let yaml_value =
-                    serde_yaml::from_str::<Value>(&str).context(format!("failed to read YAML value {:?}", str))?;
-                match yaml_value {
-                    Value::Null => JsonValue::Null,
-                    Value::Bool(b) => JsonValue::Bool(b),
-                    Value::Number(n) => yaml_number_to_json_number(&n).unwrap_or(JsonValue::Null),
-                    Value::String(s) => JsonValue::String(s),
-                    _ => JsonValue::String(str),
-                }
-            }
-            JsonValue::Number(_) | JsonValue::Bool(_) | JsonValue::Null => s.clone(),
-            JsonValue::Array(items) => {
-                let mut rendered_items = Vec::with_capacity(items.len());
-                for item in items {
-                    rendered_items.push(render_value(&VarsConfig::Static(item.clone()), tera, context).await?);
-                }
-                JsonValue::Array(rendered_items)
-            }
-            JsonValue::Object(map) => {
-                let mut rendered_map = Map::with_capacity(map.len());
-                for (k, v) in map.iter() {
-                    rendered_map.insert(
-                        k.clone(),
-                        render_value(&VarsConfig::Static(v.clone()), tera, context).await?,
-                    );
-                }
-                JsonValue::Object(rendered_map)
-            }
-        },
+        // A scalar var: the templates are rendered, then the type is inferred from the result
+        VarsConfig::Static(s) => infer_scalar(render_templates(s, tera, context)?)?,
         VarsConfig::Typed(t) => match &t.default {
             // Unset: reported as an error when the task is run
             None | Some(JsonValue::Null) => JsonValue::Null,
@@ -810,6 +770,25 @@ async fn render_value(value: &VarsConfig, tera: &mut Tera, context: &tera::Conte
         }
     };
     Ok(rendered)
+}
+
+/// Infers the type of a rendered scalar var from its string form: `"8080"` becomes a number and
+/// `"true"` a boolean. An empty string, or a string that reads as an array or a map, stays a string.
+fn infer_scalar(value: JsonValue) -> anyhow::Result<JsonValue> {
+    let JsonValue::String(str) = value else {
+        return Ok(value);
+    };
+    if str.is_empty() {
+        return Ok(JsonValue::String(str));
+    }
+    let yaml = serde_yaml::from_str::<Value>(&str).context(format!("failed to read YAML value {:?}", str))?;
+    Ok(match yaml {
+        Value::Null => JsonValue::Null,
+        Value::Bool(b) => JsonValue::Bool(b),
+        Value::Number(n) => yaml_number_to_json_number(&n).unwrap_or(JsonValue::Null),
+        Value::String(s) => JsonValue::String(s),
+        _ => JsonValue::String(str),
+    })
 }
 
 /// Renders the templates of every string in `value`, recursively, keeping the structure and the
