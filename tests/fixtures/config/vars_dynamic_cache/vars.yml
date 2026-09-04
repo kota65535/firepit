@@ -1,0 +1,12 @@
+vars:
+  # `mktemp -u` only prints a name, so every run gives a different value
+  cached:
+    command: mktemp -u
+    cache: true
+  uncached:
+    command: mktemp -u
+  cwd:
+    command: pwd
+    cache: true
+  cwd_uncached:
+    command: pwd

@@ -227,7 +227,30 @@ tasks:
 ```
 
 The command's standard output, trimmed of surrounding whitespace, becomes the variable's value; standard error is ignored.
-In addition to `command`, a dynamic variable accepts the optional `shell`, `working_dir`, `env`, and `env_files` fields.
+In addition to `command`, a dynamic variable accepts the optional `shell`, `working_dir`, `env`, `env_files`, and `cache` fields.
+
+#### Reusing a Command Output
+
+A dynamic variable runs its command once for every project and task that declares it.
+A variable defined in a file that many projects include therefore runs its command once per project, which gets slow when the command is expensive.
+
+Set `cache: true` to run the command only once and reuse its output for the rest:
+
+```yaml
+# common.yml, included by every project
+vars:
+  aws_account:
+    command: aws sts get-caller-identity --query Account --output text
+    cache: true
+```
+
+Variables share an output when their `command`, `shell`, and resulting environment all match.
+`env_files` are compared by the values they define rather than by their paths, so a variable shared by several projects still reuses its output as long as each project's dotenv files define the same values.
+The working directory is deliberately not part of the match, since a shared variable runs in a different directory in each project, and requiring a match there would defeat the purpose.
+So leave `cache` off for a command whose output depends on where it runs, such as `pwd` or a command reading a relative path, and for a command that must run every time, such as one allocating a resource.
+
+The output is reused within a single run of the config only.
+In watch mode, every reload runs the commands again.
 
 ## Environment Variables
 
