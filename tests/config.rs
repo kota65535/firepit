@@ -455,17 +455,19 @@ async fn test_dynamic_vars_cache() {
             .clone()
     };
 
-    // `cache: true`: the var included by both projects runs its command only once
+    // `cache: true` with a shared `working_dir`: the var included by both projects runs once
     assert_eq!(env("foo", "CACHED"), env("bar", "CACHED"));
+
+    // `cache: true` without one: each project runs the command in its own directory, so the
+    // output is never shared
+    assert_ne!(env("foo", "CACHED_PER_DIR"), env("bar", "CACHED_PER_DIR"));
 
     // Caching is opt-in, so the same command without `cache: true` runs for every project
     assert_ne!(env("foo", "UNCACHED"), env("bar", "UNCACHED"));
     assert_ne!(env("foo", "UNCACHED"), env("foo", "CACHED"));
 
-    // The working directory is not part of the cache key: the first project to run wins
-    assert_eq!(env("foo", "CWD"), env("bar", "CWD"));
-
-    // Without caching, each project gets the value of its own working directory
-    assert!(env("foo", "CWD_UNCACHED").ends_with("/foo"));
-    assert!(env("bar", "CWD_UNCACHED").ends_with("/bar"));
+    // The working directory is part of the cache key, so a command reading it is never given
+    // another project's value
+    assert!(env("foo", "CWD").ends_with("/foo"));
+    assert!(env("bar", "CWD").ends_with("/bar"));
 }

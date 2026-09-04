@@ -12,6 +12,7 @@ use indexmap::IndexMap;
 use serde_json::{Map, Value as JsonValue};
 use serde_yaml::Value;
 use std::collections::{BTreeMap, HashMap};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use tera::Tera;
 use tracing::{debug, info, warn};
@@ -30,7 +31,7 @@ pub const PROJECT_CONTEXT_KEY: &str = "project";
 pub const TASK_CONTEXT_KEY: &str = "task";
 pub const WATCH_CONTEXT_KEY: &str = "watch";
 
-/// How long the repeated runs of one dynamic variable command have to take in total before the
+/// How long the repeated runs of one uncached dynamic variable have to take in total before the
 /// user is told about `cache: true`. Below this, running the command again is not worth a warning.
 const DYNAMIC_VAR_HINT_THRESHOLD: Duration = Duration::from_secs(1);
 
@@ -40,19 +41,15 @@ const DYNAMIC_VAR_HINT_THRESHOLD: Duration = Duration::from_secs(1);
 /// The cache lives for a single [`ConfigRenderer::render`] call. Re-rendering the config, which is
 /// what happens on every watch event, starts from an empty cache and runs the commands again.
 ///
-/// Uncached commands are timed as well, so that a variable that would benefit from `cache: true`
-/// can be pointed out by [`DynamicVarCache::warn_uncached`].
+/// Every run is timed, cached or not, so that [`DynamicVarCache::warn_runs`] can point out both a
+/// variable that would benefit from `cache: true` and one that has it without ever hitting.
 #[derive(Debug, Default)]
 pub struct DynamicVarCache {
     outputs: HashMap<DynamicVarKey, String>,
-    /// Keyed by variable name as well, so that the runs reported to the user all come from the
-    /// one variable named in the report, and not from another that happens to run the same
-    /// command. The working directory stays out of the key: a variable shared by several projects
-    /// runs in a different directory in each, which is exactly the case worth reporting.
-    runs: HashMap<(String, DynamicVarKey), DynamicVarRuns>,
+    runs: HashMap<DynamicVarRunKey, DynamicVarRuns>,
 }
 
-/// How often one dynamic variable command has run, and how much time it has taken in total.
+/// How often one dynamic variable declaration has run its command, and how long that took.
 #[derive(Debug)]
 struct DynamicVarRuns {
     count: usize,
@@ -72,13 +69,10 @@ impl DynamicVarCache {
         self.outputs.insert(key, output);
     }
 
-    /// Records that the uncached command of `key` has run once more, taking `elapsed`.
-    ///
-    /// Cached runs are not recorded: the key does not tell a cached variable from an uncached one
-    /// with the same command, so counting both would report a variable that is already cached.
-    fn record_run(&mut self, key: &DynamicVarKey, name: &str, elapsed: Duration) {
+    /// Records that the command of `key` has run once more, taking `elapsed`.
+    fn record_run(&mut self, key: DynamicVarRunKey, elapsed: Duration) {
         self.runs
-            .entry((name.to_string(), key.clone()))
+            .entry(key)
             .and_modify(|r| {
                 r.count += 1;
                 r.elapsed += elapsed;
@@ -86,44 +80,41 @@ impl DynamicVarCache {
             .or_insert(DynamicVarRuns { count: 1, elapsed });
     }
 
-    /// Returns the name and the runs of the uncached variables that ran their command more than
-    /// once and took long enough for caching to be worth considering.
-    fn uncached_hints(&self) -> Vec<(&str, &DynamicVarRuns)> {
-        self.runs
-            .iter()
-            .filter(|(_, r)| r.count > 1 && r.elapsed >= DYNAMIC_VAR_HINT_THRESHOLD)
-            .map(|((name, _), r)| (name.as_str(), r))
-            .collect()
-    }
-
-    /// Tells the user about the variables worth caching, which they have no other way of noticing
-    /// than the config taking a long time to render.
+    /// Tells the user about the variables whose command ran more than once, which they have no
+    /// other way of noticing than the config taking a long time to render.
     ///
-    /// Whether caching is actually correct depends on the command, which nothing here can tell, so
-    /// the condition is stated rather than the advice given outright: a repeated `cat VERSION`
-    /// shows up here too, and reusing its output across projects would be wrong.
-    fn warn_uncached(&self) {
-        for (name, runs) in self.uncached_hints() {
-            warn!(
-                "Dynamic var {:?} ran its command {} times, taking {:.1}s in total. \
-                 If its output does not depend on the directory it runs in, set `cache: true` \
-                 on it to run the command once and reuse its output.",
-                name,
-                runs.count,
-                runs.elapsed.as_secs_f64(),
-            );
+    /// A run key ignores the working directory, so a variable shared by several projects lands on
+    /// one entry however many directories it ran in. That is what makes both cases visible: an
+    /// uncached variable worth caching, and a cached one that never hits because each project runs
+    /// it somewhere else.
+    fn warn_runs(&self) {
+        for (key, runs) in self.runs.iter() {
+            if runs.count < 2 {
+                continue;
+            }
+            if key.cached {
+                warn!(
+                    "Dynamic var {:?} has `cache: true` but ran its command {} times, because it \
+                     runs in a different directory each time. Set `working_dir` on it to give \
+                     every run the same directory, or drop `cache: true`.",
+                    key.name, runs.count,
+                );
+            } else if runs.elapsed >= DYNAMIC_VAR_HINT_THRESHOLD {
+                warn!(
+                    "Dynamic var {:?} ran its command {} times, taking {:.1}s in total. \
+                     Set `cache: true` on it to run the command once and reuse its output.",
+                    key.name,
+                    runs.count,
+                    runs.elapsed.as_secs_f64(),
+                );
+            }
         }
     }
 }
 
-/// What makes two `cache: true` dynamic variables share a command output.
-///
-/// The working directory is deliberately left out: a variable shared by several projects runs in
-/// each project directory, so including it would make the cache never hit in the case it exists
-/// for. Opting in with `cache: true` is the declaration that the output does not depend on where
-/// the command runs.
+/// A dynamic variable command, apart from the directory it runs in.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct DynamicVarKey {
+struct DynamicVarCommand {
     shell_command: String,
     shell_args: Vec<String>,
     command: String,
@@ -131,13 +122,53 @@ pub struct DynamicVarKey {
     env: BTreeMap<String, String>,
 }
 
-impl DynamicVarKey {
+impl DynamicVarCommand {
     fn new(inner: &DynamicVarsInner) -> Self {
         Self {
             shell_command: inner.shell.command.clone(),
             shell_args: inner.shell.args.clone(),
             command: inner.command.clone(),
             env: inner.env.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+        }
+    }
+}
+
+/// What makes two `cache: true` dynamic variables share a command output: the same command run in
+/// the same directory. A variable shared by several projects runs in each project directory, so
+/// sharing one run across them takes an explicit `working_dir`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct DynamicVarKey {
+    command: DynamicVarCommand,
+    working_dir: PathBuf,
+}
+
+impl DynamicVarKey {
+    fn new(inner: &DynamicVarsInner) -> Self {
+        Self {
+            command: DynamicVarCommand::new(inner),
+            working_dir: inner.working_dir.clone(),
+        }
+    }
+}
+
+/// What the warnings count runs by: one declaration, wherever it ran.
+///
+/// The variable name keeps the runs of two variables that share a command apart, so that neither
+/// is reported for the other's executions, and `cached` keeps a cached variable from being
+/// reported as one that should be cached.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct DynamicVarRunKey {
+    name: String,
+    cached: bool,
+    command: DynamicVarCommand,
+}
+
+impl DynamicVarRunKey {
+    fn new(inner: &DynamicVarsInner) -> Self {
+        Self {
+            name: inner.name.clone(),
+            cached: inner.cache,
+            command: DynamicVarCommand::new(inner),
         }
     }
 }
@@ -499,7 +530,7 @@ impl ConfigRenderer {
             .await?;
         }
 
-        cache.warn_uncached();
+        cache.warn_runs();
 
         Ok((root_config.clone(), child_configs.clone()))
     }
@@ -859,7 +890,6 @@ async fn render_value(
         },
         VarsConfig::Dynamic(s) => {
             let inner = s.inner.clone().context("dynamic vars inner value should be present")?;
-            // The key is built even when the var is not cached, so that its runs can be counted
             let key = DynamicVarKey::new(&inner);
             let cached = inner.cache.then(|| cache.get(&key)).flatten();
             let trimmed = match cached {
@@ -880,11 +910,10 @@ async fn render_value(
                     let output = execute_command(&command)
                         .await
                         .context(format!("failed to render dynamic var {:?}", inner.name))?;
+                    cache.record_run(DynamicVarRunKey::new(&inner), started.elapsed());
                     let trimmed = output.trim().to_string();
                     if inner.cache {
                         cache.insert(key, trimmed.clone());
-                    } else {
-                        cache.record_run(&key, &inner.name, started.elapsed());
                     }
                     trimmed
                 }
@@ -1017,37 +1046,49 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    fn key(command: &str) -> DynamicVarKey {
-        DynamicVarKey {
-            shell_command: String::from("sh"),
-            shell_args: vec![String::from("-c")],
-            command: String::from(command),
-            env: BTreeMap::new(),
+    fn run_key(name: &str, command: &str, cached: bool) -> DynamicVarRunKey {
+        DynamicVarRunKey {
+            name: String::from(name),
+            cached,
+            command: DynamicVarCommand {
+                shell_command: String::from("sh"),
+                shell_args: vec![String::from("-c")],
+                command: String::from(command),
+                env: BTreeMap::new(),
+            },
         }
     }
 
+    /// The warnings themselves only reach the user through the log, so this covers the counting
+    /// they read: which runs land on one entry and which stay apart.
     #[test]
-    fn test_uncached_hints() {
+    fn test_record_run() {
         let mut cache = DynamicVarCache::new();
         let long = DYNAMIC_VAR_HINT_THRESHOLD;
 
-        // Ran once: caching it would save nothing, however slow it is
-        cache.record_run(&key("once"), "once", long);
-        // Ran twice but fast: not worth bothering the user about
-        cache.record_run(&key("fast"), "fast", Duration::ZERO);
-        cache.record_run(&key("fast"), "fast", Duration::ZERO);
-        // Ran twice and slow in total, even though neither run reaches the threshold alone
-        cache.record_run(&key("slow"), "slow", long / 2);
-        cache.record_run(&key("slow"), "slow", long / 2);
-        // Two variables sharing a command are counted apart, so neither reaches two runs and the
-        // report cannot blame one of them for the other's execution
-        cache.record_run(&key("shared"), "twin-a", long);
-        cache.record_run(&key("shared"), "twin-b", long);
+        // One declaration running in several directories lands on a single entry
+        cache.record_run(run_key("slow", "slow", false), long / 2);
+        cache.record_run(run_key("slow", "slow", false), long / 2);
+        // Two variables sharing a command are counted apart, so neither is reported for the
+        // other's execution
+        cache.record_run(run_key("twin-a", "shared", false), long);
+        cache.record_run(run_key("twin-b", "shared", false), long);
+        // A cached variable is counted apart from an uncached one running the same command, so
+        // neither is reported as the other kind
+        cache.record_run(run_key("both", "both", true), long);
+        cache.record_run(run_key("both", "both", false), long);
 
-        let hints = cache.uncached_hints();
-        assert_eq!(hints.len(), 1);
-        assert_eq!(hints[0].0, "slow");
-        assert_eq!(hints[0].1.count, 2);
+        let runs = |name: &str, command: &str, cached: bool| {
+            cache
+                .runs
+                .get(&run_key(name, command, cached))
+                .map(|r| (r.count, r.elapsed))
+        };
+        assert_eq!(runs("slow", "slow", false), Some((2, long)));
+        assert_eq!(runs("twin-a", "shared", false), Some((1, long)));
+        assert_eq!(runs("twin-b", "shared", false), Some((1, long)));
+        assert_eq!(runs("both", "both", true), Some((1, long)));
+        assert_eq!(runs("both", "both", false), Some((1, long)));
     }
 
     fn quote(value: JsonValue) -> tera::Result<String> {

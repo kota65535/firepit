@@ -6,6 +6,6 @@ tasks:
     command: echo
     env:
       CACHED: "{{ cached }}"
+      CACHED_PER_DIR: "{{ cached_per_dir }}"
       UNCACHED: "{{ uncached }}"
       CWD: "{{ cwd }}"
-      CWD_UNCACHED: "{{ cwd_uncached }}"
