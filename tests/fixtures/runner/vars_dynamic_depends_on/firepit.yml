@@ -1,0 +1,13 @@
+tasks:
+  foo:
+    command: echo foo
+    depends_on:
+      - task: bar
+        vars:
+          A:
+            command: echo "12345"
+
+  bar:
+    vars:
+      A: ""
+    command: echo "{{ A }}"

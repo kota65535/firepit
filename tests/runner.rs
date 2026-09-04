@@ -854,6 +854,37 @@ async fn test_vars_dynamic() {
 }
 
 #[tokio::test]
+async fn test_vars_dynamic_task() {
+    setup();
+
+    let path = BASE_PATH.join("vars_dynamic_task");
+    let tasks = vec![String::from("foo")];
+
+    let mut stats = HashMap::new();
+    stats.insert(String::from("#foo"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#foo"), String::from("12345 project-#foo perl\nA\nC"));
+
+    run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_vars_dynamic_depends_on() {
+    setup();
+
+    let path = BASE_PATH.join("vars_dynamic_depends_on");
+    let tasks = vec![String::from("foo")];
+
+    // Vars passed to another task have no shell of their own, so they cannot be dynamic
+    let err = run_task(&path, tasks, HashMap::new(), None, false)
+        .await
+        .expect_err("should fail");
+    let msg = format!("{:#}", err);
+    assert!(msg.contains("var \"A\" cannot be dynamic here"), "{}", msg);
+}
+
+#[tokio::test]
 async fn test_cyclic() {
     setup();
     let path = BASE_PATH.join("cyclic");

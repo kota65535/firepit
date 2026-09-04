@@ -1,0 +1,22 @@
+vars:
+  P: project
+
+tasks:
+  foo:
+    vars:
+      A:
+        command: echo "12345"
+      B:
+        command: echo "{{ P }}-{{ task }}"
+      C:
+        command: pwd
+        working_dir: ../
+      D:
+        command: print "perl"
+        shell:
+          command: /usr/bin/perl
+          args: ["-e"]
+    command: |
+      echo "{{ A }} {{ B }} {{ D }}"
+      echo "{% if A is number %}A{% endif %}"
+      echo "{% if C is string %}C{% endif %}"
