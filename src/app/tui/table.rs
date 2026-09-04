@@ -64,12 +64,11 @@ impl TaskTable<'_> {
                             TaskResult::Success => Cell::new(Text::raw("\u{2705}\u{FE0F}")), // ✅
                             TaskResult::Failure(_) | TaskResult::NotReady => Cell::new(Text::raw("\u{274C}\u{FE0F}")), // ❌
                             TaskResult::UpToDate => Cell::new(Text::raw("\u{1F96C}")), // 🥬
-                            TaskResult::BadDeps | TaskResult::Stopped => {
-                                Cell::new(Text::raw("\u{26A0}\u{FE0F}")) // ⚠️
-                            }
+                            TaskResult::BadDeps => Cell::new(Text::raw("\u{26A0}\u{FE0F}")), // ⚠️
+                            TaskResult::Stopped => Cell::new(Text::raw("\u{1F6AB}")),  // 🚫
                             TaskResult::Reloading => Cell::new(Text::raw("\u{267B}\u{FE0F}")), // ♻️
-                            TaskResult::Error => Cell::new(Text::raw("\u{2757}\u{FE0F}")),     // ❗
-                            TaskResult::Unknown => Cell::new(Text::raw("\u{2753}\u{FE0F}")),   // ❓
+                            TaskResult::Error => Cell::new(Text::raw("\u{2757}\u{FE0F}")), // ❗
+                            TaskResult::Unknown => Cell::new(Text::raw("\u{2753}\u{FE0F}")), // ❓
                         }
                     }
                 };
