@@ -404,6 +404,28 @@ Probe failure during that period will not be counted towards the maximum number 
 - **Template:** yes
 - **Description:** Working directory
 
+## FinalizedByConfig
+
+- **Type:** <code>string | <a href="#finalizedbyconfigstruct">FinalizedByConfigStruct</a></code>
+- **Template:** yes
+
+## FinalizedByConfigStruct
+
+### task
+
+- **Type:** <code>string</code>
+- **Required:** yes
+- **Template:** yes
+- **Description:** Finalizer task name
+
+### vars
+
+- **Type:** <code>Map&lt;string, <a href="#varsconfig">VarsConfig</a>&gt;</code>
+- **Required:** no
+- **Default:** `{}`
+- **Template:** yes
+- **Description:** Variables to override the finalizer task vars.
+
 ## HealthCheckConfig
 
 - **Type:** <code><a href="#logprobeconfig">LogProbeConfig</a> | <a href="#execprobeconfig">ExecProbeConfig</a></code>
@@ -525,16 +547,19 @@ Probe failure during that period will not be counted towards the maximum number 
 
 ### finalized_by
 
-- **Type:** <code>Array&lt;string&gt;</code>
+- **Type:** <code>Array&lt;<a href="#finalizedbyconfig">FinalizedByConfig</a>&gt;</code>
 - **Required:** no
 - **Default:** `[]`
-- **Template:** yes
 - **Description:** Tasks to run after this task finishes, whether it succeeds or fails.
 They run only when this task is part of the run (as a target or a dependency),
 so running a finalizer on its own does not run the task it finalizes.
+Write an entry in object form to override the finalizer's `vars`, as with `depends_on`.
 ```yaml
 finalized_by:
   - db-down
+  - task: notify
+    vars:
+      channel: ci
 ```
 
 ### inputs
