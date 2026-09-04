@@ -91,9 +91,22 @@ A task level variable shadows the project level variable of the same name.
 Variables given by the `Name=Value` CLI argument override both: project level variables, and
 task level variables of the tasks you run.
 
+Only a declared variable can be overridden, so a name matching no declaration is an error
+instead of being silently ignored.
+
 ```
 fire build              # runs: docker build -t docker.io/example/server:latest .
 fire build app=client   # runs: docker build -t docker.io/example/client:latest .
+fire build tag=v2       # error: vars given by the CLI argument are not declared in any project or task: "tag"
+```
+
+This applies to a variable used only inside another variable's template too: declare it with a
+default value to make it overridable.
+
+```yaml
+vars:
+  tag: latest
+  image: docker.io/example/server:{{ tag }}
 ```
 
 Firepit performs template processing using [Tera](https://keats.github.io/tera/).
@@ -198,13 +211,12 @@ tasks:
   deploy:
     vars:
       version:
-      region: us-east-1
-    command: ./deploy.sh {{ version }} {{ region }}
+    command: ./deploy.sh {{ version }}
 ```
 
 ```
 fire deploy                # error: task "#deploy" requires vars that are not set: "version"
-fire deploy version=1.2.3  # runs: ./deploy.sh 1.2.3 us-east-1
+fire deploy version=1.2.3  # runs: ./deploy.sh 1.2.3
 ```
 
 A project level variable declared without a value is required by every task of the project:
@@ -212,23 +224,6 @@ running any of them without the `Name=Value` CLI argument is an error.
 
 Only the tasks being run, their dependency tasks, and the projects they belong to are checked.
 To declare a variable whose default value is empty, write an empty string (`version: ""`) instead.
-
-The `Name=Value` CLI argument only overrides a declared variable, so a name matching no
-declaration is an error. The `deploy` task above declares `version` and `region`, so passing
-anything else is rejected instead of being silently ignored:
-
-```
-fire deploy version=1.2.3 stage=prod  # error: vars given by the CLI argument are not declared in any project or task: "stage"
-```
-
-This also applies to a variable used only inside another variable's template: declare it with a
-default value to make it overridable.
-
-```yaml
-vars:
-  tag: latest
-  image: myapp:{{ tag }}
-```
 
 ### Passing Arguments
 
