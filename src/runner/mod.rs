@@ -54,10 +54,10 @@ impl TaskRunner {
         let target_tasks = ws.target_tasks.clone();
         let finalizer_tasks = ws.finalizer_tasks.clone();
 
-        // The run must include the finalizers and wait for them to finish, just like the targets
-        let run_tasks = target_tasks.iter().chain(&finalizer_tasks).cloned().collect::<Vec<_>>();
-        let task_graph_all = TaskGraph::new(&all_tasks, Some(&run_tasks), ws.force)?;
-        let task_graph = task_graph_all.transitive_closure(&run_tasks, Direction::Outgoing)?;
+        // The awaited tasks: the run pulls in the finalizers and waits for them just like the targets
+        let awaited_tasks = target_tasks.iter().chain(&finalizer_tasks).cloned().collect::<Vec<_>>();
+        let task_graph_all = TaskGraph::new(&all_tasks, Some(&awaited_tasks), ws.force)?;
+        let task_graph = task_graph_all.transitive_closure(&awaited_tasks, Direction::Outgoing)?;
         let tasks = task_graph.sort()?;
         debug!("Task graph:\n{:?}", task_graph);
 
@@ -132,10 +132,11 @@ impl TaskRunner {
 
         // Task futures
         let mut task_fut = FuturesUnordered::new();
-        // The run is done when the targets and their finalizers are done
-        let targets_remaining: HashSet<String> =
+        // The awaited tasks, whose completion ends the run: the targets and their finalizers
+        let awaited_remaining: HashSet<String> =
             self.target_tasks.iter().chain(&self.finalizer_tasks).cloned().collect();
-        let targets_remaining = Arc::new(Mutex::new(targets_remaining));
+        let awaited_remaining = Arc::new(Mutex::new(awaited_remaining));
+        // The finalizers, spared by a stop
         let finalizer_tasks: HashSet<String> = self.finalizer_tasks.iter().cloned().collect();
         let finalizers_remaining = Arc::new(Mutex::new(finalizer_tasks.clone()));
         // Set once the runner is told to quit. From then on only the finalizers run, and the
@@ -257,7 +258,7 @@ impl TaskRunner {
                     let manager = self.manager.clone();
                     let task_name = task.name.clone();
                     let visitor_tx_cloned = visitor_tx.clone();
-                    let targets_remaining_cloned = targets_remaining.clone();
+                    let awaited_remaining_cloned = awaited_remaining.clone();
                     let finalizers_remaining_cloned = finalizers_remaining.clone();
                     let quitting_cloned = quitting.clone();
                     let is_finalizer = finalizer_tasks.contains(&task.name);
@@ -267,7 +268,7 @@ impl TaskRunner {
                         let node_done = || {
                             Self::node_done(
                                 &task.name,
-                                &targets_remaining_cloned,
+                                &awaited_remaining_cloned,
                                 &finalizers_remaining_cloned,
                                 quit_on_done,
                                 &quitting_cloned,
@@ -508,17 +509,17 @@ impl TaskRunner {
     }
 
     /// Records that a node is done, and stops the visitors once the run is over: when all the
-    /// targets and finalizers are done under `quit_on_done`, or all the finalizers while quitting.
+    /// awaited tasks are done under `quit_on_done`, or all the finalizers while quitting.
     fn node_done(
         name: &str,
-        targets_remaining: &Mutex<HashSet<String>>,
+        awaited_remaining: &Mutex<HashSet<String>>,
         finalizers_remaining: &Mutex<HashSet<String>>,
         quit_on_done: bool,
         quitting: &AtomicBool,
         visitor_tx: &broadcast::Sender<VisitorCommand>,
     ) {
-        let targets_done = {
-            let mut t = targets_remaining.lock().expect("not poisoned");
+        let awaited_done = {
+            let mut t = awaited_remaining.lock().expect("not poisoned");
             t.remove(name);
             t.is_empty()
         };
@@ -527,8 +528,8 @@ impl TaskRunner {
             f.remove(name);
             f.is_empty()
         };
-        if (quit_on_done && targets_done) || (quitting.load(Ordering::SeqCst) && finalizers_done) {
-            info!("Run is over, stopping visitors");
+        if (quit_on_done && awaited_done) || (quitting.load(Ordering::SeqCst) && finalizers_done) {
+            info!("All awaited tasks done, stopping visitors");
             visitor_tx.send(VisitorCommand::Stop).ok();
         }
     }

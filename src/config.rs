@@ -260,19 +260,25 @@ impl ProjectConfig {
     }
 
     pub fn validate_multi(root: &ProjectConfig, children: &IndexMap<String, ProjectConfig>) -> anyhow::Result<()> {
-        let mut tasks = root.tasks.values().map(|t| t.full_name()).collect::<HashSet<_>>();
-        for p in children.values() {
-            tasks.extend(p.tasks.values().map(|t| t.full_name()).collect::<HashSet<_>>());
-        }
+        let all_tasks = iter::once(root)
+            .chain(children.values())
+            .flat_map(|p| p.tasks.values())
+            .collect::<Vec<_>>();
+        let tasks = all_tasks.iter().map(|t| t.full_name()).collect::<HashSet<_>>();
+        let services = all_tasks
+            .iter()
+            .filter(|t| t.is_service())
+            .map(|t| t.full_name())
+            .collect::<HashSet<_>>();
         for config in iter::once(root).chain(children.values()) {
             config
-                .validate(&tasks)
+                .validate(&tasks, &services)
                 .context(format!("invalid config file: {:?}", config.path))?;
         }
         Ok(())
     }
 
-    fn validate(&self, tasks: &HashSet<String>) -> anyhow::Result<()> {
+    fn validate(&self, tasks: &HashSet<String>, services: &HashSet<String>) -> anyhow::Result<()> {
         for (_, t) in self.tasks.iter() {
             for d in t.depends_on.iter().map(|d| d.task()) {
                 if !tasks.contains(d) {
@@ -287,6 +293,10 @@ impl ProjectConfig {
             for f in t.finalized_by.iter().map(|f| f.task()) {
                 if !tasks.contains(f) {
                     anyhow::bail!("tasks.{}.finalized_by: task {:?} is not defined.", t.name, f);
+                }
+                // A finalizer must finish, which a service does not do on its own
+                if services.contains(f) {
+                    anyhow::bail!("tasks.{}.finalized_by: task {:?} must not be a service.", t.name, f);
                 }
             }
         }
@@ -727,6 +737,13 @@ pub struct TaskConfig {
 impl TaskConfig {
     pub fn full_name(&self) -> String {
         format!("{}#{}", self.project, self.name)
+    }
+
+    pub fn is_service(&self) -> bool {
+        matches!(
+            self.service,
+            Some(ServiceConfig::Bool(true)) | Some(ServiceConfig::Struct(_))
+        )
     }
 
     pub fn full_orig_name(&self) -> String {

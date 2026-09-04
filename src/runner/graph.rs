@@ -18,7 +18,8 @@ use tracing::{debug, info, warn};
 #[derive(Clone)]
 pub struct TaskGraph {
     graph: DiGraph<Task, Edge>,
-    targets: Vec<String>,
+    /// Tasks whose completion ends the visit: the targets and their finalizers
+    awaited: Vec<String>,
 }
 
 /// Edge from a task to a task it waits for.
@@ -98,17 +99,17 @@ impl NodeResult {
 }
 
 impl TaskGraph {
-    pub fn new(tasks: &Vec<Task>, targets: Option<&Vec<String>>, force: bool) -> anyhow::Result<TaskGraph> {
+    pub fn new(tasks: &Vec<Task>, awaited: Option<&Vec<String>>, force: bool) -> anyhow::Result<TaskGraph> {
         let mut graph = DiGraph::<Task, Edge>::new();
         let mut nodes = HashMap::new();
 
-        // If `force` is true, we only add the target tasks as nodes to the graph
+        // If `force` is true, we only add the awaited tasks as nodes to the graph
         if force {
-            let target_set = targets
+            let awaited_set = awaited
                 .map(|t| t.iter().cloned().collect::<HashSet<_>>())
                 .unwrap_or_default();
             for t in tasks {
-                if target_set.contains(&t.name) {
+                if awaited_set.contains(&t.name) {
                     let idx = graph.add_node(t.clone());
                     nodes.insert(t.name.clone(), idx);
                 }
@@ -178,12 +179,12 @@ impl TaskGraph {
             }
         }
 
-        // If targets are not given, consider all tasks as target
-        let targets = targets
+        // If awaited tasks are not given, consider all tasks as awaited
+        let awaited = awaited
             .cloned()
             .unwrap_or_else(|| tasks.iter().map(|t| t.name.clone()).collect());
 
-        let ret = TaskGraph { graph, targets };
+        let ret = TaskGraph { graph, awaited };
 
         ret.sort()?;
 
@@ -229,9 +230,9 @@ impl TaskGraph {
         // Channel to stop or restart visitor
         let (visitor_tx, visitor_rx) = broadcast::channel(1024);
 
-        // Remaining target tasks
-        let targets_remaining: HashSet<String> = self.targets.iter().cloned().collect();
-        let targets_remaining = Arc::new(Mutex::new(targets_remaining));
+        // Remaining awaited tasks
+        let awaited_remaining: HashSet<String> = self.awaited.iter().cloned().collect();
+        let awaited_remaining = Arc::new(Mutex::new(awaited_remaining));
 
         // Run visitor thread for all nodes
         let nodes_fut = FuturesUnordered::new();
@@ -266,7 +267,7 @@ impl TaskGraph {
             }
 
             let task_name = task.name.clone();
-            let targets_remaining_cloned = targets_remaining.clone();
+            let awaited_remaining_cloned = awaited_remaining.clone();
             let visitor_tx_cloned = visitor_tx.clone();
             nodes_fut.push(tokio_spawn!("node", { name = task_name }, async move {
                 let mut ignore_deps = false;
@@ -406,13 +407,13 @@ impl TaskGraph {
                     debug!("Visitor finished");
                     // Release the finalizers
                     done_tx.send(result).ok();
-                    let targets_done = {
-                        let mut t = targets_remaining_cloned.lock().expect("not poisoned");
+                    let awaited_done = {
+                        let mut t = awaited_remaining_cloned.lock().expect("not poisoned");
                         t.remove(&task.name);
                         t.is_empty()
                     };
-                    if quit_on_done && targets_done {
-                        debug!("All target node done, stopping visitors");
+                    if quit_on_done && awaited_done {
+                        debug!("All awaited nodes done, stopping visitors");
                         visitor_tx_cloned.send(VisitorCommand::Stop).ok();
                     }
 
