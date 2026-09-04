@@ -47,9 +47,7 @@ Task statuses are indicated by the following icons:
 | Icon | Name       | Detail                                                                    |
 | ---- | ---------- | ------------------------------------------------------------------------- |
 | 🪵   | Planned    | The task is waiting for running                                           |
-| 🪣   | Planned    | The [finalizer](/configuration#finalizers) task is waiting for running    |
 | 🔥   | Running    | The task is currently executing                                           |
-| 💧   | Running    | The finalizer task is currently executing                                 |
 | ✅   | Success    | The task has completed successfully                                       |
 | 🍖   | Ready      | The service task is ready to use                                          |
 | 🥬   | Up to date | The task is already up to date and does not need to run                   |
@@ -59,6 +57,8 @@ Task statuses are indicated by the following icons:
 | ⚠️    | Skipped    | The task has been skipped due to failed dependencies                      |
 | ❗   | Error      | The task could not be run because of an error during execution            |
 | ❓   | Unknown    | The task has finished, but its result could not be determined             |
+
+[Finalizer](/configuration#finalizers) tasks show 🪣 and 💧 in place of 🪵 and 🔥, since they put the fire out rather than keep it burning.
 
 ## Main View
 
