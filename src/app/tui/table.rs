@@ -55,9 +55,12 @@ impl TaskTable<'_> {
                 };
                 let name_cell = Cell::new(Text::styled(r.label.clone(), style));
                 let status_cell = match r.status() {
-                    TaskStatus::Planned => Cell::new(Text::raw("\u{1FAB5}")), // 🪵
-                    TaskStatus::Running(_) => Cell::new(Text::raw("\u{1F525}")), // 🔥
-                    TaskStatus::Ready => Cell::new(Text::raw("\u{1F356}")),   // 🍖
+                    // A finalizer puts the fire out, so it gets a water bucket instead of a log
+                    TaskStatus::Planned if r.is_finalizer => Cell::new(Text::raw("\u{1FAA3}")), // 🪣
+                    TaskStatus::Planned => Cell::new(Text::raw("\u{1FAB5}")),                   // 🪵
+                    TaskStatus::Running(_) if r.is_finalizer => Cell::new(Text::raw("\u{1F4A7}")), // 💧
+                    TaskStatus::Running(_) => Cell::new(Text::raw("\u{1F525}")),                // 🔥
+                    TaskStatus::Ready => Cell::new(Text::raw("\u{1F356}")),                     // 🍖
                     TaskStatus::Finished(r, _) => {
                         // Append `\u{FE0F}` (Variation Selector-16) so that the terminal treat the emoji as full-width
                         match r {

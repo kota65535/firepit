@@ -119,6 +119,7 @@ impl TuiApp {
     pub fn new(
         target_tasks: &[String],
         dep_tasks: &[String],
+        finalizer_tasks: &[String],
         labels: &HashMap<String, String>,
     ) -> anyhow::Result<Self> {
         let terminal = Self::setup_terminal()?;
@@ -147,15 +148,14 @@ impl TuiApp {
             .map(|t| (t, true))
             .chain(dep_tasks.iter().map(|t| (t, false)))
             .map(|(t, b)| {
-                (
-                    t.clone(),
-                    Task::new(
-                        t,
-                        b,
-                        TerminalOutput::new(output_raws, output_cols, None),
-                        labels.get(t).map(|t| t.as_str()),
-                    ),
-                )
+                let mut task = Task::new(
+                    t,
+                    b,
+                    TerminalOutput::new(output_raws, output_cols, None),
+                    labels.get(t).map(|t| t.as_str()),
+                );
+                task.is_finalizer = finalizer_tasks.contains(t);
+                (t.clone(), task)
             })
             .collect::<IndexMap<_, _>>();
 
