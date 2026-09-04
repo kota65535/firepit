@@ -565,7 +565,7 @@
           "x-template": true
         },
         "finalized_by": {
-          "description": "Tasks to run after this task finishes, whether it succeeds or fails.\nThey run only when this task is part of the run (as a target or a dependency),\nso running a finalizer on its own does not run the task it finalizes.\n```yaml\nfinalized_by:\n  - cleanup\n```",
+          "description": "Tasks to run after this task finishes, whether it succeeds or fails.\nThey run only when this task is part of the run (as a target or a dependency),\nso running a finalizer on its own does not run the task it finalizes.\n```yaml\nfinalized_by:\n  - db-down\n```",
           "type": "array",
           "default": [],
           "items": {

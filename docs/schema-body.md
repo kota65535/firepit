@@ -534,7 +534,7 @@ They run only when this task is part of the run (as a target or a dependency),
 so running a finalizer on its own does not run the task it finalizes.
 ```yaml
 finalized_by:
-  - cleanup
+  - db-down
 ```
 
 ### inputs
