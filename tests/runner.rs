@@ -539,17 +539,20 @@ async fn test_finalized_by_service() {
 }
 
 #[tokio::test]
-async fn test_finalized_by_service_finalizer() {
+#[rstest]
+#[case("finalized_by_service_finalizer", "#cleanup")]
+#[case("finalized_by_service_finalizer_variant", "#cleanup-1")]
+async fn test_finalized_by_service_finalizer(#[case] dir: &str, #[case] finalizer: &str) {
     setup();
-    let path = BASE_PATH.join("finalized_by_service_finalizer");
+    let path = BASE_PATH.join(dir);
     let tasks = vec![String::from("server")];
 
-    // A service cannot be a finalizer, as it would never finish
+    // A service cannot be a finalizer, as it would never finish, not even as a variant of one
     let err = run_task(&path, tasks, HashMap::new(), None, false)
         .await
         .expect_err("should fail");
     let msg = format!("{:#}", err);
-    assert!(msg.contains("task \"#cleanup\" is a service"), "{}", msg);
+    assert!(msg.contains(&format!("task {:?} is a service", finalizer)), "{}", msg);
 }
 
 #[tokio::test]

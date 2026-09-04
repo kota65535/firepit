@@ -136,9 +136,9 @@ impl TaskRunner {
         let awaited_remaining: HashSet<String> =
             self.target_tasks.iter().chain(&self.finalizer_tasks).cloned().collect();
         let awaited_remaining = Arc::new(Mutex::new(awaited_remaining));
-        let finalizers_remaining = Arc::new(Mutex::new(self.finalizer_tasks.iter().cloned().collect::<HashSet<_>>()));
         // The finalizers, spared by a stop
         let finalizer_tasks: HashSet<String> = self.finalizer_tasks.iter().cloned().collect();
+        let finalizers_remaining = Arc::new(Mutex::new(finalizer_tasks.clone()));
         // Set once the runner is told to quit. From then on only the finalizers run, and the
         // visitors are stopped when the last of them is done
         let quitting = Arc::new(AtomicBool::new(false));
