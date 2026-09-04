@@ -539,9 +539,12 @@ async fn test_finalized_by_service() {
 }
 
 #[tokio::test]
-async fn test_finalized_by_service_quit() {
+#[rstest]
+#[case("finalized_by_service_quit", "Finished: Success")]
+#[case("finalized_by_service_finalizer", "Finished: Stopped")]
+async fn test_finalized_by_service_quit(#[case] dir: &str, #[case] cleanup_status: &str) {
     setup();
-    let path = path::absolute(BASE_PATH.join("finalized_by_service_quit")).unwrap();
+    let path = path::absolute(BASE_PATH.join(dir)).unwrap();
     let tasks = vec![String::from("server")];
 
     let (root, children) = ProjectConfig::new_multi(&path).unwrap();
@@ -563,7 +566,8 @@ async fn test_finalized_by_service_quit() {
     let runner_tx = runner.command_tx.clone();
     let runner_fut = tokio::spawn(async move { runner.run(&app_tx, false).await });
 
-    // Quitting stops the service, and its finalizer runs before the runner is done
+    // Quitting stops the service, and its finalizer runs before the runner is done,
+    // unless the finalizer is a service itself, which would never finish
     let mut statuses = HashMap::new();
     let events = async {
         while let Some(event) = app_rx.recv().await {
@@ -587,7 +591,7 @@ async fn test_finalized_by_service_quit() {
 
     let mut expected = HashMap::new();
     expected.insert(String::from("#server"), String::from("Finished: Stopped"));
-    expected.insert(String::from("#cleanup"), String::from("Finished: Success"));
+    expected.insert(String::from("#cleanup"), String::from(cleanup_status));
     assert_eq!(expected, statuses);
 }
 

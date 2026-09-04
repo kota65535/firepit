@@ -1,0 +1,11 @@
+tasks:
+  server:
+    command: sleep 30
+    service: true
+    finalized_by:
+      - cleanup
+
+  # A service as a finalizer would never finish, so it is not started while quitting
+  cleanup:
+    command: sleep 30
+    service: true

@@ -132,12 +132,18 @@ impl TaskRunner {
 
         // Task futures
         let mut task_fut = FuturesUnordered::new();
-        // The run is done when the targets and their finalizers are done
-        let targets_remaining: HashSet<String> =
-            self.target_tasks.iter().chain(&self.finalizer_tasks).cloned().collect();
-        let targets_remaining = Arc::new(Mutex::new(targets_remaining));
-        let finalizer_tasks: HashSet<String> = self.finalizer_tasks.iter().cloned().collect();
-        let finalizers_remaining = Arc::new(Mutex::new(finalizer_tasks.clone()));
+        // The run is over when the targets and their finalizers are done
+        let run_remaining: HashSet<String> = self.target_tasks.iter().chain(&self.finalizer_tasks).cloned().collect();
+        let run_remaining = Arc::new(Mutex::new(run_remaining));
+        let finalizers_remaining = Arc::new(Mutex::new(self.finalizer_tasks.iter().cloned().collect::<HashSet<_>>()));
+        // The finalizers spared by a stop. A service finalizer would never finish, so it is
+        // stopped like any other task, and not started while quitting
+        let finalizer_tasks: HashSet<String> = self
+            .tasks
+            .iter()
+            .filter(|t| !t.is_service && self.finalizer_tasks.contains(&t.name))
+            .map(|t| t.name.clone())
+            .collect();
         // Set once the runner is told to quit. From then on only the finalizers run, and the
         // visitors are stopped when the last of them is done
         let quitting = Arc::new(AtomicBool::new(false));
@@ -257,7 +263,7 @@ impl TaskRunner {
                     let manager = self.manager.clone();
                     let task_name = task.name.clone();
                     let visitor_tx_cloned = visitor_tx.clone();
-                    let targets_remaining_cloned = targets_remaining.clone();
+                    let run_remaining_cloned = run_remaining.clone();
                     let finalizers_remaining_cloned = finalizers_remaining.clone();
                     let quitting_cloned = quitting.clone();
                     let is_finalizer = finalizer_tasks.contains(&task.name);
@@ -267,7 +273,7 @@ impl TaskRunner {
                         let node_done = || {
                             Self::node_done(
                                 &task.name,
-                                &targets_remaining_cloned,
+                                &run_remaining_cloned,
                                 &finalizers_remaining_cloned,
                                 quit_on_done,
                                 &quitting_cloned,
@@ -511,14 +517,14 @@ impl TaskRunner {
     /// targets and finalizers are done under `quit_on_done`, or all the finalizers while quitting.
     fn node_done(
         name: &str,
-        targets_remaining: &Mutex<HashSet<String>>,
+        run_remaining: &Mutex<HashSet<String>>,
         finalizers_remaining: &Mutex<HashSet<String>>,
         quit_on_done: bool,
         quitting: &AtomicBool,
         visitor_tx: &broadcast::Sender<VisitorCommand>,
     ) {
-        let targets_done = {
-            let mut t = targets_remaining.lock().expect("not poisoned");
+        let run_done = {
+            let mut t = run_remaining.lock().expect("not poisoned");
             t.remove(name);
             t.is_empty()
         };
@@ -527,7 +533,7 @@ impl TaskRunner {
             f.remove(name);
             f.is_empty()
         };
-        if (quit_on_done && targets_done) || (quitting.load(Ordering::SeqCst) && finalizers_done) {
+        if (quit_on_done && run_done) || (quitting.load(Ordering::SeqCst) && finalizers_done) {
             info!("Run is over, stopping visitors");
             visitor_tx.send(VisitorCommand::Stop).ok();
         }
