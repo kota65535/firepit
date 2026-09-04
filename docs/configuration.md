@@ -198,12 +198,13 @@ tasks:
   deploy:
     vars:
       version:
-    command: ./deploy.sh {{ version }}
+      region: us-east-1
+    command: ./deploy.sh {{ version }} {{ region }}
 ```
 
 ```
 fire deploy                # error: task "#deploy" requires vars that are not set: "version"
-fire deploy version=1.2.3  # runs: ./deploy.sh 1.2.3
+fire deploy version=1.2.3  # runs: ./deploy.sh 1.2.3 us-east-1
 ```
 
 A project level variable declared without a value is required by every task of the project:
@@ -213,10 +214,11 @@ Only the tasks being run, their dependency tasks, and the projects they belong t
 To declare a variable whose default value is empty, write an empty string (`version: ""`) instead.
 
 The `Name=Value` CLI argument only overrides a declared variable, so a name matching no
-declaration is an error:
+declaration is an error. The `deploy` task above declares `version` and `region`, so passing
+anything else is rejected instead of being silently ignored:
 
 ```
-fire deploy verison=1.2.3  # error: vars given by the CLI argument are not declared in any project or task: "verison"
+fire deploy version=1.2.3 stage=prod  # error: vars given by the CLI argument are not declared in any project or task: "stage"
 ```
 
 This also applies to a variable used only inside another variable's template: declare it with a
