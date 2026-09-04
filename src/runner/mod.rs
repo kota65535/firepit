@@ -136,14 +136,8 @@ impl TaskRunner {
         let run_remaining: HashSet<String> = self.target_tasks.iter().chain(&self.finalizer_tasks).cloned().collect();
         let run_remaining = Arc::new(Mutex::new(run_remaining));
         let finalizers_remaining = Arc::new(Mutex::new(self.finalizer_tasks.iter().cloned().collect::<HashSet<_>>()));
-        // The finalizers spared by a stop. A service finalizer would never finish, so it is
-        // stopped like any other task, and not started while quitting
-        let finalizer_tasks: HashSet<String> = self
-            .tasks
-            .iter()
-            .filter(|t| !t.is_service && self.finalizer_tasks.contains(&t.name))
-            .map(|t| t.name.clone())
-            .collect();
+        // The finalizers, spared by a stop
+        let finalizer_tasks: HashSet<String> = self.finalizer_tasks.iter().cloned().collect();
         // Set once the runner is told to quit. From then on only the finalizers run, and the
         // visitors are stopped when the last of them is done
         let quitting = Arc::new(AtomicBool::new(false));

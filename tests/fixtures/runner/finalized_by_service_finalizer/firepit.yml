@@ -5,7 +5,7 @@ tasks:
     finalized_by:
       - cleanup
 
-  # A service as a finalizer would never finish, so it is not started while quitting
+  # A service cannot be a finalizer
   cleanup:
     command: sleep 30
     service: true

@@ -539,12 +539,23 @@ async fn test_finalized_by_service() {
 }
 
 #[tokio::test]
-#[rstest]
-#[case("finalized_by_service_quit", "Finished: Success")]
-#[case("finalized_by_service_finalizer", "Finished: Stopped")]
-async fn test_finalized_by_service_quit(#[case] dir: &str, #[case] cleanup_status: &str) {
+async fn test_finalized_by_service_finalizer() {
     setup();
-    let path = path::absolute(BASE_PATH.join(dir)).unwrap();
+    let path = BASE_PATH.join("finalized_by_service_finalizer");
+    let tasks = vec![String::from("server")];
+
+    // A service cannot be a finalizer, as it would never finish
+    let err = run_task(&path, tasks, HashMap::new(), None, false)
+        .await
+        .expect_err("should fail");
+    let msg = format!("{:#}", err);
+    assert!(msg.contains("task \"#cleanup\" is a service"), "{}", msg);
+}
+
+#[tokio::test]
+async fn test_finalized_by_service_quit() {
+    setup();
+    let path = path::absolute(BASE_PATH.join("finalized_by_service_quit")).unwrap();
     let tasks = vec![String::from("server")];
 
     let (root, children) = ProjectConfig::new_multi(&path).unwrap();
@@ -566,8 +577,7 @@ async fn test_finalized_by_service_quit(#[case] dir: &str, #[case] cleanup_statu
     let runner_tx = runner.command_tx.clone();
     let runner_fut = tokio::spawn(async move { runner.run(&app_tx, false).await });
 
-    // Quitting stops the service, and its finalizer runs before the runner is done,
-    // unless the finalizer is a service itself, which would never finish
+    // Quitting stops the service, and its finalizer runs before the runner is done
     let mut statuses = HashMap::new();
     let events = async {
         while let Some(event) = app_rx.recv().await {
@@ -591,7 +601,7 @@ async fn test_finalized_by_service_quit(#[case] dir: &str, #[case] cleanup_statu
 
     let mut expected = HashMap::new();
     expected.insert(String::from("#server"), String::from("Finished: Stopped"));
-    expected.insert(String::from("#cleanup"), String::from(cleanup_status));
+    expected.insert(String::from("#cleanup"), String::from("Finished: Success"));
     assert_eq!(expected, statuses);
 }
 
