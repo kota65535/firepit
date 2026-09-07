@@ -39,7 +39,7 @@
       "x-template": true
     },
     "env_files": {
-      "description": "**Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.\n\nDotenv files for all the project tasks.\nIn case of duplicated environment variables, the latter one takes precedence.\n```yaml\nenv_files:\n  - .env\n  - .env.local\n```",
+      "description": "**Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.\n\nDotenv files for all the project tasks. Their values are templates.\nIn case of duplicated environment variables, the latter one takes precedence.\n```yaml\nenv_files:\n  - .env\n  - .env.local\n```",
       "type": "array",
       "default": [],
       "deprecated": true,
@@ -145,7 +145,7 @@
           "x-template": true
         },
         "env_files": {
-          "description": "Dotenv files",
+          "description": "Dotenv files. Their values are templates.",
           "type": "array",
           "default": [],
           "items": {
@@ -300,7 +300,7 @@
           "x-template": true
         },
         "env_files": {
-          "description": "Dotenv files",
+          "description": "Dotenv files. Their values are templates.",
           "type": "array",
           "default": [],
           "items": {
@@ -362,7 +362,7 @@
           "x-template": true
         },
         "env_files": {
-          "description": "Dotenv files. Merged with the task `env_files`.",
+          "description": "Dotenv files. Merged with the task `env_files`. Their values are templates.",
           "type": "array",
           "default": [],
           "items": {
@@ -606,7 +606,7 @@
           "x-template": true
         },
         "env_files": {
-          "description": "Dotenv files. Merged with the project `env_files`.",
+          "description": "Dotenv files. Merged with the project `env_files`. Their values are templates.",
           "type": "array",
           "default": [],
           "items": {

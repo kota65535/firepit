@@ -59,7 +59,7 @@ env:
 - **Template:** yes
 - **Description:** **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
 
-Dotenv files for all the project tasks.
+Dotenv files for all the project tasks. Their values are templates.
 In case of duplicated environment variables, the latter one takes precedence.
 ```yaml
 env_files:
@@ -202,7 +202,7 @@ working_dir: src
 - **Required:** no
 - **Default:** `[]`
 - **Template:** yes
-- **Description:** Dotenv files
+- **Description:** Dotenv files. Their values are templates.
 
 ### inputs
 
@@ -330,7 +330,7 @@ for a command that must run every time, ex: allocating a resource.
 - **Required:** no
 - **Default:** `[]`
 - **Template:** yes
-- **Description:** Dotenv files
+- **Description:** Dotenv files. Their values are templates.
 
 ### shell
 
@@ -375,7 +375,7 @@ type; without it, the type is inferred from the output.
 - **Required:** no
 - **Default:** `[]`
 - **Template:** yes
-- **Description:** Dotenv files. Merged with the task `env_files`.
+- **Description:** Dotenv files. Merged with the task `env_files`. Their values are templates.
 
 ### interval
 
@@ -560,7 +560,7 @@ Probe failure during that period will not be counted towards the maximum number 
 - **Required:** no
 - **Default:** `[]`
 - **Template:** yes
-- **Description:** Dotenv files. Merged with the project `env_files`.
+- **Description:** Dotenv files. Merged with the project `env_files`. Their values are templates.
 
 ### finalized_by
 
