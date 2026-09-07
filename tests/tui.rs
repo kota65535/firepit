@@ -4,7 +4,7 @@
 //! application sends it, but render onto `ratatui::backend::TestBackend` so
 //! the resulting screen buffer can be asserted cell by cell. They guard
 //! against display regressions coming from the terminal emulation layer
-//! (`vt100`, `tui-term`) as well as from firepit's own widgets.
+//! (`vt100`, `tui-term`, `ratatui`) as well as from firepit's own widgets.
 //!
 //! Only the TUI layer is covered: task output is fed in directly rather than
 //! produced by a real process, so there is no `firepit.yml` fixture and no
