@@ -356,6 +356,8 @@ vars:
 
 Environment variables can be defined in the `env` field.
 You can also specify [dotenv](https://github.com/motdotla/dotenv) files in the `env_files` field.
+The values of `env` and of the dotenv files are templates, so they can refer to variables.
+Quote a dotenv value containing spaces, ex: `URL="http://localhost:{{ port }}"`.
 The precedence of environment variables is as follows:
 
 1. Environment variables in the `env` field
@@ -384,8 +386,8 @@ tasks:
     # Task level dotenv files.
     # .env.local has a higher priority than .env
     env_files:
-      - .env.local
       - .env
+      - .env.local
 ```
 
 ## Dependencies

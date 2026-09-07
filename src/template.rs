@@ -212,7 +212,7 @@ impl ProjectConfig {
                             name: k.clone(),
                             command: s.command.clone(),
                             shell: s.shell.clone().unwrap_or(self.shell.clone()),
-                            env: Env::new().with(&s.env_file_paths(&self.dir), &s.env).load()?,
+                            env: Env::new().with(&s.env_file_paths(&self.dir), &s.env, &context).load()?,
                             working_dir: s.working_dir_path(&self.working_dir_path()),
                             cache: s.cache,
                         });
@@ -313,7 +313,9 @@ impl TaskConfig {
                                 .shell
                                 .clone()
                                 .unwrap_or(self.shell.clone().unwrap_or(config.shell.clone())),
-                            env: Env::new().with(&s.env_file_paths(&config.dir), &s.env).load()?,
+                            env: Env::new()
+                                .with(&s.env_file_paths(&config.dir), &s.env, &context)
+                                .load()?,
                             working_dir: s.working_dir_path(&self.working_dir_path(&config.working_dir_path())),
                             cache: s.cache,
                         });
@@ -455,6 +457,9 @@ impl TaskConfig {
             }
         }
         config.finalized_by = rendered_finalized_by;
+
+        // Kept to render the values of the dotenv files when the task runs
+        config.context = Some(context.clone());
 
         Ok(config)
     }

@@ -3,7 +3,7 @@ use crate::config::{
     default_stop_timeout, DependsOnConfig, HealthCheckConfig, ProjectConfig, Restart, ServiceConfig, TaskConfig, UI,
 };
 use crate::probe::{ExecProbe, LogLineProbe, Probe};
-use crate::template::ConfigRenderer;
+use crate::template::{new_tera, ConfigRenderer};
 use crate::vars::VarsConfig;
 use anyhow::Context;
 use indexmap::IndexMap;
@@ -570,11 +570,12 @@ impl Env {
         Self { configs: Vec::new() }
     }
 
-    pub fn with(&self, env_files: &[PathBuf], env: &IndexMap<String, String>) -> Self {
+    pub fn with(&self, env_files: &[PathBuf], env: &IndexMap<String, String>, context: &tera::Context) -> Self {
         let mut configs = self.configs.clone();
         configs.push(EnvConfig {
             env_files: env_files.to_vec(),
             env: env.clone(),
+            context: context.clone(),
         });
         Self { configs }
     }
@@ -595,6 +596,8 @@ impl Env {
 pub struct EnvConfig {
     pub env_files: Vec<PathBuf>,
     pub env: IndexMap<String, String>,
+    /// Template context rendering the values of the dotenv files.
+    pub context: tera::Context,
 }
 
 impl EnvConfig {
@@ -607,6 +610,7 @@ impl EnvConfig {
     }
 
     fn load_env_files(&self) -> anyhow::Result<HashMap<String, String>> {
+        let mut tera = new_tera();
         let mut ret = HashMap::new();
         for f in self.env_files.iter() {
             let iter = match dotenvy::from_path_iter(f) {
@@ -619,6 +623,11 @@ impl EnvConfig {
             };
             for item in iter {
                 let (key, value) = item.with_context(|| format!("cannot parse env file {:?}", f))?;
+                // A dotenv value is a template, like a value of `env`. The error drops the
+                // template error, which quotes the value: a dotenv file holds secrets.
+                let value = tera
+                    .render_str(&value, &self.context)
+                    .map_err(|_| anyhow::anyhow!("cannot render env file {:?}: key {:?}", f, key))?;
                 ret.insert(key, value);
             }
         }
@@ -655,17 +664,17 @@ impl Task {
         // Working directory
         let task_working_dir = task_config.working_dir_path(&config.working_dir_path());
 
-        // Environment variables
-        // Priority:
-        // 1. Root project env file
-        // 2. Root project env
-        // 3. Project env file
-        // 4. Project env
-        // 5. Task env file
-        // 6. Task env
+        // Environment variables, the later overriding the earlier:
+        // project env_files < project env < task env_files < task env
+        // The dotenv values are templates, rendered with the task context when the task runs.
+        let context = task_config.context.clone().unwrap_or_default();
         let env = Env::new()
-            .with(&config.env_file_paths(), &config.env.clone())
-            .with(&task_config.env_file_paths(&config.dir), &task_config.env.clone())
+            .with(&config.env_file_paths(), &config.env.clone(), &context)
+            .with(
+                &task_config.env_file_paths(&config.dir),
+                &task_config.env.clone(),
+                &context,
+            )
             .verify()?;
 
         // Depends On
@@ -708,7 +717,7 @@ impl Task {
                                 // Working directory
                                 let hc_working_dir = c.working_dir_path(&task_working_dir);
                                 // Environment variables
-                                let env = env.with(&c.env_files_paths(&config.dir), &c.env).verify()?;
+                                let env = env.with(&c.env_files_paths(&config.dir), &c.env, &context).verify()?;
 
                                 Probe::Exec(ExecProbe::new(
                                     &task_name,

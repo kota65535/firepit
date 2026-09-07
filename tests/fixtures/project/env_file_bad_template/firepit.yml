@@ -1,0 +1,6 @@
+env_files:
+  - .env.bad
+
+tasks:
+  run:
+    command: echo "run"
