@@ -6,7 +6,7 @@ use indexmap::IndexMap;
 use ratatui::prelude::{Layout, Line};
 use ratatui::{
     layout::{Constraint, Rect},
-    style::{Color, Style, Stylize},
+    style::{Color, Style},
     text::Text,
     widgets::{Block, Cell, Paragraph, Row, StatefulWidget, Table, TableState, Widget},
 };
@@ -133,7 +133,7 @@ impl<'a> StatefulWidget for &'a TaskTable<'a> {
             Constraint::Length(STATUS_COLUMN_WIDTH),
         ];
         let table = Table::new(self.rows(), widths)
-            .highlight_style(Style::default().fg(Color::Yellow))
+            .row_highlight_style(Style::default().fg(Color::Yellow))
             .column_spacing(0)
             .block(Block::new());
         StatefulWidget::render(table, table_area, buf, state);
