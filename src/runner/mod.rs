@@ -276,6 +276,23 @@ impl TaskRunner {
                             )
                         };
 
+                        /// Finishes the task as an error, reporting `$reason` to the user and
+                        /// releasing its dependents. For a failure that leaves no exit status to
+                        /// report, ex: the env could not be loaded or the process could not run.
+                        macro_rules! fail_task {
+                            ($reason:expr) => {{
+                                let reason = $reason;
+                                warn!("Task {:?} failed to run: {}", task.name, reason);
+                                app_tx.notify(format!("{}: {}", task.name, reason));
+                                app_tx.finish_task(TaskResult::Error, None);
+                                if let Err(e) = callback.send(CallbackMessage(NodeResult::Failure)).await {
+                                    warn!("Failed to send callback event: {:?}", e)
+                                }
+                                node_done();
+                                return Ok::<(), anyhow::Error>(());
+                            }};
+                        }
+
                         // Skip the task if any dependency task didn't finish successfully
                         if !deps_ok {
                             info!("Task does not run as its dependency task failed");
@@ -314,18 +331,9 @@ impl TaskRunner {
                         // of it since the last run can make this fail.
                         let env = match task.env.load() {
                             Ok(env) => env,
-                            Err(e) => {
-                                warn!("Failed to load env of task {:?}: {:?}", task.name, e);
-                                // The error of a dotenv file quotes the offending line, which may
-                                // hold a secret, so only its top-level message is shown
-                                app_tx.notify(format!("{}: {}", task.name, e));
-                                app_tx.finish_task(TaskResult::Error, None);
-                                if let Err(e) = callback.send(CallbackMessage(NodeResult::Failure)).await {
-                                    warn!("Failed to send callback event: {:?}", e)
-                                }
-                                node_done();
-                                return Ok::<(), anyhow::Error>(());
-                            }
+                            // The error of a dotenv file quotes the offending line, which may hold
+                            // a secret, so only its top-level message is reported
+                            Err(e) => fail_task!(format!("{}", e)),
                         };
 
                         info!(
@@ -337,20 +345,8 @@ impl TaskRunner {
 
                         let process = match Self::spawn_process(task.clone(), env, manager.clone()).await {
                             Ok(Some(process)) => process,
-                            result => {
-                                let reason = match result {
-                                    Err(e) => format!("{}", e),
-                                    _ => String::from("the process manager is closed"),
-                                };
-                                warn!("Failed to spawn task {:?}: {}", task.name, reason);
-                                app_tx.notify(format!("{}: {}", task.name, reason));
-                                app_tx.finish_task(TaskResult::Error, None);
-                                if let Err(e) = callback.send(CallbackMessage(NodeResult::Failure)).await {
-                                    warn!("Failed to send callback event: {:?}", e)
-                                }
-                                node_done();
-                                return Ok::<(), anyhow::Error>(());
-                            }
+                            Err(e) => fail_task!(format!("{}", e)),
+                            Ok(None) => fail_task!("the process manager is closed"),
                         };
                         let pid = process.pid().unwrap_or(0);
                         let start_time = Local::now();
@@ -380,7 +376,11 @@ impl TaskRunner {
                                 tokio::select! {
                                     // Process branch, waiting its completion
                                     result = &mut task_fut, if task_result.is_none() => {
-                                        let result = result.with_context(|| format!("task {:?} failed to run", task.name))??;
+                                        let result = match result {
+                                            Ok(Ok(result)) => result,
+                                            Ok(Err(e)) => fail_task!(format!("{}", e)),
+                                            Err(e) => fail_task!(format!("{}", e)),
+                                        };
 
                                         let end_time =  Local::now();
                                         end_times_cloned.lock().expect("not poisoned").insert(task.name.clone(),  Local::now());
@@ -418,8 +418,21 @@ impl TaskRunner {
                                     }
                                     // Probe branch
                                     result = &mut probe_fut, if probe_result.is_none() => {
-                                        let result = result.with_context(|| format!("task {:?} failed to run", task.name))?;
-                                        probe_result = Some(result.unwrap_or(false));
+                                        let result = match result {
+                                            Ok(result) => result,
+                                            Err(e) => fail_task!(format!("{}", e)),
+                                        };
+                                        // A probe that could not run is not ready. It is reported
+                                        // here because its reason, ex: a bad dotenv file of the
+                                        // health check, is lost by the NotReady result below.
+                                        probe_result = Some(match result {
+                                            Ok(ready) => ready,
+                                            Err(e) => {
+                                                warn!("Probe of task {:?} failed to run: {:?}", task.name, e);
+                                                app_tx.notify(format!("{}: {}", task.name, e));
+                                                false
+                                            }
+                                        });
                                         if probe_result == Some(true) {
                                             // Release the dependents, and keep waiting for the process to finish
                                             info!("Task is ready");
@@ -467,7 +480,10 @@ impl TaskRunner {
                             }
                         } else {
                             // Normal task branch
-                            let result = Self::run_process(task.clone(), process, app_tx.clone()).await?;
+                            let result = match Self::run_process(task.clone(), process, app_tx.clone()).await {
+                                Ok(result) => result,
+                                Err(e) => fail_task!(format!("{}", e)),
+                            };
                             let end_time =  Local::now();
                             end_times_cloned.lock().expect("not poisoned").insert(task.name.clone(), end_time);
                             app_tx.finish_task(result.unwrap_or(TaskResult::Unknown), Some(end_time));

@@ -1,0 +1,12 @@
+tasks:
+  foo:
+    command: echo "foo"
+    depends_on:
+      - bar
+
+  bar:
+    command: echo "bar"
+    shell:
+      command: /nonexistent/shell
+      args:
+        - -c
