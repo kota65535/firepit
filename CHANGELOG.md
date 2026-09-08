@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.29.0] - 2026-09-08
+
+### 🚀 Features
+
+- *(app)* Report fatal task errors with their cause in both UIs (#415)
+- *(config)* Render the values of env_files as templates (#409)
+- *(tui)* Show quit and copy messages in the pane footer (#418)
+
+### 🐛 Bug Fixes
+
+- *(runner)* Report tasks that fail to run instead of dropping the error (#414)
+- *(app)* Do not count tasks stopped by firepit as failures (#416)
+- *(app)* Show the error cause where it is missing (#417)
+
+### 🧪 Testing
+
+- *(tui)* Add rendering tests and update vt100 to upstream 0.16.2 (#410)
+
 ## [0.28.0] - 2026-09-04
 
 ### 🚀 Features
