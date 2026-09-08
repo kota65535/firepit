@@ -204,11 +204,10 @@ fn error_result_shows_cause_in_pane() {
 
     let lines = tui.lines();
     assert!(lines[0].contains("% build (Finished - Error, Restart"), "{}", lines[0]);
-    // Wraps at the pane width
-    assert_eq!(tui.pane_row(0), "Task \"build\" is not run because of an error: faile");
-    assert_eq!(tui.pane_row(1), "d to spawn process: boom");
+    // The task name is in the title, so the line is just the cause
+    assert_eq!(tui.pane_row(0), "Error: failed to spawn process: boom");
     assert_eq!(tui.cell(0, 0).fg, Color::Indexed(1)); // red
-    assert!(tui.pane_row(2).is_empty());
+    assert!(tui.pane_row(1).is_empty());
 }
 
 /// The TUI reports failed tasks the same way the CUI does, so the exit code matches.

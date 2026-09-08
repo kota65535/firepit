@@ -115,7 +115,7 @@ impl Task {
             TaskStatus::Finished(r, end_time) => {
                 format!(
                     "Finished - {}, Restart: {}/{}, Reload: {}, Elapsed: {}",
-                    r.short_message(),
+                    r.short_message(false),
                     self.restart,
                     max_restart,
                     self.reload,

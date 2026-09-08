@@ -524,7 +524,7 @@ impl TuiAppState {
             // but the pane is a terminal emulator regardless.
             let line = format!(
                 "{}\r\n",
-                RED.clone().force_styling(true).apply_to(result.long_message(&t.label))
+                RED.clone().force_styling(true).apply_to(result.short_message(true))
             );
             t.output.process(line.as_bytes());
         }
