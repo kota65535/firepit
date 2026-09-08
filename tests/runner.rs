@@ -97,6 +97,21 @@ async fn test_basic_failure() {
     run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
 
+/// A task whose process cannot be spawned finishes with `Error`, and its
+/// dependents are skipped like any other failure instead of waiting forever.
+#[tokio::test]
+async fn test_spawn_failure() {
+    setup();
+    let path = BASE_PATH.join("spawn_failure");
+    let tasks = vec![String::from("foo")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#foo"), String::from("Finished: BadDeps"));
+    statuses.insert(String::from("#bar"), String::from("Finished: Error"));
+
+    run_task(&path, tasks, statuses, None, false).await.unwrap();
+}
+
 /// `wait_for` orders the task after another one when both are going to run.
 /// `lint` sleeps before writing, so `format` can only see its line by waiting for it.
 #[tokio::test]
