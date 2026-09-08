@@ -279,6 +279,9 @@ impl TaskRunner {
                         // Any error below is a fatal one: the task could not run at all.
                         // Report it like a failure so the UI shows it as an error and the
                         // dependents are skipped, instead of dropping it in `join`.
+                        // The PID is kept outside so the process can be stopped if the
+                        // error happens after it has started.
+                        let mut spawned_pid = None;
                         let run = async {
                             // Skip the task if any dependency task didn't finish successfully
                             if !deps_ok {
@@ -328,6 +331,7 @@ impl TaskRunner {
                                 None => anyhow::bail!("failed to spawn process"),
                             };
                             let pid = process.pid().unwrap_or(0);
+                            spawned_pid = Some(pid);
                             let start_time = Local::now();
                             start_times_cloned.lock().expect("not poisoned").insert(task.name.clone(), start_time);
 
@@ -470,6 +474,9 @@ impl TaskRunner {
 
                         if let Err(e) = run.await {
                             error!("Task failed to run: {:#}", e);
+                            if let Some(pid) = spawned_pid {
+                                manager.stop_by_pid(pid).await;
+                            }
                             app_tx.finish_task(TaskResult::Error, Some(Local::now()));
                             if fail_fast {
                                 command_tx.stop_tasks();
