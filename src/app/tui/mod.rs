@@ -13,6 +13,8 @@ mod term_output;
 use crate::app::command::AppCommandChannel;
 use crate::app::command::{AppCommand, TaskResult};
 use crate::app::command::{Direction, PaneSize, ScrollSize, TaskRun, TaskStatus};
+use crate::app::cui::lib::RED;
+use crate::app::print_failure_summary;
 use crate::app::signal::SignalHandler;
 use crate::app::tui::clipboard::copy_to_clipboard;
 use crate::app::tui::dialog::{
@@ -113,6 +115,8 @@ pub struct TuiApp {
     input_handler: InputHandler,
     signal_handler: SignalHandler,
     state: TuiAppState,
+    /// Only the first failure is reported at the end, the rest were stopped because of it
+    fail_fast: bool,
     _raw_mode: RawModeGuard,
 }
 
@@ -144,6 +148,7 @@ impl TuiApp {
         dep_tasks: &[String],
         finalizer_tasks: &[String],
         labels: &HashMap<String, String>,
+        fail_fast: bool,
     ) -> anyhow::Result<Self> {
         // Held first, so every fallible step below leaves the terminal restored.
         let raw_mode = RawModeGuard::enable()?;
@@ -171,6 +176,7 @@ impl TuiApp {
             input_handler,
             signal_handler,
             state,
+            fail_fast,
             _raw_mode: raw_mode,
         })
     }
@@ -225,7 +231,11 @@ impl TuiApp {
         }
 
         info!("App is exiting");
-        Ok(0)
+        // Same summary and exit code as the CUI, printed after the panes so it is
+        // the last thing on the screen.
+        let failed = self.state.failed_tasks();
+        print_failure_summary(&failed, self.fail_fast);
+        Ok(if failed.is_empty() { 0 } else { 1 })
     }
 
     pub async fn run_inner(&mut self, runner_tx: &RunnerCommandChannel) -> anyhow::Result<()> {
@@ -506,11 +516,24 @@ impl TuiAppState {
         result: TaskResult,
         datetime: Option<DateTime<Local>>,
     ) -> anyhow::Result<()> {
+        // A task that could not run has produced no output, so its pane is free
+        // to show the cause without mixing with process output.
+        if matches!(result, TaskResult::Error(_)) {
+            let t = self.task_mut(task)?;
+            // Force the styling: `console` would drop it when stdout is not a TTY,
+            // but the pane is a terminal emulator regardless.
+            let line = format!(
+                "{}\r\n",
+                RED.clone().force_styling(true).apply_to(result.long_message(&t.label))
+            );
+            t.output.process(line.as_bytes());
+        }
+        let reloading = matches!(result, TaskResult::Reloading);
         self.set_status(task, TaskStatus::Finished(result, datetime))?;
         // A finished task has no stdin, so staying in interaction mode would leave
         // the user typing into a dead shell. Reloading tasks are exempt since they
         // are restarted right away and their stdin comes back.
-        if !matches!(result, TaskResult::Reloading) && self.is_interacting_with(task)? {
+        if !reloading && self.is_interacting_with(task)? {
             self.exit_interaction();
         }
         Ok(())
@@ -536,6 +559,18 @@ impl TuiAppState {
         if matches!(self.focus, LayoutSections::Pane) {
             self.focus = LayoutSections::TaskList(None);
         }
+    }
+
+    /// Tasks that finished with a failure, as `(label, result)` pairs, for the
+    /// end-of-run summary and the exit code. Same rule as the CUI.
+    pub fn failed_tasks(&self) -> Vec<(String, TaskResult)> {
+        self.tasks
+            .values()
+            .filter_map(|t| match t.status() {
+                TaskStatus::Finished(r, _) if r.is_failure() => Some((t.label.clone(), r.clone())),
+                _ => None,
+            })
+            .collect()
     }
 
     pub fn persist_tasks(&mut self) -> anyhow::Result<()> {

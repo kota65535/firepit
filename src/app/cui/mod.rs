@@ -7,9 +7,10 @@ pub mod prefixed;
 use crate::app::command::AppCommand;
 use crate::app::command::AppCommandChannel;
 use crate::app::cui::color::ColorSelector;
-use crate::app::cui::lib::{ColorConfig, BOLD_RED, RED};
+use crate::app::cui::lib::{ColorConfig, RED};
 use crate::app::cui::output::{OutputClient, OutputClientBehavior, OutputSink};
 use crate::app::cui::prefixed::PrefixedWriter;
+use crate::app::print_failure_summary;
 use crate::app::signal::SignalHandler;
 use crate::runner::command::RunnerCommandChannel;
 use crate::tokio_spawn;
@@ -56,8 +57,8 @@ impl CuiApp {
             target_tasks: target_tasks.to_vec(),
             finalizer_tasks: finalizer_tasks.iter().cloned().collect(),
             labels: labels.clone(),
-            fail_fast,
             quit_on_done,
+            fail_fast,
             no_log_prefix,
         })
     }
@@ -139,11 +140,11 @@ impl CuiApp {
 
                     // Tasks stopped by the quit are not failures, but the finalizers run through it
                     if result.is_failure() && (!quitting || self.finalizer_tasks.contains(&task)) {
-                        failed_tasks.insert(task.clone(), result);
                         eprintln!(
                             "{}",
                             RED.apply_to(result.long_message(self.labels.get(&task).unwrap_or(&task)).to_string())
                         );
+                        failed_tasks.insert(task.clone(), result);
                     }
                     tasks_remaining.remove(&task);
                     debug!("Target tasks remaining: {:?}", tasks_remaining);
@@ -172,42 +173,11 @@ impl CuiApp {
             runner_tx.quit();
         }
 
-        if !failed_tasks.is_empty() {
-            if self.fail_fast {
-                let (task, result) = failed_tasks.iter().next().unwrap();
-                eprintln!();
-                eprintln!(
-                    "{}",
-                    RED.apply_to(format!(
-                        "FAILURE: {}",
-                        result.long_message(self.labels.get(task).unwrap_or(task))
-                    ))
-                );
-            } else {
-                eprintln!();
-                eprintln!(
-                    "{}",
-                    BOLD_RED.apply_to(format!("FAILURE: {} tasks failed", failed_tasks.len()))
-                );
-                let max_label_len = failed_tasks
-                    .keys()
-                    .map(|t| self.labels.get(t).unwrap_or(t).len())
-                    .max()
-                    .unwrap_or(0);
-                for (t, r) in failed_tasks.iter() {
-                    if r.is_failure() {
-                        eprintln!(
-                            "{}",
-                            RED.apply_to(format!(
-                                "* {:max_label_len$} : {}",
-                                self.labels.get(t).unwrap_or(t),
-                                r.short_message()
-                            ))
-                        );
-                    }
-                }
-            }
-        }
+        let failed = failed_tasks
+            .iter()
+            .map(|(t, r)| (self.labels.get(t).unwrap_or(t).clone(), r.clone()))
+            .collect::<Vec<_>>();
+        print_failure_summary(&failed, self.fail_fast);
 
         let exit_code = if !failed_tasks.is_empty() { 1 } else { 0 };
         Ok(exit_code)

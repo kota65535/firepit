@@ -97,8 +97,8 @@ async fn test_basic_failure() {
     run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
 
-/// A task whose process cannot be spawned finishes with `Error`, and its
-/// dependents are skipped like any other failure instead of waiting forever.
+/// A task whose process cannot be spawned finishes with `Error` carrying the
+/// cause, and its dependents are skipped like any other failure.
 #[tokio::test]
 async fn test_spawn_failure() {
     setup();
@@ -107,7 +107,10 @@ async fn test_spawn_failure() {
 
     let mut statuses = HashMap::new();
     statuses.insert(String::from("#foo"), String::from("Finished: BadDeps"));
-    statuses.insert(String::from("#bar"), String::from("Finished: Error"));
+    statuses.insert(
+        String::from("#bar"),
+        String::from("Finished: Error(\"failed to spawn process: No such file or directory (os error 2)\")"),
+    );
 
     run_task(&path, tasks, statuses, None, false).await.unwrap();
 }
