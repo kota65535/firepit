@@ -1,0 +1,14 @@
+vars:
+  session: abc
+
+env_files:
+  - .env.base
+  - .env.override
+
+tasks:
+  run:
+    command: echo "run"
+    vars:
+      port: 3000
+    env_files:
+      - .env.task

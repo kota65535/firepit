@@ -502,3 +502,69 @@ async fn test_stop_timeout() {
         Duration::from_secs(20)
     );
 }
+
+#[tokio::test]
+async fn test_env_file_template() {
+    let path = Path::new("tests/fixtures/project/env_file_template");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &Vec::new(),
+        &std::env::current_dir().unwrap(),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    // The values of a dotenv file are templates rendered with the task context: a project var,
+    // a task var, and a later file overriding an earlier one with a template of its own.
+    let run = ws.root.task("run").unwrap();
+    assert_eq_env(
+        &run.env.load().unwrap(),
+        &HashMap::from([
+            ("SESSION", "abc"),
+            ("OVERRIDE", "local-abc"),
+            ("LITERAL", "{{x"),
+            ("PORT", "3000"),
+        ]),
+    );
+}
+
+#[tokio::test]
+async fn test_env_file_bad_template() {
+    let path = Path::new("tests/fixtures/project/env_file_bad_template");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    // A bad template does not fail the workspace: a dotenv file is only parsed until its task runs
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &Vec::new(),
+        &std::env::current_dir().unwrap(),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    // An undefined variable is named, along with the file and the key, but never the value: a
+    // dotenv file holds secrets
+    let msg = format!("{:?}", ws.root.task("undefined").unwrap().env.load().unwrap_err());
+    assert!(msg.contains(".env.undefined"), "{msg}");
+    assert!(msg.contains("SECRET"), "{msg}");
+    assert!(msg.contains("missing"), "{msg}");
+    assert!(!msg.contains("s3cr3t"), "{msg}");
+
+    // A syntax error quotes the template, so it is dropped
+    let msg = format!("{:?}", ws.root.task("syntax").unwrap().env.load().unwrap_err());
+    assert!(msg.contains(".env.syntax"), "{msg}");
+    assert!(msg.contains("BROKEN"), "{msg}");
+    assert!(!msg.contains("s3cr3t"), "{msg}");
+}

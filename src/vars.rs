@@ -153,7 +153,7 @@ pub struct DynamicVars {
     #[schemars(extend("x-template" = true))]
     pub env: IndexMap<String, String>,
 
-    /// Dotenv files
+    /// Dotenv files. Their values are templates.
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
     pub env_files: Vec<String>,

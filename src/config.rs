@@ -86,7 +86,7 @@ pub struct ProjectConfig {
 
     /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
     ///
-    /// Dotenv files for all the project tasks.
+    /// Dotenv files for all the project tasks. Their values are templates.
     /// In case of duplicated environment variables, the latter one takes precedence.
     /// ```yaml
     /// env_files:
@@ -683,10 +683,15 @@ pub struct TaskConfig {
     #[schemars(extend("x-template" = true))]
     pub env: IndexMap<String, String>,
 
-    /// Dotenv files. Merged with the project `env_files`.
+    /// Dotenv files. Merged with the project `env_files`. Their values are templates.
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
     pub env_files: Vec<String>,
+
+    /// Template context of the rendered task. The values of the dotenv files are templates too,
+    /// but they are read when the task runs, so the context is kept to render them then.
+    #[serde(skip)]
+    pub context: Option<std::sync::Arc<tera::Context>>,
 
     /// Dependency tasks
     #[serde(default)]
@@ -980,7 +985,7 @@ pub struct ExecProbeConfig {
     #[schemars(extend("x-template" = true))]
     pub env: IndexMap<String, String>,
 
-    /// Dotenv files. Merged with the task `env_files`.
+    /// Dotenv files. Merged with the task `env_files`. Their values are templates.
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
     pub env_files: Vec<String>,
@@ -1244,7 +1249,7 @@ pub struct DefaultsConfig {
     #[schemars(extend("x-template" = true))]
     pub env: IndexMap<String, String>,
 
-    /// Dotenv files
+    /// Dotenv files. Their values are templates.
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
     pub env_files: Vec<String>,

@@ -318,7 +318,9 @@ impl TaskRunner {
                                 return Ok::<(), anyhow::Error>(());
                             }
 
-                            // Load environment variables
+                            // Load environment variables.
+                            // A dotenv file is read now, not when the workspace is built, so an
+                            // edit of it since the last run can make this fail.
                             let env = task.env.load()?;
 
                             info!(

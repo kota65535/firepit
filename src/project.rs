@@ -3,7 +3,7 @@ use crate::config::{
     default_stop_timeout, DependsOnConfig, HealthCheckConfig, ProjectConfig, Restart, ServiceConfig, TaskConfig, UI,
 };
 use crate::probe::{ExecProbe, LogLineProbe, Probe};
-use crate::template::ConfigRenderer;
+use crate::template::{new_tera, ConfigRenderer};
 use crate::vars::VarsConfig;
 use anyhow::Context;
 use indexmap::IndexMap;
@@ -11,6 +11,7 @@ use regex::Regex;
 use serde_json::Value as JsonValue;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 use tracing::{info, warn};
 
@@ -554,39 +555,49 @@ impl WaitFor {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Env {
     configs: Vec<EnvConfig>,
-}
-
-impl Default for Env {
-    fn default() -> Self {
-        Self::new()
-    }
+    /// Renders the values of the dotenv files of every layer. They all belong to the same task,
+    /// so they share one context.
+    context: Arc<tera::Context>,
 }
 
 impl Env {
-    pub fn new() -> Self {
-        Self { configs: Vec::new() }
+    pub fn new(context: Arc<tera::Context>) -> Self {
+        Self {
+            configs: Vec::new(),
+            context,
+        }
     }
 
+    /// Adds a layer overriding the previous ones: the dotenv files `env_files`, overridden by
+    /// `env`.
     pub fn with(&self, env_files: &[PathBuf], env: &IndexMap<String, String>) -> Self {
         let mut configs = self.configs.clone();
         configs.push(EnvConfig {
             env_files: env_files.to_vec(),
             env: env.clone(),
         });
-        Self { configs }
+        Self {
+            configs,
+            context: self.context.clone(),
+        }
     }
 
+    /// Checks that the dotenv files can be parsed. Their values are not rendered: the task
+    /// may never run, and its vars may be given later.
     pub fn verify(self) -> anyhow::Result<Self> {
-        self.configs.iter().try_for_each(|e| e.load_env_files().map(|_| ()))?;
+        self.configs.iter().try_for_each(|e| e.read_env_files().map(|_| ()))?;
         Ok(self)
     }
 
     pub fn load(&self) -> anyhow::Result<HashMap<String, String>> {
         self.configs.iter().try_fold(HashMap::new(), |acc, config| {
-            Ok(acc.into_iter().chain(config.merged_env()?).collect::<HashMap<_, _>>())
+            Ok(acc
+                .into_iter()
+                .chain(config.merged_env(&self.context)?)
+                .collect::<HashMap<_, _>>())
         })
     }
 }
@@ -598,16 +609,17 @@ pub struct EnvConfig {
 }
 
 impl EnvConfig {
-    pub fn merged_env(&self) -> anyhow::Result<HashMap<String, String>> {
+    pub fn merged_env(&self, context: &tera::Context) -> anyhow::Result<HashMap<String, String>> {
         Ok(self
-            .load_env_files()?
+            .load_env_files(context)?
             .into_iter()
             .chain(self.env.clone())
             .collect::<HashMap<_, _>>())
     }
 
-    fn load_env_files(&self) -> anyhow::Result<HashMap<String, String>> {
-        let mut ret = HashMap::new();
+    /// Reads the dotenv files in order, without rendering the values. A missing file is skipped.
+    fn read_env_files(&self) -> anyhow::Result<Vec<(&PathBuf, String, String)>> {
+        let mut ret = Vec::new();
         for f in self.env_files.iter() {
             let iter = match dotenvy::from_path_iter(f) {
                 Ok(it) => it,
@@ -619,8 +631,26 @@ impl EnvConfig {
             };
             for item in iter {
                 let (key, value) = item.with_context(|| format!("cannot parse env file {:?}", f))?;
-                ret.insert(key, value);
+                ret.push((f, key, value));
             }
+        }
+        Ok(ret)
+    }
+
+    /// Reads the dotenv files and renders their values, a later file overriding an earlier one.
+    fn load_env_files(&self, context: &tera::Context) -> anyhow::Result<HashMap<String, String>> {
+        let mut tera = new_tera();
+        let mut ret = HashMap::new();
+        for (f, key, value) in self.read_env_files()? {
+            // A dotenv value is a template, like a value of `env`. A dotenv file holds secrets,
+            // so the value must not appear in an error: the parse error, which quotes the
+            // template, is dropped, while the render error only names a variable or a filter.
+            tera.add_raw_template(&key, &value)
+                .map_err(|_| anyhow::anyhow!("cannot parse the template of {:?} in env file {:?}", key, f))?;
+            let value = tera
+                .render(&key, context)
+                .with_context(|| format!("cannot render {:?} in env file {:?}", key, f))?;
+            ret.insert(key, value);
         }
         Ok(ret)
     }
@@ -655,17 +685,16 @@ impl Task {
         // Working directory
         let task_working_dir = task_config.working_dir_path(&config.working_dir_path());
 
-        // Environment variables
-        // Priority:
-        // 1. Root project env file
-        // 2. Root project env
-        // 3. Project env file
-        // 4. Project env
-        // 5. Task env file
-        // 6. Task env
-        let env = Env::new()
-            .with(&config.env_file_paths(), &config.env.clone())
-            .with(&task_config.env_file_paths(&config.dir), &task_config.env.clone())
+        // Environment variables, the later overriding the earlier:
+        // project env_files < project env < task env_files < task env
+        // The dotenv values are templates, rendered with the task context when the task runs.
+        let context = task_config
+            .context
+            .clone()
+            .with_context(|| format!("task {:?} is not rendered", task_name))?;
+        let env = Env::new(context)
+            .with(&config.env_file_paths(), &config.env)
+            .with(&task_config.env_file_paths(&config.dir), &task_config.env)
             .verify()?;
 
         // Depends On

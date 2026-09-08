@@ -1,0 +1,9 @@
+tasks:
+  undefined:
+    command: echo "undefined"
+    env_files:
+      - .env.undefined
+  syntax:
+    command: echo "syntax"
+    env_files:
+      - .env.syntax
