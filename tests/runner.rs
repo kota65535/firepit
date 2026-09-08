@@ -653,6 +653,58 @@ async fn test_finalized_by_service_quit() {
     assert_eq!(expected, statuses);
 }
 
+/// Quitting while a service is still waiting for its probe stops it: that is not
+/// a readiness failure.
+#[tokio::test]
+async fn test_service_quit_before_ready() {
+    setup();
+    let path = path::absolute(BASE_PATH.join("service_quit_before_ready")).unwrap();
+    let tasks = vec![String::from("server")];
+
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &tasks,
+        &path,
+        &IndexMap::new(),
+        false,
+        false,
+        None,
+        Some(false),
+    )
+    .await
+    .unwrap();
+    let mut runner = TaskRunner::new(&ws).unwrap();
+    let (app_tx, mut app_rx) = AppCommandChannel::new();
+    let runner_tx = runner.command_tx.clone();
+    let runner_fut = tokio::spawn(async move { runner.run(&app_tx, false).await });
+
+    let mut statuses = HashMap::new();
+    let events = async {
+        while let Some(event) = app_rx.recv().await {
+            match event {
+                AppCommand::StartTask { .. } => {
+                    runner_tx.quit();
+                }
+                AppCommand::FinishTask { task, result, .. } => {
+                    statuses.insert(task, format!("Finished: {:?}", result));
+                }
+                AppCommand::Done => break,
+                _ => {}
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(DEFAULT_TEST_TIMEOUT_SECONDS), events)
+        .await
+        .expect("timed out");
+    runner_fut.await.unwrap().unwrap();
+
+    let mut expected = HashMap::new();
+    expected.insert(String::from("#server"), String::from("Finished: Stopped"));
+    assert_eq!(expected, statuses);
+}
+
 #[tokio::test]
 async fn test_vars() {
     setup();

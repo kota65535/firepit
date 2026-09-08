@@ -432,15 +432,20 @@ impl TaskRunner {
                                         manager.stop_by_pid(pid).await;
                                         NodeResult::Failure
                                     }
-                                    // The process finished before the probe, which is a failure regardless of the result
-                                    _ => {
+                                    // The process finished before the probe, which is a failure regardless of the result.
+                                    // Being killed is reported as such though, not as a readiness failure.
+                                    (_, result) => {
                                         info!("Task finished before it becomes ready");
                                         if let Err(e) = probe_cancel_tx.send(()) {
                                             warn!("Failed to send cancel probe: {:?}", e)
                                         }
                                         let end_time =  Local::now();
                                         end_times_cloned.lock().expect("not poisoned").insert(task.name.clone(), end_time);
-                                        app_tx.finish_task(TaskResult::NotReady, Some(end_time));
+                                        let result = match result {
+                                            Some(Some(TaskResult::Stopped)) => TaskResult::Stopped,
+                                            _ => TaskResult::NotReady,
+                                        };
+                                        app_tx.finish_task(result, Some(end_time));
                                         NodeResult::Failure
                                     }
                                 }
