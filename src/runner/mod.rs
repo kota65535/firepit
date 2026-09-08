@@ -309,8 +309,24 @@ impl TaskRunner {
                             return Ok::<(), anyhow::Error>(());
                         }
 
-                        // Load environment variables
-                        let env = task.env.load()?;
+                        // Load environment variables.
+                        // A dotenv file is read now, not when the workspace is built, so an edit
+                        // of it since the last run can make this fail.
+                        let env = match task.env.load() {
+                            Ok(env) => env,
+                            Err(e) => {
+                                warn!("Failed to load env of task {:?}: {:?}", task.name, e);
+                                // The error of a dotenv file quotes the offending line, which may
+                                // hold a secret, so only its top-level message is shown
+                                app_tx.notify(format!("{}: {}", task.name, e));
+                                app_tx.finish_task(TaskResult::Error, None);
+                                if let Err(e) = callback.send(CallbackMessage(NodeResult::Failure)).await {
+                                    warn!("Failed to send callback event: {:?}", e)
+                                }
+                                node_done();
+                                return Ok::<(), anyhow::Error>(());
+                            }
+                        };
 
                         info!(
                             "Task is starting.\nrun: {:?}\nrestart: {:?}\nshell: {:?} {:?}\ncommand: {:?}\nenv: {:?}\nworking_dir: {:?}",
@@ -321,13 +337,19 @@ impl TaskRunner {
 
                         let process = match Self::spawn_process(task.clone(), env, manager.clone()).await {
                             Ok(Some(process)) => process,
-                            Err(e) => {
+                            result => {
+                                let reason = match result {
+                                    Err(e) => format!("{}", e),
+                                    _ => String::from("the process manager is closed"),
+                                };
+                                warn!("Failed to spawn task {:?}: {}", task.name, reason);
+                                app_tx.notify(format!("{}: {}", task.name, reason));
                                 app_tx.finish_task(TaskResult::Error, None);
-                                anyhow::bail!("failed to spawn task {:?}: {:?}", task.name, e)
-                            }
-                            _ => {
-                                app_tx.finish_task(TaskResult::Error, None);
-                                anyhow::bail!("failed to spawn task {:?}", task.name)
+                                if let Err(e) = callback.send(CallbackMessage(NodeResult::Failure)).await {
+                                    warn!("Failed to send callback event: {:?}", e)
+                                }
+                                node_done();
+                                return Ok::<(), anyhow::Error>(());
                             }
                         };
                         let pid = process.pid().unwrap_or(0);

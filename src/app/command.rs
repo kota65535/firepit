@@ -47,6 +47,10 @@ pub enum AppCommand {
         stdin: Box<dyn Write + Send>,
     },
     PaneSizeQuery(oneshot::Sender<PaneSize>),
+    /// A message about a task, shown as a toast in the TUI and printed in the CUI.
+    Notify {
+        message: String,
+    },
     Done,
 
     ///
@@ -228,6 +232,11 @@ impl AppCommandChannel {
             result,
             datetime: end_time,
         })
+    }
+
+    /// Reports a message about the task to the user, ex: it failed before starting.
+    pub fn notify(&self, message: String) {
+        self.send(AppCommand::Notify { message })
     }
 
     pub fn output(&self, task: String, output: Vec<u8>) {

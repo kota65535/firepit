@@ -47,6 +47,10 @@ use unicode_width::UnicodeWidthStr;
 /// How long a transient toast (e.g. "Copied to clipboard") stays visible.
 const TOAST_DURATION: std::time::Duration = std::time::Duration::from_millis(1500);
 
+/// How long an error toast stays visible. Longer than [`TOAST_DURATION`]: it reports something
+/// the user did not ask for, so they need time to notice and read it.
+const ERROR_TOAST_DURATION: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// A short message shown in a box at the bottom of the screen.
 /// `expires_at: None` keeps the toast visible until it is replaced.
 #[derive(Debug, Clone)]
@@ -63,6 +67,14 @@ impl Toast {
             message: COPIED_TXT.to_string(),
             expires_at: Some(Instant::now() + TOAST_DURATION),
             clear_selection_on_expire: true,
+        }
+    }
+
+    fn error(message: &str) -> Self {
+        Self {
+            message: message.to_string(),
+            expires_at: Some(Instant::now() + ERROR_TOAST_DURATION),
+            clear_selection_on_expire: false,
         }
     }
 
@@ -1003,6 +1015,9 @@ impl TuiAppState {
             AppCommand::SetStdin { task, stdin } => {
                 self.insert_stdin(&task, Some(stdin))?;
             }
+            AppCommand::Notify { message } => {
+                self.toast = Some(Toast::error(&message));
+            }
             AppCommand::PaneSizeQuery(callback) => {
                 // If caller has already hung up do nothing
                 callback
@@ -1250,6 +1265,30 @@ mod tests {
         state.toast = Some(expired_copy_toast());
         assert!(state.expire_toast());
         assert!(state.toast.is_none());
+    }
+
+    #[test]
+    fn shows_an_error_toast_of_a_task_that_failed_to_start() {
+        let mut state = state(&["a"]);
+        let task = state.active_task_mut().unwrap();
+        task.output.process(b"hello world\r\n");
+        task.output.line_selection(0);
+
+        state.toast = Some(Toast::error("a: cannot parse env file \".env\""));
+
+        assert_eq!(
+            state.toast.as_ref().map(|t| t.message.as_str()),
+            Some("a: cannot parse env file \".env\"")
+        );
+        // An error toast outlives a copy toast, and leaves the selection alone when it expires
+        assert!(!state.expire_toast());
+        state.toast = Some(Toast {
+            expires_at: Some(Instant::now()),
+            ..Toast::error("a: cannot parse env file \".env\"")
+        });
+        assert!(state.expire_toast());
+        assert!(state.toast.is_none());
+        assert!(state.active_task().unwrap().output.has_selection());
     }
 
     #[test]

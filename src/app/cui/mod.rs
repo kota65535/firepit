@@ -148,6 +148,9 @@ impl CuiApp {
                     tasks_remaining.remove(&task);
                     debug!("Target tasks remaining: {:?}", tasks_remaining);
                 }
+                AppCommand::Notify { message } => {
+                    eprintln!("{}", RED.apply_to(&message));
+                }
                 AppCommand::Quit => {
                     // Keep processing output while the runner shuts down. The
                     // runner kills the tasks when it receives a second quit, and
