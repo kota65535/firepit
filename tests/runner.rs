@@ -760,6 +760,19 @@ async fn test_service_quit_dependents() {
     assert_eq!(expected, statuses);
 }
 
+/// A service killed by someone else before it becomes ready is `Killed`, not `NotReady`.
+#[tokio::test]
+async fn test_service_killed_before_ready() {
+    setup();
+    let path = BASE_PATH.join("service_killed_before_ready");
+    let tasks = vec![String::from("server")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#server"), String::from("Finished: Killed"));
+
+    run_task(&path, tasks, statuses, None, false).await.unwrap();
+}
+
 /// A process killed by someone else is a failure, unlike one stopped by firepit.
 #[tokio::test]
 async fn test_killed() {

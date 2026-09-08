@@ -340,7 +340,10 @@ impl TaskRunner {
                             // Notify the app the task started
                             app_tx.start_task(task.name.clone(), pid, num_restart, task.restart.max_restart(), num_runs, start_time);
 
-                            let node_result = if task.is_service {
+                            // The final result of the task. Every result but a success blocks
+                            // the dependents, but only a failure triggers fail-fast: a task
+                            // stopped on request should not stop the others.
+                            let result = if task.is_service {
                                 // Service task branch
                                 let (probe_cancel_tx, probe_cancel_rx) = watch::channel(());
                                 let log_rx = app_tx.subscribe_output();
@@ -420,10 +423,7 @@ impl TaskRunner {
                                     // The process finished after being ready
                                     (Some(true), Some(result)) => {
                                         info!("Task finished after being ready");
-                                        match result {
-                                            Some(TaskResult::Success) => NodeResult::Success,
-                                            _ => NodeResult::Failure,
-                                        }
+                                        result.unwrap_or(TaskResult::Unknown)
                                     }
                                     // The probe failed: kill the process
                                     (Some(false), _) => {
@@ -432,10 +432,10 @@ impl TaskRunner {
                                         end_times_cloned.lock().expect("not poisoned").insert(task.name.clone(),  Local::now());
                                         app_tx.finish_task(TaskResult::NotReady, Some(end_time));
                                         manager.stop_by_pid(pid).await;
-                                        NodeResult::Failure
+                                        TaskResult::NotReady
                                     }
                                     // The process finished before the probe, which is a failure regardless of the result.
-                                    // Being killed is reported as such though, not as a readiness failure.
+                                    // Being stopped or killed is reported as such though, not as a readiness failure.
                                     (_, result) => {
                                         info!("Task finished before it becomes ready");
                                         if let Err(e) = probe_cancel_tx.send(()) {
@@ -444,11 +444,11 @@ impl TaskRunner {
                                         let end_time =  Local::now();
                                         end_times_cloned.lock().expect("not poisoned").insert(task.name.clone(), end_time);
                                         let result = match result {
-                                            Some(Some(TaskResult::Stopped)) => TaskResult::Stopped,
+                                            Some(Some(r @ (TaskResult::Stopped | TaskResult::Killed))) => r,
                                             _ => TaskResult::NotReady,
                                         };
-                                        app_tx.finish_task(result, Some(end_time));
-                                        NodeResult::Failure
+                                        app_tx.finish_task(result.clone(), Some(end_time));
+                                        result
                                     }
                                 }
                             } else {
@@ -456,14 +456,17 @@ impl TaskRunner {
                                 let result = Self::run_process(task.clone(), process, app_tx.clone()).await?;
                                 let end_time =  Local::now();
                                 end_times_cloned.lock().expect("not poisoned").insert(task.name.clone(), end_time);
-                                app_tx.finish_task(result.clone().unwrap_or(TaskResult::Unknown), Some(end_time));
-                                match result {
-                                    Some(TaskResult::Success) => NodeResult::Success,
-                                    _ => NodeResult::Failure,
-                                }
+                                let result = result.unwrap_or(TaskResult::Unknown);
+                                app_tx.finish_task(result.clone(), Some(end_time));
+                                result
                             };
 
-                            if fail_fast && matches!(node_result, NodeResult::Failure) {
+                            let node_result = if result.is_success() {
+                                NodeResult::Success
+                            } else {
+                                NodeResult::Failure
+                            };
+                            if fail_fast && result.is_failure() {
                                 info!("Fail-fast enabled, stopping all tasks");
                                 command_tx.stop_tasks();
                             }
