@@ -14,9 +14,15 @@ pub static HELP_LINES: Lazy<Vec<&str>> = Lazy::new(|| HELP_TXT.lines().collect()
 /// Compute the rect for a toast message anchored at the bottom center of the
 /// screen, leaving one row of margin below.
 pub fn toast_rect(screen_width: u16, screen_height: u16, message: &str) -> Rect {
-    let content_height = message.lines().count().max(1);
     let content_width = message.lines().map(|line| line.len()).max().unwrap_or(0);
     let width = (content_width as u16 + 6).min(screen_width.saturating_sub(4));
+    // Lines wider than the box wrap, so count the rows they take up
+    let inner_width = width.saturating_sub(6).max(1) as usize;
+    let content_height = message
+        .lines()
+        .map(|line| line.len().div_ceil(inner_width).max(1))
+        .sum::<usize>()
+        .max(1);
     let height = (content_height as u16 + 2).min(screen_height.saturating_sub(2));
 
     let x = if screen_width > width {

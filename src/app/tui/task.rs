@@ -40,12 +40,11 @@ impl Task {
         }
     }
 
-    pub fn status(&self) -> TaskStatus {
-        self.status
+    pub fn status(&self) -> &TaskStatus {
+        &self.status
     }
     pub fn set_status(&mut self, status: TaskStatus) {
-        self.status = status;
-        match status {
+        match &status {
             TaskStatus::Running(run) => {
                 self.pid = Some(run.pid);
                 self.restart = run.restart;
@@ -54,11 +53,12 @@ impl Task {
                 self.start_time = Some(run.start_time);
             }
             TaskStatus::Finished(result, end_time) => {
-                self.result = Some(result);
-                self.end_time = end_time;
+                self.result = Some(result.clone());
+                self.end_time = *end_time;
             }
             _ => {}
         }
+        self.status = status;
     }
 
     pub fn persist_screen(&self) -> anyhow::Result<()> {
@@ -88,7 +88,7 @@ impl Task {
             None => "N/A".to_string(),
         };
 
-        let status = match self.status {
+        let status = match &self.status {
             TaskStatus::Planned => "Waiting".to_string(),
             TaskStatus::Running(_) => format!(
                 "Running, PID: {}, Restart: {}/{}, Reload: {}, Elapsed: {}",
@@ -130,25 +130,5 @@ impl Task {
         };
 
         format!("% {} ({})", self.label, status)
-    }
-
-    pub fn finish_line(&self) -> Option<String> {
-        match self.status {
-            TaskStatus::Running(info) => {
-                if info.restart > 0 || info.reload > 0 {
-                    Some("Process restarted".to_string())
-                } else {
-                    None
-                }
-            }
-            TaskStatus::Finished(result, _) => {
-                if result.is_failure() {
-                    Some(result.long_message(&self.name))
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }
     }
 }

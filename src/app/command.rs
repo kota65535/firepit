@@ -294,7 +294,7 @@ impl Write for AppCommandChannel {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TaskStatus {
     Planned,
     Running(TaskRun),
@@ -311,7 +311,7 @@ pub struct TaskRun {
     pub start_time: DateTime<Local>,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum TaskResult {
     /// Finished successfully
     Success,
@@ -334,8 +334,8 @@ pub enum TaskResult {
     /// Task is restarting due to the change of input
     Reloading,
 
-    /// Error occurred during task execution
-    Error,
+    /// Not run because of an error during execution, with the cause
+    Error(String),
 
     /// Unknown status
     Unknown,
@@ -352,7 +352,7 @@ impl TaskResult {
             TaskResult::Failure(_)
                 | TaskResult::Stopped
                 | TaskResult::NotReady
-                | TaskResult::Error
+                | TaskResult::Error(_)
                 | TaskResult::Unknown
         )
     }
@@ -366,7 +366,7 @@ impl TaskResult {
             TaskResult::Stopped => "Stopped".to_string(),
             TaskResult::NotReady => "Service not ready".to_string(),
             TaskResult::Reloading => "Service is reloading...".to_string(),
-            TaskResult::Error => "Error".to_string(),
+            TaskResult::Error(_) => "Error".to_string(),
             TaskResult::Unknown => "Unknown".to_string(),
         }
     }
@@ -380,7 +380,7 @@ impl TaskResult {
             TaskResult::Stopped => format!("Task {:?} is terminated", name),
             TaskResult::NotReady => format!("Service task {:?} is terminated because it did not become ready", name),
             TaskResult::Reloading => format!("Service task {:?} is reloading...", name),
-            TaskResult::Error => format!("Task {:?} in not run because of an error during execution", name),
+            TaskResult::Error(cause) => format!("Task {:?} is not run because of an error: {}", name, cause),
             TaskResult::Unknown => "Unknown".to_string(),
         }
     }

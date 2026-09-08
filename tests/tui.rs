@@ -194,6 +194,41 @@ fn task_status_title_and_icons() {
     );
 }
 
+/// A task that could not run shows the cause in red in its pane, which has no
+/// process output to mix with.
+#[test]
+fn error_result_shows_cause_in_pane() {
+    let mut tui = Tui::new(&["build"]);
+    tui.start_task("build", 42, 0, None);
+    tui.finish_task("build", TaskResult::Error("failed to spawn process: boom".to_string()));
+
+    let lines = tui.lines();
+    assert!(lines[0].contains("% build (Finished - Error, Restart"), "{}", lines[0]);
+    // Wraps at the pane width
+    assert_eq!(tui.pane_row(0), "Task \"build\" is not run because of an error: faile");
+    assert_eq!(tui.pane_row(1), "d to spawn process: boom");
+    assert_eq!(tui.cell(0, 0).fg, Color::Indexed(1)); // red
+    assert!(tui.pane_row(2).is_empty());
+}
+
+/// The TUI reports failed tasks the same way the CUI does, so the exit code matches.
+#[test]
+fn failed_tasks_are_collected_for_exit_code() {
+    let mut tui = Tui::new(&["build", "serve"]);
+    assert!(tui.state.failed_tasks().is_empty());
+
+    tui.start_task("build", 42, 0, None);
+    tui.finish_task("build", TaskResult::Success);
+    assert!(tui.state.failed_tasks().is_empty());
+
+    tui.start_task("serve", 43, 0, None);
+    tui.finish_task("serve", TaskResult::Failure(1));
+    assert_eq!(
+        tui.state.failed_tasks(),
+        vec![("serve".to_string(), TaskResult::Failure(1))]
+    );
+}
+
 #[test]
 fn ansi_attributes_are_rendered() {
     let mut tui = Tui::new(&["build"]);

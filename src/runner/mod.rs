@@ -363,9 +363,9 @@ impl TaskRunner {
 
                                             let end_time =  Local::now();
                                             end_times_cloned.lock().expect("not poisoned").insert(task.name.clone(),  Local::now());
-                                            app_tx.finish_task(result.unwrap_or(TaskResult::Unknown), Some(end_time));
+                                            app_tx.finish_task(result.clone().unwrap_or(TaskResult::Unknown), Some(end_time));
 
-                                            let should_restart = match result {
+                                            let should_restart = match &result {
                                                 Some(result) => {
                                                     match task.restart {
                                                         Restart::Never => false,
@@ -449,7 +449,7 @@ impl TaskRunner {
                                 let result = Self::run_process(task.clone(), process, app_tx.clone()).await?;
                                 let end_time =  Local::now();
                                 end_times_cloned.lock().expect("not poisoned").insert(task.name.clone(), end_time);
-                                app_tx.finish_task(result.unwrap_or(TaskResult::Unknown), Some(end_time));
+                                app_tx.finish_task(result.clone().unwrap_or(TaskResult::Unknown), Some(end_time));
                                 match result {
                                     Some(TaskResult::Success) => NodeResult::Success,
                                     _ => NodeResult::Failure,
@@ -477,7 +477,7 @@ impl TaskRunner {
                             if let Some(pid) = spawned_pid {
                                 manager.stop_by_pid(pid).await;
                             }
-                            app_tx.finish_task(TaskResult::Error, Some(Local::now()));
+                            app_tx.finish_task(TaskResult::Error(format!("{e:#}")), Some(Local::now()));
                             if fail_fast {
                                 command_tx.stop_tasks();
                             }
