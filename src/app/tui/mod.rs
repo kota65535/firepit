@@ -17,9 +17,7 @@ use crate::app::cui::lib::RED;
 use crate::app::print_failure_summary;
 use crate::app::signal::SignalHandler;
 use crate::app::tui::clipboard::copy_to_clipboard;
-use crate::app::tui::dialog::{
-    help_dialog_size, render_help_dialog, render_toast, COPIED_TXT, FORCE_QUIT_TXT, QUIT_TXT,
-};
+use crate::app::tui::dialog::{help_dialog_size, render_help_dialog, COPIED_TXT, FORCE_QUIT_TXT, QUIT_TXT};
 use crate::app::tui::input::{InputHandler, InputOptions};
 use crate::app::tui::pane::{TerminalPane, TerminalScroll};
 use crate::app::tui::search::{Match, SearchResults};
@@ -49,7 +47,7 @@ use unicode_width::UnicodeWidthStr;
 /// How long a transient toast (e.g. "Copied to clipboard") stays visible.
 const TOAST_DURATION: std::time::Duration = std::time::Duration::from_millis(1500);
 
-/// A short message shown in a box at the bottom of the screen.
+/// A short message shown in the pane footer.
 /// `expires_at: None` keeps the toast visible until it is replaced.
 #[derive(Debug, Clone)]
 pub struct Toast {
@@ -635,7 +633,14 @@ impl TuiAppState {
             .map(|span| span.segments.as_slice());
 
         // Render pane
-        let pane_to_render = TerminalPane::new(active_task, &self.focus, self.has_sidebar, hovered_segments);
+        let toast_message = self.toast.as_ref().map(|toast| toast.message.as_str());
+        let pane_to_render = TerminalPane::new(
+            active_task,
+            &self.focus,
+            self.has_sidebar,
+            hovered_segments,
+            toast_message,
+        );
         f.render_widget(&pane_to_render, pane);
 
         // Render pane scrollbar
@@ -651,11 +656,6 @@ impl TuiAppState {
         // Render help dialog
         if let LayoutSections::Help { scroll, max_scroll: _ } = self.focus {
             render_help_dialog(f, scroll);
-        }
-
-        // Render toast (copy notification, quit message, ...) above everything
-        if let Some(toast) = &self.toast {
-            render_toast(f, &toast.message);
         }
     }
 
@@ -1084,6 +1084,12 @@ impl TuiAppState {
                 runner_tx.quit();
             }
             AppCommand::Quit => {
+                // The help dialog covers the whole frame, so leave it: it would
+                // hide both the finalizer logs and the quit message, and force
+                // quit is only bound on the task list.
+                if matches!(self.focus, LayoutSections::Help { .. }) {
+                    self.focus = LayoutSections::TaskList(None);
+                }
                 if self.quitting {
                     self.force_quitting = true;
                 }

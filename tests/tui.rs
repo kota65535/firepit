@@ -548,3 +548,22 @@ fn entire_screen_includes_scrollback() {
     assert_eq!(parser.screen().cell(0, 0).unwrap().fgcolor(), vt100::Color::Idx(1));
     assert_eq!(parser.screen().cell(1, 0).unwrap().fgcolor(), vt100::Color::Idx(2));
 }
+
+#[test]
+fn quitting_closes_the_help_dialog_and_shows_the_quit_message() {
+    let mut tui = Tui::new(&["build"]);
+    tui.output(b"hello\r\n");
+
+    tui.send(AppCommand::OpenHelp);
+    assert!(tui.lines().iter().any(|l| l.contains("Basic")), "help dialog not shown");
+
+    // The help dialog covers the whole frame, so quitting must close it for
+    // the quit message and the task output to stay visible.
+    tui.send(AppCommand::Quit);
+    assert!(
+        !tui.lines().iter().any(|l| l.contains("Basic")),
+        "help dialog still shown"
+    );
+    assert!(tui.footer().contains("Quitting..."), "{}", tui.footer());
+    assert_eq!(tui.pane_row(0), "hello");
+}
