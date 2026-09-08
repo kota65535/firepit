@@ -691,7 +691,7 @@ pub struct TaskConfig {
     /// Template context of the rendered task. The values of the dotenv files are templates too,
     /// but they are read when the task runs, so the context is kept to render them then.
     #[serde(skip)]
-    pub context: Option<tera::Context>,
+    pub context: Option<std::sync::Arc<tera::Context>>,
 
     /// Dependency tasks
     #[serde(default)]

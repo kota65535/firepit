@@ -358,6 +358,7 @@ Environment variables can be defined in the `env` field.
 You can also specify [dotenv](https://github.com/motdotla/dotenv) files in the `env_files` field.
 The values of `env` and of the dotenv files are templates, so they can refer to variables.
 Quote a dotenv value containing spaces, ex: `URL="http://localhost:{{ port }}"`.
+Write a literal `{{` as `{{ "{{" }}`.
 The precedence of environment variables is as follows:
 
 1. Environment variables in the `env` field
