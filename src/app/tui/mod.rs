@@ -1084,6 +1084,12 @@ impl TuiAppState {
                 runner_tx.quit();
             }
             AppCommand::Quit => {
+                // The help dialog covers the whole frame, so leave it: it would
+                // hide both the finalizer logs and the quit message, and force
+                // quit is only bound on the task list.
+                if matches!(self.focus, LayoutSections::Help { .. }) {
+                    self.focus = LayoutSections::TaskList(None);
+                }
                 if self.quitting {
                     self.force_quitting = true;
                 }
