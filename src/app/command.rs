@@ -360,7 +360,9 @@ impl TaskResult {
         )
     }
 
-    pub fn short_message(&self) -> String {
+    /// One-line status. `with_cause` appends the cause of an `Error`, which can be
+    /// long, so it is left out where the space is tight such as the pane title.
+    pub fn short_message(&self, with_cause: bool) -> String {
         match self {
             TaskResult::Success => "Success".to_string(),
             TaskResult::Failure(code) => format!("Failed with exit code {code}"),
@@ -370,6 +372,7 @@ impl TaskResult {
             TaskResult::Killed => "Killed".to_string(),
             TaskResult::NotReady => "Service not ready".to_string(),
             TaskResult::Reloading => "Service is reloading...".to_string(),
+            TaskResult::Error(cause) if with_cause => format!("Error: {cause}"),
             TaskResult::Error(_) => "Error".to_string(),
             TaskResult::Unknown => "Unknown".to_string(),
         }
