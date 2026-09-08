@@ -4,60 +4,12 @@ use ratatui::style::Color;
 use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph, Wrap};
 use ratatui::Frame;
 
-pub const QUIT_TXT: &str = "Quitting...\n(Press q to force quit)";
-pub const FORCE_QUIT_TXT: &str = "Force quitting...";
-pub const COPIED_TXT: &str = "Copied to clipboard";
+pub const QUIT_TXT: &str = "\u{1FAA3} Quitting... (press q to force quit)"; // 🪣
+pub const FORCE_QUIT_TXT: &str = "\u{1F4A7} Force quitting..."; // 💧
+pub const COPIED_TXT: &str = "\u{1F4CB} Copied to clipboard"; // 📋
 const HELP_TXT: &str = include_str!("help.txt");
 
 pub static HELP_LINES: Lazy<Vec<&str>> = Lazy::new(|| HELP_TXT.lines().collect());
-
-/// Compute the rect for a toast message anchored at the bottom center of the
-/// screen, leaving one row of margin below.
-pub fn toast_rect(screen_width: u16, screen_height: u16, message: &str) -> Rect {
-    let content_width = message.lines().map(|line| line.len()).max().unwrap_or(0);
-    let width = (content_width as u16 + 6).min(screen_width.saturating_sub(4));
-    // Lines wider than the box wrap, so count the rows they take up
-    let inner_width = width.saturating_sub(6).max(1) as usize;
-    let content_height = message
-        .lines()
-        .map(|line| line.len().div_ceil(inner_width).max(1))
-        .sum::<usize>()
-        .max(1);
-    let height = (content_height as u16 + 2).min(screen_height.saturating_sub(2));
-
-    let x = if screen_width > width {
-        (screen_width - width) / 2
-    } else {
-        0
-    };
-    let y = screen_height.saturating_sub(height + 1);
-
-    Rect { x, y, width, height }
-}
-
-/// Render a transient toast message in a white-bordered box at the bottom of
-/// the screen.
-pub fn render_toast(f: &mut Frame, message: &str) {
-    let area = f.area();
-    let toast_area = toast_rect(area.width, area.height, message);
-
-    // Clear the background
-    f.render_widget(Clear, toast_area);
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::White))
-        .padding(Padding::horizontal(2));
-
-    let lines = message.lines().map(Line::from).collect::<Vec<_>>();
-
-    let paragraph = Paragraph::new(Text::from(lines))
-        .block(block)
-        .centered()
-        .wrap(Wrap { trim: true });
-
-    f.render_widget(paragraph, toast_area)
-}
 
 pub fn help_dialog_size(screen_width: u16, screen_height: u16) -> (Rect, usize, usize) {
     let content_height = HELP_LINES.len();

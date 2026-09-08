@@ -29,6 +29,7 @@ pub struct TerminalPane<'a> {
     section: &'a LayoutSections,
     has_sidebar: bool,
     hovered_segments: Option<&'a [UrlSegment]>,
+    toast: Option<&'a str>,
 }
 
 impl<'a> TerminalPane<'a> {
@@ -37,12 +38,14 @@ impl<'a> TerminalPane<'a> {
         section: &'a LayoutSections,
         has_sidebar: bool,
         hovered_segments: Option<&'a [UrlSegment]>,
+        toast: Option<&'a str>,
     ) -> Self {
         Self {
             task,
             section,
             has_sidebar,
             hovered_segments,
+            toast,
         }
     }
 
@@ -63,7 +66,9 @@ impl<'a> TerminalPane<'a> {
 
     fn left_footer(&self) -> Text<'_> {
         let mut help_spans = Vec::new();
-        let mut search_spans = Vec::new();
+        // The line above the key help shows the search input, or a transient
+        // message (copy notification, quit message, ...) when there is one.
+        let mut message_spans = Vec::new();
         match self.section {
             LayoutSections::Pane => {
                 help_spans.push(key_help_spans(*EXIT_INTERACTION));
@@ -88,15 +93,27 @@ impl<'a> TerminalPane<'a> {
             LayoutSections::Search { query } => {
                 help_spans.push(key_help_spans(*EXIT_SEARCH));
                 // Show cursor
-                search_spans.push(Span::styled(format!("/{}\u{2588}\n", query), Style::default().bold()));
+                message_spans.push(Span::styled(format!("/{}\u{2588}\n", query), Style::default().bold()));
             }
             LayoutSections::Help { .. } => {
                 // No footer content for help dialog
             }
         }
 
+        // A message takes the line over the search input: it only shows while
+        // quitting or right after a copy, when search input does not move on
+        // anyway. Unlike the search input it is centered like the key help.
+        let message_line = match self.toast {
+            Some(toast) => Line::from(Span::styled(
+                format!(" {} ", toast),
+                Style::default().bold().fg(Color::Black).bg(Color::White),
+            ))
+            .centered(),
+            None => Line::from(message_spans).left_aligned(),
+        };
+
         Text::from(vec![
-            Line::from(search_spans).left_aligned(),
+            message_line,
             Line::from(
                 Itertools::intersperse_with(help_spans.into_iter(), || vec![Span::raw("  ")])
                     .flatten()
