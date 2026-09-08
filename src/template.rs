@@ -213,8 +213,8 @@ impl ProjectConfig {
                             name: k.clone(),
                             command: s.command.clone(),
                             shell: s.shell.clone().unwrap_or(self.shell.clone()),
-                            env: Env::new()
-                                .with(&s.env_file_paths(&self.dir), &s.env, Arc::new(context.clone()))
+                            env: Env::new(Arc::new(context.clone()))
+                                .with(&s.env_file_paths(&self.dir), &s.env)
                                 .load()?,
                             working_dir: s.working_dir_path(&self.working_dir_path()),
                             cache: s.cache,
@@ -316,8 +316,8 @@ impl TaskConfig {
                                 .shell
                                 .clone()
                                 .unwrap_or(self.shell.clone().unwrap_or(config.shell.clone())),
-                            env: Env::new()
-                                .with(&s.env_file_paths(&config.dir), &s.env, Arc::new(context.clone()))
+                            env: Env::new(Arc::new(context.clone()))
+                                .with(&s.env_file_paths(&config.dir), &s.env)
                                 .load()?,
                             working_dir: s.working_dir_path(&self.working_dir_path(&config.working_dir_path())),
                             cache: s.cache,

@@ -555,32 +555,34 @@ impl WaitFor {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Env {
     configs: Vec<EnvConfig>,
-}
-
-impl Default for Env {
-    fn default() -> Self {
-        Self::new()
-    }
+    /// Renders the values of the dotenv files of every layer. They all belong to the same task,
+    /// so they share one context.
+    context: Arc<tera::Context>,
 }
 
 impl Env {
-    pub fn new() -> Self {
-        Self { configs: Vec::new() }
+    pub fn new(context: Arc<tera::Context>) -> Self {
+        Self {
+            configs: Vec::new(),
+            context,
+        }
     }
 
     /// Adds a layer overriding the previous ones: the dotenv files `env_files`, overridden by
-    /// `env`. The values of the dotenv files are templates, rendered with `context` when loaded.
-    pub fn with(&self, env_files: &[PathBuf], env: &IndexMap<String, String>, context: Arc<tera::Context>) -> Self {
+    /// `env`.
+    pub fn with(&self, env_files: &[PathBuf], env: &IndexMap<String, String>) -> Self {
         let mut configs = self.configs.clone();
         configs.push(EnvConfig {
             env_files: env_files.to_vec(),
             env: env.clone(),
-            context,
         });
-        Self { configs }
+        Self {
+            configs,
+            context: self.context.clone(),
+        }
     }
 
     /// Checks that the dotenv files can be parsed. Their values are not rendered: the task
@@ -592,7 +594,10 @@ impl Env {
 
     pub fn load(&self) -> anyhow::Result<HashMap<String, String>> {
         self.configs.iter().try_fold(HashMap::new(), |acc, config| {
-            Ok(acc.into_iter().chain(config.merged_env()?).collect::<HashMap<_, _>>())
+            Ok(acc
+                .into_iter()
+                .chain(config.merged_env(&self.context)?)
+                .collect::<HashMap<_, _>>())
         })
     }
 }
@@ -601,14 +606,12 @@ impl Env {
 pub struct EnvConfig {
     pub env_files: Vec<PathBuf>,
     pub env: IndexMap<String, String>,
-    /// Template context rendering the values of the dotenv files.
-    pub context: Arc<tera::Context>,
 }
 
 impl EnvConfig {
-    pub fn merged_env(&self) -> anyhow::Result<HashMap<String, String>> {
+    pub fn merged_env(&self, context: &tera::Context) -> anyhow::Result<HashMap<String, String>> {
         Ok(self
-            .load_env_files()?
+            .load_env_files(context)?
             .into_iter()
             .chain(self.env.clone())
             .collect::<HashMap<_, _>>())
@@ -635,7 +638,7 @@ impl EnvConfig {
     }
 
     /// Reads the dotenv files and renders their values, a later file overriding an earlier one.
-    fn load_env_files(&self) -> anyhow::Result<HashMap<String, String>> {
+    fn load_env_files(&self, context: &tera::Context) -> anyhow::Result<HashMap<String, String>> {
         let mut tera = new_tera();
         let mut ret = HashMap::new();
         for (f, key, value) in self.read_env_files()? {
@@ -645,7 +648,7 @@ impl EnvConfig {
             tera.add_raw_template(&key, &value)
                 .map_err(|_| anyhow::anyhow!("cannot parse the template of {:?} in env file {:?}", key, f))?;
             let value = tera
-                .render(&key, &self.context)
+                .render(&key, context)
                 .with_context(|| format!("cannot render {:?} in env file {:?}", key, f))?;
             ret.insert(key, value);
         }
@@ -689,13 +692,9 @@ impl Task {
             .context
             .clone()
             .with_context(|| format!("task {:?} is not rendered", task_name))?;
-        let env = Env::new()
-            .with(&config.env_file_paths(), &config.env, context.clone())
-            .with(
-                &task_config.env_file_paths(&config.dir),
-                &task_config.env,
-                context.clone(),
-            )
+        let env = Env::new(context)
+            .with(&config.env_file_paths(), &config.env)
+            .with(&task_config.env_file_paths(&config.dir), &task_config.env)
             .verify()?;
 
         // Depends On
@@ -738,9 +737,7 @@ impl Task {
                                 // Working directory
                                 let hc_working_dir = c.working_dir_path(&task_working_dir);
                                 // Environment variables
-                                let env = env
-                                    .with(&c.env_files_paths(&config.dir), &c.env, context.clone())
-                                    .verify()?;
+                                let env = env.with(&c.env_files_paths(&config.dir), &c.env).verify()?;
 
                                 Probe::Exec(ExecProbe::new(
                                     &task_name,
