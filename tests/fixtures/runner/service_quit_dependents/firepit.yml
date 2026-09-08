@@ -1,0 +1,16 @@
+tasks:
+  app:
+    command: echo "app"
+    depends_on:
+      - server
+
+  server:
+    command: sleep 30
+    service:
+      healthcheck:
+        log: never printed
+    finalized_by:
+      - cleanup
+
+  cleanup:
+    command: sleep 1

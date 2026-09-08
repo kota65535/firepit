@@ -229,6 +229,47 @@ fn failed_tasks_are_collected_for_exit_code() {
     );
 }
 
+/// The summary reflects the final state: tasks stopped by quitting are not
+/// failures, a task that failed before quitting still is.
+#[test]
+fn failed_tasks_are_the_final_state_without_stopped() {
+    let mut tui = Tui::new(&["serve", "build"]);
+    tui.start_task("build", 42, 0, None);
+    tui.finish_task("build", TaskResult::Failure(1));
+
+    tui.start_task("serve", 43, 0, None);
+    tui.send(AppCommand::Quit);
+    tui.finish_task("serve", TaskResult::Stopped);
+    assert_eq!(
+        tui.state.failed_tasks(),
+        vec![("build".to_string(), TaskResult::Failure(1))]
+    );
+}
+
+/// A task fixed by a restart is not a failure anymore.
+#[test]
+fn failed_tasks_forget_a_failure_fixed_by_restart() {
+    let mut tui = Tui::new(&["build"]);
+    tui.start_task("build", 42, 0, None);
+    tui.finish_task("build", TaskResult::Failure(1));
+    assert_eq!(tui.state.failed_tasks().len(), 1);
+
+    tui.start_task("build", 43, 1, None);
+    tui.finish_task("build", TaskResult::Success);
+    assert!(tui.state.failed_tasks().is_empty());
+}
+
+/// A stopped task is not a failure: the header says so instead.
+#[test]
+fn stopped_tasks_are_not_failures() {
+    let mut tui = Tui::new(&["serve"]);
+    tui.start_task("serve", 42, 0, None);
+    tui.finish_task("serve", TaskResult::Stopped);
+
+    assert!(tui.lines()[0].starts_with("🏕  Tasks  Stopped "), "{}", tui.lines()[0]);
+    assert!(tui.state.failed_tasks().is_empty());
+}
+
 #[test]
 fn ansi_attributes_are_rendered() {
     let mut tui = Tui::new(&["build"]);

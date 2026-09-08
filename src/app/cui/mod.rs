@@ -30,8 +30,6 @@ pub struct CuiApp {
     command_rx: mpsc::UnboundedReceiver<AppCommand>,
     signal_handler: SignalHandler,
     target_tasks: Vec<String>,
-    /// Finalizers run while quitting, so their failures count unlike the tasks stopped by it
-    finalizer_tasks: HashSet<String>,
     labels: HashMap<String, String>,
     quit_on_done: bool,
     fail_fast: bool,
@@ -41,7 +39,6 @@ pub struct CuiApp {
 impl CuiApp {
     pub fn new(
         target_tasks: &[String],
-        finalizer_tasks: &[String],
         labels: &HashMap<String, String>,
         quit_on_done: bool,
         fail_fast: bool,
@@ -55,7 +52,6 @@ impl CuiApp {
             command_rx,
             signal_handler: SignalHandler::infer()?,
             target_tasks: target_tasks.to_vec(),
-            finalizer_tasks: finalizer_tasks.iter().cloned().collect(),
             labels: labels.clone(),
             quit_on_done,
             fail_fast,
@@ -138,8 +134,7 @@ impl CuiApp {
                 } => {
                     debug!("Task {:?} finished", task);
 
-                    // Tasks stopped by the quit are not failures, but the finalizers run through it
-                    if result.is_failure() && (!quitting || self.finalizer_tasks.contains(&task)) {
+                    if result.is_failure() {
                         eprintln!(
                             "{}",
                             RED.apply_to(result.long_message(self.labels.get(&task).unwrap_or(&task)).to_string())

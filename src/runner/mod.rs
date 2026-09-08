@@ -283,10 +283,12 @@ impl TaskRunner {
                         // error happens after it has started.
                         let mut spawned_pid = None;
                         let run = async {
-                            // Skip the task if any dependency task didn't finish successfully
-                            if !deps_ok {
-                                info!("Task does not run as its dependency task failed");
-                                app_tx.finish_task(TaskResult::BadDeps, None);
+                            // Skip the task if the runner is quitting, unless it is a finalizer.
+                            // Checked first so that the dependents of the tasks stopped by
+                            // quitting are stopped too, not failed.
+                            if quitting_cloned.load(Ordering::SeqCst) && !is_finalizer {
+                                info!("Task does not run as the runner is quitting");
+                                app_tx.finish_task(TaskResult::Stopped, None);
                                 if let Err(e) = callback.send(CallbackMessage(NodeResult::Failure)).await {
                                     warn!("Failed to send callback event: {:?}", e)
                                 }
@@ -294,10 +296,10 @@ impl TaskRunner {
                                 return Ok::<(), anyhow::Error>(());
                             }
 
-                            // Skip the task if the runner is quitting, unless it is a finalizer
-                            if quitting_cloned.load(Ordering::SeqCst) && !is_finalizer {
-                                info!("Task does not run as the runner is quitting");
-                                app_tx.finish_task(TaskResult::Stopped, None);
+                            // Skip the task if any dependency task didn't finish successfully
+                            if !deps_ok {
+                                info!("Task does not run as its dependency task failed");
+                                app_tx.finish_task(TaskResult::BadDeps, None);
                                 if let Err(e) = callback.send(CallbackMessage(NodeResult::Failure)).await {
                                     warn!("Failed to send callback event: {:?}", e)
                                 }
@@ -623,7 +625,8 @@ impl TaskRunner {
             Ok(Some(exit_status)) => match exit_status {
                 ChildExit::Finished(Some(0)) => TaskResult::Success,
                 ChildExit::Finished(Some(code)) => TaskResult::Failure(code),
-                ChildExit::Killed | ChildExit::KilledExternal => TaskResult::Stopped,
+                ChildExit::Killed => TaskResult::Stopped,
+                ChildExit::KilledExternal => TaskResult::Killed,
                 ChildExit::Failed => TaskResult::Unknown,
                 _ => TaskResult::Unknown,
             },

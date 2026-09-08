@@ -705,6 +705,74 @@ async fn test_service_quit_before_ready() {
     assert_eq!(expected, statuses);
 }
 
+/// Quitting stops the tasks that have not started yet, including the dependents of
+/// the stopped ones: they are not dependency failures.
+#[tokio::test]
+async fn test_service_quit_dependents() {
+    setup();
+    let path = path::absolute(BASE_PATH.join("service_quit_dependents")).unwrap();
+    let tasks = vec![String::from("app")];
+
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &tasks,
+        &path,
+        &IndexMap::new(),
+        false,
+        false,
+        None,
+        Some(false),
+    )
+    .await
+    .unwrap();
+    let mut runner = TaskRunner::new(&ws).unwrap();
+    let (app_tx, mut app_rx) = AppCommandChannel::new();
+    let runner_tx = runner.command_tx.clone();
+    let runner_fut = tokio::spawn(async move { runner.run(&app_tx, false).await });
+
+    let mut statuses = HashMap::new();
+    let events = async {
+        while let Some(event) = app_rx.recv().await {
+            match event {
+                AppCommand::StartTask { task, .. } if task == "#server" => {
+                    runner_tx.quit();
+                }
+                AppCommand::FinishTask { task, result, .. } => {
+                    statuses.insert(task, format!("Finished: {:?}", result));
+                }
+                AppCommand::Done => break,
+                _ => {}
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(DEFAULT_TEST_TIMEOUT_SECONDS), events)
+        .await
+        .expect("timed out");
+    runner_fut.await.unwrap().unwrap();
+
+    // The finalizer keeps the runner going long enough for `app` to be visited
+    let mut expected = HashMap::new();
+    expected.insert(String::from("#server"), String::from("Finished: Stopped"));
+    expected.insert(String::from("#cleanup"), String::from("Finished: Success"));
+    expected.insert(String::from("#app"), String::from("Finished: Stopped"));
+    assert_eq!(expected, statuses);
+}
+
+/// A process killed by someone else is a failure, unlike one stopped by firepit.
+#[tokio::test]
+async fn test_killed() {
+    setup();
+    let path = BASE_PATH.join("killed");
+    let tasks = vec![String::from("foo")];
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("#foo"), String::from("Finished: Killed"));
+
+    run_task(&path, tasks, statuses, None, false).await.unwrap();
+}
+
 #[tokio::test]
 async fn test_vars() {
     setup();
