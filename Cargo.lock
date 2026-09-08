@@ -3881,11 +3881,9 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 [[package]]
 name = "vt100"
 version = "0.16.2"
-source = "git+https://github.com/kota65535/vt100-rust?rev=b59958d550c083ec999004c95777c9e8e548c975#b59958d550c083ec999004c95777c9e8e548c975"
+source = "git+https://github.com/kota65535/vt100-rust?rev=7244e7476c8ffba5904b38681a3470afbb2e6e7f#7244e7476c8ffba5904b38681a3470afbb2e6e7f"
 dependencies = [
  "itoa",
- "ratatui",
- "tui-term",
  "unicode-width 0.2.2",
  "vte",
 ]
