@@ -3880,36 +3880,24 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vt100"
-version = "0.15.2"
-source = "git+https://github.com/kota65535/vt100-rust?rev=580026b#580026bda7e051a735f076860966a480d04c2833"
+version = "0.16.2"
+source = "git+https://github.com/kota65535/vt100-rust?rev=b59958d550c083ec999004c95777c9e8e548c975#b59958d550c083ec999004c95777c9e8e548c975"
 dependencies = [
  "itoa",
- "log",
  "ratatui",
  "tui-term",
- "unicode-width 0.1.14",
+ "unicode-width 0.2.2",
  "vte",
 ]
 
 [[package]]
 name = "vte"
-version = "0.11.1"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5022b5fbf9407086c180e9557be968742d839e68346af7792b8592489732197"
+checksum = "a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd"
 dependencies = [
  "arrayvec",
- "utf8parse",
- "vte_generate_state_changes",
-]
-
-[[package]]
-name = "vte_generate_state_changes"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e369bee1b05d510a7b4ed645f5faa90619e05437111783ea5848f28d97d3c2e"
-dependencies = [
- "proc-macro2",
- "quote",
+ "memchr",
 ]
 
 [[package]]

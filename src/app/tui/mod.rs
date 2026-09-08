@@ -129,37 +129,14 @@ impl TuiApp {
         let signal_handler = SignalHandler::infer()?;
 
         let rect = terminal.size()?;
-        let size = SizeInfo::new(
+        let state = TuiAppState::new(
             rect.height,
             rect.width,
-            target_tasks
-                .iter()
-                .chain(dep_tasks.iter())
-                .map(|s| labels.get(s).unwrap_or(s).as_str()),
+            target_tasks,
+            dep_tasks,
+            finalizer_tasks,
+            labels,
         );
-
-        debug!("Terminal size: height={} width={}", rect.height, rect.width);
-
-        let has_sidebar = true;
-        let output_raws = size.pane_rows();
-        let output_cols = size.output_cols(has_sidebar);
-        let tasks = target_tasks
-            .iter()
-            .map(|t| (t, true))
-            .chain(dep_tasks.iter().map(|t| (t, false)))
-            .map(|(t, b)| {
-                let mut task = Task::new(
-                    t,
-                    b,
-                    TerminalOutput::new(output_raws, output_cols, None),
-                    labels.get(t).map(|t| t.as_str()),
-                );
-                task.is_finalizer = finalizer_tasks.contains(t);
-                (t.clone(), task)
-            })
-            .collect::<IndexMap<_, _>>();
-
-        let selected_task_index = 0;
 
         Ok(Self {
             terminal,
@@ -168,22 +145,7 @@ impl TuiApp {
             command_rx,
             input_handler,
             signal_handler,
-            state: TuiAppState {
-                size,
-                tasks,
-                focus: LayoutSections::TaskList(None),
-                table: TableState::default().with_selected(selected_task_index),
-                scrollbar: ScrollbarState::default(),
-                selected_task_index,
-                has_sidebar,
-                quitting: false,
-                force_quitting: false,
-                done: false,
-                detected_urls: Vec::new(),
-                hovered_url_index: None,
-                toast: None,
-                pending_copy_at: None,
-            },
+            state,
         })
     }
 
@@ -323,6 +285,68 @@ impl TuiApp {
 }
 
 impl TuiAppState {
+    /// Creates the TUI state for the given terminal size and tasks.
+    ///
+    /// Independent of any real terminal so that it can be rendered onto a
+    /// `ratatui::backend::TestBackend` in tests.
+    pub fn new(
+        rows: u16,
+        cols: u16,
+        target_tasks: &[String],
+        dep_tasks: &[String],
+        finalizer_tasks: &[String],
+        labels: &HashMap<String, String>,
+    ) -> Self {
+        let size = SizeInfo::new(
+            rows,
+            cols,
+            target_tasks
+                .iter()
+                .chain(dep_tasks.iter())
+                .map(|s| labels.get(s).unwrap_or(s).as_str()),
+        );
+
+        debug!("Terminal size: height={} width={}", rows, cols);
+
+        let has_sidebar = true;
+        let output_raws = size.pane_rows();
+        let output_cols = size.output_cols(has_sidebar);
+        let tasks = target_tasks
+            .iter()
+            .map(|t| (t, true))
+            .chain(dep_tasks.iter().map(|t| (t, false)))
+            .map(|(t, b)| {
+                let mut task = Task::new(
+                    t,
+                    b,
+                    TerminalOutput::new(output_raws, output_cols, None),
+                    labels.get(t).map(|t| t.as_str()),
+                );
+                task.is_finalizer = finalizer_tasks.contains(t);
+                (t.clone(), task)
+            })
+            .collect::<IndexMap<_, _>>();
+
+        let selected_task_index = 0;
+
+        Self {
+            size,
+            tasks,
+            focus: LayoutSections::TaskList(None),
+            table: TableState::default().with_selected(selected_task_index),
+            scrollbar: ScrollbarState::default(),
+            selected_task_index,
+            has_sidebar,
+            quitting: false,
+            force_quitting: false,
+            done: false,
+            detected_urls: Vec::new(),
+            hovered_url_index: None,
+            toast: None,
+            pending_copy_at: None,
+        }
+    }
+
     pub fn active_task(&self) -> anyhow::Result<&Task> {
         self.nth_task(self.selected_task_index)
     }
@@ -951,7 +975,7 @@ impl TuiAppState {
         Ok(())
     }
 
-    fn update(&mut self, event: AppCommand, runner_tx: &RunnerCommandChannel) -> anyhow::Result<()> {
+    pub fn update(&mut self, event: AppCommand, runner_tx: &RunnerCommandChannel) -> anyhow::Result<()> {
         match event {
             AppCommand::PlanTask { task } => {
                 self.plan_task(&task)?;
