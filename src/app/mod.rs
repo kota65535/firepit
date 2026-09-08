@@ -29,7 +29,7 @@ pub fn print_failure_summary(failed: &[(String, TaskResult)], fail_fast: bool) {
             for (label, result) in failed {
                 eprintln!(
                     "{}",
-                    RED.apply_to(format!("* {:max_label_len$} : {}", label, result.short_message()))
+                    RED.apply_to(format!("* {:max_label_len$} : {}", label, result.short_message(true)))
                 );
             }
         }
