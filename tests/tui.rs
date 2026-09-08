@@ -74,7 +74,7 @@ impl Tui {
         let buf = self.draw();
         let area = *buf.area();
         (0..area.height)
-            .map(|y| (0..area.width).map(|x| buf.get(x, y).symbol()).collect())
+            .map(|y| (0..area.width).map(|x| buf[(x, y)].symbol()).collect())
             .collect()
     }
 
@@ -87,7 +87,7 @@ impl Tui {
     fn pane_x(&mut self) -> u16 {
         let buf = self.draw();
         (0..buf.area().width)
-            .find(|&x| buf.get(x, 1).symbol() == "│")
+            .find(|&x| buf[(x, 1)].symbol() == "│")
             .map(|x| x + 1)
             .unwrap_or(0)
     }
@@ -95,7 +95,7 @@ impl Tui {
     /// Cell at pane-relative coordinates (row 0 = first output row).
     fn cell(&mut self, row: u16, col: u16) -> Cell {
         let x = self.pane_x() + col;
-        self.draw().get(x, PANE_Y + row).clone()
+        self.draw()[(x, PANE_Y + row)].clone()
     }
 
     /// Text of one pane output row (trailing spaces trimmed, scrollbar excluded).
@@ -104,7 +104,7 @@ impl Tui {
         let buf = self.draw();
         let width = buf.area().width;
         (x0..width - 1)
-            .map(|x| buf.get(x, PANE_Y + row).symbol())
+            .map(|x| buf[(x, PANE_Y + row)].symbol())
             .collect::<String>()
             .trim_end()
             .trim_end_matches('█') // cursor
@@ -122,7 +122,7 @@ impl Tui {
     fn scrollbar(&mut self) -> String {
         let buf = self.draw();
         let x = buf.area().width - 1;
-        (0..ROWS).map(|y| buf.get(x, y).symbol()).collect()
+        (0..ROWS).map(|y| buf[(x, y)].symbol()).collect()
     }
 
     fn start_task(&mut self, task: &str, pid: u32, restart: u64, max_restart: Option<u64>) {

@@ -3,7 +3,7 @@ use crate::app::tui::lib::key_help_spans;
 use crate::app::tui::task::Task;
 use crate::app::tui::LayoutSections;
 use itertools::Itertools;
-use ratatui::prelude::{Color, Constraint, Layout, Modifier, Rect, Span, Stylize, Text};
+use ratatui::prelude::{Color, Constraint, Layout, Modifier, Rect, Span, Text};
 use ratatui::widgets::{Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget};
 use ratatui::{
     style::Style,
@@ -157,7 +157,7 @@ impl<'a> Widget for &TerminalPane<'a> {
                     let x = inner.x + col;
                     let y = inner.y + seg.row;
                     if x < inner.right() && y < inner.bottom() {
-                        let cell = buf.get_mut(x, y);
+                        let cell = &mut buf[(x, y)];
                         cell.set_style(Style::default().fg(Color::Blue).add_modifier(Modifier::UNDERLINED));
                     }
                 }

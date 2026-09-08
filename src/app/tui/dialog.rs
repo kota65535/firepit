@@ -1,8 +1,6 @@
 use once_cell::sync::Lazy;
-use ratatui::layout::Alignment;
 use ratatui::prelude::{Line, Rect, Span, Style, Text};
 use ratatui::style::Color;
-use ratatui::widgets::block::{Position, Title};
 use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph, Wrap};
 use ratatui::Frame;
 
@@ -34,7 +32,7 @@ pub fn toast_rect(screen_width: u16, screen_height: u16, message: &str) -> Rect 
 /// Render a transient toast message in a white-bordered box at the bottom of
 /// the screen.
 pub fn render_toast(f: &mut Frame, message: &str) {
-    let area = f.size();
+    let area = f.area();
     let toast_area = toast_rect(area.width, area.height, message);
 
     // Clear the background
@@ -77,7 +75,7 @@ pub fn help_dialog_size(screen_width: u16, screen_height: u16) -> (Rect, usize, 
 }
 
 pub fn render_help_dialog(f: &mut Frame, scroll: usize) {
-    let area = f.size();
+    let area = f.area();
 
     // Clear the entire background
     f.render_widget(Clear, area);
@@ -111,12 +109,8 @@ pub fn render_help_dialog(f: &mut Frame, scroll: usize) {
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(Title::from(" Help ").position(Position::Top).alignment(Alignment::Left))
-        .title(
-            Title::from(Line::from(instruction))
-                .position(Position::Top)
-                .alignment(Alignment::Right),
-        )
+        .title_top(Line::from(" Help ").left_aligned())
+        .title_top(Line::from(instruction).right_aligned())
         .padding(Padding::horizontal(2));
 
     // Create message paragraph

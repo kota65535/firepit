@@ -83,6 +83,28 @@ pub enum LayoutSections {
     Help { scroll: usize, max_scroll: usize },
 }
 
+/// Takes the terminal back out of raw mode when dropped.
+///
+/// Leaving raw mode enabled hands the user back a shell with no echo and no
+/// LF -> CRLF translation, so its output comes out staircased. Tying it to a
+/// guard means no early return - from setup, from `cleanup`, or from anything
+/// added to them later - can skip it.
+struct RawModeGuard;
+
+impl RawModeGuard {
+    /// Puts the terminal into raw mode, restoring it when the guard drops.
+    fn enable() -> anyhow::Result<Self> {
+        crossterm::terminal::enable_raw_mode()?;
+        Ok(Self)
+    }
+}
+
+impl Drop for RawModeGuard {
+    fn drop(&mut self) {
+        crossterm::terminal::disable_raw_mode().ok();
+    }
+}
+
 pub struct TuiApp {
     terminal: Terminal<CrosstermBackend<Stdout>>,
     crossterm_rx: mpsc::Receiver<crossterm::event::Event>,
@@ -91,6 +113,7 @@ pub struct TuiApp {
     input_handler: InputHandler,
     signal_handler: SignalHandler,
     state: TuiAppState,
+    _raw_mode: RawModeGuard,
 }
 
 pub struct TuiAppState {
@@ -122,6 +145,8 @@ impl TuiApp {
         finalizer_tasks: &[String],
         labels: &HashMap<String, String>,
     ) -> anyhow::Result<Self> {
+        // Held first, so every fallible step below leaves the terminal restored.
+        let raw_mode = RawModeGuard::enable()?;
         let terminal = Self::setup_terminal()?;
         let input_handler = InputHandler::new();
         let crossterm_rx = input_handler.start();
@@ -146,11 +171,11 @@ impl TuiApp {
             input_handler,
             signal_handler,
             state,
+            _raw_mode: raw_mode,
         })
     }
 
     fn setup_terminal() -> anyhow::Result<Terminal<CrosstermBackend<Stdout>>> {
-        crossterm::terminal::enable_raw_mode()?;
         let mut stdout = io::stdout();
         // Ensure all pending writes are flushed before we switch to alternative screen
         stdout.flush()?;
@@ -271,12 +296,18 @@ impl TuiApp {
     }
 
     fn cleanup(&mut self) -> anyhow::Result<()> {
-        self.terminal.clear()?;
+        // The screen is not cleared before leaving the alternate screen: the
+        // primary screen is restored with its previous contents anyway, and
+        // `Terminal::clear` asks the terminal for the cursor position, which
+        // never answers here because `InputHandler` is reading stdin on
+        // another thread and consumes the reply.
         crossterm::execute!(
             self.terminal.backend_mut(),
             crossterm::event::DisableMouseCapture,
             crossterm::terminal::LeaveAlternateScreen
         )?;
+        // Writes the tasks' output to the primary screen with explicit CRLFs,
+        // so it has to happen while raw mode is still on.
         self.state.persist_tasks()?;
         crossterm::terminal::disable_raw_mode()?;
         self.terminal.show_cursor()?;
@@ -536,7 +567,7 @@ impl TuiAppState {
         } else {
             Layout::horizontal([Constraint::Max(0), Constraint::Length(cols)])
         };
-        let [table, pane] = horizontal.areas(f.size());
+        let [table, pane] = horizontal.areas(f.area());
 
         // Update cached URLs for hover/click detection.
         // Separate borrow scope: detect_urls returns owned data, so the
