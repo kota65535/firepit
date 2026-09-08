@@ -1,0 +1,6 @@
+tasks:
+  server:
+    command: kill -9 $$
+    service:
+      healthcheck:
+        log: never printed

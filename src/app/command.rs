@@ -319,8 +319,11 @@ pub enum TaskResult {
     /// Finished with non-zero exit code
     Failure(i32),
 
-    /// Killed by signal
+    /// Stopped by firepit: quitting, a stop request, fail-fast or a restart
     Stopped,
+
+    /// Killed by someone else
+    Killed,
 
     /// Not run because dependency task failed
     BadDeps,
@@ -350,7 +353,7 @@ impl TaskResult {
         matches!(
             self,
             TaskResult::Failure(_)
-                | TaskResult::Stopped
+                | TaskResult::Killed
                 | TaskResult::NotReady
                 | TaskResult::Error(_)
                 | TaskResult::Unknown
@@ -364,6 +367,7 @@ impl TaskResult {
             TaskResult::UpToDate => "Up-to-date".to_string(),
             TaskResult::BadDeps => "Dependency task failed".to_string(),
             TaskResult::Stopped => "Stopped".to_string(),
+            TaskResult::Killed => "Killed".to_string(),
             TaskResult::NotReady => "Service not ready".to_string(),
             TaskResult::Reloading => "Service is reloading...".to_string(),
             TaskResult::Error(_) => "Error".to_string(),
@@ -378,6 +382,7 @@ impl TaskResult {
             TaskResult::UpToDate => format!("Task {:?} is not run because it is up-to-date", name),
             TaskResult::BadDeps => format!("Task {:?} is not run because dependency task(s) failed", name),
             TaskResult::Stopped => format!("Task {:?} is terminated", name),
+            TaskResult::Killed => format!("Task {:?} is killed by signal", name),
             TaskResult::NotReady => format!("Service task {:?} is terminated because it did not become ready", name),
             TaskResult::Reloading => format!("Service task {:?} is reloading...", name),
             TaskResult::Error(cause) => format!("Task {:?} is not run because of an error: {}", name, cause),

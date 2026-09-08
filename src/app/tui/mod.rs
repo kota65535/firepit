@@ -516,10 +516,10 @@ impl TuiAppState {
         result: TaskResult,
         datetime: Option<DateTime<Local>>,
     ) -> anyhow::Result<()> {
+        let t = self.task_mut(task)?;
         // A task that could not run has produced no output, so its pane is free
         // to show the cause without mixing with process output.
         if matches!(result, TaskResult::Error(_)) {
-            let t = self.task_mut(task)?;
             // Force the styling: `console` would drop it when stdout is not a TTY,
             // but the pane is a terminal emulator regardless.
             let line = format!(
@@ -561,8 +561,9 @@ impl TuiAppState {
         }
     }
 
-    /// Tasks that finished with a failure, as `(label, result)` pairs, for the
-    /// end-of-run summary and the exit code. Same rule as the CUI.
+    /// Tasks that are failed when the app exits, as `(label, result)` pairs, for
+    /// the end-of-run summary and the exit code. This is what the sidebar shows at
+    /// that moment: a task fixed by a restart or a reload is not a failure anymore.
     pub fn failed_tasks(&self) -> Vec<(String, TaskResult)> {
         self.tasks
             .values()

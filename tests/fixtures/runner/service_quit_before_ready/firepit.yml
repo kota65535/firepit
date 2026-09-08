@@ -1,0 +1,6 @@
+tasks:
+  server:
+    command: sleep 30
+    service:
+      healthcheck:
+        log: never printed

@@ -65,7 +65,9 @@ impl TaskTable<'_> {
                         // Append `\u{FE0F}` (Variation Selector-16) so that the terminal treat the emoji as full-width
                         match r {
                             TaskResult::Success => Cell::new(Text::raw("\u{2705}\u{FE0F}")), // ✅
-                            TaskResult::Failure(_) | TaskResult::NotReady => Cell::new(Text::raw("\u{274C}\u{FE0F}")), // ❌
+                            TaskResult::Failure(_) | TaskResult::Killed | TaskResult::NotReady => {
+                                Cell::new(Text::raw("\u{274C}\u{FE0F}")) // ❌
+                            }
                             TaskResult::UpToDate => Cell::new(Text::raw("\u{1F96C}")), // 🥬
                             TaskResult::BadDeps => Cell::new(Text::raw("\u{26A0}\u{FE0F}")), // ⚠️
                             TaskResult::Stopped => Cell::new(Text::raw("\u{1F6AB}")),  // 🚫
@@ -98,6 +100,15 @@ impl TaskTable<'_> {
             )
         }) {
             return Line::styled(" Running ", Style::default().fg(Color::White).bg(Color::Blue));
+        }
+
+        // Stopped: nothing failed, but some tasks were stopped, e.g. by quitting
+        if self
+            .tasks
+            .values()
+            .any(|t| matches!(t.status(), TaskStatus::Finished(TaskResult::Stopped, _)))
+        {
+            return Line::styled(" Stopped ", Style::default().fg(Color::White).bg(Color::DarkGray));
         }
 
         // All tasks should have finished successfully or become ready!
