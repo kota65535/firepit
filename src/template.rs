@@ -1,4 +1,3 @@
-use crate::cli::TASK_ARGS_VAR_NAME;
 use crate::config::{
     DependsOnConfig, DependsOnConfigStruct, FinalizedByConfig, FinalizedByConfigStruct, HealthCheckConfig,
     ProjectConfig, ServiceConfig, TaskConfig, WaitForConfig, WaitForConfigStruct,
@@ -490,10 +489,6 @@ impl ConfigRenderer {
 
     fn base_context(&self) -> tera::Context {
         let mut context = tera::Context::new();
-        // `args` needs no declaration, so it defaults to an empty string to keep `{{ args }}`
-        // renderable when no argument is given after `--`. A project or task var of the same
-        // name, and the CLI argument, override it.
-        context.insert(TASK_ARGS_VAR_NAME, "");
         let root_dir = self.root_config.dir.as_os_str().to_str().unwrap_or("");
         context.insert(ROOT_DIR_CONTEXT_KEY, root_dir);
         if self.child_configs.is_empty() {
@@ -762,12 +757,7 @@ impl ConfigRenderer {
 
         // Merge the given vars into the task vars.
         // Only the vars that already exist in the task are merged to avoid unnecessary variant tasks.
-        // `args` is the exception: it needs no declaration, so a task forwarding arguments to a
-        // dependency would otherwise have them silently dropped.
-        for (k, v) in vars
-            .iter()
-            .filter(|(k, _)| dep_task.vars.contains_key(*k) || k.as_str() == TASK_ARGS_VAR_NAME)
-        {
+        for (k, v) in vars.iter().filter(|(k, _)| dep_task.vars.contains_key(*k)) {
             // A typed var of the task keeps its type, so the value is interpreted according to it.
             let merged = dep_task.vars.get(k).map_or_else(|| v.clone(), |d| d.with_value(v));
             variant_task.vars.insert(k.clone(), merged);

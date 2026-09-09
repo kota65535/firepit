@@ -670,3 +670,29 @@ async fn test_dependency_override_of_undeclared_args() {
     let inner = ws.task(&dep.task).expect("the variant is part of the run");
     assert_eq!(inner.command, String::from("echo \"[-x]\""));
 }
+
+#[tokio::test]
+async fn test_project_var_referencing_undeclared_args() {
+    // The implicit declaration comes first in its scope, so another var of the same scope can
+    // reference `args` without declaring it
+    let path = Path::new("tests/fixtures/project/args_undeclared");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &[String::from("#uses_project_var")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        ws.task("#uses_project_var").unwrap().command,
+        String::from("echo \"[pre  post]\"")
+    );
+}

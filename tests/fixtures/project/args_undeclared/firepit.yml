@@ -1,3 +1,6 @@
+vars:
+  wrapped: "pre {{ args }} post"
+
 tasks:
   plain:
     command: echo "[{{ args }}]"
@@ -13,3 +16,5 @@ tasks:
         vars:
           args: "-x"
     command: echo outer
+  uses_project_var:
+    command: echo "[{{ wrapped }}]"
