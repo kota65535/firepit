@@ -493,6 +493,7 @@ tasks:
 Each dependent runs its own variant of `migrate` with the overridden variables.
 In the TUI/CUI, every variant is displayed with the original task name by default; set a `label` with template variables (for example `label: "migrate {{ database }}"`) to tell the variants apart.
 Note that only variables already declared in the dependency task can be overridden, so `migrate` must declare `database` in its `vars`.
+The `args` variable is the exception here too: it needs no declaration, so a dependency referencing `{{ args }}` receives the value overridden on it.
 Declaring it without a value, as above, makes it a [required variable](#required-variables): running `migrate` on its own is then an error, since no dependent task provides a value.
 If the same variable is also injected globally via `--` (see [Passing Arguments](#passing-arguments)), the value specified here on the dependency takes precedence.
 

@@ -762,9 +762,14 @@ impl ConfigRenderer {
 
         // Merge the given vars into the task vars.
         // Only the vars that already exist in the task are merged to avoid unnecessary variant tasks.
-        for (k, v) in vars.iter().filter(|(k, _)| dep_task.vars.contains_key(*k)) {
+        // `args` is the exception: it needs no declaration, so a task forwarding arguments to a
+        // dependency would otherwise have them silently dropped.
+        for (k, v) in vars
+            .iter()
+            .filter(|(k, _)| dep_task.vars.contains_key(*k) || k.as_str() == TASK_ARGS_VAR_NAME)
+        {
             // A typed var of the task keeps its type, so the value is interpreted according to it.
-            let merged = dep_task.vars[k].with_value(v);
+            let merged = dep_task.vars.get(k).map_or_else(|| v.clone(), |d| d.with_value(v));
             variant_task.vars.insert(k.clone(), merged);
         }
 
