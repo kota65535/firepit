@@ -568,3 +568,77 @@ async fn test_env_file_bad_template() {
     assert!(msg.contains("BROKEN"), "{msg}");
     assert!(!msg.contains("s3cr3t"), "{msg}");
 }
+
+#[tokio::test]
+async fn test_undeclared_args_renders_as_empty_string() {
+    // `args` needs no declaration, so `{{ args }}` renders even without a value
+    let path = Path::new("tests/fixtures/project/args_undeclared");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &[String::from("#plain")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(ws.task("#plain").unwrap().command, String::from("echo \"[]\""));
+}
+
+#[tokio::test]
+async fn test_undeclared_args_overridden_by_cli_var() {
+    let path = Path::new("tests/fixtures/project/args_undeclared");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &[String::from("#plain")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::from([(
+            String::from("args"),
+            VarsConfig::Static(serde_json::Value::from("--nocapture")),
+        )]),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        ws.task("#plain").unwrap().command,
+        String::from("echo \"[--nocapture]\"")
+    );
+}
+
+#[tokio::test]
+async fn test_declared_args_overrides_the_implicit_default() {
+    // A task declaring `args` keeps its own default instead of the implicit empty string
+    let path = Path::new("tests/fixtures/project/args_undeclared");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &[String::from("#declared")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        ws.task("#declared").unwrap().command,
+        String::from("echo \"[default]\"")
+    );
+}

@@ -1,0 +1,7 @@
+tasks:
+  plain:
+    command: echo "[{{ args }}]"
+  declared:
+    vars:
+      args: "default"
+    command: echo "[{{ args }}]"

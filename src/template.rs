@@ -1,3 +1,4 @@
+use crate::cli::TASK_ARGS_VAR_NAME;
 use crate::config::{
     DependsOnConfig, DependsOnConfigStruct, FinalizedByConfig, FinalizedByConfigStruct, HealthCheckConfig,
     ProjectConfig, ServiceConfig, TaskConfig, WaitForConfig, WaitForConfigStruct,
@@ -489,6 +490,10 @@ impl ConfigRenderer {
 
     fn base_context(&self) -> tera::Context {
         let mut context = tera::Context::new();
+        // `args` needs no declaration, so it defaults to an empty string to keep `{{ args }}`
+        // renderable when no argument is given after `--`. A project or task var of the same
+        // name, and the CLI argument, override it.
+        context.insert(TASK_ARGS_VAR_NAME, "");
         let root_dir = self.root_config.dir.as_os_str().to_str().unwrap_or("");
         context.insert(ROOT_DIR_CONTEXT_KEY, root_dir);
         if self.child_configs.is_empty() {

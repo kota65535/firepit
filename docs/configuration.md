@@ -228,13 +228,11 @@ To declare a variable whose default value is empty, write an empty string (`vers
 ### Passing Arguments
 
 The `args` variable is a convenient convention for forwarding command-line arguments to a task.
-Declare it with a default value, reference it in the command, and override it from the CLI using `--`:
+It needs no declaration—reference it in the command and pass values from the CLI using `--`:
 
 ```yaml
 tasks:
   test:
-    vars:
-      args: ""
     command: cargo test {{ args }}
 ```
 
@@ -245,6 +243,9 @@ fire test -- --nocapture my_test   # runs: cargo test --nocapture my_test
 Everything after `--` is shell-escaped, joined with a space, and assigned to `args`.
 Embed `{{ args }}` without extra quotes so the shell can interpret the generated quoting correctly.
 Since `--` is just an alias for `args=...`, specifying both at the same time is an error.
+
+Without `--`, `args` is an empty string.
+Declaring it in `vars` gives it a different default, or makes it required when declared without a value.
 
 A dependent task can also set `args`—or any variable—on the task it depends on. See [Parameterized Dependencies](#parameterized-dependencies).
 

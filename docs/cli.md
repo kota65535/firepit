@@ -25,7 +25,7 @@ The value is interpreted according to the variable's declaration: inferred for a
 
 Only a variable declared in `vars`, at the project level or in the task being run, can be
 overridden. A name matching no declaration is an error, so that a typo does not pass silently.
-The `args` variable is the exception: it needs no declaration (see [Args](#args)).
+The `args` variable is the exception: it needs no declaration, and is an empty string when no argument is given (see [Args](#args)).
 
 ### Args
 
