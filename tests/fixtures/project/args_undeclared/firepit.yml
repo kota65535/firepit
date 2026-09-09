@@ -1,0 +1,20 @@
+vars:
+  wrapped: "pre {{ args }} post"
+
+tasks:
+  plain:
+    command: echo "[{{ args }}]"
+  declared:
+    vars:
+      args: "default"
+    command: echo "[{{ args }}]"
+  dep_inner:
+    command: echo "[{{ args }}]"
+  dep_outer:
+    depends_on:
+      - task: dep_inner
+        vars:
+          args: "-x"
+    command: echo outer
+  uses_project_var:
+    command: echo "[{{ wrapped }}]"

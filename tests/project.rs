@@ -568,3 +568,131 @@ async fn test_env_file_bad_template() {
     assert!(msg.contains("BROKEN"), "{msg}");
     assert!(!msg.contains("s3cr3t"), "{msg}");
 }
+
+#[tokio::test]
+async fn test_undeclared_args_renders_as_empty_string() {
+    // `args` needs no declaration, so `{{ args }}` renders even without a value
+    let path = Path::new("tests/fixtures/project/args_undeclared");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &[String::from("#plain")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(ws.task("#plain").unwrap().command, String::from("echo \"[]\""));
+}
+
+#[tokio::test]
+async fn test_undeclared_args_overridden_by_cli_var() {
+    let path = Path::new("tests/fixtures/project/args_undeclared");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &[String::from("#plain")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::from([(
+            String::from("args"),
+            VarsConfig::Static(serde_json::Value::from("--nocapture")),
+        )]),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        ws.task("#plain").unwrap().command,
+        String::from("echo \"[--nocapture]\"")
+    );
+}
+
+#[tokio::test]
+async fn test_declared_args_overrides_the_implicit_default() {
+    // A task declaring `args` keeps its own default instead of the implicit empty string
+    let path = Path::new("tests/fixtures/project/args_undeclared");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &[String::from("#declared")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        ws.task("#declared").unwrap().command,
+        String::from("echo \"[default]\"")
+    );
+}
+
+#[tokio::test]
+async fn test_dependency_override_of_undeclared_args() {
+    // `args` needs no declaration, so a `depends_on.vars` override of it must still reach the
+    // dependency instead of being dropped as an unknown var
+    let path = Path::new("tests/fixtures/project/args_undeclared");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &[String::from("#dep_outer")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    // The override makes a variant of the dependency, so follow `depends_on` to the variant
+    // rather than looking the task up by its name in the config
+    let outer = ws.task("#dep_outer").unwrap();
+    let dep = outer.depends_on.first().expect("dep_outer depends on dep_inner");
+    let inner = ws.task(&dep.task).expect("the variant is part of the run");
+    assert_eq!(inner.command, String::from("echo \"[-x]\""));
+}
+
+#[tokio::test]
+async fn test_project_var_referencing_undeclared_args() {
+    // The implicit declaration comes first in its scope, so another var of the same scope can
+    // reference `args` without declaring it
+    let path = Path::new("tests/fixtures/project/args_undeclared");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &[String::from("#uses_project_var")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        ws.task("#uses_project_var").unwrap().command,
+        String::from("echo \"[pre  post]\"")
+    );
+}

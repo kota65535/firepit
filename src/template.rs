@@ -759,7 +759,7 @@ impl ConfigRenderer {
         // Only the vars that already exist in the task are merged to avoid unnecessary variant tasks.
         for (k, v) in vars.iter().filter(|(k, _)| dep_task.vars.contains_key(*k)) {
             // A typed var of the task keeps its type, so the value is interpreted according to it.
-            let merged = dep_task.vars[k].with_value(v);
+            let merged = dep_task.vars.get(k).map_or_else(|| v.clone(), |d| d.with_value(v));
             variant_task.vars.insert(k.clone(), merged);
         }
 

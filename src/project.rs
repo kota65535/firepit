@@ -81,6 +81,24 @@ impl Workspace {
         // Override vars for target tasks
         let mut root_config = root_config.clone();
         let mut child_configs = child_configs.clone();
+
+        // `args` needs no declaration, so declare it wherever it is missing instead of
+        // special-casing it later: an implicit declaration goes through the same paths as any
+        // other var, from the CLI override to a `depends_on.vars` override of a dependency.
+        for config in std::iter::once(&mut root_config).chain(child_configs.values_mut()) {
+            for vars in std::iter::once(&mut config.vars).chain(config.tasks.values_mut().map(|t| &mut t.vars)) {
+                // First, so that another var of the same scope can reference it: vars render in
+                // declaration order.
+                if !vars.contains_key(TASK_ARGS_VAR_NAME) {
+                    vars.shift_insert(
+                        0,
+                        TASK_ARGS_VAR_NAME.to_string(),
+                        VarsConfig::Static(JsonValue::from("")),
+                    );
+                }
+            }
+        }
+
         for t in target_tasks.iter() {
             let task = Self::task_config_mut(&mut root_config, &mut child_configs, t)?;
             // A typed task var keeps its type, so the CLI value is interpreted according to it.
@@ -224,7 +242,7 @@ impl Workspace {
             .collect::<HashSet<_>>();
         let undeclared = cli_vars
             .keys()
-            .filter(|k| k.as_str() != TASK_ARGS_VAR_NAME && !declared.contains(k))
+            .filter(|k| !declared.contains(k))
             .map(|k| format!("{:?}", k))
             .collect::<Vec<_>>();
         if undeclared.is_empty() {
