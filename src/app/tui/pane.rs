@@ -13,7 +13,7 @@ use ratatui::{
 use tui_term::widget::{Cursor, PseudoTerminal};
 
 static STOP_TASK: &(&str, &str) = &("[s]", "Stop");
-static RESTART_TASK: &(&str, &str) = &("[r]", "Restart");
+static RERUN_TASK: &(&str, &str) = &("[r]", "Re-run");
 static START_INTERACTION: &(&str, &str) = &("[Enter]", "Interact");
 static EXIT_INTERACTION: &(&str, &str) = &("[Ctrl-z]", "Exit Interaction");
 static START_SEARCH: &(&str, &str) = &("[/]", "Search");
@@ -87,7 +87,7 @@ impl<'a> TerminalPane<'a> {
                         help_spans.push(key_help_spans(*CLEAR_SEARCH_RESULT));
                     }
                 }
-                help_spans.push(key_help_spans(*RESTART_TASK));
+                help_spans.push(key_help_spans(*RERUN_TASK));
                 help_spans.push(key_help_spans(*STOP_TASK));
             }
             LayoutSections::Search { query } => {
