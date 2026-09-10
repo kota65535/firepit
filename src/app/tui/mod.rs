@@ -496,9 +496,9 @@ impl TuiAppState {
         // already running by the time the app hears about it, hence the past tense.
         if restart > 0 || rerun > 0 {
             let text = match (restart, max_restart) {
-                (0, _) => format!("Task re-run, PID {pid} ({rerun})"),
-                (n, Some(max)) => format!("Task restarted, PID {pid} ({n}/{max})"),
-                (n, None) => format!("Task restarted, PID {pid} ({n})"),
+                (0, _) => format!("Task re-run ({rerun}), PID: {pid}"),
+                (n, Some(max)) => format!("Task restarted ({n}/{max}), PID: {pid}"),
+                (n, None) => format!("Task restarted ({n}), PID: {pid}"),
             };
             self.task_mut(task)?.note(&GREY, &text);
         }

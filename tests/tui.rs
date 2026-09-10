@@ -245,7 +245,7 @@ fn restart_is_noted_dim_in_pane() {
     tui.start_task("build", 43, 1, Some(3));
     tui.output(b"new\r\n");
 
-    assert_eq!(tui.pane_rows()[..3], ["old", "Task restarted, PID 43 (1/3)", "new"]);
+    assert_eq!(tui.pane_rows()[..3], ["old", "Task restarted (1/3), PID: 43", "new"]);
     assert!(tui.cell(1, 0).modifier.contains(Modifier::DIM));
     assert!(!tui.cell(2, 0).modifier.contains(Modifier::DIM));
 }
@@ -259,7 +259,7 @@ fn note_starts_on_a_fresh_line() {
     tui.finish_task("build", TaskResult::Failure(1));
     tui.start_task("build", 43, 1, None);
 
-    assert_eq!(tui.pane_rows()[..2], ["progress 50%", "Task restarted, PID 43 (1)"]);
+    assert_eq!(tui.pane_rows()[..2], ["progress 50%", "Task restarted (1), PID: 43"]);
 }
 
 /// An in-place progress bar leaves the cursor at column zero of a line it has
@@ -272,7 +272,7 @@ fn note_starts_on_a_fresh_line_after_a_carriage_return() {
     tui.finish_task("build", TaskResult::Failure(1));
     tui.start_task("build", 43, 1, None);
 
-    assert_eq!(tui.pane_rows()[..2], ["progress 50%", "Task restarted, PID 43 (1)"]);
+    assert_eq!(tui.pane_rows()[..2], ["progress 50%", "Task restarted (1), PID: 43"]);
 }
 
 /// The TUI reports failed tasks the same way the CUI does, so the exit code matches.
