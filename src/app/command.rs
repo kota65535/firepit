@@ -397,7 +397,7 @@ impl TaskResult {
             TaskResult::BadDeps => format!("Task{name} skipped, a dependency task failed"),
             TaskResult::Stopped => format!("Task{name} stopped"),
             TaskResult::Killed => format!("Task{name} killed by signal"),
-            TaskResult::NotReady => format!("Service{name} stopped, it did not become ready"),
+            TaskResult::NotReady => format!("Service{name} terminated, it did not become ready"),
             TaskResult::Rerunning => format!("Service{name} re-running..."),
             TaskResult::Error(cause) => format!("Task{name} failed to run: {cause}"),
             TaskResult::Unknown => format!("Task{name} ended with an unknown result"),

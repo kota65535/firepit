@@ -495,9 +495,9 @@ impl TuiAppState {
         // Separate the output of a new run from the previous one's
         if restart > 0 || rerun > 0 {
             let text = match (restart, max_restart) {
-                (0, _) => format!("Re-running task, {rerun}"),
-                (n, Some(max)) => format!("Restarting task, {n}/{max}"),
-                (n, None) => format!("Restarting task, {n}"),
+                (0, _) => format!("Re-running task: {rerun}"),
+                (n, Some(max)) => format!("Restarting task: {n}/{max}"),
+                (n, None) => format!("Restarting task: {n}"),
             };
             self.task_mut(task)?.note(&GREY, &text);
         }
