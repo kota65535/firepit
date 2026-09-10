@@ -29,7 +29,7 @@ fire hello
 Press `q` key to quit the TUI.
 
 ```
-% #hello (Finished - Success, Restart: 0/0, Re-run: 0, Elapsed: 1s)
+% #hello (Finished - Success, Re-run: 0, Elapsed: 1s)
  _______________
 < hello,firepit >
  ---------------

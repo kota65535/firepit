@@ -194,6 +194,31 @@ fn task_status_title_and_icons() {
     );
 }
 
+/// A task that cannot restart, e.g. any task that is not a service, has no
+/// restart to count, so the title leaves it out.
+#[test]
+fn title_omits_the_restart_count_when_restarting_is_off() {
+    let mut tui = Tui::new(&["build"]);
+    tui.start_task("build", 42, 0, Some(0));
+    assert!(
+        tui.lines()[0].contains("% build (Running, PID: 42, Re-run: 0, Elapsed:"),
+        "{}",
+        tui.lines()[0]
+    );
+}
+
+/// A service that restarts without a limit shows the limit as infinity.
+#[test]
+fn title_shows_an_unlimited_restart_count() {
+    let mut tui = Tui::new(&["serve"]);
+    tui.start_task("serve", 42, 2, None);
+    assert!(
+        tui.lines()[0].contains("% serve (Running, PID: 42, Restart: 2/\u{221e}, Re-run: 0"),
+        "{}",
+        tui.lines()[0]
+    );
+}
+
 /// A task that could not run shows the cause in red in its pane, which has no
 /// process output to mix with.
 #[test]
