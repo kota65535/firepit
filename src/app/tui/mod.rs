@@ -492,12 +492,13 @@ impl TuiAppState {
         rerun: u64,
         datetime: DateTime<Local>,
     ) -> anyhow::Result<()> {
-        // Separate the output of a new run from the previous one's
+        // Separate the output of a new run from the previous one's. The process is
+        // already running by the time the app hears about it, hence the past tense.
         if restart > 0 || rerun > 0 {
             let text = match (restart, max_restart) {
-                (0, _) => format!("Re-running task: {rerun}"),
-                (n, Some(max)) => format!("Restarting task: {n}/{max}"),
-                (n, None) => format!("Restarting task: {n}"),
+                (0, _) => format!("Task re-run, PID {pid} ({rerun})"),
+                (n, Some(max)) => format!("Task restarted, PID {pid} ({n}/{max})"),
+                (n, None) => format!("Task restarted, PID {pid} ({n})"),
             };
             self.task_mut(task)?.note(&GREY, &text);
         }
