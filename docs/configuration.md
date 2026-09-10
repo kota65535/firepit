@@ -338,7 +338,7 @@ A command whose output does depend on where it runs, such as `pwd` or one readin
 Leave it off as well for a command that must run every time, such as one allocating a resource.
 
 The output is reused within a single run of the config only.
-In watch mode, every reload runs the commands again.
+In watch mode, every re-run runs the commands again.
 
 By default the type of the value is inferred from the output, like a scalar variable.
 Give the dynamic variable a `type` to interpret the output as a [typed variable](#typed-variables) instead: `string` keeps the output as is, and `array` or `object` parse the output as YAML, so a command can produce a list or a map.

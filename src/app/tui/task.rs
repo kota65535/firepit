@@ -2,6 +2,7 @@ use crate::app::command::{TaskResult, TaskStatus};
 use crate::app::cui::lib::BOLD;
 use crate::app::tui::term_output::TerminalOutput;
 use chrono::{DateTime, Local};
+use console::Style;
 use std::io::Write;
 
 pub struct Task {
@@ -13,7 +14,7 @@ pub struct Task {
     pub pid: Option<u32>,
     pub restart: u64,
     pub max_restart: Option<u64>,
-    pub reload: u64,
+    pub rerun: u64,
     status: TaskStatus,
     pub output: TerminalOutput,
     pub start_time: Option<DateTime<Local>>,
@@ -31,7 +32,7 @@ impl Task {
             pid: None,
             restart: 0,
             max_restart: None,
-            reload: 0,
+            rerun: 0,
             status: TaskStatus::Planned,
             output,
             start_time: None,
@@ -49,7 +50,7 @@ impl Task {
                 self.pid = Some(run.pid);
                 self.restart = run.restart;
                 self.max_restart = run.max_restart;
-                self.reload = run.reload;
+                self.rerun = run.rerun;
                 self.start_time = Some(run.start_time);
             }
             TaskStatus::Finished(result, end_time) => {
@@ -59,6 +60,23 @@ impl Task {
             _ => {}
         }
         self.status = status;
+    }
+
+    /// Writes a firepit message into the pane on a line of its own, e.g. the
+    /// result of the process. The styling is forced since `console` would drop
+    /// it when stdout is not a TTY, but the pane is a terminal emulator regardless.
+    pub fn note(&mut self, style: &Style, text: &str) {
+        // Unfinished process output must not be overwritten. The cursor sits at
+        // column zero on a line the process has already written to whenever its
+        // output ends in a carriage return, as an in-place progress bar does, so
+        // the column alone does not tell whether the line is free.
+        let screen = self.output.screen();
+        let (row, _) = screen.cursor_position();
+        let (_, cols) = screen.size();
+        let written = (0..cols).any(|col| screen.cell(row, col).is_some_and(|c| c.has_contents()));
+        let prefix = if written { "\r\n" } else { "" };
+        let line = format!("{prefix}{}\r\n", style.clone().force_styling(true).apply_to(text));
+        self.output.process(line.as_bytes());
     }
 
     pub fn persist_screen(&self) -> anyhow::Result<()> {
@@ -79,52 +97,34 @@ impl Task {
 
 impl Task {
     pub fn title_line(&self) -> String {
-        let max_restart = match self.max_restart {
-            Some(max_restart) => format!("{}", max_restart),
-            None => "∞".to_string(),
-        };
         let pid = match self.pid {
             Some(pid) => format!("{}", pid),
             None => "N/A".to_string(),
         };
+        // A task that cannot restart has nothing to count, which is every task
+        // that is not a service, as well as a service with `restart: never`.
+        let restart = match self.max_restart {
+            Some(0) => String::new(),
+            Some(max) => format!("Restart: {}/{}, ", self.restart, max),
+            None => format!("Restart: {}/\u{221e}, ", self.restart),
+        };
+        let rerun = format!("Re-run: {}", self.rerun);
+        let elapsed = match (self.start_time, &self.status) {
+            (Some(st), TaskStatus::Finished(_, end_time)) => {
+                end_time.map_or("N/A".to_string(), |et| format!("{}s", (et - st).num_seconds()))
+            }
+            (Some(st), _) => format!("{}s", (Local::now() - st).num_seconds()),
+            (None, _) => "N/A".to_string(),
+        };
 
         let status = match &self.status {
             TaskStatus::Planned => "Waiting".to_string(),
-            TaskStatus::Running(_) => format!(
-                "Running, PID: {}, Restart: {}/{}, Reload: {}, Elapsed: {}",
-                pid,
-                self.restart,
-                max_restart,
-                self.reload,
-                self.start_time.map_or("N/A".to_string(), |t| {
-                    let duration = chrono::Local::now() - t;
-                    format!("{}s", duration.num_seconds())
-                })
-            ),
-            TaskStatus::Ready => format!(
-                "Ready, PID: {}, Restart: {}/{}, Reload: {}, Elapsed: {}",
-                pid,
-                self.restart,
-                max_restart,
-                self.reload,
-                self.start_time.map_or("N/A".to_string(), |t| {
-                    let duration = chrono::Local::now() - t;
-                    format!("{}s", duration.num_seconds())
-                })
-            ),
-            TaskStatus::Finished(r, end_time) => {
+            TaskStatus::Running(_) => format!("Running, PID: {pid}, {restart}{rerun}, Elapsed: {elapsed}"),
+            TaskStatus::Ready => format!("Ready, PID: {pid}, {restart}{rerun}, Elapsed: {elapsed}"),
+            TaskStatus::Finished(r, _) => {
                 format!(
-                    "Finished - {}, Restart: {}/{}, Reload: {}, Elapsed: {}",
-                    r.short_message(false),
-                    self.restart,
-                    max_restart,
-                    self.reload,
-                    self.start_time.map_or("N/A".to_string(), |st| {
-                        end_time.map_or("N/A".to_string(), |et| {
-                            let duration = et - st;
-                            format!("{}s", duration.num_seconds())
-                        })
-                    })
+                    "Finished - {}, {restart}{rerun}, Elapsed: {elapsed}",
+                    r.short_message(false)
                 )
             }
         };

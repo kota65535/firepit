@@ -13,7 +13,7 @@ mod term_output;
 use crate::app::command::AppCommandChannel;
 use crate::app::command::{AppCommand, TaskResult};
 use crate::app::command::{Direction, PaneSize, ScrollSize, TaskRun, TaskStatus};
-use crate::app::cui::lib::RED;
+use crate::app::cui::lib::{GREY, RED};
 use crate::app::print_failure_summary;
 use crate::app::signal::SignalHandler;
 use crate::app::tui::clipboard::copy_to_clipboard;
@@ -489,16 +489,25 @@ impl TuiAppState {
         pid: u32,
         restart: u64,
         max_restart: Option<u64>,
-        reload: u64,
+        rerun: u64,
         datetime: DateTime<Local>,
     ) -> anyhow::Result<()> {
+        // Separate the output of a new run from the previous one's
+        if restart > 0 || rerun > 0 {
+            let text = match (restart, max_restart) {
+                (0, _) => format!("Re-running task: {rerun}"),
+                (n, Some(max)) => format!("Restarting task: {n}/{max}"),
+                (n, None) => format!("Restarting task: {n}"),
+            };
+            self.task_mut(task)?.note(&GREY, &text);
+        }
         self.set_status(
             task,
             TaskStatus::Running(TaskRun {
                 pid,
                 restart,
                 max_restart,
-                reload,
+                rerun,
                 start_time: datetime,
             }),
         )
@@ -514,24 +523,17 @@ impl TuiAppState {
         result: TaskResult,
         datetime: Option<DateTime<Local>>,
     ) -> anyhow::Result<()> {
-        let t = self.task_mut(task)?;
         // A task that could not run has produced no output, so its pane is free
         // to show the cause without mixing with process output.
         if matches!(result, TaskResult::Error(_)) {
-            // Force the styling: `console` would drop it when stdout is not a TTY,
-            // but the pane is a terminal emulator regardless.
-            let line = format!(
-                "{}\r\n",
-                RED.clone().force_styling(true).apply_to(result.short_message(true))
-            );
-            t.output.process(line.as_bytes());
+            self.task_mut(task)?.note(&RED, &result.pane_message());
         }
-        let reloading = matches!(result, TaskResult::Reloading);
+        let rerunning = matches!(result, TaskResult::Rerunning);
         self.set_status(task, TaskStatus::Finished(result, datetime))?;
         // A finished task has no stdin, so staying in interaction mode would leave
-        // the user typing into a dead shell. Reloading tasks are exempt since they
+        // the user typing into a dead shell. Re-running tasks are exempt since they
         // are restarted right away and their stdin comes back.
-        if !reloading && self.is_interacting_with(task)? {
+        if !rerunning && self.is_interacting_with(task)? {
             self.exit_interaction();
         }
         Ok(())
@@ -561,7 +563,7 @@ impl TuiAppState {
 
     /// Tasks that are failed when the app exits, as `(label, result)` pairs, for
     /// the end-of-run summary and the exit code. This is what the sidebar shows at
-    /// that moment: a task fixed by a restart or a reload is not a failure anymore.
+    /// that moment: a task fixed by a restart or a re-run is not a failure anymore.
     pub fn failed_tasks(&self) -> Vec<(String, TaskResult)> {
         self.tasks
             .values()
@@ -1052,10 +1054,10 @@ impl TuiAppState {
                 pid,
                 restart,
                 max_restart,
-                reload,
+                rerun,
                 datetime,
             } => {
-                self.start_task(&task, pid, restart, max_restart, reload, datetime)?;
+                self.start_task(&task, pid, restart, max_restart, rerun, datetime)?;
             }
             AppCommand::TaskOutput { task, output } => {
                 self.process_output(&task, &output)?;
@@ -1271,10 +1273,10 @@ mod tests {
     }
 
     #[test]
-    fn keeps_interaction_while_active_task_is_reloading() {
+    fn keeps_interaction_while_active_task_is_rerunning() {
         let mut state = state(&["a", "b"]);
 
-        state.finish_task("a", TaskResult::Reloading, None).unwrap();
+        state.finish_task("a", TaskResult::Rerunning, None).unwrap();
 
         assert!(matches!(state.focus, LayoutSections::Pane));
     }

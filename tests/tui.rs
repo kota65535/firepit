@@ -132,7 +132,7 @@ impl Tui {
             pid,
             restart,
             max_restart,
-            reload: 0,
+            rerun: 0,
             datetime: start,
         });
     }
@@ -166,7 +166,7 @@ fn basic_layout() {
         "                  │                                                   ",
         "──────────────────│                                                   ",
         "[↑↓] Navigate     │                                        [q] Quit   ",
-        "[h]  Hide         │    [/] Search  [r] Restart  [s] Stop   [?] Help   ",
+        "[h]  Hide         │    [/] Search  [r] Re-run  [s] Stop    [?] Help   ",
     ]);
 }
 
@@ -181,7 +181,7 @@ fn task_status_title_and_icons() {
     let lines = tui.lines();
     assert_eq!(
         lines[0],
-        "🏕  Tasks  Failure │% build (Finished - Success, Restart: 0/3, Reload: "
+        "🏕  Tasks  Failure │% build (Finished - Success, Restart: 0/3, Re-run: "
     );
     assert!(lines[2].starts_with("build          ✅️"), "{}", lines[2]);
     assert!(lines[3].starts_with("serve          ❌️"), "{}", lines[3]);
@@ -194,20 +194,85 @@ fn task_status_title_and_icons() {
     );
 }
 
+/// A task that cannot restart, e.g. any task that is not a service, has no
+/// restart to count, so the title leaves it out.
+#[test]
+fn title_omits_the_restart_count_when_restarting_is_off() {
+    let mut tui = Tui::new(&["build"]);
+    tui.start_task("build", 42, 0, Some(0));
+    assert!(
+        tui.lines()[0].contains("% build (Running, PID: 42, Re-run: 0, Elapsed:"),
+        "{}",
+        tui.lines()[0]
+    );
+}
+
+/// A service that restarts without a limit shows the limit as infinity.
+#[test]
+fn title_shows_an_unlimited_restart_count() {
+    let mut tui = Tui::new(&["serve"]);
+    tui.start_task("serve", 42, 2, None);
+    assert!(
+        tui.lines()[0].contains("% serve (Running, PID: 42, Restart: 2/\u{221e}, Re-run: 0"),
+        "{}",
+        tui.lines()[0]
+    );
+}
+
 /// A task that could not run shows the cause in red in its pane, which has no
 /// process output to mix with.
 #[test]
 fn error_result_shows_cause_in_pane() {
     let mut tui = Tui::new(&["build"]);
     tui.start_task("build", 42, 0, None);
-    tui.finish_task("build", TaskResult::Error("failed to spawn process: boom".to_string()));
+    tui.finish_task("build", TaskResult::Error("boom".to_string()));
 
     let lines = tui.lines();
     assert!(lines[0].contains("% build (Finished - Error, Restart"), "{}", lines[0]);
-    // The task name is in the title, so the line is just the cause
-    assert_eq!(tui.pane_row(0), "Error: failed to spawn process: boom");
+    assert_eq!(tui.pane_row(0), "Task failed to run: boom");
     assert_eq!(tui.cell(0, 0).fg, Color::Indexed(1)); // red
     assert!(tui.pane_row(1).is_empty());
+}
+
+/// A restarted process is announced so its output is not mistaken for the
+/// previous run's.
+#[test]
+fn restart_is_noted_dim_in_pane() {
+    let mut tui = Tui::new(&["build"]);
+    tui.start_task("build", 42, 0, None);
+    tui.output(b"old\r\n");
+    tui.finish_task("build", TaskResult::Failure(1));
+    tui.start_task("build", 43, 1, Some(3));
+    tui.output(b"new\r\n");
+
+    assert_eq!(tui.pane_rows()[..3], ["old", "Restarting task: 1/3", "new"]);
+    assert!(tui.cell(1, 0).modifier.contains(Modifier::DIM));
+    assert!(!tui.cell(2, 0).modifier.contains(Modifier::DIM));
+}
+
+/// Output that did not end its line is not overwritten by the note.
+#[test]
+fn note_starts_on_a_fresh_line() {
+    let mut tui = Tui::new(&["build"]);
+    tui.start_task("build", 42, 0, None);
+    tui.output(b"progress 50%");
+    tui.finish_task("build", TaskResult::Failure(1));
+    tui.start_task("build", 43, 1, None);
+
+    assert_eq!(tui.pane_rows()[..2], ["progress 50%", "Restarting task: 1"]);
+}
+
+/// An in-place progress bar leaves the cursor at column zero of a line it has
+/// written to, which the note must not overwrite either.
+#[test]
+fn note_starts_on_a_fresh_line_after_a_carriage_return() {
+    let mut tui = Tui::new(&["build"]);
+    tui.start_task("build", 42, 0, None);
+    tui.output(b"progress 50%\r");
+    tui.finish_task("build", TaskResult::Failure(1));
+    tui.start_task("build", 43, 1, None);
+
+    assert_eq!(tui.pane_rows()[..2], ["progress 50%", "Restarting task: 1"]);
 }
 
 /// The TUI reports failed tasks the same way the CUI does, so the exit code matches.

@@ -31,7 +31,7 @@ Esc                 : Stop searching log
 Enter               : Start interaction with a selected task
 Ctrl-Z              : Stop interaction
 
-## Restarting Tasks
-r                   : Restart a selected task
-R                   : Restart a selected task and dependents
+## Re-running Tasks
+r                   : Re-run a selected task
+R                   : Re-run a selected task and dependents
 s                   : Stop a selected task
