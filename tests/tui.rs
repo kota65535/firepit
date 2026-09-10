@@ -262,6 +262,19 @@ fn note_starts_on_a_fresh_line() {
     assert_eq!(tui.pane_rows()[..2], ["progress 50%", "Restarting task: 1"]);
 }
 
+/// An in-place progress bar leaves the cursor at column zero of a line it has
+/// written to, which the note must not overwrite either.
+#[test]
+fn note_starts_on_a_fresh_line_after_a_carriage_return() {
+    let mut tui = Tui::new(&["build"]);
+    tui.start_task("build", 42, 0, None);
+    tui.output(b"progress 50%\r");
+    tui.finish_task("build", TaskResult::Failure(1));
+    tui.start_task("build", 43, 1, None);
+
+    assert_eq!(tui.pane_rows()[..2], ["progress 50%", "Restarting task: 1"]);
+}
+
 /// The TUI reports failed tasks the same way the CUI does, so the exit code matches.
 #[test]
 fn failed_tasks_are_collected_for_exit_code() {

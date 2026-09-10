@@ -66,9 +66,15 @@ impl Task {
     /// result of the process. The styling is forced since `console` would drop
     /// it when stdout is not a TTY, but the pane is a terminal emulator regardless.
     pub fn note(&mut self, style: &Style, text: &str) {
-        // Unfinished process output must not be overwritten.
-        let (_, col) = self.output.screen().cursor_position();
-        let prefix = if col == 0 { "" } else { "\r\n" };
+        // Unfinished process output must not be overwritten. The cursor sits at
+        // column zero on a line the process has already written to whenever its
+        // output ends in a carriage return, as an in-place progress bar does, so
+        // the column alone does not tell whether the line is free.
+        let screen = self.output.screen();
+        let (row, _) = screen.cursor_position();
+        let (_, cols) = screen.size();
+        let written = (0..cols).any(|col| screen.cell(row, col).is_some_and(|c| c.has_contents()));
+        let prefix = if written { "\r\n" } else { "" };
         let line = format!("{prefix}{}\r\n", style.clone().force_styling(true).apply_to(text));
         self.output.process(line.as_bytes());
     }
