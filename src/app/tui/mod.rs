@@ -523,14 +523,11 @@ impl TuiAppState {
         result: TaskResult,
         datetime: Option<DateTime<Local>>,
     ) -> anyhow::Result<()> {
-        // Mark the end of the output with its cause. An error stands out in red,
-        // the pane has no process output to mix with in that case.
-        let style = if matches!(result, TaskResult::Error(_)) {
-            &*RED
-        } else {
-            &*GREY
-        };
-        self.task_mut(task)?.note(style, &result.pane_message());
+        // A task that could not run has produced no output, so its pane is free
+        // to show the cause without mixing with process output.
+        if matches!(result, TaskResult::Error(_)) {
+            self.task_mut(task)?.note(&RED, &result.pane_message());
+        }
         let reloading = matches!(result, TaskResult::Reloading);
         self.set_status(task, TaskStatus::Finished(result, datetime))?;
         // A finished task has no stdin, so staying in interaction mode would leave

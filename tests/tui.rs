@@ -209,33 +209,6 @@ fn error_result_shows_cause_in_pane() {
     assert!(tui.pane_row(1).is_empty());
 }
 
-/// The end of a process is marked in the pane by a dim line with its result,
-/// so the user can tell where the output stopped and why.
-#[test]
-fn finished_result_is_noted_dim_in_pane() {
-    let mut tui = Tui::new(&["build"]);
-    tui.start_task("build", 42, 0, None);
-    tui.output(b"hello\r\n");
-    tui.finish_task("build", TaskResult::Failure(1));
-
-    assert_eq!(tui.pane_row(0), "hello");
-    assert_eq!(tui.pane_row(1), "Task failed with exit code 1");
-    assert!(tui.cell(1, 0).modifier.contains(Modifier::DIM));
-    assert!(tui.pane_row(2).is_empty());
-}
-
-/// Output that did not end its line is not overwritten by the note.
-#[test]
-fn note_starts_on_a_fresh_line() {
-    let mut tui = Tui::new(&["build"]);
-    tui.start_task("build", 42, 0, None);
-    tui.output(b"progress 50%");
-    tui.finish_task("build", TaskResult::Stopped);
-
-    assert_eq!(tui.pane_row(0), "progress 50%");
-    assert_eq!(tui.pane_row(1), "Task stopped");
-}
-
 /// A restarted process is announced so its output is not mistaken for the
 /// previous run's.
 #[test]
@@ -247,12 +220,21 @@ fn restart_is_noted_dim_in_pane() {
     tui.start_task("build", 43, 1, Some(3));
     tui.output(b"new\r\n");
 
-    assert_eq!(
-        tui.pane_rows()[..4],
-        ["old", "Task failed with exit code 1", "Task restarted, 1/3", "new"]
-    );
-    assert!(tui.cell(2, 0).modifier.contains(Modifier::DIM));
-    assert!(!tui.cell(3, 0).modifier.contains(Modifier::DIM));
+    assert_eq!(tui.pane_rows()[..3], ["old", "Task restarted, 1/3", "new"]);
+    assert!(tui.cell(1, 0).modifier.contains(Modifier::DIM));
+    assert!(!tui.cell(2, 0).modifier.contains(Modifier::DIM));
+}
+
+/// Output that did not end its line is not overwritten by the note.
+#[test]
+fn note_starts_on_a_fresh_line() {
+    let mut tui = Tui::new(&["build"]);
+    tui.start_task("build", 42, 0, None);
+    tui.output(b"progress 50%");
+    tui.finish_task("build", TaskResult::Failure(1));
+    tui.start_task("build", 43, 1, None);
+
+    assert_eq!(tui.pane_rows()[..2], ["progress 50%", "Task restarted, 1"]);
 }
 
 /// The TUI reports failed tasks the same way the CUI does, so the exit code matches.
