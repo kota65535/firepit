@@ -14,7 +14,7 @@ pub struct Task {
     pub pid: Option<u32>,
     pub restart: u64,
     pub max_restart: Option<u64>,
-    pub reload: u64,
+    pub rerun: u64,
     status: TaskStatus,
     pub output: TerminalOutput,
     pub start_time: Option<DateTime<Local>>,
@@ -32,7 +32,7 @@ impl Task {
             pid: None,
             restart: 0,
             max_restart: None,
-            reload: 0,
+            rerun: 0,
             status: TaskStatus::Planned,
             output,
             start_time: None,
@@ -50,7 +50,7 @@ impl Task {
                 self.pid = Some(run.pid);
                 self.restart = run.restart;
                 self.max_restart = run.max_restart;
-                self.reload = run.reload;
+                self.rerun = run.rerun;
                 self.start_time = Some(run.start_time);
             }
             TaskStatus::Finished(result, end_time) => {
@@ -103,22 +103,22 @@ impl Task {
         let status = match &self.status {
             TaskStatus::Planned => "Waiting".to_string(),
             TaskStatus::Running(_) => format!(
-                "Running, PID: {}, Restart: {}/{}, Reload: {}, Elapsed: {}",
+                "Running, PID: {}, Restart: {}/{}, Re-run: {}, Elapsed: {}",
                 pid,
                 self.restart,
                 max_restart,
-                self.reload,
+                self.rerun,
                 self.start_time.map_or("N/A".to_string(), |t| {
                     let duration = chrono::Local::now() - t;
                     format!("{}s", duration.num_seconds())
                 })
             ),
             TaskStatus::Ready => format!(
-                "Ready, PID: {}, Restart: {}/{}, Reload: {}, Elapsed: {}",
+                "Ready, PID: {}, Restart: {}/{}, Re-run: {}, Elapsed: {}",
                 pid,
                 self.restart,
                 max_restart,
-                self.reload,
+                self.rerun,
                 self.start_time.map_or("N/A".to_string(), |t| {
                     let duration = chrono::Local::now() - t;
                     format!("{}s", duration.num_seconds())
@@ -126,11 +126,11 @@ impl Task {
             ),
             TaskStatus::Finished(r, end_time) => {
                 format!(
-                    "Finished - {}, Restart: {}/{}, Reload: {}, Elapsed: {}",
+                    "Finished - {}, Restart: {}/{}, Re-run: {}, Elapsed: {}",
                     r.short_message(false),
                     self.restart,
                     max_restart,
-                    self.reload,
+                    self.rerun,
                     self.start_time.map_or("N/A".to_string(), |st| {
                         end_time.map_or("N/A".to_string(), |et| {
                             let duration = et - st;

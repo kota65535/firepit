@@ -20,7 +20,7 @@ pub enum AppCommand {
         pid: u32,
         restart: u64,
         max_restart: Option<u64>,
-        reload: u64,
+        rerun: u64,
         datetime: DateTime<Local>,
     },
     TaskOutput {
@@ -203,7 +203,7 @@ impl AppCommandChannel {
         pid: u32,
         restart: u64,
         max_restart: Option<u64>,
-        reload: u64,
+        rerun: u64,
         datetime: DateTime<Local>,
     ) {
         self.send(AppCommand::StartTask {
@@ -211,7 +211,7 @@ impl AppCommandChannel {
             pid,
             restart,
             max_restart,
-            reload,
+            rerun,
             datetime,
         })
     }
@@ -307,7 +307,7 @@ pub struct TaskRun {
     pub pid: u32,
     pub restart: u64,
     pub max_restart: Option<u64>,
-    pub reload: u64,
+    pub rerun: u64,
     pub start_time: DateTime<Local>,
 }
 
@@ -335,7 +335,7 @@ pub enum TaskResult {
     NotReady,
 
     /// Task is restarting due to the change of input
-    Reloading,
+    Rerunning,
 
     /// Not run because of an error during execution, with the cause
     Error(String),
@@ -371,7 +371,7 @@ impl TaskResult {
             TaskResult::Stopped => "Stopped".to_string(),
             TaskResult::Killed => "Killed".to_string(),
             TaskResult::NotReady => "Not ready".to_string(),
-            TaskResult::Reloading => "Reloading...".to_string(),
+            TaskResult::Rerunning => "Re-running...".to_string(),
             TaskResult::Error(cause) if with_cause => format!("Error: {cause}"),
             TaskResult::Error(_) => "Error".to_string(),
             TaskResult::Unknown => "Unknown".to_string(),
@@ -398,7 +398,7 @@ impl TaskResult {
             TaskResult::Stopped => format!("Task{name} stopped"),
             TaskResult::Killed => format!("Task{name} killed by signal"),
             TaskResult::NotReady => format!("Service{name} stopped, it did not become ready"),
-            TaskResult::Reloading => format!("Service{name} reloading..."),
+            TaskResult::Rerunning => format!("Service{name} re-running..."),
             TaskResult::Error(cause) => format!("Task{name} failed to run: {cause}"),
             TaskResult::Unknown => format!("Task{name} ended with an unknown result"),
         }

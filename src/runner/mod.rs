@@ -177,7 +177,7 @@ impl TaskRunner {
                             for task in tasks.iter() {
                                 let end_time =  Local::now();
                                 self.end_times.lock().expect("not poisoned").insert( task.clone(), end_time);
-                                app_tx.clone().with_name(task).finish_task(TaskResult::Reloading, Some(end_time));
+                                app_tx.clone().with_name(task).finish_task(TaskResult::Rerunning, Some(end_time));
                                 self.manager.stop_by_label(task).await;
                             }
                             info!("Stopped tasks");

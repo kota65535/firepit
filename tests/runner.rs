@@ -1625,9 +1625,9 @@ fn handle_events(
                 }
                 Some(event) = app_rx.recv() => {
                     match event {
-                        AppCommand::StartTask { task, pid: _, restart, max_restart: _, reload, datetime: _ } => {
+                        AppCommand::StartTask { task, pid: _, restart, max_restart: _, rerun, datetime: _ } => {
                             restarts.insert(task.clone(), restart);
-                            runs.insert(task.clone(), reload);
+                            runs.insert(task.clone(), rerun);
                         }
                         AppCommand::ReadyTask { task } => {
                             statuses.insert(task, String::from("Ready"));
