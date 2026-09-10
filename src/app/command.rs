@@ -367,29 +367,40 @@ impl TaskResult {
             TaskResult::Success => "Success".to_string(),
             TaskResult::Failure(code) => format!("Failed with exit code {code}"),
             TaskResult::UpToDate => "Up-to-date".to_string(),
-            TaskResult::BadDeps => "Dependency task failed".to_string(),
+            TaskResult::BadDeps => "Dependency failed".to_string(),
             TaskResult::Stopped => "Stopped".to_string(),
             TaskResult::Killed => "Killed".to_string(),
-            TaskResult::NotReady => "Service not ready".to_string(),
-            TaskResult::Reloading => "Service is reloading...".to_string(),
+            TaskResult::NotReady => "Not ready".to_string(),
+            TaskResult::Reloading => "Reloading...".to_string(),
             TaskResult::Error(cause) if with_cause => format!("Error: {cause}"),
             TaskResult::Error(_) => "Error".to_string(),
             TaskResult::Unknown => "Unknown".to_string(),
         }
     }
 
+    /// Full sentence for the CUI, which has no other way to tell tasks apart.
     pub fn long_message(&self, name: &str) -> String {
+        self.sentence(&format!(" {name}"))
+    }
+
+    /// Full sentence without the task name, for the TUI pane whose title
+    /// already names the task.
+    pub fn pane_message(&self) -> String {
+        self.sentence("")
+    }
+
+    fn sentence(&self, name: &str) -> String {
         match self {
-            TaskResult::Success => format!("Task {:?} finished with exit code 0", name),
-            TaskResult::Failure(code) => format!("Task {:?} finished with exit code {:?}", name, code),
-            TaskResult::UpToDate => format!("Task {:?} is not run because it is up-to-date", name),
-            TaskResult::BadDeps => format!("Task {:?} is not run because dependency task(s) failed", name),
-            TaskResult::Stopped => format!("Task {:?} is terminated", name),
-            TaskResult::Killed => format!("Task {:?} is killed by signal", name),
-            TaskResult::NotReady => format!("Service task {:?} is terminated because it did not become ready", name),
-            TaskResult::Reloading => format!("Service task {:?} is reloading...", name),
-            TaskResult::Error(cause) => format!("Task {:?} is not run because of an error: {}", name, cause),
-            TaskResult::Unknown => "Unknown".to_string(),
+            TaskResult::Success => format!("Task{name} finished with exit code 0"),
+            TaskResult::Failure(code) => format!("Task{name} failed with exit code {code}"),
+            TaskResult::UpToDate => format!("Task{name} skipped, up-to-date"),
+            TaskResult::BadDeps => format!("Task{name} skipped, a dependency task failed"),
+            TaskResult::Stopped => format!("Task{name} stopped"),
+            TaskResult::Killed => format!("Task{name} killed by signal"),
+            TaskResult::NotReady => format!("Service{name} stopped, it did not become ready"),
+            TaskResult::Reloading => format!("Service{name} reloading..."),
+            TaskResult::Error(cause) => format!("Task{name} failed to run: {cause}"),
+            TaskResult::Unknown => format!("Task{name} ended with an unknown result"),
         }
     }
 }

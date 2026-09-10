@@ -13,7 +13,7 @@ mod term_output;
 use crate::app::command::AppCommandChannel;
 use crate::app::command::{AppCommand, TaskResult};
 use crate::app::command::{Direction, PaneSize, ScrollSize, TaskRun, TaskStatus};
-use crate::app::cui::lib::RED;
+use crate::app::cui::lib::{GREY, RED};
 use crate::app::print_failure_summary;
 use crate::app::signal::SignalHandler;
 use crate::app::tui::clipboard::copy_to_clipboard;
@@ -492,6 +492,15 @@ impl TuiAppState {
         reload: u64,
         datetime: DateTime<Local>,
     ) -> anyhow::Result<()> {
+        // Separate the output of a new run from the previous one's
+        if restart > 0 || reload > 0 {
+            let text = match (restart, max_restart) {
+                (0, _) => "Task reloaded".to_string(),
+                (n, Some(max)) => format!("Task restarted, {n}/{max}"),
+                (n, None) => format!("Task restarted, {n}"),
+            };
+            self.task_mut(task)?.note(&GREY, &text);
+        }
         self.set_status(
             task,
             TaskStatus::Running(TaskRun {
@@ -514,18 +523,14 @@ impl TuiAppState {
         result: TaskResult,
         datetime: Option<DateTime<Local>>,
     ) -> anyhow::Result<()> {
-        let t = self.task_mut(task)?;
-        // A task that could not run has produced no output, so its pane is free
-        // to show the cause without mixing with process output.
-        if matches!(result, TaskResult::Error(_)) {
-            // Force the styling: `console` would drop it when stdout is not a TTY,
-            // but the pane is a terminal emulator regardless.
-            let line = format!(
-                "{}\r\n",
-                RED.clone().force_styling(true).apply_to(result.short_message(true))
-            );
-            t.output.process(line.as_bytes());
-        }
+        // Mark the end of the output with its cause. An error stands out in red,
+        // the pane has no process output to mix with in that case.
+        let style = if matches!(result, TaskResult::Error(_)) {
+            &*RED
+        } else {
+            &*GREY
+        };
+        self.task_mut(task)?.note(style, &result.pane_message());
         let reloading = matches!(result, TaskResult::Reloading);
         self.set_status(task, TaskStatus::Finished(result, datetime))?;
         // A finished task has no stdin, so staying in interaction mode would leave

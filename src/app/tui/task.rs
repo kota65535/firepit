@@ -2,6 +2,7 @@ use crate::app::command::{TaskResult, TaskStatus};
 use crate::app::cui::lib::BOLD;
 use crate::app::tui::term_output::TerminalOutput;
 use chrono::{DateTime, Local};
+use console::Style;
 use std::io::Write;
 
 pub struct Task {
@@ -59,6 +60,17 @@ impl Task {
             _ => {}
         }
         self.status = status;
+    }
+
+    /// Writes a firepit message into the pane on a line of its own, e.g. the
+    /// result of the process. The styling is forced since `console` would drop
+    /// it when stdout is not a TTY, but the pane is a terminal emulator regardless.
+    pub fn note(&mut self, style: &Style, text: &str) {
+        // Unfinished process output must not be overwritten.
+        let (_, col) = self.output.screen().cursor_position();
+        let prefix = if col == 0 { "" } else { "\r\n" };
+        let line = format!("{prefix}{}\r\n", style.clone().force_styling(true).apply_to(text));
+        self.output.process(line.as_bytes());
     }
 
     pub fn persist_screen(&self) -> anyhow::Result<()> {
