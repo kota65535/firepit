@@ -380,7 +380,7 @@ impl TaskResult {
 
     /// Full sentence for the CUI, which has no other way to tell tasks apart.
     pub fn long_message(&self, name: &str) -> String {
-        self.sentence(&format!(" {name}"))
+        self.sentence(&format!(" {name:?}"))
     }
 
     /// Full sentence without the task name, for the TUI pane whose title
@@ -389,18 +389,20 @@ impl TaskResult {
         self.sentence("")
     }
 
-    fn sentence(&self, name: &str) -> String {
+    /// `named` follows the subject of the sentence, so it carries its own
+    /// leading space and is empty when the task is not named.
+    fn sentence(&self, named: &str) -> String {
         match self {
-            TaskResult::Success => format!("Task{name} finished with exit code 0"),
-            TaskResult::Failure(code) => format!("Task{name} failed with exit code {code}"),
-            TaskResult::UpToDate => format!("Task{name} skipped, up-to-date"),
-            TaskResult::BadDeps => format!("Task{name} skipped, a dependency task failed"),
-            TaskResult::Stopped => format!("Task{name} stopped"),
-            TaskResult::Killed => format!("Task{name} killed by signal"),
-            TaskResult::NotReady => format!("Service{name} terminated, it did not become ready"),
-            TaskResult::Rerunning => format!("Service{name} re-running..."),
-            TaskResult::Error(cause) => format!("Task{name} failed to run: {cause}"),
-            TaskResult::Unknown => format!("Task{name} ended with an unknown result"),
+            TaskResult::Success => format!("Task{named} finished with exit code 0"),
+            TaskResult::Failure(code) => format!("Task{named} failed with exit code {code}"),
+            TaskResult::UpToDate => format!("Task{named} skipped, up-to-date"),
+            TaskResult::BadDeps => format!("Task{named} skipped, a dependency task failed"),
+            TaskResult::Stopped => format!("Task{named} stopped"),
+            TaskResult::Killed => format!("Task{named} killed by signal"),
+            TaskResult::NotReady => format!("Service{named} terminated, it did not become ready"),
+            TaskResult::Rerunning => format!("Service{named} re-running..."),
+            TaskResult::Error(cause) => format!("Task{named} failed to run: {cause}"),
+            TaskResult::Unknown => format!("Task{named} ended with an unknown result"),
         }
     }
 }
