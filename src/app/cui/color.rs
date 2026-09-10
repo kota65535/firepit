@@ -49,7 +49,7 @@ impl ColorSelector {
         }
 
         let style = self.color_for_key(cache_key);
-        style.apply_to(format!("{}: ", string))
+        style.apply_to(format!("{} | ", string))
     }
 }
 
@@ -82,6 +82,16 @@ mod tests {
         let color3 = selector.color_for_key("key1");
         assert_eq!(color1, color3);
         assert_ne!(color1, color2);
+    }
+
+    /// The label is separated from the output by a pipe, like docker compose,
+    /// leaving the colon free for `project:task` labels.
+    #[test]
+    fn prefix_is_label_and_pipe() {
+        let selector = super::ColorSelector::default();
+        let prefix = selector.string_with_color("web", "web");
+        assert_eq!(console::strip_ansi_codes(&prefix.to_string()), "web | ");
+        assert_eq!(selector.string_with_color("", "").to_string(), "");
     }
 
     #[test]
