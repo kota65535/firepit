@@ -69,7 +69,7 @@
       "$ref": "#/$defs/LogConfig",
       "default": {
         "file": null,
-        "level": "info"
+        "level": "warn"
       }
     },
     "projects": {
@@ -476,9 +476,9 @@
           ]
         },
         "level": {
-          "description": "Log level. Valid values: error, warn, info, debug, trace",
+          "description": "Log level. Valid values: error, warn, info, debug, trace.\n`warn` and above report what a user needs to act on, `info` what Firepit\nis doing to each task, `debug` and below the internals.",
           "type": "string",
-          "default": "info"
+          "default": "warn"
         }
       }
     },
