@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, error, info, trace};
 
 #[derive(Clone)]
 pub struct FileWatcher {
@@ -78,7 +78,7 @@ impl FileWatcher {
                             event_buffer.push(event);
                         }
                         Err(e) => {
-                            warn!("Failed to recv file event: {:?}", e);
+                            error!("Failed to watch files, the change may be missed: {:?}", e);
                         }
                     },
                     Err(RecvTimeoutError::Timeout) => {

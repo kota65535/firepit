@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tera::Tera;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 pub struct ConfigRenderer {
     root_config: ProjectConfig,
@@ -803,7 +803,7 @@ impl ConfigRenderer {
         let variant_task_name = format!("{}-{}", dep_task.full_name(), suffix);
         rendered_variant_task.name = Task::split_name(&variant_task_name).1.to_string();
 
-        info!(
+        debug!(
             "Variant: {:?}, dependent: {:?}\ncontext: {:#?}\nvars: {:#?}",
             rendered_variant_task.full_name(),
             task_name,

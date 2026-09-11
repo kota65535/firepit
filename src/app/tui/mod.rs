@@ -41,7 +41,7 @@ use std::collections::HashMap;
 use std::io::{self, Stdout, Write};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::{sync::mpsc, time::Instant};
-use tracing::{debug, error, info};
+use tracing::{debug, error};
 use unicode_width::UnicodeWidthStr;
 
 /// How long a transient toast (e.g. "Copied to clipboard") stays visible.
@@ -228,7 +228,7 @@ impl TuiApp {
             return Err(err);
         }
 
-        info!("App is exiting");
+        debug!("App is exiting");
         // Same summary and exit code as the CUI, printed after the panes so it is
         // the last thing on the screen.
         let failed = self.state.failed_tasks();

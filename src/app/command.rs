@@ -5,7 +5,7 @@ use std::io;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
-use tracing::warn;
+use tracing::debug;
 
 #[derive(strum::AsRefStr)]
 pub enum AppCommand {
@@ -252,7 +252,7 @@ impl AppCommandChannel {
         match callback_rx.await {
             Ok(size) => Some(size),
             Err(e) => {
-                warn!("Failed to receive callback of PaneSizeQuery event: {:?}", e);
+                debug!("Failed to receive callback of PaneSizeQuery event: {:?}", e);
                 None
             }
         }
@@ -266,7 +266,7 @@ impl AppCommandChannel {
 
     pub fn send(&self, event: AppCommand) {
         if let Err(e) = self.tx.send(event) {
-            warn!("Task {:?} failed to send {} event: {:?}", self.name, e.0.as_ref(), e);
+            debug!("Task {:?} failed to send {} event: {:?}", self.name, e.0.as_ref(), e);
         }
     }
 

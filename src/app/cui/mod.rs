@@ -21,7 +21,7 @@ use std::io::{stdout, Stdout, Write};
 use std::sync::{Arc, RwLock};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
-use tracing::{debug, error, info};
+use tracing::{debug, error};
 
 pub struct CuiApp {
     color_selector: ColorSelector,
@@ -108,7 +108,7 @@ impl CuiApp {
             return Err(err);
         }
 
-        info!("App is exiting");
+        debug!("App is exiting");
         ret
     }
 

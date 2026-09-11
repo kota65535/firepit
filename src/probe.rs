@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 #[derive(Debug, Clone)]
 pub enum Probe {
@@ -110,75 +110,103 @@ impl ExecProbe {
         }
     }
 
+    /// Runs the health check until it succeeds, fails for good, or is cancelled.
+    ///
+    /// Every try is logged with the output of the command, so that a service
+    /// that never becomes ready can be diagnosed from the log. The try that
+    /// gives up is logged at `WARN`, the level at which the log is read by
+    /// default; the ones before it are only of interest once something is wrong.
     pub async fn run(&self, mut cancel_rx: watch::Receiver<()>) -> anyhow::Result<bool> {
         let env = self.env.load()?;
-        info!("Probe started (ExecProbe). command: {:?}", self.command);
+        info!("Probe started. command: {}", self.command);
         let start = Instant::now();
 
         // Wait `interval` seconds before the first health check
         tokio::time::sleep(Duration::from_secs(self.interval)).await;
 
         let mut retries = 0;
+        let mut tries = 0;
         loop {
-            info!("Probe try ({}/{})", retries, self.retries);
+            tries += 1;
+            debug!("Probe try ({}/{})", retries, self.retries);
 
             let mut process = match self.exec(&env).await {
                 Ok(p) => p,
                 Err(e) => {
-                    warn!("Probe failed to exec: {:?}", e);
+                    error!("Probe cannot run its command: {:?}", e);
                     return Ok(false);
                 }
             };
 
-            let output_collector = OutputCollector::new();
-            tokio::select! {
+            let collector = OutputCollector::new();
+            // How this try ended, and what the command wrote while it ran. A try
+            // that succeeds returns right away, so what is left is a failed one.
+            let (outcome, output) = tokio::select! {
                 // Cancelling branch, kill the process and quits immediately
                 _ = cancel_rx.changed() => {
-                    info!("Probe cancelled. output: {:?}", output_collector.take_output());
+                    info!("Probe cancelled{}", Self::logged_output(&collector));
                     if let Some(pid) = process.pid() { self.manager.stop_by_pid(pid).await; }
                     return Ok(false);
                 },
                 // Timeout branch, stop the process before the next retry
                 _ = tokio::time::sleep(Duration::from_secs(self.timeout)) => {
-                    info!("Probe timed-out. output: {:?}", output_collector.take_output());
                     if let Some(pid) = process.pid() {
                         let exit = self.manager.stop_by_pid(pid).await;
                         debug!("Probe process stopped by timeout. exit: {:?}", exit);
                     }
+                    (format!("timed out after {}s", self.timeout), Self::logged_output(&collector))
                 },
                 // Normal branch, success if finished with code 0
-                exit = process.wait_with_piped_outputs(output_collector.clone(), output_collector.clone()) => {
-                    let success = match exit {
+                exit = process.wait_with_piped_outputs(collector.clone(), collector.clone()) => {
+                    match exit {
                         Ok(Some(exit_status)) => {
-                            info!("Probe finished with exit code {:?}.\noutput: {:?}", exit_status, output_collector.take_output());
-                            matches!(exit_status, ChildExit::Finished(Some(0)))
+                            let output = Self::logged_output(&collector);
+                            match exit_status {
+                                ChildExit::Finished(Some(0)) => {
+                                    info!("Probe finished with exit code 0{}", output);
+                                    return Ok(true);
+                                }
+                                ChildExit::Finished(Some(code)) => (format!("finished with exit code {code}"), output),
+                                other => (format!("ended: {other:?}"), output),
+                            }
                         },
                         Ok(None) => anyhow::bail!("unable to determine why probe exited"),
                         Err(e) => anyhow::bail!("error while waiting probe: {:?}", e),
-                    };
-                    if success {
-                        info!("Probe succeeded");
-                        return Ok(true);
                     }
                 }
-            }
+            };
 
             // Retry up to `self.retries` times when timeout or finished with non-zero code
             if retries >= self.retries {
-                info!("Probe failed");
+                // The service will not become ready, so say why at a level that is
+                // read by default, together with the output that explains it.
+                warn!("Probe {outcome}, giving up after {tries} tries{output}");
                 return Ok(false);
             }
+            info!("Probe {outcome}{output}");
 
             // Retry count does not increase until `start_period` seconds elapsed
             if start.elapsed().as_secs() >= self.start_period {
                 retries += 1;
             }
 
-            info!(
+            debug!(
                 "Probe next retry {}/{} after {} sec",
                 retries, self.retries, self.interval
             );
             tokio::time::sleep(Duration::from_secs(self.interval)).await;
+        }
+    }
+
+    /// What the probe command wrote, for the end of a log message: on lines of
+    /// its own so that it stays readable, and nothing at all when it wrote nothing.
+    fn logged_output(collector: &OutputCollector) -> String {
+        let output = collector.take_output();
+        let output = output.trim_end();
+        if output.is_empty() {
+            String::new()
+        } else {
+            format!("\n{output}")
         }
     }
 
@@ -205,6 +233,7 @@ impl ExecProbe {
 #[allow(unused)]
 mod test {
     use super::*;
+    use std::io::Write;
     use std::sync::Once;
 
     static INIT: Once = Once::new();
@@ -213,6 +242,23 @@ mod test {
         INIT.call_once(|| {
             tracing_subscriber::fmt().with_max_level(tracing::Level::DEBUG).init();
         });
+    }
+
+    /// The output of a probe command goes into the log on lines of its own, so
+    /// that it stays readable, and a command that wrote nothing adds nothing.
+    #[test]
+    fn test_logged_output() {
+        let collector = OutputCollector::new();
+        assert_eq!(ExecProbe::logged_output(&collector), "");
+
+        collector.clone().write_all(b"connection refused\n").unwrap();
+        assert_eq!(ExecProbe::logged_output(&collector), "\nconnection refused");
+
+        // Reading the output empties it, so the next try starts clean
+        assert_eq!(ExecProbe::logged_output(&collector), "");
+
+        collector.clone().write_all(b"first\nsecond\n\n").unwrap();
+        assert_eq!(ExecProbe::logged_output(&collector), "\nfirst\nsecond");
     }
 
     #[tokio::test]

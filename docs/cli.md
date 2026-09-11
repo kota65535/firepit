@@ -61,11 +61,15 @@ It is enabled when CUI mode, and disabled when TUI mode by default.
 
 ### `--log-file <LOG_FILE>`
 
-Outputs Firepit debug log file to the specified path.
+Writes the Firepit log to the specified path.
 
 ### `--log-level <LOG_LEVEL>`
 
-Log level of Firepit debug log. Options are: `error`, `warn`, `info`, `debug`, `trace`. Default is `info`.
+Level of the Firepit log. Options are: `error`, `warn`, `info`, `debug`, `trace`. Default is `warn`.
+
+`error` and `warn` report what a user needs to act on: a task that could not run, a service that did not become ready, a task restarting.
+`info` adds what Firepit is doing to each task, including every try of an exec health check and the output of its command.
+`debug` and `trace` add the internals of the runner, and the resolved configuration, which carries the environment of each task.
 
 ### `--gantt-file <GANTT_FILE>`
 

@@ -16,7 +16,7 @@ use serde_json::Value;
 use std::fs::File;
 use std::io::Write;
 use std::path;
-use tracing::info;
+use tracing::debug;
 
 /// Name of the variable that receives the task arguments passed after `--`.
 pub const TASK_ARGS_VAR_NAME: &str = "args";
@@ -127,10 +127,10 @@ pub async fn run() -> anyhow::Result<i32> {
 
     init_logger(&root.log, args.tokio_console)?;
 
-    info!("Tasks: {:?}", tasks);
-    info!("Vars: {:?}", vars);
-    info!("Raw root project config:\n{:#?}", root);
-    info!("Raw child project config:\n{:#?}", children);
+    debug!("Tasks: {:?}", tasks);
+    debug!("Vars: {:?}", vars);
+    debug!("Raw root project config:\n{:#?}", root);
+    debug!("Raw child project config:\n{:#?}", children);
 
     // Print workspace information if no task specified
     if tasks.is_empty() {
@@ -159,7 +159,7 @@ pub async fn run() -> anyhow::Result<i32> {
 
     // Create runner
     let mut runner = TaskRunner::new(&ws)?;
-    info!("Target tasks: {:?}", runner.target_tasks);
+    debug!("Target tasks: {:?}", runner.target_tasks);
 
     let dep_tasks = runner
         .tasks
@@ -167,7 +167,7 @@ pub async fn run() -> anyhow::Result<i32> {
         .map(|t| t.name.clone())
         .filter(|t| !runner.target_tasks.contains(t))
         .collect::<Vec<_>>();
-    info!("Dep tasks: {:?}", dep_tasks);
+    debug!("Dep tasks: {:?}", dep_tasks);
 
     // Create & start UI
     let (app_tx, app_fut) = match root.ui {

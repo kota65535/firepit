@@ -1,5 +1,11 @@
 use serde_yaml::Value;
 
+/// Spawns a named task, in a span of the same name so that its records say what
+/// they are about.
+///
+/// The span is created at the `ERROR` level: the level of a span decides whether
+/// it is enabled at all, and the task a warning belongs to is needed exactly when
+/// only warnings are being read.
 #[macro_export]
 macro_rules! tokio_spawn {
     ($name:literal, {$($field:ident = $value:expr),*}, $future:expr) => {{
@@ -10,7 +16,7 @@ macro_rules! tokio_spawn {
                 $name,
                 vec![$(format!("{}={:?}", stringify!($field), $value)),*].join(", ")
             ))
-            .spawn($future.instrument(tracing::info_span!($name, $($field = $value),*)))
+            .spawn($future.instrument(tracing::error_span!($name, $($field = $value),*)))
             .unwrap()
     }};
 
@@ -18,7 +24,7 @@ macro_rules! tokio_spawn {
         use tracing::Instrument;
         tokio::task::Builder::new()
             .name($name)
-            .spawn($future.instrument(tracing::info_span!($name)))
+            .spawn($future.instrument(tracing::error_span!($name)))
             .unwrap()
     }};
 }
@@ -33,7 +39,7 @@ macro_rules! tokio_spawn_blocking {
                 vec![$(format!("{} = {:?}", stringify!($field), $value)),*].join(", ")
             ))
            .spawn_blocking(move || {
-                let span = tracing::info_span!($name, $($field = $value),*);
+                let span = tracing::error_span!($name, $($field = $value),*);
                 let _guard = span.enter();
                 ($block)()
             })
@@ -43,7 +49,7 @@ macro_rules! tokio_spawn_blocking {
        tokio::task::Builder::new()
            .name($name)
            .spawn_blocking(move || {
-                let span = tracing::info_span!($name);
+                let span = tracing::error_span!($name);
                 let _guard = span.enter();
                 ($block)()
             })
