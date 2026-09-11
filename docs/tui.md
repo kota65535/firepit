@@ -69,6 +69,7 @@ You can scroll through the logs using mouse wheel or keyboard.
 
 To search logs, press `/` to open the search bar. Type the search query and press `Enter`.
 The search results are highlighted in the logs, and you can navigate through the results using `n` (next) and `N` (previous) keys.
+Press `?` instead of `/` to search backward, towards the top of the log. `n` then walks up the log and `N` walks down.
 Press `Esc` to remove the search results.
 
 <div id="asciinema-search"/>

@@ -79,7 +79,7 @@ impl Toast {
 pub enum LayoutSections {
     Pane,
     TaskList(Option<SearchResults>),
-    Search { query: String },
+    Search { query: String, backward: bool },
     Help { scroll: usize, max_scroll: usize },
 }
 
@@ -819,9 +819,12 @@ impl TuiAppState {
         Ok(())
     }
 
-    pub fn enter_search(&mut self) -> anyhow::Result<()> {
+    pub fn enter_search(&mut self, backward: bool) -> anyhow::Result<()> {
         self.remove_search_highlight()?;
-        self.focus = LayoutSections::Search { query: "".to_string() };
+        self.focus = LayoutSections::Search {
+            query: "".to_string(),
+            backward,
+        };
         Ok(())
     }
 
@@ -842,13 +845,14 @@ impl TuiAppState {
     }
 
     pub fn run_search(&mut self) -> anyhow::Result<()> {
-        let LayoutSections::Search { query, .. } = &mut self.focus else {
+        let LayoutSections::Search { query, backward } = &mut self.focus else {
             return Ok(());
         };
         if query.is_empty() {
             return Ok(());
         }
 
+        let backward = *backward;
         let query = query.clone();
         let task = self.active_task_mut()?;
         let screen = task.output.screen_mut();
@@ -894,17 +898,18 @@ impl TuiAppState {
 
         let query_len = query.width();
 
-        // Find the initial search result index
+        // Find the initial search result index: the first match away from the
+        // current view in the direction being searched, or the match at the
+        // far end of the log when there is none left that way.
         let offset = screen.current_scrollback_len() - screen.scrollback();
-        let mut index = 0;
-        for (i, m) in matches.iter().enumerate() {
-            index = i;
-            if offset <= (m.0 as usize) {
-                break;
-            }
+        let index = if backward {
+            matches.iter().rposition(|m| (m.0 as usize) < offset)
+        } else {
+            matches.iter().position(|m| offset <= (m.0 as usize))
         }
+        .unwrap_or(matches.len().saturating_sub(1));
 
-        let search_results = SearchResults::new(&task.name, query, matches, index)?;
+        let search_results = SearchResults::new(&task.name, query, matches, index, backward)?;
 
         if let Some(Match(row, col)) = search_results.current() {
             self.highlight_cell(row, col, query_len as u16, true)?;
@@ -1196,8 +1201,8 @@ impl TuiAppState {
             AppCommand::Resize { rows, cols } => {
                 self.resize(rows, cols);
             }
-            AppCommand::EnterSearch => {
-                self.enter_search()?;
+            AppCommand::EnterSearch { backward } => {
+                self.enter_search(backward)?;
             }
             AppCommand::SearchInputChar(c) => {
                 self.search_input_char(c)?;

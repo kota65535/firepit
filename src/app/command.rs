@@ -118,7 +118,9 @@ pub enum AppCommand {
     ///
     /// Search Commands
     ///
-    EnterSearch,
+    EnterSearch {
+        backward: bool,
+    },
     SearchInputChar(char),
     SearchBackspace,
     SearchRun,

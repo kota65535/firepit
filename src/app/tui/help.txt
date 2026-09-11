@@ -7,12 +7,13 @@ qq, Ctrl-CC         : Kill all tasks and quit immediately
 ## Viewing Log
 Mouse wheel down    : Scroll down
 Mouse wheel up      : Scroll up
-e                   : Scroll down 1 line
-y                   : Scroll up 1 line
-d                   : Scroll down half of the screen
-u                   : Scroll up half of the screen
-f                   : Scroll down one screen
-b                   : Scroll up one screen
+e, Ctrl-E           : Scroll down 1 line
+y, Ctrl-Y           : Scroll up 1 line
+d, Ctrl-D           : Scroll down half of the screen
+u, Ctrl-U           : Scroll up half of the screen
+f, Ctrl-F, Space    : Scroll down one screen
+b, Ctrl-B           : Scroll up one screen
+PageDown, PageUp    : Scroll down/up one screen
 g                   : Go to the top
 G                   : Go to the bottom
 
@@ -22,9 +23,10 @@ Mouse double-click  : Select word and copy it to the clipboard
 Mouse triple-click  : Select line and copy it to the clipboard
 
 ## Searching Log
-/                   : Start searching log
-n                   : Go to next match
-N                   : Go to previous match
+/                   : Start searching log forward
+?                   : Start searching log backward
+n                   : Go to next match in the search direction
+N                   : Go to next match in the opposite direction
 Esc                 : Stop searching log
 
 ## Interaction with Tasks
