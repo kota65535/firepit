@@ -166,7 +166,7 @@ fn basic_layout() {
         "                  │                                                   ",
         "──────────────────│                                                   ",
         "[↑↓] Navigate     │                                        [q] Quit   ",
-        "[h]  Hide         │    [/] Search  [r] Re-run  [s] Stop    [?] Help   ",
+        "[h]  Hide         │   [/･?] Search  [r] Re-run  [s] Stop   [F1] Help  ",
     ]);
 }
 
@@ -492,7 +492,7 @@ fn toggle_sidebar_uses_full_width() {
 fn search_highlights_matches() {
     let mut tui = Tui::new(&["build"]);
     tui.output(b"foo bar\r\nbaz foo\r\n");
-    tui.send(AppCommand::EnterSearch);
+    tui.send(AppCommand::EnterSearch { backward: false });
     for c in "foo".chars() {
         tui.send(AppCommand::SearchInputChar(c));
     }
@@ -519,12 +519,37 @@ fn search_highlights_matches() {
 }
 
 #[test]
+fn backward_search_starts_above_the_view_and_reverses_n() {
+    let mut tui = Tui::new(&["build"]);
+    for l in lines(20) {
+        tui.output(format!("{l}\r\n").as_bytes());
+    }
+    // The view sits at the bottom, so a backward search for the common prefix
+    // starts at the last match above it rather than wrapping to the top.
+    tui.send(AppCommand::EnterSearch { backward: true });
+    for c in "line0".chars() {
+        tui.send(AppCommand::SearchInputChar(c));
+    }
+    let footer = tui.footer();
+    assert!(footer.contains("?line0█"), "{footer}");
+
+    tui.send(AppCommand::SearchRun);
+    assert_eq!(tui.pane_row(0), "line09");
+
+    // n keeps walking up the log, N turns back down.
+    tui.send(AppCommand::SearchNext);
+    assert_eq!(tui.pane_row(0), "line08");
+    tui.send(AppCommand::SearchPrevious);
+    assert_eq!(tui.pane_row(0), "line09");
+}
+
+#[test]
 fn search_scrolls_to_match_in_scrollback() {
     let mut tui = Tui::new(&["build"]);
     for l in lines(20) {
         tui.output(format!("{l}\r\n").as_bytes());
     }
-    tui.send(AppCommand::EnterSearch);
+    tui.send(AppCommand::EnterSearch { backward: false });
     for c in "line03".chars() {
         tui.send(AppCommand::SearchInputChar(c));
     }

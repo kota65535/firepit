@@ -215,7 +215,8 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<App
         KeyCode::PageUp if options.on_task_list() => Some(AppCommand::ScrollUp(ScrollSize::Full)),
         KeyCode::Char('G') if options.on_task_list() => Some(AppCommand::ScrollDown(ScrollSize::Edge)),
         KeyCode::Char('g') if options.on_task_list() => Some(AppCommand::ScrollUp(ScrollSize::Edge)),
-        KeyCode::Char('/') if options.on_task_list() => Some(AppCommand::EnterSearch),
+        KeyCode::Char('/') if options.on_task_list() => Some(AppCommand::EnterSearch { backward: false }),
+        KeyCode::Char('?') if options.on_task_list() => Some(AppCommand::EnterSearch { backward: true }),
         KeyCode::Char('n') if options.on_task_list() => Some(AppCommand::SearchNext),
         KeyCode::Char('N') if options.on_task_list() => Some(AppCommand::SearchPrevious),
         KeyCode::Enter if options.on_task_list() => Some(AppCommand::EnterInteractive),
@@ -251,11 +252,11 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<App
         KeyCode::Char('k') if options.on_help() => Some(AppCommand::ScrollUp(ScrollSize::One)),
         KeyCode::Char('j') if options.on_help() => Some(AppCommand::ScrollDown(ScrollSize::One)),
         KeyCode::Esc if options.on_help() => Some(AppCommand::ExitHelp),
-        KeyCode::Char('?') if options.on_help() => Some(AppCommand::ExitHelp),
+        KeyCode::F(1) if options.on_help() => Some(AppCommand::ExitHelp),
 
         // Global
         KeyCode::Char('c') if key_event.modifiers == KeyModifiers::CONTROL => Some(AppCommand::Quit),
-        KeyCode::Char('?') if options.on_task_list() => Some(AppCommand::OpenHelp),
+        KeyCode::F(1) if options.on_task_list() => Some(AppCommand::OpenHelp),
         _ => None,
     }
 }

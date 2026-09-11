@@ -23,9 +23,10 @@ Mouse double-click  : Select word and copy it to the clipboard
 Mouse triple-click  : Select line and copy it to the clipboard
 
 ## Searching Log
-/                   : Start searching log
-n                   : Go to next match
-N                   : Go to previous match
+/                   : Start searching log forward
+?                   : Start searching log backward
+n                   : Go to next match in the search direction
+N                   : Go to next match in the opposite direction
 Esc                 : Stop searching log
 
 ## Interaction with Tasks

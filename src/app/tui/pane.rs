@@ -16,13 +16,13 @@ static STOP_TASK: &(&str, &str) = &("[s]", "Stop");
 static RERUN_TASK: &(&str, &str) = &("[r]", "Re-run");
 static START_INTERACTION: &(&str, &str) = &("[Enter]", "Interact");
 static EXIT_INTERACTION: &(&str, &str) = &("[Ctrl-z]", "Exit Interaction");
-static START_SEARCH: &(&str, &str) = &("[/]", "Search");
+static START_SEARCH: &(&str, &str) = &("[/\u{FF65}?]", "Search");
 static EXIT_SEARCH: &(&str, &str) = &("[Esc]", "Exit Search");
 static SHOW_TASKS: &(&str, &str) = &("[h]", "Show Tasks");
 static NAVIGATE_SEARCH_RESULT: &(&str, &str) = &("[n\u{FF65}N]", "Next/Prev Match");
 static CLEAR_SEARCH_RESULT: &(&str, &str) = &("[Esc]", "Clear");
-static QUIT: &(&str, &str) = &("[q]", "Quit");
-static HELP: &(&str, &str) = &("[?]", "Help");
+static QUIT: &(&str, &str) = &("[q] ", "Quit");
+static HELP: &(&str, &str) = &("[F1]", "Help");
 
 pub struct TerminalPane<'a> {
     task: &'a Task,
@@ -90,10 +90,16 @@ impl<'a> TerminalPane<'a> {
                 help_spans.push(key_help_spans(*RERUN_TASK));
                 help_spans.push(key_help_spans(*STOP_TASK));
             }
-            LayoutSections::Search { query } => {
+            LayoutSections::Search { query, backward } => {
                 help_spans.push(key_help_spans(*EXIT_SEARCH));
+                // The prompt echoes the key that opened it, so the direction
+                // the search will run stays visible while typing.
+                let prompt = if *backward { '?' } else { '/' };
                 // Show cursor
-                message_spans.push(Span::styled(format!("/{}\u{2588}\n", query), Style::default().bold()));
+                message_spans.push(Span::styled(
+                    format!("{}{}\u{2588}\n", prompt, query),
+                    Style::default().bold(),
+                ));
             }
             LayoutSections::Help { .. } => {
                 // No footer content for help dialog

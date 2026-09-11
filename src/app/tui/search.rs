@@ -4,18 +4,22 @@ pub struct SearchResults {
     pub query: String,
     pub matches: Vec<Match>,
     pub index: usize,
+    /// Search direction, as chosen by `/` or `?`. It decides which way `n`
+    /// walks the matches; `N` always walks the other way.
+    pub backward: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct Match(pub u16, pub u16);
 
 impl SearchResults {
-    pub fn new(task: &str, query: String, matches: Vec<Match>, index: usize) -> anyhow::Result<Self> {
+    pub fn new(task: &str, query: String, matches: Vec<Match>, index: usize, backward: bool) -> anyhow::Result<Self> {
         Ok(Self {
             task: task.to_string(),
             query,
             matches,
             index,
+            backward,
         })
     }
 
@@ -26,7 +30,26 @@ impl SearchResults {
         Some(self.matches[self.index].clone())
     }
 
+    /// Moves to the match `n` would show next: down the log for a forward
+    /// search, up for a backward one.
     pub fn next(&mut self) -> Option<Match> {
+        if self.backward {
+            self.step_up()
+        } else {
+            self.step_down()
+        }
+    }
+
+    /// Moves to the match `N` would show: the opposite way from [`Self::next`].
+    pub fn previous(&mut self) -> Option<Match> {
+        if self.backward {
+            self.step_down()
+        } else {
+            self.step_up()
+        }
+    }
+
+    fn step_down(&mut self) -> Option<Match> {
         if self.matches.is_empty() {
             return None;
         }
@@ -38,7 +61,7 @@ impl SearchResults {
         Some(self.matches[self.index].clone())
     }
 
-    pub fn previous(&mut self) -> Option<Match> {
+    fn step_up(&mut self) -> Option<Match> {
         if self.matches.is_empty() {
             return None;
         }
