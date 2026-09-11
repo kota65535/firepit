@@ -1,5 +1,5 @@
 use tokio::sync::broadcast;
-use tracing::warn;
+use tracing::debug;
 
 #[derive(Debug, Clone, strum::AsRefStr)]
 pub enum RunnerCommand {
@@ -41,7 +41,7 @@ impl RunnerCommandChannel {
 
     fn send(&self, event: RunnerCommand) {
         if let Err(e) = self.tx.send(event) {
-            warn!("Failed to send {} event: {:?}", e.0.as_ref(), e);
+            debug!("Failed to send {} event: {:?}", e.0.as_ref(), e);
         }
     }
 }

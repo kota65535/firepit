@@ -18,7 +18,7 @@ use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::thread::available_parallelism;
 use std::{io, iter, path};
-use tracing::info;
+use tracing::debug;
 
 const CONFIG_FILE: [&str; 2] = ["firepit.yml", "firepit.yaml"];
 
@@ -210,7 +210,10 @@ pub fn default_log() -> LogConfig {
 }
 
 pub fn default_log_level() -> String {
-    "info".to_string()
+    // Warnings and errors are what a user needs to see; the levels below them
+    // report what firepit is doing, which is only of interest once something
+    // has gone wrong.
+    "warn".to_string()
 }
 
 pub fn default_ui() -> UI {
@@ -369,14 +372,14 @@ impl ProjectConfig {
             .or_else(|_| Self::open_file(&dir.join(CONFIG_FILE[1])))
             .with_context(|| {
                 format!(
-                    "cannot open config file ({} or {}) in directory {:?}",
+                    "failed to open the config file ({} or {}) in directory {:?}",
                     CONFIG_FILE[0], CONFIG_FILE[1], dir
                 )
             })?;
         let mut buf = String::new();
         file.read_to_string(&mut buf)?;
         Self::new_from_str(name, &buf, path.as_path(), dir)
-            .with_context(|| format!("cannot parse config file {:?}", path))
+            .with_context(|| format!("failed to parse the config file {:?}", path))
     }
 
     pub fn merge(&self, context: &tera::Context) -> anyhow::Result<Self> {
@@ -392,13 +395,13 @@ impl ProjectConfig {
 
         // Merge included files first
         for incl in rendered_includes.iter() {
-            info!("Config file {:?} includes {:?}", self.dir, incl);
+            debug!("Config file {:?} includes {:?}", self.dir, incl);
             let path = absolute_or_join(incl, &self.dir);
             let (file, _) = Self::open_file(&self.dir.join(incl))
-                .with_context(|| format!("cannot open included file {:?}", path))?;
+                .with_context(|| format!("failed to open the included file {:?}", path))?;
             let reader = BufReader::new(file);
-            let raw_yaml: Value =
-                serde_yaml::from_reader(reader).with_context(|| format!("cannot read included file {:?}.", path))?;
+            let raw_yaml: Value = serde_yaml::from_reader(reader)
+                .with_context(|| format!("failed to read the included file {:?}.", path))?;
             merge_yaml(&mut ret, &raw_yaml, true)
         }
 
@@ -460,7 +463,7 @@ impl ProjectConfig {
 
     pub fn schema() -> anyhow::Result<String> {
         let schema = schemars::schema_for!(ProjectConfig);
-        serde_json::to_string_pretty(&schema).context("cannot create config schema")
+        serde_json::to_string_pretty(&schema).context("failed to create the config schema")
     }
 
     pub fn task(&self, name: &str) -> anyhow::Result<&TaskConfig> {
@@ -813,7 +816,9 @@ pub struct ShellConfig {
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct LogConfig {
     #[serde(default = "default_log_level")]
-    /// Log level. Valid values: error, warn, info, debug, trace
+    /// Log level. Valid values: error, warn, info, debug, trace.
+    /// `warn` and above report what a user needs to act on, `info` what Firepit
+    /// is doing to each task, `debug` and below the internals.
     pub level: String,
 
     /// Log file path.

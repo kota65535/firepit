@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{info, warn};
+use tracing::{error, info};
 
 #[derive(Debug, Clone)]
 pub struct Workspace {
@@ -643,12 +643,12 @@ impl EnvConfig {
                 Ok(it) => it,
                 Err(e) => {
                     // Ignore if env file not found
-                    info!("cannot read env file {:?}: {:?}", f, e);
+                    info!("failed to read the env file {:?}: {:?}", f, e);
                     continue;
                 }
             };
             for item in iter {
-                let (key, value) = item.with_context(|| format!("cannot parse env file {:?}", f))?;
+                let (key, value) = item.with_context(|| format!("failed to parse the env file {:?}", f))?;
                 ret.push((f, key, value));
             }
         }
@@ -664,10 +664,10 @@ impl EnvConfig {
             // so the value must not appear in an error: the parse error, which quotes the
             // template, is dropped, while the render error only names a variable or a filter.
             tera.add_raw_template(&key, &value)
-                .map_err(|_| anyhow::anyhow!("cannot parse the template of {:?} in env file {:?}", key, f))?;
+                .map_err(|_| anyhow::anyhow!("failed to parse the template of {:?} in the env file {:?}", key, f))?;
             let value = tera
                 .render(&key, context)
-                .with_context(|| format!("cannot render {:?} in env file {:?}", key, f))?;
+                .with_context(|| format!("failed to render {:?} in the env file {:?}", key, f))?;
             ret.insert(key, value);
         }
         Ok(ret)
@@ -862,8 +862,13 @@ impl Task {
 
     pub fn match_inputs(&self, paths: &HashSet<PathBuf>) -> bool {
         self.inputs.iter().any(|i| {
-            self.match_glob(i.to_str().unwrap_or(""), paths).unwrap_or_else(|e| {
-                warn!("{:?}", e);
+            let pattern = i.to_str().unwrap_or("");
+            self.match_glob(pattern, paths).unwrap_or_else(|e| {
+                // A pattern that cannot be built makes the task miss the change
+                error!(
+                    "Task {:?} will not react to changes of its input {:?}: {}",
+                    self.name, pattern, e
+                );
                 false
             })
         })
@@ -879,7 +884,11 @@ impl Task {
         let mut input_modified_time: u64 = 0;
         for p in self.inputs.iter() {
             let paths = self.glob(p).unwrap_or_else(|e| {
-                warn!("{:?}", e);
+                // Without the files the task looks out of date and runs every time
+                error!(
+                    "Task {:?} cannot tell whether it is up to date, its input {:?} did not resolve: {}",
+                    self.name, p, e
+                );
                 Vec::new()
             });
             let modified_time = self.latest_modified_time(&paths);
@@ -890,7 +899,10 @@ impl Task {
         let mut output_modified_time: u64 = 0;
         for p in self.outputs.iter() {
             let paths = self.glob(p).unwrap_or_else(|e| {
-                warn!("{:?}", e);
+                error!(
+                    "Task {:?} cannot tell whether it is up to date, its output {:?} did not resolve: {}",
+                    self.name, p, e
+                );
                 Vec::new()
             });
             let modified_time = self.latest_modified_time(&paths);
@@ -907,7 +919,7 @@ impl Task {
             .map(|p| self.modified_time(p))
             .collect::<anyhow::Result<Vec<_>>>()
             .unwrap_or_else(|e| {
-                warn!("{:?}", e);
+                error!("Task {:?} cannot read the time of its files: {}", self.name, e);
                 Vec::new()
             });
         timestamps.into_iter().flatten().max().unwrap_or(0)
@@ -916,7 +928,7 @@ impl Task {
     fn match_glob(&self, pattern: &str, path: &HashSet<PathBuf>) -> anyhow::Result<bool> {
         let glob = globmatch::Builder::new(pattern)
             .build_glob()
-            .map_err(|e| anyhow::anyhow!("cannot build glob pattern: {:?}", e))?;
+            .map_err(|e| anyhow::anyhow!("failed to build the glob pattern: {:?}", e))?;
         Ok(path.iter().any(|p| glob.is_match(p)))
     }
 
@@ -941,7 +953,7 @@ impl Task {
             (Some(file_name), Some(dir_name)) => {
                 let matcher = globmatch::Builder::new(file_name.as_ref())
                     .build(dir_name)
-                    .map_err(|e| anyhow::anyhow!("cannot build glob pattern: {:?}", e))?;
+                    .map_err(|e| anyhow::anyhow!("failed to build the glob pattern: {:?}", e))?;
                 Ok(matcher.into_iter().flatten().collect::<Vec<_>>())
             }
             _ => Ok(vec![]),

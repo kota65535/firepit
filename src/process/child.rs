@@ -33,7 +33,7 @@ use tokio::{
     process::Command as TokioCommand,
     sync::{mpsc, watch, RwLock},
 };
-use tracing::{debug, trace};
+use tracing::{debug, error, trace};
 
 #[derive(Debug)]
 pub enum ChildState {
@@ -149,7 +149,7 @@ impl ChildHandle {
                 // as ^D
                 termios.local_flags &= !nix::sys::termios::LocalFlags::ECHOCTL;
                 if let Err(e) = nix::sys::termios::tcsetattr(file_desc, nix::sys::termios::SetArg::TCSANOW, &termios) {
-                    debug!("unable to unset ECHOCTL: {e}");
+                    debug!("failed to unset ECHOCTL: {e}");
                 }
             }
         }
@@ -161,7 +161,13 @@ impl ChildHandle {
 
         let pid = child.process_id();
 
-        let mut stdin = controller.take_writer().ok();
+        let mut stdin = match controller.take_writer() {
+            Ok(w) => Some(w),
+            Err(e) => {
+                debug!("Cannot take the stdin of the pty, interaction will not work: {e}");
+                None
+            }
+        };
         let output = controller.try_clone_reader().ok().map(ChildOutput::Pty);
 
         // If we don't want to keep stdin open we take it here and it is immediately
@@ -339,12 +345,20 @@ impl ShutdownStyle {
                                 // This avoids reliance on an underlying process exiting with
                                 // no exit code or a non-zero in order for turbo to operate correctly.
                                 Ok(Ok(_exit_code)) => ChildState::Exited(ChildExit::Killed),
-                                Ok(Err(_)) => ChildState::Exited(ChildExit::Failed),
+                                Ok(Err(e)) => {
+                                    // Reported to the user as an unknown result, so the
+                                    // reason for it must not be dropped here
+                                    error!("Failed to wait for the child to stop: {e}");
+                                    ChildState::Exited(ChildExit::Failed)
+                                }
                                 Err(_) => {
                                     debug!("graceful shutdown timed out, killing child");
                                     match child.kill().await {
                                         Ok(_) => ChildState::Exited(ChildExit::Killed),
-                                        Err(_) => ChildState::Exited(ChildExit::Failed),
+                                        Err(e) => {
+                                            error!("Failed to kill the child after a shutdown timeout: {e}");
+                                            ChildState::Exited(ChildExit::Failed)
+                                        }
                                     }
                                 }
                             }
@@ -353,7 +367,10 @@ impl ShutdownStyle {
                             debug!("received kill command, killing child");
                             match child.kill().await {
                                 Ok(_) => ChildState::Exited(ChildExit::Killed),
-                                Err(_) => ChildState::Exited(ChildExit::Failed),
+                                Err(e) => {
+                                    error!("Failed to kill the child: {e}");
+                                    ChildState::Exited(ChildExit::Failed)
+                                }
                             }
                         }
                     }
@@ -361,7 +378,10 @@ impl ShutdownStyle {
             }
             ShutdownStyle::Kill => match child.kill().await {
                 Ok(_) => ChildState::Exited(ChildExit::Killed),
-                Err(_) => ChildState::Exited(ChildExit::Failed),
+                Err(e) => {
+                    error!("Failed to kill the child: {e}");
+                    ChildState::Exited(ChildExit::Failed)
+                }
             },
         }
     }
@@ -442,7 +462,7 @@ impl Child {
         let state = Arc::new(RwLock::new(ChildState::Running(command_tx)));
         let task_state = state.clone();
 
-        let _task = tokio_spawn!("child", { name = label }, async move {
+        let _task = tokio_spawn!("child", { label = label }, async move {
             // On Windows it is important that this gets dropped once the child process
             // exits
             let controller = controller;
@@ -782,7 +802,10 @@ impl ChildStateManager {
             // if we hit this case, it means that the child process was killed
             // by someone else, and we should report that it was killed
             Ok(None) => ChildExit::KilledExternal,
-            Err(_e) => ChildExit::Failed,
+            Err(e) => {
+                error!("Failed to wait for the child: {e}");
+                ChildExit::Failed
+            }
         };
         {
             let mut task_state = self.task_state.write().await;

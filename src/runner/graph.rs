@@ -13,7 +13,7 @@ use std::fmt;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{broadcast, mpsc, watch};
 use tokio::task::JoinHandle;
-use tracing::{debug, info, warn};
+use tracing::debug;
 
 #[derive(Clone)]
 pub struct TaskGraph {
@@ -133,7 +133,7 @@ impl TaskGraph {
                     // Ignore if the dependent task does not exist.
                     // This can occur when creating a subgraph by `transitive_closure`.
                     _ => {
-                        warn!("Cannot find node for task {} and dependency {}", t.name, d.task);
+                        debug!("Cannot find node for task {} and dependency {}", t.name, d.task);
                     }
                 }
             }
@@ -269,15 +269,15 @@ impl TaskGraph {
             let task_name = task.name.clone();
             let awaited_remaining_cloned = awaited_remaining.clone();
             let visitor_tx_cloned = visitor_tx.clone();
-            nodes_fut.push(tokio_spawn!("node", { name = task_name }, async move {
+            nodes_fut.push(tokio_spawn!("node", { task = task_name }, async move {
                 let mut ignore_deps = false;
                 let mut num_runs = 0;
                 let mut num_restart = 0;
                 'start: loop {
                     if dep_tasks.is_empty() {
-                        info!("No dependency")
+                        debug!("No dependency")
                     } else {
-                        info!(
+                        debug!(
                             "Waiting for {} deps: {:?}",
                             dep_tasks.len(),
                             dep_tasks.iter().map(|t| t.name.clone()).collect::<Vec<_>>()
@@ -317,7 +317,7 @@ impl TaskGraph {
                         }
                     };
 
-                    info!("Dependencies finished. ok: {:?}", deps_ok);
+                    debug!("Dependencies finished. ok: {:?}", deps_ok);
 
                     // Loop for restarting service tasks
                     let result = 'send: loop {
@@ -385,7 +385,7 @@ impl TaskGraph {
                                                 _ => {
                                                     // If the caller drops the callback sender without signaling
                                                     // that the node processing is finished, we assume that it is finished.
-                                                    warn!("Callback sender dropped");
+                                                    debug!("Callback sender dropped");
                                                     tx.send(NodeResult::Failure).ok();
                                                     break 'send NodeResult::Failure;
                                                 }
@@ -397,7 +397,7 @@ impl TaskGraph {
                             Err(e) => {
                                 // The receiving end of the node channel has been closed/dropped.
                                 // We act as if we have been canceled.
-                                warn!("Cannot send to the runner: {:?}", e);
+                                debug!("Failed to send to the runner: {:?}", e);
                                 tx.send(NodeResult::Failure).ok();
                                 break 'send NodeResult::Failure;
                             }
@@ -440,7 +440,7 @@ impl TaskGraph {
                                 return Ok(());
                             }
                             Err(err) => {
-                                warn!("Visitor command channel error: {:?}", err);
+                                debug!("Visitor command channel error: {:?}", err);
                             }
                         };
                     }

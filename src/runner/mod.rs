@@ -100,14 +100,14 @@ impl TaskRunner {
         let ret = self.run(app_tx, quit_on_done).await;
 
         if let Err(err) = ret {
-            error!("Error: {:?}", err);
+            error!("Runner failed: {:?}", err);
             return Err(err);
         }
         Ok(())
     }
 
     pub async fn run(&mut self, app_tx: &AppCommandChannel, quit_on_done: bool) -> anyhow::Result<()> {
-        info!("Runner started");
+        debug!("Runner started");
 
         for t in self.target_tasks.iter() {
             app_tx.plan_task(t)
@@ -151,11 +151,11 @@ impl TaskRunner {
                         RunnerCommand::StopTasks  => {
                            // Finalizers are left running: they are meant to run to completion
                            // after the tasks they finalize, failed or not
-                           info!("Stopping all tasks but finalizers");
+                           debug!("Stopping all tasks but finalizers");
                            self.manager.stop_except(&finalizer_tasks).await;
                         }
                         RunnerCommand::StopTask { task } => {
-                            info!("Stopping task: {}", task);
+                            debug!("Stopping task: {}", task);
                             let end_time =  Local::now();
                             self.end_times.lock().expect("not poisoned").insert( task.clone(), end_time);
                             app_tx.clone().with_name(&task).finish_task(TaskResult::Stopped, Some(end_time));
@@ -163,7 +163,7 @@ impl TaskRunner {
                         }
                         RunnerCommand::RestartTask { task, force } => {
                             if quitting.load(Ordering::SeqCst) {
-                                info!("Ignoring restart of task {:?} while quitting", task);
+                                debug!("Ignoring restart of task {:?} while quitting", task);
                                 continue;
                             }
                             let mut tasks = vec![task.clone()];
@@ -171,39 +171,41 @@ impl TaskRunner {
                                 let task_graph = self.task_graph.transitive_closure(&tasks, Direction::Incoming)?;
                                 tasks = task_graph.sort()?.iter().map(|t| t.name.clone()).collect();
                             }
-                            info!("Restarting task: {:?}", tasks);
+                            // Worth noticing even when only warnings are read: the output
+                            // of the tasks below it belongs to another run
+                            warn!("Re-running tasks: {:?}", tasks);
 
-                            info!("Stopping tasks");
+                            debug!("Stopping tasks");
                             for task in tasks.iter() {
                                 let end_time =  Local::now();
                                 self.end_times.lock().expect("not poisoned").insert( task.clone(), end_time);
                                 app_tx.clone().with_name(task).finish_task(TaskResult::Rerunning, Some(end_time));
                                 self.manager.stop_by_label(task).await;
                             }
-                            info!("Stopped tasks");
-                            info!("Restarting visitors");
+                            debug!("Stopped tasks");
+                            debug!("Restarting visitors");
                             for task in tasks.iter() {
                                 if let Err(err) = visitor_tx.send(VisitorCommand::Restart { task: task.clone(), force }) {
-                                    warn!("Failed to restart visitor for task {:?}: {:?}", task, err);
+                                    error!("Failed to restart task {:?}: {:?}", task, err);
                                 }
                             }
                         }
                         RunnerCommand::Quit if quitting.load(Ordering::SeqCst) => {
                             // A second quit means the user gave up on the graceful shutdown
-                            info!("Killing tasks");
+                            debug!("Killing tasks");
                             self.manager.close_by_kill().await;
-                            info!("Killed tasks");
-                            info!("Stopping visitors");
+                            debug!("Killed tasks");
+                            debug!("Stopping visitors");
                             if let Err(err) = visitor_tx.send(VisitorCommand::Stop) {
-                                warn!("Failed to stop visitors: {:?}", err);
+                                debug!("Failed to stop visitors: {:?}", err);
                             }
                             node_rx.close();
                         }
                         RunnerCommand::Quit => {
-                            info!("Stopping runner");
+                            debug!("Stopping runner");
                             // The finalizers are left running, and those of the stopped tasks are
                             // released by the stop, so the visitors stay up until they are done
-                            info!("Stopping tasks but finalizers");
+                            debug!("Stopping tasks but finalizers");
                             let stop_fut = self.manager.stop_except(&finalizer_tasks);
                             tokio::pin!(stop_fut);
                             let killed = loop {
@@ -213,14 +215,14 @@ impl TaskRunner {
                                         // shutdown. Anything else is irrelevant while shutting
                                         // down, so keep waiting instead of disabling this branch.
                                         if matches!(event, Ok(RunnerCommand::Quit)) {
-                                            info!("Killing tasks");
+                                            debug!("Killing tasks");
                                             self.manager.close_by_kill().await;
-                                            info!("Killed tasks");
+                                            debug!("Killed tasks");
                                             break true;
                                         }
                                     }
                                     _ = &mut stop_fut => {
-                                        info!("Stopped tasks");
+                                        debug!("Stopped tasks");
                                         break false;
                                     }
                                 }
@@ -228,9 +230,9 @@ impl TaskRunner {
                             quitting.store(true, Ordering::SeqCst);
                             let finalizers_done = finalizers_remaining.lock().expect("not poisoned").is_empty();
                             if killed || finalizers_done {
-                                info!("Stopping visitors");
+                                debug!("Stopping visitors");
                                 if let Err(err) = visitor_tx.send(VisitorCommand::Stop) {
-                                    warn!("Failed to stop visitors: {:?}", err);
+                                    debug!("Failed to stop visitors: {:?}", err);
                                 }
                                 node_rx.close();
                             }
@@ -287,10 +289,10 @@ impl TaskRunner {
                             // Checked first so that the dependents of the tasks stopped by
                             // quitting are stopped too, not failed.
                             if quitting_cloned.load(Ordering::SeqCst) && !is_finalizer {
-                                info!("Task does not run as the runner is quitting");
+                                debug!("Task does not run as the runner is quitting");
                                 app_tx.finish_task(TaskResult::Stopped, None);
                                 if let Err(e) = callback.send(CallbackMessage(NodeResult::Failure)).await {
-                                    warn!("Failed to send callback event: {:?}", e)
+                                    debug!("Failed to send callback event: {:?}", e)
                                 }
                                 node_done();
                                 return Ok::<(), anyhow::Error>(());
@@ -301,7 +303,7 @@ impl TaskRunner {
                                 info!("Task does not run as its dependency task failed");
                                 app_tx.finish_task(TaskResult::BadDeps, None);
                                 if let Err(e) = callback.send(CallbackMessage(NodeResult::Failure)).await {
-                                    warn!("Failed to send callback event: {:?}", e)
+                                    debug!("Failed to send callback event: {:?}", e)
                                 }
                                 node_done();
                                 return Ok::<(), anyhow::Error>(());
@@ -312,7 +314,7 @@ impl TaskRunner {
                                 info!("Task output files are newer than input files");
                                 app_tx.finish_task(TaskResult::UpToDate, None);
                                 if let Err(e) = callback.send(CallbackMessage(NodeResult::Success)).await {
-                                    warn!("Failed to send callback event: {:?}", e)
+                                    debug!("Failed to send callback event: {:?}", e)
                                 }
                                 node_done();
                                 return Ok::<(), anyhow::Error>(());
@@ -323,7 +325,9 @@ impl TaskRunner {
                             // edit of it since the last run can make this fail.
                             let env = task.env.load()?;
 
-                            info!(
+                            // The dump carries the environment, so it stays at a level
+                            // that is not read by accident
+                            debug!(
                                 "Task is starting.\nrun: {:?}\nrestart: {:?}\nshell: {:?} {:?}\ncommand: {:?}\nenv: {:?}\nworking_dir: {:?}",
                                 num_runs, num_restart, task.shell, &task.shell_args, task.command, env, task.working_dir
                             );
@@ -351,14 +355,10 @@ impl TaskRunner {
                                 let log_rx = app_tx.subscribe_output();
                                 let mut task_fut = tokio_spawn!(
                                     "process",
-                                    { name = task.name },
                                     Self::run_process(task.clone(), process, app_tx.clone())
                                 );
-                                let mut probe_fut = tokio_spawn!(
-                                    "probe",
-                                    { name = task.name },
-                                    Self::run_probe(task.clone(), log_rx, probe_cancel_rx)
-                                );
+                                let mut probe_fut =
+                                    tokio_spawn!("probe", Self::run_probe(task.clone(), log_rx, probe_cancel_rx));
 
                                 let mut task_result: Option<Option<TaskResult>> = None;
                                 let mut probe_result = None;
@@ -392,10 +392,10 @@ impl TaskRunner {
                                                 None => false
                                             };
                                             if should_restart {
-                                                info!("Task should restart");
+                                                warn!("Task is restarting ({}/{})", num_restart + 1, task.restart.max_restart().map_or("\u{221e}".to_string(), |m| m.to_string()));
                                                 // Send a message to restart
                                                 if let Err(e) = callback.send(CallbackMessage(NodeResult::None)).await {
-                                                    warn!("Failed to send callback event: {:?}", e)
+                                                    debug!("Failed to send callback event: {:?}", e)
                                                 }
                                                 // Finish this closure
                                                 return Ok(());
@@ -411,7 +411,7 @@ impl TaskRunner {
                                                 info!("Task is ready");
                                                 app_tx.ready_task();
                                                 if let Err(e) = callback.send(CallbackMessage(NodeResult::Ready)).await {
-                                                    warn!("Failed to send callback event: {:?}", e)
+                                                    debug!("Failed to send callback event: {:?}", e)
                                                 }
                                             }
                                         }
@@ -424,12 +424,12 @@ impl TaskRunner {
                                 match (probe_result, task_result) {
                                     // The process finished after being ready
                                     (Some(true), Some(result)) => {
-                                        info!("Task finished after being ready");
+                                        debug!("Task finished after being ready");
                                         result.unwrap_or(TaskResult::Unknown)
                                     }
                                     // The probe failed: kill the process
                                     (Some(false), _) => {
-                                        info!("Task is not ready");
+                                        warn!("Task is not ready");
                                         let end_time =  Local::now();
                                         end_times_cloned.lock().expect("not poisoned").insert(task.name.clone(),  Local::now());
                                         app_tx.finish_task(TaskResult::NotReady, Some(end_time));
@@ -439,9 +439,9 @@ impl TaskRunner {
                                     // The process finished before the probe, which is a failure regardless of the result.
                                     // Being stopped or killed is reported as such though, not as a readiness failure.
                                     (_, result) => {
-                                        info!("Task finished before it becomes ready");
+                                        debug!("Task finished before it becomes ready");
                                         if let Err(e) = probe_cancel_tx.send(()) {
-                                            warn!("Failed to send cancel probe: {:?}", e)
+                                            debug!("Failed to send cancel probe: {:?}", e)
                                         }
                                         let end_time =  Local::now();
                                         end_times_cloned.lock().expect("not poisoned").insert(task.name.clone(), end_time);
@@ -469,16 +469,16 @@ impl TaskRunner {
                                 NodeResult::Failure
                             };
                             if fail_fast && result.is_failure() {
-                                info!("Fail-fast enabled, stopping all tasks");
+                                warn!("Fail-fast enabled, stopping all tasks");
                                 command_tx.stop_tasks();
                             }
 
                             // Notify the visitor the task finished
                             if let Err(e) = callback.send(CallbackMessage(node_result)).await {
-                                warn!("Failed to send callback event: {:?}", e)
+                                debug!("Failed to send callback event: {:?}", e)
                             }
 
-                            info!("Task finished");
+                            debug!("Task finished");
                             node_done();
 
                             Ok::<(), anyhow::Error>(())
@@ -494,7 +494,7 @@ impl TaskRunner {
                                 command_tx.stop_tasks();
                             }
                             if let Err(e) = callback.send(CallbackMessage(NodeResult::Failure)).await {
-                                warn!("Failed to send callback event: {:?}", e)
+                                debug!("Failed to send callback event: {:?}", e)
                             }
                             node_done();
                         }
@@ -505,7 +505,7 @@ impl TaskRunner {
         }
 
         if let Err(err) = visitor_tx.send(VisitorCommand::Stop) {
-            warn!("Failed to send cancel visitor: {:?}", err);
+            debug!("Failed to send cancel visitor: {:?}", err);
         }
         debug!("Waiting visitors to finish...");
         Self::join(&mut visitor_fut).await?;
@@ -524,7 +524,7 @@ impl TaskRunner {
         }) = watcher_handle
         {
             if let Err(err) = watcher_tx.send(WatcherCommand::Stop) {
-                warn!("Failed to send cancel watcher: {:?}", err);
+                debug!("Failed to send cancel watcher: {:?}", err);
             }
             debug!("Waiting watcher to finish...");
             watcher_fut.await?;
@@ -534,7 +534,7 @@ impl TaskRunner {
         // Notify app the runner finished
         app_tx.done().await;
 
-        info!("Runner finished");
+        debug!("Runner finished");
         Ok(())
     }
 
@@ -559,7 +559,7 @@ impl TaskRunner {
             f.is_empty()
         };
         if (quit_on_done && awaited_done) || (quitting.load(Ordering::SeqCst) && finalizers_done) {
-            info!("All awaited tasks done, stopping visitors");
+            debug!("All awaited tasks done, stopping visitors");
             visitor_tx.send(VisitorCommand::Stop).ok();
         }
     }
@@ -607,7 +607,7 @@ impl TaskRunner {
             _ => anyhow::bail!("failed to spawn process: process manager is closing"),
         };
 
-        info!("Task started. PID={}", process.pid().unwrap_or(0));
+        debug!("Task started. PID={}", process.pid().unwrap_or(0));
 
         Ok(Some(process))
     }
@@ -625,7 +625,7 @@ impl TaskRunner {
         }
 
         // Wait until complete
-        info!("Process is waiting for output. PID={}", pid);
+        debug!("Process is waiting for output. PID={}", pid);
         let result = match process.wait_with_piped_outputs(app_tx.clone(), app_tx.clone()).await {
             Ok(Some(exit_status)) => match exit_status {
                 ChildExit::Finished(Some(0)) => TaskResult::Success,
@@ -636,9 +636,9 @@ impl TaskRunner {
                 _ => TaskResult::Unknown,
             },
             Err(e) => anyhow::bail!("error while waiting task {:?}: {:?}", task.name, e),
-            Ok(None) => anyhow::bail!("unable to determine why task {:?} exited", task.name),
+            Ok(None) => anyhow::bail!("cannot determine why task {:?} exited", task.name),
         };
-        info!("Process finished. PID={}, result={:?}", pid, result);
+        debug!("Process finished. PID={}, result={:?}", pid, result);
         Ok(Some(result))
     }
 

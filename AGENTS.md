@@ -42,6 +42,16 @@ development workflows and services.
   (see [CONTRIBUTING.md](CONTRIBUTING.md#generated-files)).
 - **Tests** are fixture-based: add a directory with a `firepit.yml` under
   `tests/fixtures/` instead of embedding config in test code.
+- **Log levels**: `error` is firepit unable to do what was asked, `warn` is
+  something the user should notice, `info` is what firepit is doing to a task,
+  `debug` is the internals. The default level is `warn`, so a record above it
+  has to read on its own. A record belongs to the task named by the `name`
+  field of the `task` span it is in, and to no task otherwise — `task` is the
+  only span with a `name`.
+- **Failure messages** say `failed to X` when X was attempted and did not
+  succeed, and `cannot X` when X is not possible to begin with, such as a
+  lookup that found nothing or a capability lost for good. Do not use
+  `unable to`.
 - **Supported platforms** are Linux and macOS only — do not add Windows
   support code. Process code (`src/process/`) should be tested in both PTY
   and non-PTY modes.

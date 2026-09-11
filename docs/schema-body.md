@@ -95,7 +95,7 @@ includes:
 
 - **Type:** <code><a href="#logconfig">LogConfig</a></code>
 - **Required:** no
-- **Default:** `{"file":null,"level":"info"}`
+- **Default:** `{"file":null,"level":"warn"}`
 - **Description:** Log configuration.
 Valid only in a root project config.
 ```yaml
@@ -460,9 +460,11 @@ Probe failure during that period will not be counted towards the maximum number 
 
 - **Type:** <code>string</code>
 - **Required:** no
-- **Default:** `info`
+- **Default:** `warn`
 - **Template:** no
-- **Description:** Log level. Valid values: error, warn, info, debug, trace
+- **Description:** Log level. Valid values: error, warn, info, debug, trace.
+`warn` and above report what a user needs to act on, `info` what Firepit
+is doing to each task, `debug` and below the internals.
 
 ## LogProbeConfig
 

@@ -41,7 +41,7 @@ use std::collections::HashMap;
 use std::io::{self, Stdout, Write};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::{sync::mpsc, time::Instant};
-use tracing::{debug, error, info};
+use tracing::{debug, error};
 use unicode_width::UnicodeWidthStr;
 
 /// How long a transient toast (e.g. "Copied to clipboard") stays visible.
@@ -222,13 +222,13 @@ impl TuiApp {
         self.cleanup()?;
 
         if let Err(err) = ret {
-            error!("Error: {}", err);
+            error!("TUI failed: {}", err);
             // `run_inner` has returned early without stopping the runner.
             runner_tx.quit();
             return Err(err);
         }
 
-        info!("App is exiting");
+        debug!("App is exiting");
         // Same summary and exit code as the CUI, printed after the panes so it is
         // the last thing on the screen.
         let failed = self.state.failed_tasks();
@@ -782,12 +782,12 @@ impl TuiAppState {
     fn open_url(&self, url: &str) {
         debug!("Opening URL: {}", url);
         #[cfg(target_os = "macos")]
-        {
-            let _ = std::process::Command::new("open").arg(url).spawn();
-        }
+        let opener = "open";
         #[cfg(target_os = "linux")]
-        {
-            let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+        let opener = "xdg-open";
+        // The user clicked the link, so a failure to open it must not be silent
+        if let Err(e) = std::process::Command::new(opener).arg(url).spawn() {
+            error!("Failed to open {url:?} with {opener}: {e}");
         }
     }
 
