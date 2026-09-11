@@ -87,7 +87,7 @@ To exit interaction mode, press `Ctrl-Z`.
 
 Firepit's own log is shown along with the tasks, whether or not [`--log-file`](/cli#log-file-log-file) keeps a copy of it.
 A record about a task is written into that task's pane, dim, between the lines of output it belongs between, so the two read in the order they happened.
-A record about no task in particular — a shortcut that did not work, a signal that was not expected — has no pane to go in, so the ones worth acting on are shown briefly at the bottom of the screen and the rest are left to the log file.
+A record about no task in particular — a shortcut that did not work, a signal that was not expected — goes into every pane: the one you are looking at is the one it has to reach, and there is no telling which that is. At the levels that are read by default these are rare enough that saying it more than once costs less than a place of its own to say it.
 
 By default only warnings and errors are logged. [`--log-level`](/cli#log-level-log-level) `info` adds what Firepit is doing to each task, including every try of an [exec health check](/configuration#readiness) with the output of its command, which is the way to see why a service is not becoming ready.
 

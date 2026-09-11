@@ -67,16 +67,6 @@ impl Toast {
         }
     }
 
-    /// A record of the firepit log that the user should act on. It is about no
-    /// task, so there is no pane it could go in.
-    fn of_log(message: &str) -> Self {
-        Self {
-            message: message.to_string(),
-            expires_at: Some(Instant::now() + TOAST_DURATION),
-            clear_selection_on_expire: false,
-        }
-    }
-
     fn persistent(message: &str) -> Self {
         Self {
             message: message.to_string(),
@@ -683,17 +673,19 @@ impl TuiAppState {
             Level::WARN => YELLOW.clone(),
             _ => GREY.clone(),
         };
-        if let Some(task) = &record.task {
+        // A record about no task goes into every pane, since the one the user is
+        // looking at is the one it has to reach and there is no telling which that
+        // is. At the levels that are read by default these are rare enough that
+        // saying it more than once costs less than a place of its own to say it.
+        let panes: Vec<&mut Task> = match &record.task {
             // A task that firepit never started has no pane of its own
-            if let Ok(task) = self.task_mut(task) {
-                for line in record.message.lines() {
-                    task.note(&style, line);
-                }
-                return;
+            Some(task) if self.tasks.contains_key(task) => self.tasks.get_mut(task).into_iter().collect(),
+            _ => self.tasks.values_mut().collect(),
+        };
+        for pane in panes {
+            for line in record.message.lines() {
+                pane.note(&style, line);
             }
-        }
-        if matches!(record.level, Level::ERROR | Level::WARN) {
-            self.toast = Some(Toast::of_log(&record.message));
         }
     }
 

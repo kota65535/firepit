@@ -688,26 +688,16 @@ fn task_log_goes_into_its_pane() {
     assert!(tui.pane_row(0).is_empty());
 }
 
-/// A record about no task has no pane to go in, so the ones worth acting on are
-/// shown at the foot of the screen instead.
+/// A record about no task goes into every pane: the one the user is looking at
+/// is the one it has to reach, and there is no telling which that is.
 #[test]
-fn non_task_log_is_shown_at_the_foot() {
-    let mut tui = Tui::new(&["build"]);
+fn non_task_log_goes_into_every_pane() {
+    let mut tui = Tui::new(&["build", "serve"]);
     tui.log(None, Level::ERROR, "Failed to copy to the clipboard");
 
-    // The pane of the task is left alone
-    assert!(tui.pane_row(0).is_empty());
-    assert!(tui
-        .lines()
-        .iter()
-        .any(|l| l.contains("Failed to copy to the clipboard")));
-}
+    assert_eq!(tui.pane_row(0), "Failed to copy to the clipboard");
+    assert_eq!(tui.cell(0, 0).fg, Color::Indexed(1)); // red, for an error
 
-/// A record below `warn` is not worth interrupting for; it is left to the log file.
-#[test]
-fn non_task_log_below_warn_is_not_shown() {
-    let mut tui = Tui::new(&["build"]);
-    tui.log(None, Level::INFO, "Start watching files");
-
-    assert!(!tui.lines().iter().any(|l| l.contains("Start watching")));
+    tui.send(AppCommand::Down);
+    assert_eq!(tui.pane_row(0), "Failed to copy to the clipboard");
 }
