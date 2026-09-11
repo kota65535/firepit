@@ -172,7 +172,7 @@ impl ExecProbe {
                                 other => (format!("ended: {other:?}"), output),
                             }
                         },
-                        Ok(None) => anyhow::bail!("unable to determine why probe exited"),
+                        Ok(None) => anyhow::bail!("cannot determine why the probe exited"),
                         Err(e) => anyhow::bail!("error while waiting probe: {:?}", e),
                     }
                 }

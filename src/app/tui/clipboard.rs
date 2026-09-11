@@ -8,7 +8,7 @@ use which::which;
 pub fn copy_to_clipboard(s: &str) {
     match copy_impl(s, &PROVIDER) {
         Ok(()) => (),
-        Err(err) => tracing::error!("Unable to copy: {}", err.to_string()),
+        Err(err) => tracing::error!("Failed to copy to the clipboard: {}", err.to_string()),
     }
 }
 

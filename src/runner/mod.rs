@@ -636,7 +636,7 @@ impl TaskRunner {
                 _ => TaskResult::Unknown,
             },
             Err(e) => anyhow::bail!("error while waiting task {:?}: {:?}", task.name, e),
-            Ok(None) => anyhow::bail!("unable to determine why task {:?} exited", task.name),
+            Ok(None) => anyhow::bail!("cannot determine why task {:?} exited", task.name),
         };
         debug!("Process finished. PID={}, result={:?}", pid, result);
         Ok(Some(result))

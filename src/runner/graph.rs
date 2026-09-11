@@ -397,7 +397,7 @@ impl TaskGraph {
                             Err(e) => {
                                 // The receiving end of the node channel has been closed/dropped.
                                 // We act as if we have been canceled.
-                                debug!("Cannot send to the runner: {:?}", e);
+                                debug!("Failed to send to the runner: {:?}", e);
                                 tx.send(NodeResult::Failure).ok();
                                 break 'send NodeResult::Failure;
                             }

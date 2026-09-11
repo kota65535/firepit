@@ -786,7 +786,7 @@ impl TuiAppState {
         let opener = "xdg-open";
         // The user clicked the link, so a failure to open it must not be silent
         if let Err(e) = std::process::Command::new(opener).arg(url).spawn() {
-            error!("Unable to open {url:?} with {opener}: {e}");
+            error!("Failed to open {url:?} with {opener}: {e}");
         }
     }
 

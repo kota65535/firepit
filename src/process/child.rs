@@ -149,7 +149,7 @@ impl ChildHandle {
                 // as ^D
                 termios.local_flags &= !nix::sys::termios::LocalFlags::ECHOCTL;
                 if let Err(e) = nix::sys::termios::tcsetattr(file_desc, nix::sys::termios::SetArg::TCSANOW, &termios) {
-                    debug!("unable to unset ECHOCTL: {e}");
+                    debug!("failed to unset ECHOCTL: {e}");
                 }
             }
         }
