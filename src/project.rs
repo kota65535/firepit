@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{error, info};
+use tracing::{debug, error};
 
 #[derive(Debug, Clone)]
 pub struct Workspace {
@@ -641,9 +641,14 @@ impl EnvConfig {
         for f in self.env_files.iter() {
             let iter = match dotenvy::from_path_iter(f) {
                 Ok(it) => it,
+                // A dotenv file that is not there is how an optional one looks,
+                // so it is not worth a word. Anything else is, but only to
+                // whoever is looking into why the environment came out wrong:
+                // the file is read once per task and once again per run, and
+                // saying it every time would bury the output of the task.
+                Err(e) if e.not_found() => continue,
                 Err(e) => {
-                    // Ignore if env file not found
-                    info!("failed to read the env file {:?}: {:?}", f, e);
+                    debug!("failed to read the env file {:?}: {:?}", f, e);
                     continue;
                 }
             };
@@ -696,6 +701,10 @@ impl Task {
         }
 
         let task_name = Task::qualified_name(project_name, task_name);
+        // Whatever building the task has to say is about the task, and the pane
+        // it belongs in is the one named here
+        let span = tracing::error_span!("task", name = task_name);
+        let _guard = span.enter();
 
         // Shell
         let task_shell = task_config.clone().shell.unwrap_or(config.shell.clone());
