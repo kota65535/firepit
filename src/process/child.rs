@@ -462,7 +462,7 @@ impl Child {
         let state = Arc::new(RwLock::new(ChildState::Running(command_tx)));
         let task_state = state.clone();
 
-        let _task = tokio_spawn!("child", { name = label }, async move {
+        let _task = tokio_spawn!("child", { label = label }, async move {
             // On Windows it is important that this gets dropped once the child process
             // exits
             let controller = controller;

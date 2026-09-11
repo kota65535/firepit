@@ -269,7 +269,7 @@ impl TaskGraph {
             let task_name = task.name.clone();
             let awaited_remaining_cloned = awaited_remaining.clone();
             let visitor_tx_cloned = visitor_tx.clone();
-            nodes_fut.push(tokio_spawn!("node", { name = task_name }, async move {
+            nodes_fut.push(tokio_spawn!("node", { task = task_name }, async move {
                 let mut ignore_deps = false;
                 let mut num_runs = 0;
                 let mut num_restart = 0;

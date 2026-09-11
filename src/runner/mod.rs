@@ -355,14 +355,10 @@ impl TaskRunner {
                                 let log_rx = app_tx.subscribe_output();
                                 let mut task_fut = tokio_spawn!(
                                     "process",
-                                    { name = task.name },
                                     Self::run_process(task.clone(), process, app_tx.clone())
                                 );
-                                let mut probe_fut = tokio_spawn!(
-                                    "probe",
-                                    { name = task.name },
-                                    Self::run_probe(task.clone(), log_rx, probe_cancel_rx)
-                                );
+                                let mut probe_fut =
+                                    tokio_spawn!("probe", Self::run_probe(task.clone(), log_rx, probe_cancel_rx));
 
                                 let mut task_result: Option<Option<TaskResult>> = None;
                                 let mut probe_result = None;

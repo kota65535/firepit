@@ -6,6 +6,15 @@ use serde_yaml::Value;
 /// The span is created at the `ERROR` level: the level of a span decides whether
 /// it is enabled at all, and the task a warning belongs to is needed exactly when
 /// only warnings are being read.
+///
+/// # Which task a record belongs to
+///
+/// A record belongs to the task named by the `name` field of the `task` span it
+/// is in, and to no task when it is in no such span. `task` is the only span
+/// with a `name`, so that rule needs no list of span names to stay true: a span
+/// inside it, such as `probe`, says what part of the task is speaking and leaves
+/// the name to `task`, and one outside it, such as `node`, names the task it
+/// schedules in a field of its own.
 #[macro_export]
 macro_rules! tokio_spawn {
     ($name:literal, {$($field:ident = $value:expr),*}, $future:expr) => {{
