@@ -7,11 +7,12 @@ pub mod prefixed;
 use crate::app::command::AppCommand;
 use crate::app::command::AppCommandChannel;
 use crate::app::cui::color::ColorSelector;
-use crate::app::cui::lib::{ColorConfig, RED};
+use crate::app::cui::lib::{ColorConfig, GREY, RED, YELLOW};
 use crate::app::cui::output::{OutputClient, OutputClientBehavior, OutputSink};
 use crate::app::cui::prefixed::PrefixedWriter;
 use crate::app::print_failure_summary;
 use crate::app::signal::SignalHandler;
+use crate::log::LogRecord;
 use crate::runner::command::RunnerCommandChannel;
 use crate::tokio_spawn;
 use anyhow::Context;
@@ -21,7 +22,7 @@ use std::io::{stdout, Stdout, Write};
 use std::sync::{Arc, RwLock};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
-use tracing::{debug, error};
+use tracing::{debug, error, Level};
 
 pub struct CuiApp {
     color_selector: ColorSelector,
@@ -83,6 +84,30 @@ impl CuiApp {
             .insert(task, output_client);
     }
 
+    /// Prints a record of the firepit log along with the output, dim so that it
+    /// does not compete with it, and in the colour of the task it is about.
+    fn print_log(&mut self, record: &LogRecord) {
+        let style = match record.level {
+            Level::ERROR => RED.clone(),
+            Level::WARN => YELLOW.clone(),
+            _ => GREY.clone(),
+        };
+        match &record.task {
+            Some(task) => {
+                let label = self.labels.get(task).unwrap_or(task);
+                let prefix = self.color_selector.string_with_color(label, label);
+                for line in record.message.lines() {
+                    eprintln!("{}{}", prefix, style.apply_to(line));
+                }
+            }
+            None => {
+                for line in record.message.lines() {
+                    eprintln!("{}", style.apply_to(line));
+                }
+            }
+        }
+    }
+
     pub fn command_tx(&self) -> AppCommandChannel {
         self.command_tx.clone()
     }
@@ -127,6 +152,7 @@ impl CuiApp {
                         .write_all(output.as_slice())
                         .context("failed to write to stdout")?;
                 }
+                AppCommand::Log(record) => self.print_log(&record),
                 AppCommand::FinishTask {
                     task,
                     result,

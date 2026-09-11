@@ -13,7 +13,7 @@ mod term_output;
 use crate::app::command::AppCommandChannel;
 use crate::app::command::{AppCommand, TaskResult};
 use crate::app::command::{Direction, PaneSize, ScrollSize, TaskRun, TaskStatus};
-use crate::app::cui::lib::{GREY, RED};
+use crate::app::cui::lib::{GREY, RED, YELLOW};
 use crate::app::print_failure_summary;
 use crate::app::signal::SignalHandler;
 use crate::app::tui::clipboard::copy_to_clipboard;
@@ -26,6 +26,7 @@ use crate::app::tui::table::TaskTable;
 use crate::app::tui::task::Task;
 use crate::app::tui::term_output::TerminalOutput;
 use crate::app::{DOUBLE_CLICK_DURATION, FRAME_RATE};
+use crate::log::LogRecord;
 use crate::runner::command::RunnerCommandChannel;
 use crate::tokio_spawn;
 use anyhow::Context;
@@ -41,7 +42,7 @@ use std::collections::HashMap;
 use std::io::{self, Stdout, Write};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::{sync::mpsc, time::Instant};
-use tracing::{debug, error};
+use tracing::{debug, error, Level};
 use unicode_width::UnicodeWidthStr;
 
 /// How long a transient toast (e.g. "Copied to clipboard") stays visible.
@@ -63,6 +64,16 @@ impl Toast {
             message: COPIED_TXT.to_string(),
             expires_at: Some(Instant::now() + TOAST_DURATION),
             clear_selection_on_expire: true,
+        }
+    }
+
+    /// A record of the firepit log that the user should act on. It is about no
+    /// task, so there is no pane it could go in.
+    fn of_log(message: &str) -> Self {
+        Self {
+            message: message.to_string(),
+            expires_at: Some(Instant::now() + TOAST_DURATION),
+            clear_selection_on_expire: false,
         }
     }
 
@@ -662,6 +673,30 @@ impl TuiAppState {
         }
     }
 
+    /// Puts a record of the firepit log where it belongs: a task's own records go
+    /// into its pane, next to the output they are about. A record about no task
+    /// has no pane to go in, so the ones worth acting on are shown at the foot of
+    /// the screen and the rest are left to the log file.
+    fn record_log(&mut self, record: LogRecord) {
+        let style = match record.level {
+            Level::ERROR => RED.clone(),
+            Level::WARN => YELLOW.clone(),
+            _ => GREY.clone(),
+        };
+        if let Some(task) = &record.task {
+            // A task that firepit never started has no pane of its own
+            if let Ok(task) = self.task_mut(task) {
+                for line in record.message.lines() {
+                    task.note(&style, line);
+                }
+                return;
+            }
+        }
+        if matches!(record.level, Level::ERROR | Level::WARN) {
+            self.toast = Some(Toast::of_log(&record.message));
+        }
+    }
+
     /// Insert a stdin to be associated with a task
     pub fn insert_stdin(&mut self, task: &str, stdin: Option<Box<dyn Write + Send>>) -> anyhow::Result<()> {
         let task = self
@@ -1064,6 +1099,9 @@ impl TuiAppState {
                 datetime,
             } => {
                 self.start_task(&task, pid, restart, max_restart, rerun, datetime)?;
+            }
+            AppCommand::Log(record) => {
+                self.record_log(record);
             }
             AppCommand::TaskOutput { task, output } => {
                 self.process_output(&task, &output)?;

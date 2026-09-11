@@ -15,12 +15,14 @@
 use chrono::{Local, TimeZone};
 use firepit::app::command::{AppCommand, ScrollSize, TaskResult};
 use firepit::app::tui::TuiAppState;
+use firepit::log::LogRecord;
 use firepit::runner::command::RunnerCommandChannel;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::{Buffer, Cell};
 use ratatui::style::{Color, Modifier};
 use ratatui::Terminal;
 use std::collections::HashMap;
+use tracing::Level;
 
 const COLS: u16 = 70;
 const ROWS: u16 = 10;
@@ -57,6 +59,14 @@ impl Tui {
             task: "build".to_string(),
             output: bytes.to_vec(),
         });
+    }
+
+    fn log(&mut self, task: Option<&str>, level: Level, message: &str) {
+        self.send(AppCommand::Log(LogRecord {
+            task: task.map(String::from),
+            level,
+            message: message.to_string(),
+        }));
     }
 
     fn resize(&mut self, rows: u16, cols: u16) {
@@ -656,4 +666,48 @@ fn quitting_closes_the_help_dialog_and_shows_the_quit_message() {
     );
     assert!(tui.footer().contains("Quitting..."), "{}", tui.footer());
     assert_eq!(tui.pane_row(0), "hello");
+}
+
+/// A record about a task goes into that task's pane, next to the output it is
+/// about, so the two read in the order they happened.
+#[test]
+fn task_log_goes_into_its_pane() {
+    let mut tui = Tui::new(&["build", "serve"]);
+    tui.output(b"building\r\n");
+    tui.log(Some("build"), Level::WARN, "Task is restarting (1/3)");
+    tui.output(b"building again\r\n");
+
+    assert_eq!(
+        tui.pane_rows()[..3],
+        ["building", "Task is restarting (1/3)", "building again"]
+    );
+    assert_eq!(tui.cell(1, 0).fg, Color::Indexed(3)); // yellow, for a warning
+
+    // The record is about `build`, so the pane of `serve` does not have it
+    tui.send(AppCommand::Down);
+    assert!(tui.pane_row(0).is_empty());
+}
+
+/// A record about no task has no pane to go in, so the ones worth acting on are
+/// shown at the foot of the screen instead.
+#[test]
+fn non_task_log_is_shown_at_the_foot() {
+    let mut tui = Tui::new(&["build"]);
+    tui.log(None, Level::ERROR, "Failed to copy to the clipboard");
+
+    // The pane of the task is left alone
+    assert!(tui.pane_row(0).is_empty());
+    assert!(tui
+        .lines()
+        .iter()
+        .any(|l| l.contains("Failed to copy to the clipboard")));
+}
+
+/// A record below `warn` is not worth interrupting for; it is left to the log file.
+#[test]
+fn non_task_log_below_warn_is_not_shown() {
+    let mut tui = Tui::new(&["build"]);
+    tui.log(None, Level::INFO, "Start watching files");
+
+    assert!(!tui.lines().iter().any(|l| l.contains("Start watching")));
 }
