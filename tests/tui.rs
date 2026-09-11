@@ -165,7 +165,7 @@ fn basic_layout() {
         "                  │                                                   ",
         "                  │                                                   ",
         "──────────────────│                                                   ",
-        "[↑↓] Navigate     │                                        [q] Quit   ",
+        "[↑↓] Navigate     │                                        [q]  Quit  ",
         "[h]  Hide         │   [/･?] Search  [r] Re-run  [s] Stop   [F1] Help  ",
     ]);
 }
