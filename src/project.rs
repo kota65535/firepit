@@ -643,12 +643,12 @@ impl EnvConfig {
                 Ok(it) => it,
                 Err(e) => {
                     // Ignore if env file not found
-                    info!("cannot read env file {:?}: {:?}", f, e);
+                    info!("failed to read the env file {:?}: {:?}", f, e);
                     continue;
                 }
             };
             for item in iter {
-                let (key, value) = item.with_context(|| format!("cannot parse env file {:?}", f))?;
+                let (key, value) = item.with_context(|| format!("failed to parse the env file {:?}", f))?;
                 ret.push((f, key, value));
             }
         }
@@ -664,10 +664,10 @@ impl EnvConfig {
             // so the value must not appear in an error: the parse error, which quotes the
             // template, is dropped, while the render error only names a variable or a filter.
             tera.add_raw_template(&key, &value)
-                .map_err(|_| anyhow::anyhow!("cannot parse the template of {:?} in env file {:?}", key, f))?;
+                .map_err(|_| anyhow::anyhow!("failed to parse the template of {:?} in the env file {:?}", key, f))?;
             let value = tera
                 .render(&key, context)
-                .with_context(|| format!("cannot render {:?} in env file {:?}", key, f))?;
+                .with_context(|| format!("failed to render {:?} in the env file {:?}", key, f))?;
             ret.insert(key, value);
         }
         Ok(ret)
@@ -928,7 +928,7 @@ impl Task {
     fn match_glob(&self, pattern: &str, path: &HashSet<PathBuf>) -> anyhow::Result<bool> {
         let glob = globmatch::Builder::new(pattern)
             .build_glob()
-            .map_err(|e| anyhow::anyhow!("cannot build glob pattern: {:?}", e))?;
+            .map_err(|e| anyhow::anyhow!("failed to build the glob pattern: {:?}", e))?;
         Ok(path.iter().any(|p| glob.is_match(p)))
     }
 
@@ -953,7 +953,7 @@ impl Task {
             (Some(file_name), Some(dir_name)) => {
                 let matcher = globmatch::Builder::new(file_name.as_ref())
                     .build(dir_name)
-                    .map_err(|e| anyhow::anyhow!("cannot build glob pattern: {:?}", e))?;
+                    .map_err(|e| anyhow::anyhow!("failed to build the glob pattern: {:?}", e))?;
                 Ok(matcher.into_iter().flatten().collect::<Vec<_>>())
             }
             _ => Ok(vec![]),

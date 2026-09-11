@@ -372,14 +372,14 @@ impl ProjectConfig {
             .or_else(|_| Self::open_file(&dir.join(CONFIG_FILE[1])))
             .with_context(|| {
                 format!(
-                    "cannot open config file ({} or {}) in directory {:?}",
+                    "failed to open the config file ({} or {}) in directory {:?}",
                     CONFIG_FILE[0], CONFIG_FILE[1], dir
                 )
             })?;
         let mut buf = String::new();
         file.read_to_string(&mut buf)?;
         Self::new_from_str(name, &buf, path.as_path(), dir)
-            .with_context(|| format!("cannot parse config file {:?}", path))
+            .with_context(|| format!("failed to parse the config file {:?}", path))
     }
 
     pub fn merge(&self, context: &tera::Context) -> anyhow::Result<Self> {
@@ -398,10 +398,10 @@ impl ProjectConfig {
             debug!("Config file {:?} includes {:?}", self.dir, incl);
             let path = absolute_or_join(incl, &self.dir);
             let (file, _) = Self::open_file(&self.dir.join(incl))
-                .with_context(|| format!("cannot open included file {:?}", path))?;
+                .with_context(|| format!("failed to open the included file {:?}", path))?;
             let reader = BufReader::new(file);
-            let raw_yaml: Value =
-                serde_yaml::from_reader(reader).with_context(|| format!("cannot read included file {:?}.", path))?;
+            let raw_yaml: Value = serde_yaml::from_reader(reader)
+                .with_context(|| format!("failed to read the included file {:?}.", path))?;
             merge_yaml(&mut ret, &raw_yaml, true)
         }
 
@@ -463,7 +463,7 @@ impl ProjectConfig {
 
     pub fn schema() -> anyhow::Result<String> {
         let schema = schemars::schema_for!(ProjectConfig);
-        serde_json::to_string_pretty(&schema).context("cannot create config schema")
+        serde_json::to_string_pretty(&schema).context("failed to create the config schema")
     }
 
     pub fn task(&self, name: &str) -> anyhow::Result<&TaskConfig> {

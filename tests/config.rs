@@ -131,14 +131,14 @@ fn test_merge() {
 fn test_bad_root() {
     let path = Path::new("tests/fixtures/config/somewhere");
     let err = ProjectConfig::new_multi(path).expect_err("");
-    assert_starts_with!(err.to_string(), "cannot open config file");
+    assert_starts_with!(err.to_string(), "failed to open the config file");
 }
 
 #[test]
 fn test_bad_child() {
     let path = Path::new("tests/fixtures/config/bad_child");
     let err = ProjectConfig::new_multi(path).expect_err("");
-    assert_starts_with!(err.to_string(), "cannot open config file");
+    assert_starts_with!(err.to_string(), "failed to open the config file");
 }
 
 #[test]
@@ -146,7 +146,7 @@ fn test_bad_type() {
     let path = Path::new("tests/fixtures/config/bad_type");
     let err = ProjectConfig::new_multi(path).expect_err("");
     println!("{:?}", err);
-    assert_starts_with!(err.to_string(), "cannot parse config file");
+    assert_starts_with!(err.to_string(), "failed to parse the config file");
 }
 
 #[test]
@@ -155,7 +155,7 @@ fn test_bad_vars_object() {
     let path = Path::new("tests/fixtures/config/bad_vars_object");
     let err = ProjectConfig::new_multi(path).expect_err("");
     let msg = format!("{:#}", err);
-    assert_starts_with!(msg, "cannot parse config file");
+    assert_starts_with!(msg, "failed to parse the config file");
     assert!(msg.contains("`type`"), "{msg}");
 }
 
