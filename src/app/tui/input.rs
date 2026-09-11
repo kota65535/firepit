@@ -210,6 +210,9 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<App
         KeyCode::Char('u') if options.on_task_list() => Some(AppCommand::ScrollUp(ScrollSize::Half)),
         KeyCode::Char('f') if options.on_task_list() => Some(AppCommand::ScrollDown(ScrollSize::Full)),
         KeyCode::Char('b') if options.on_task_list() => Some(AppCommand::ScrollUp(ScrollSize::Full)),
+        KeyCode::Char(' ') if options.on_task_list() => Some(AppCommand::ScrollDown(ScrollSize::Full)),
+        KeyCode::PageDown if options.on_task_list() => Some(AppCommand::ScrollDown(ScrollSize::Full)),
+        KeyCode::PageUp if options.on_task_list() => Some(AppCommand::ScrollUp(ScrollSize::Full)),
         KeyCode::Char('G') if options.on_task_list() => Some(AppCommand::ScrollDown(ScrollSize::Edge)),
         KeyCode::Char('g') if options.on_task_list() => Some(AppCommand::ScrollUp(ScrollSize::Edge)),
         KeyCode::Char('/') if options.on_task_list() => Some(AppCommand::EnterSearch),
@@ -516,4 +519,60 @@ fn encode_modifiers(mods: KeyModifiers) -> u8 {
         number |= 4;
     }
     number
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn task_list_options() -> InputOptions<'static> {
+        static FOCUS: LayoutSections = LayoutSections::TaskList(None);
+        InputOptions {
+            focus: &FOCUS,
+            has_selection: false,
+            task: "task".to_string(),
+            has_sidebar: true,
+            sidebar_width: 20,
+            pane_rows: 10,
+        }
+    }
+
+    fn scroll_of(code: KeyCode, modifiers: KeyModifiers) -> Option<(Direction, ScrollSize)> {
+        match translate_key_event(task_list_options(), KeyEvent::new(code, modifiers)) {
+            Some(AppCommand::ScrollDown(size)) => Some((Direction::Down, size)),
+            Some(AppCommand::ScrollUp(size)) => Some((Direction::Up, size)),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn space_and_page_keys_scroll_a_full_screen() {
+        for (code, direction) in [
+            (KeyCode::Char(' '), Direction::Down),
+            (KeyCode::PageDown, Direction::Down),
+            (KeyCode::PageUp, Direction::Up),
+        ] {
+            let scroll = scroll_of(code, KeyModifiers::NONE);
+            assert!(
+                matches!(scroll, Some((d, ScrollSize::Full)) if matches!((d, direction), (Direction::Down, Direction::Down) | (Direction::Up, Direction::Up))),
+                "{code:?} should scroll a full screen"
+            );
+        }
+    }
+
+    #[test]
+    fn ctrl_aliases_scroll_like_their_plain_keys() {
+        for code in ['e', 'y', 'd', 'u', 'f', 'b'] {
+            let plain = scroll_of(KeyCode::Char(code), KeyModifiers::NONE);
+            let ctrl = scroll_of(KeyCode::Char(code), KeyModifiers::CONTROL);
+            let same = match (plain, ctrl) {
+                (Some((Direction::Down, a)), Some((Direction::Down, b)))
+                | (Some((Direction::Up, a)), Some((Direction::Up, b))) => {
+                    std::mem::discriminant(&a) == std::mem::discriminant(&b)
+                }
+                _ => false,
+            };
+            assert!(same, "Ctrl-{code} should scroll like {code}");
+        }
+    }
 }
