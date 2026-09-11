@@ -102,7 +102,7 @@ impl CuiApp {
         let ret = self.run_inner(runner_tx).await;
 
         if let Err(err) = ret {
-            error!("Error: {}", err);
+            error!("CUI failed: {}", err);
             // `run_inner` has returned early without stopping the runner.
             runner_tx.quit();
             return Err(err);

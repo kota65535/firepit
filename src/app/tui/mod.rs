@@ -222,7 +222,7 @@ impl TuiApp {
         self.cleanup()?;
 
         if let Err(err) = ret {
-            error!("Error: {}", err);
+            error!("TUI failed: {}", err);
             // `run_inner` has returned early without stopping the runner.
             runner_tx.quit();
             return Err(err);
@@ -781,12 +781,12 @@ impl TuiAppState {
     fn open_url(&self, url: &str) {
         debug!("Opening URL: {}", url);
         #[cfg(target_os = "macos")]
-        {
-            let _ = std::process::Command::new("open").arg(url).spawn();
-        }
+        let opener = "open";
         #[cfg(target_os = "linux")]
-        {
-            let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+        let opener = "xdg-open";
+        // The user clicked the link, so a failure to open it must not be silent
+        if let Err(e) = std::process::Command::new(opener).arg(url).spawn() {
+            error!("Unable to open {url:?} with {opener}: {e}");
         }
     }
 

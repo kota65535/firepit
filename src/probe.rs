@@ -52,7 +52,9 @@ impl LogLineProbe {
                 // Normal branch, tries to match the pattern with the log event
                 event = log_rx.recv() => {
                     if let Some(event) = event {
-                        let line = String::from_utf8(event).unwrap_or_default();
+                        // Dropping the whole line on one bad byte would keep the
+                        // pattern from ever matching, with nothing to say why
+                        let line = String::from_utf8_lossy(&event);
                         if self.regex.is_match(&line) {
                             debug!("Probe succeeded");
                             return Ok(true);

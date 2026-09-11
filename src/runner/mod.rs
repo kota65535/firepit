@@ -100,7 +100,7 @@ impl TaskRunner {
         let ret = self.run(app_tx, quit_on_done).await;
 
         if let Err(err) = ret {
-            error!("Error: {:?}", err);
+            error!("Runner failed: {:?}", err);
             return Err(err);
         }
         Ok(())
