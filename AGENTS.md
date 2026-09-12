@@ -52,6 +52,10 @@ development workflows and services.
   succeed, and `cannot X` when X is not possible to begin with, such as a
   lookup that found nothing or a capability lost for good. Do not use
   `unable to`.
+- **Comments** wrap at 100 columns, not at the 72 this file uses — `rustfmt`
+  does not rewrap them, so it is on you. Write the reason a piece of code is
+  the way it is, and nothing the name, the signature, or the line below
+  already says.
 - **Supported platforms** are Linux and macOS only — do not add Windows
   support code. Process code (`src/process/`) should be tested in both PTY
   and non-PTY modes.
