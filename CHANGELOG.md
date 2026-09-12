@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.30.0] - 2026-09-12
+
+### 🚀 Features
+
+- *(cui)* Separate the task label from its output with a pipe (#421)
+- *(tui)* Note restarts in the pane (#422)
+- *(tui)* Add more less-like key bindings to the log pane (#429)
+- *(log)* Show the log alongside the tasks (#428)
+
+### 🐛 Bug Fixes
+
+- *(vars)* Default the args var to an empty string (#419)
+- *(tui)* Reword the restart note in the pane (#424)
+
+### 🚜 Refactor
+
+- *(log)* Sort the log by who reads it (#425)
+
 ## [0.29.0] - 2026-09-08
 
 ### 🚀 Features
