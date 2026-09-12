@@ -1,0 +1,8 @@
+tasks:
+  build:
+    command: echo built
+    # Neither directory exists, which is how a task looks before it has ever run
+    inputs:
+      - src/**
+    outputs:
+      - dist/**

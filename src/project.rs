@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{error, info};
+use tracing::{debug, error};
 
 #[derive(Debug, Clone)]
 pub struct Workspace {
@@ -641,9 +641,12 @@ impl EnvConfig {
         for f in self.env_files.iter() {
             let iter = match dotenvy::from_path_iter(f) {
                 Ok(it) => it,
+                // A file that is not there is how an optional one looks. Anything else is worth
+                // knowing, but the file is read once per task and again per run, so saying it every
+                // time would bury the output.
+                Err(e) if e.not_found() => continue,
                 Err(e) => {
-                    // Ignore if env file not found
-                    info!("failed to read the env file {:?}: {:?}", f, e);
+                    debug!("failed to read the env file {:?}: {:?}", f, e);
                     continue;
                 }
             };
@@ -696,6 +699,9 @@ impl Task {
         }
 
         let task_name = Task::qualified_name(project_name, task_name);
+        // What building the task has to say belongs in that task's pane
+        let span = tracing::error_span!("task", name = task_name);
+        let _guard = span.enter();
 
         // Shell
         let task_shell = task_config.clone().shell.unwrap_or(config.shell.clone());
@@ -950,6 +956,10 @@ impl Task {
         let dir_name = pattern.parent();
 
         match (file_name, dir_name) {
+            // A directory that is not there holds no files, which is what a task looks like before
+            // it has built its output. The glob builder walks the directory, so it would call that
+            // a failure.
+            (_, Some(dir_name)) if !dir_name.exists() => Ok(vec![]),
             (Some(file_name), Some(dir_name)) => {
                 let matcher = globmatch::Builder::new(file_name.as_ref())
                     .build(dir_name)

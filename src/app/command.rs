@@ -1,4 +1,5 @@
 use crate::app::{FORCE_RENDER_RATE, FRAME_RATE};
+use crate::log::LogRecord;
 use crate::tokio_spawn;
 use chrono::{DateTime, Local};
 use std::io;
@@ -47,6 +48,8 @@ pub enum AppCommand {
         stdin: Box<dyn Write + Send>,
     },
     PaneSizeQuery(oneshot::Sender<PaneSize>),
+    /// A record of firepit's own log, for a task or for firepit itself
+    Log(LogRecord),
     Done,
 
     ///

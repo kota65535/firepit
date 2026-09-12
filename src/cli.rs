@@ -125,7 +125,7 @@ pub async fn run() -> anyhow::Result<i32> {
         root.ui
     };
 
-    init_logger(&root.log, args.tokio_console)?;
+    let log_sink = init_logger(&root.log, args.tokio_console)?;
 
     debug!("Tasks: {:?}", tasks);
     debug!("Vars: {:?}", vars);
@@ -198,6 +198,9 @@ pub async fn run() -> anyhow::Result<i32> {
             (command_tx, fut)
         }
     };
+
+    // The log has somewhere to go now, including everything held until this point
+    log_sink.connect(&app_tx);
 
     // Collect deprecation warnings before root is moved into the runner task
     let mut deprecation_warnings = root.deprecated_warnings();

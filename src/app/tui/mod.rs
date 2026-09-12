@@ -13,7 +13,7 @@ mod term_output;
 use crate::app::command::AppCommandChannel;
 use crate::app::command::{AppCommand, TaskResult};
 use crate::app::command::{Direction, PaneSize, ScrollSize, TaskRun, TaskStatus};
-use crate::app::cui::lib::{GREY, RED};
+use crate::app::cui::lib::{GREY, RED, YELLOW};
 use crate::app::print_failure_summary;
 use crate::app::signal::SignalHandler;
 use crate::app::tui::clipboard::copy_to_clipboard;
@@ -26,6 +26,7 @@ use crate::app::tui::table::TaskTable;
 use crate::app::tui::task::Task;
 use crate::app::tui::term_output::TerminalOutput;
 use crate::app::{DOUBLE_CLICK_DURATION, FRAME_RATE};
+use crate::log::LogRecord;
 use crate::runner::command::RunnerCommandChannel;
 use crate::tokio_spawn;
 use anyhow::Context;
@@ -41,7 +42,7 @@ use std::collections::HashMap;
 use std::io::{self, Stdout, Write};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::{sync::mpsc, time::Instant};
-use tracing::{debug, error};
+use tracing::{debug, error, Level};
 use unicode_width::UnicodeWidthStr;
 
 /// How long a transient toast (e.g. "Copied to clipboard") stays visible.
@@ -662,6 +663,26 @@ impl TuiAppState {
         }
     }
 
+    fn record_log(&mut self, record: LogRecord) {
+        let style = match record.level {
+            Level::ERROR => RED.clone(),
+            Level::WARN => YELLOW.clone(),
+            _ => GREY.clone(),
+        };
+        // A record about no task goes into every pane: the one being looked at is the one it has to
+        // reach, and at the default level these are rare.
+        let panes: Vec<&mut Task> = match &record.task {
+            // A task that firepit never started has no pane of its own
+            Some(task) if self.tasks.contains_key(task) => self.tasks.get_mut(task).into_iter().collect(),
+            _ => self.tasks.values_mut().collect(),
+        };
+        for pane in panes {
+            for line in record.lines() {
+                pane.note(&style, &line);
+            }
+        }
+    }
+
     /// Insert a stdin to be associated with a task
     pub fn insert_stdin(&mut self, task: &str, stdin: Option<Box<dyn Write + Send>>) -> anyhow::Result<()> {
         let task = self
@@ -898,9 +919,9 @@ impl TuiAppState {
 
         let query_len = query.width();
 
-        // Find the initial search result index: the first match away from the
-        // current view in the direction being searched, or the match at the
-        // far end of the log when there is none left that way.
+        // Find the initial search result index: the first match away from the current view in the
+        // direction being searched, or the match at the far end of the log when there is none left
+        // that way.
         let offset = screen.current_scrollback_len() - screen.scrollback();
         let index = if backward {
             matches.iter().rposition(|m| (m.0 as usize) < offset)
@@ -1064,6 +1085,9 @@ impl TuiAppState {
                 datetime,
             } => {
                 self.start_task(&task, pid, restart, max_restart, rerun, datetime)?;
+            }
+            AppCommand::Log(record) => {
+                self.record_log(record);
             }
             AppCommand::TaskOutput { task, output } => {
                 self.process_output(&task, &output)?;

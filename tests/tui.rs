@@ -15,12 +15,14 @@
 use chrono::{Local, TimeZone};
 use firepit::app::command::{AppCommand, ScrollSize, TaskResult};
 use firepit::app::tui::TuiAppState;
+use firepit::log::LogRecord;
 use firepit::runner::command::RunnerCommandChannel;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::{Buffer, Cell};
 use ratatui::style::{Color, Modifier};
 use ratatui::Terminal;
 use std::collections::HashMap;
+use tracing::Level;
 
 const COLS: u16 = 70;
 const ROWS: u16 = 10;
@@ -57,6 +59,15 @@ impl Tui {
             task: "build".to_string(),
             output: bytes.to_vec(),
         });
+    }
+
+    fn log(&mut self, task: Option<&str>, level: Level, message: &str) {
+        self.send(AppCommand::Log(LogRecord {
+            task: task.map(String::from),
+            level,
+            module: "firepit::test".to_string(),
+            message: message.to_string(),
+        }));
     }
 
     fn resize(&mut self, rows: u16, cols: u16) {
@@ -524,8 +535,8 @@ fn backward_search_starts_above_the_view_and_reverses_n() {
     for l in lines(20) {
         tui.output(format!("{l}\r\n").as_bytes());
     }
-    // The view sits at the bottom, so a backward search for the common prefix
-    // starts at the last match above it rather than wrapping to the top.
+    // The view sits at the bottom, so a backward search for the common prefix starts at the last
+    // match above it rather than wrapping to the top.
     tui.send(AppCommand::EnterSearch { backward: true });
     for c in "line0".chars() {
         tui.send(AppCommand::SearchInputChar(c));
@@ -656,4 +667,47 @@ fn quitting_closes_the_help_dialog_and_shows_the_quit_message() {
     );
     assert!(tui.footer().contains("Quitting..."), "{}", tui.footer());
     assert_eq!(tui.pane_row(0), "hello");
+}
+
+/// A record about a task goes into that task's pane, next to the output it is about, so the two
+/// read in the order they happened.
+#[test]
+fn task_log_goes_into_its_pane() {
+    let mut tui = Tui::new(&["build", "serve"]);
+    tui.output(b"building\r\n");
+    tui.log(Some("build"), Level::WARN, "Task is restarting (1/3)");
+    tui.output(b"building again\r\n");
+
+    assert_eq!(
+        tui.pane_rows()[..3],
+        [
+            "building",
+            "WARN firepit::test: Task is restarting (1/3)",
+            "building again"
+        ]
+    );
+    assert_eq!(tui.cell(1, 0).fg, Color::Indexed(3)); // yellow, for a warning
+
+    // The record is about `build`, so the pane of `serve` does not have it
+    tui.send(AppCommand::Down);
+    assert!(tui.pane_row(0).is_empty());
+}
+
+/// A record about no task goes into every pane: the one the user is looking at is the one it has to
+/// reach, and there is no telling which that is.
+#[test]
+fn non_task_log_goes_into_every_pane() {
+    let mut tui = Tui::new(&["build", "serve"]);
+    tui.log(None, Level::ERROR, "Failed to copy to the clipboard");
+
+    // The pane is narrower than the line, which wraps
+    assert!(
+        tui.pane_row(0).starts_with("ERROR firepit::test: Failed to copy"),
+        "{}",
+        tui.pane_row(0)
+    );
+    assert_eq!(tui.cell(0, 0).fg, Color::Indexed(1)); // red, for an error
+
+    tui.send(AppCommand::Down);
+    assert!(tui.pane_row(0).starts_with("ERROR firepit::test: Failed to copy"));
 }
