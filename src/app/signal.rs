@@ -4,15 +4,15 @@ use nix::sys::signal::Signal;
 use tokio::sync::broadcast;
 use tracing::{debug, warn};
 
-/// Capacity of the broadcast channel used to deliver signals. Signals are
-/// rare and only used to drive the shutdown, so a small buffer is enough.
+/// Capacity of the broadcast channel used to deliver signals.
+/// Signals are rare and only used to drive the shutdown, so a small buffer is enough.
 const SIGNAL_CHANNEL_SIZE: usize = 8;
 
-/// SignalHandler watches a signal source for the whole lifetime of the
-/// process and broadcasts every signal it receives to all subscribers.
+/// SignalHandler watches a signal source for the whole lifetime of the process and broadcasts every
+/// signal it receives to all subscribers.
 ///
-/// Delivering every signal (not just the first one) lets subscribers escalate
-/// a graceful shutdown into a forced one when the user interrupts again.
+/// Delivering every signal (not just the first one) lets subscribers escalate a graceful shutdown
+/// into a forced one when the user interrupts again.
 #[derive(Debug, Clone)]
 pub struct SignalHandler {
     tx: broadcast::Sender<i32>,
@@ -20,8 +20,8 @@ pub struct SignalHandler {
 
 /// Build a stream that yields every SIGINT and SIGTERM the process receives.
 ///
-/// It deliberately keeps yielding after the first signal so that a second
-/// Ctrl-C can be observed while the graceful shutdown is still in progress.
+/// It deliberately keeps yielding after the first signal so that a second Ctrl-C can be observed
+/// while the graceful shutdown is still in progress.
 fn get_signal() -> anyhow::Result<impl Stream<Item = i32>> {
     use tokio::signal::unix;
     let sigint = unix::signal(unix::SignalKind::interrupt())?;
@@ -51,8 +51,8 @@ impl SignalHandler {
         Ok(SignalHandler::new(get_signal()?))
     }
 
-    /// Construct a new SignalHandler that forwards every item yielded by
-    /// `signal_source` to all subscribers.
+    /// Construct a new SignalHandler that forwards every item yielded by `signal_source` to all
+    /// subscribers.
     pub fn new(signal_source: impl Stream<Item = i32> + Send + 'static) -> Self {
         let (tx, _) = broadcast::channel(SIGNAL_CHANNEL_SIZE);
         let worker_tx = tx.clone();
@@ -91,9 +91,9 @@ mod tests {
         let handler = SignalHandler::new(signal_stream(signal_rx));
         let mut signals = handler.subscribe();
 
-        // The handler must keep watching the signal source after the first
-        // signal, otherwise a second Ctrl-C would be silently dropped and the
-        // shutdown could never be escalated into a forced kill.
+        // The handler must keep watching the signal source after the first signal, otherwise a
+        // second Ctrl-C would be silently dropped and the shutdown could never be escalated into a
+        // forced kill.
         for expected in [libc::SIGINT, libc::SIGINT, libc::SIGTERM] {
             signal_tx.send(expected).unwrap();
             let signal_num = tokio::time::timeout(Duration::from_secs(5), signals.recv())

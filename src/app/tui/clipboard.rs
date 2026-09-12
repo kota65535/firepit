@@ -87,8 +87,8 @@ fn copy_impl(s: &str, provider: &Provider) -> std::io::Result<()> {
                 .stderr(Stdio::null())
                 .spawn()
                 .unwrap();
-            // Take stdin so it is closed (dropped) before waiting, and make sure
-            // the child is always reaped even if writing fails.
+            // Take stdin so it is closed (dropped) before waiting, and make sure the child is
+            // always reaped even if writing fails.
             let write_result = {
                 let mut stdin = child.stdin.take().unwrap();
                 std::io::Write::write_all(&mut stdin, s.as_bytes())

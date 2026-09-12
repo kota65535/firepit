@@ -241,8 +241,8 @@ impl TerminalOutput {
 mod tests {
     use super::*;
 
-    /// Produce a terminal output with more lines than the visible rows so that
-    /// the view can be scrolled back.
+    /// Produce a terminal output with more lines than the visible rows so that the view can be
+    /// scrolled back.
     fn output_with_scrollback() -> TerminalOutput {
         let mut output = TerminalOutput::new(4, 20, None);
         for i in 0..20 {

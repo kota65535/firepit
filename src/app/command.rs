@@ -95,8 +95,8 @@ pub enum AppCommand {
         rows: u16,
     },
     CopySelection,
-    /// Copy the selection after the multi-click window has passed, so that
-    /// e.g. the double-click stage of a triple-click does not also copy.
+    /// Copy the selection after the multi-click window has passed, so that e.g. the double-click
+    /// stage of a triple-click does not also copy.
     DeferCopySelection,
     Resize {
         rows: u16,
@@ -365,8 +365,9 @@ impl TaskResult {
         )
     }
 
-    /// One-line status. `with_cause` appends the cause of an `Error`, which can be
-    /// long, so it is left out where the space is tight such as the pane title.
+    /// One-line status.
+    /// `with_cause` appends the cause of an `Error`, which can be long, so it is left out where the
+    /// space is tight such as the pane title.
     pub fn short_message(&self, with_cause: bool) -> String {
         match self {
             TaskResult::Success => "Success".to_string(),
@@ -388,14 +389,13 @@ impl TaskResult {
         self.sentence(&format!(" {name:?}"))
     }
 
-    /// Full sentence without the task name, for the TUI pane whose title
-    /// already names the task.
+    /// Full sentence without the task name, for the TUI pane whose title already names the task.
     pub fn pane_message(&self) -> String {
         self.sentence("")
     }
 
-    /// `named` follows the subject of the sentence, so it carries its own
-    /// leading space and is empty when the task is not named.
+    /// `named` follows the subject of the sentence, so it carries its own leading space and is
+    /// empty when the task is not named.
     fn sentence(&self, named: &str) -> String {
         match self {
             TaskResult::Success => format!("Task{named} finished with exit code 0"),

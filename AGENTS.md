@@ -4,58 +4,48 @@ Guidance for AI coding agents working in this repository.
 
 ## Project Overview
 
-Firepit is a simple task & service runner with a comfortable TUI, written in
-Rust — an alternative to npm scripts, make, or docker-compose for managing
-development workflows and services.
+Firepit is a simple task & service runner with a comfortable TUI, written in Rust — an alternative
+to npm scripts, make, or docker-compose for managing development workflows and services.
 
 ## Read First
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — components, design patterns, task
-  execution flow
-- [CONTRIBUTING.md](CONTRIBUTING.md) — setup, build/test/lint commands, git
-  hooks, PR checklist
-- `docs/` — user-facing documentation; `examples/` — runnable example
-  projects
+- [ARCHITECTURE.md](ARCHITECTURE.md) — components, design patterns, task execution flow
+- [CONTRIBUTING.md](CONTRIBUTING.md) — setup, build/test/lint commands, git hooks, PR checklist
+- `docs/` — user-facing documentation; `examples/` — runnable example projects
 
 ## Rules for Agents
 
-- **Worktree setup**: after creating a new git worktree, ALWAYS run
-  `mise trust && mise install` inside it before anything else. `mise trust`
-  is per-directory, so tools from `mise.toml` are unavailable until this
-  runs.
-- **Before finishing a task**, run the tests — they are NOT covered by git
-  hooks:
+- **Worktree setup**: after creating a new git worktree, ALWAYS run `mise trust && mise install`
+  inside it before anything else.
+  `mise trust` is per-directory, so tools from `mise.toml` are unavailable until this runs.
+- **Before finishing a task**, run the tests — they are NOT covered by git hooks:
 
   ```bash
   cargo test --all --locked
   ```
 
-  Formatting and lint checks (rustfmt, clippy, dprint) run automatically in
-  the pre-commit hook and again in CI, so there is no need to run them
-  manually every time — just fix whatever the hook or CI reports.
-- **Commits** must follow Conventional Commits (enforced by commitlint via
-  lefthook). Never bypass git hooks with `--no-verify`.
-- **Generated files**: `schema.json` and `docs/schema-body.md` are
-  regenerated and auto-committed by CI when configuration structs in
-  `src/config.rs` or `src/vars.rs` change — no need to regenerate them manually. This does
-  not work on pull requests from forks; regenerate them yourself there
-  (see [CONTRIBUTING.md](CONTRIBUTING.md#generated-files)).
-- **Tests** are fixture-based: add a directory with a `firepit.yml` under
-  `tests/fixtures/` instead of embedding config in test code.
-- **Log levels**: `error` is firepit unable to do what was asked, `warn` is
-  something the user should notice, `info` is what firepit is doing to a task,
-  `debug` is the internals. The default level is `warn`, so a record above it
-  has to read on its own. A record belongs to the task named by the `name`
-  field of the `task` span it is in, and to no task otherwise — `task` is the
-  only span with a `name`.
-- **Failure messages** say `failed to X` when X was attempted and did not
-  succeed, and `cannot X` when X is not possible to begin with, such as a
-  lookup that found nothing or a capability lost for good. Do not use
-  `unable to`.
-- **Comments** wrap at 100 columns, not at the 72 this file uses — `rustfmt`
-  does not rewrap them, so it is on you. Write the reason a piece of code is
-  the way it is, and nothing the name, the signature, or the line below
-  already says.
-- **Supported platforms** are Linux and macOS only — do not add Windows
-  support code. Process code (`src/process/`) should be tested in both PTY
-  and non-PTY modes.
+  Formatting and lint checks (rustfmt, clippy, dprint) run automatically in the pre-commit hook and
+  again in CI, so there is no need to run them manually every time — just fix whatever the hook or
+  CI reports.
+- **Commits** must follow Conventional Commits (enforced by commitlint via lefthook).
+  Never bypass git hooks with `--no-verify`.
+- **Generated files**: `schema.json` and `docs/schema-body.md` are regenerated and auto-committed by
+  CI when configuration structs in `src/config.rs` or `src/vars.rs` change — no need to regenerate
+  them manually.
+  This does not work on pull requests from forks; regenerate them yourself there (see
+  [CONTRIBUTING.md](CONTRIBUTING.md#generated-files)).
+- **Tests** are fixture-based: add a directory with a `firepit.yml` under `tests/fixtures/` instead
+  of embedding config in test code.
+- **Log levels**: `error` is firepit unable to do what was asked, `warn` is something the user
+  should notice, `info` is what firepit is doing to a task, `debug` is the internals.
+  The default level is `warn`, so a record above it has to read on its own.
+  A record belongs to the task named by the `name` field of the `task` span it is in, and to no task
+  otherwise — `task` is the only span with a `name`.
+- **Failure messages** say `failed to X` when X was attempted and did not succeed, and `cannot X`
+  when X is not possible to begin with, such as a lookup that found nothing or a capability lost for
+  good. Do not use `unable to`.
+- **Comments** wrap at 100 columns — `rustfmt` does not rewrap them, so it is on you.
+  Write the reason a piece of code is the way it is, and nothing the name, the signature, or the
+  line below already says.
+- **Supported platforms** are Linux and macOS only — do not add Windows support code.
+  Process code (`src/process/`) should be tested in both PTY and non-PTY modes.

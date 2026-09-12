@@ -30,8 +30,8 @@ pub struct Workspace {
 }
 
 impl Workspace {
-    // Public constructor aggregating many independent config inputs; refactoring
-    // into a builder/struct would change the public API without real benefit.
+    // Public constructor aggregating many independent config inputs; refactoring into a
+    // builder/struct would change the public API without real benefit.
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         root_config: &ProjectConfig,
@@ -83,8 +83,8 @@ impl Workspace {
         let mut child_configs = child_configs.clone();
 
         // `args` needs no declaration, so declare it wherever it is missing instead of
-        // special-casing it later: an implicit declaration goes through the same paths as any
-        // other var, from the CLI override to a `depends_on.vars` override of a dependency.
+        // special-casing it later: an implicit declaration goes through the same paths as any other
+        // var, from the CLI override to a `depends_on.vars` override of a dependency.
         for config in std::iter::once(&mut root_config).chain(child_configs.values_mut()) {
             for vars in std::iter::once(&mut config.vars).chain(config.tasks.values_mut().map(|t| &mut t.vars)) {
                 // First, so that another var of the same scope can reference it: vars render in
@@ -214,8 +214,8 @@ impl Workspace {
                 }
                 let finalizer = Self::task_config_mut(root_config, child_configs, &post)?;
                 // A finalizer that also depends on the task already waits for it, and the
-                // dependency is stricter: it requires the task to succeed. Keep that one, which
-                // also keeps the graph free of parallel edges.
+                // dependency is stricter: it requires the task to succeed.
+                // Keep that one, which also keeps the graph free of parallel edges.
                 let already_waits =
                     finalizer.finalizes.contains(&name) || finalizer.depends_on.iter().any(|d| d.task() == name);
                 if !already_waits {
@@ -228,9 +228,10 @@ impl Workspace {
 
     /// Ensures that every var given by the `Name=Value` CLI argument is declared in the config.
     ///
-    /// The CLI argument only overrides a declared var, so a name matching no project var nor
-    /// task var declaration has no effect and is almost always a typo. The `args` var, which
-    /// receives the arguments after `--`, needs no declaration, so it is always accepted.
+    /// The CLI argument only overrides a declared var, so a name matching no project var nor task
+    /// var declaration has no effect and is almost always a typo.
+    /// The `args` var, which receives the arguments after `--`, needs no declaration, so it is
+    /// always accepted.
     fn validate_cli_vars(
         root_config: &ProjectConfig,
         child_configs: &IndexMap<String, ProjectConfig>,
@@ -277,10 +278,9 @@ impl Workspace {
         anyhow::bail!(Self::unset_vars_message(&task_vars, &project_vars, target_tasks))
     }
 
-    /// Collects the unset vars involved in the run:
-    /// per-task vars (with whether each var can be set by the CLI argument, which is the case
-    /// only for a target task's var, not a finalizer's) and per-project vars of the involved
-    /// projects.
+    /// Collects the unset vars involved in the run: per-task vars (with whether each var can be set
+    /// by the CLI argument, which is the case only for a target task's var, not a finalizer's) and
+    /// per-project vars of the involved projects.
     fn collect_unset_vars(
         root_config: &ProjectConfig,
         child_configs: &IndexMap<String, ProjectConfig>,
@@ -327,8 +327,8 @@ impl Workspace {
             );
         }
 
-        // Unset project vars of the involved projects. The CLI argument always sets a project
-        // var, so vars given by the CLI are not errors.
+        // Unset project vars of the involved projects.
+        // The CLI argument always sets a project var, so vars given by the CLI are not errors.
         let mut project_vars: UnsetProjectVars = Vec::new();
         for project_name in involved_projects.iter() {
             let Some(config) = (if project_name.is_empty() {
@@ -354,8 +354,8 @@ impl Workspace {
         (task_vars, project_vars)
     }
 
-    /// Builds the error message for the unset vars: one line per project/task, followed by
-    /// an example command with the CLI-settable vars and a hint for the dependency task vars.
+    /// Builds the error message for the unset vars: one line per project/task, followed by an
+    /// example command with the CLI-settable vars and a hint for the dependency task vars.
     fn unset_vars_message(
         task_vars: &[(String, Vec<(String, bool)>)],
         project_vars: &[(String, Vec<String>)],
@@ -510,8 +510,8 @@ pub struct Task {
     pub wait_for: Vec<WaitFor>,
 
     /// Resolved template variables of this task.
-    /// A variant of a task differs from its siblings only in these, so they are what
-    /// `wait_for` compares against to pick the variants to wait for.
+    /// A variant of a task differs from its siblings only in these, so they are what `wait_for`
+    /// compares against to pick the variants to wait for.
     pub vars: IndexMap<String, JsonValue>,
 
     /// Task working directory path (absolute).
@@ -559,9 +559,10 @@ pub struct WaitFor {
 impl WaitFor {
     /// Returns whether the given task is one this entry waits for.
     ///
-    /// A var the task does not declare is ignored, as `depends_on.vars` ignores it when picking
-    /// the variant to create. Comparing it instead would make an entry copied from a `depends_on`
-    /// silently match nothing, losing the ordering it was written for.
+    /// A var the task does not declare is ignored, as `depends_on.vars` ignores it when picking the
+    /// variant to create.
+    /// Comparing it instead would make an entry copied from a `depends_on` silently match nothing,
+    /// losing the ordering it was written for.
     pub fn matches(&self, task: &Task) -> bool {
         if self.task != task.orig_name {
             return false;
@@ -576,8 +577,8 @@ impl WaitFor {
 #[derive(Debug, Clone, Default)]
 pub struct Env {
     configs: Vec<EnvConfig>,
-    /// Renders the values of the dotenv files of every layer. They all belong to the same task,
-    /// so they share one context.
+    /// Renders the values of the dotenv files of every layer.
+    /// They all belong to the same task, so they share one context.
     context: Arc<tera::Context>,
 }
 
@@ -603,8 +604,8 @@ impl Env {
         }
     }
 
-    /// Checks that the dotenv files can be parsed. Their values are not rendered: the task
-    /// may never run, and its vars may be given later.
+    /// Checks that the dotenv files can be parsed.
+    /// Their values are not rendered: the task may never run, and its vars may be given later.
     pub fn verify(self) -> anyhow::Result<Self> {
         self.configs.iter().try_for_each(|e| e.read_env_files().map(|_| ()))?;
         Ok(self)
@@ -641,9 +642,9 @@ impl EnvConfig {
         for f in self.env_files.iter() {
             let iter = match dotenvy::from_path_iter(f) {
                 Ok(it) => it,
-                // A file that is not there is how an optional one looks. Anything else is worth
-                // knowing, but the file is read once per task and again per run, so saying it every
-                // time would bury the output.
+                // A file that is not there is how an optional one looks.
+                // Anything else is worth knowing, but the file is read once per task and again per
+                // run, so saying it every time would bury the output.
                 Err(e) if e.not_found() => continue,
                 Err(e) => {
                     debug!("failed to read the env file {:?}: {:?}", f, e);
@@ -663,9 +664,10 @@ impl EnvConfig {
         let mut tera = new_tera();
         let mut ret = HashMap::new();
         for (f, key, value) in self.read_env_files()? {
-            // A dotenv value is a template, like a value of `env`. A dotenv file holds secrets,
-            // so the value must not appear in an error: the parse error, which quotes the
-            // template, is dropped, while the render error only names a variable or a filter.
+            // A dotenv value is a template, like a value of `env`.
+            // A dotenv file holds secrets, so the value must not appear in an error: the parse
+            // error, which quotes the template, is dropped, while the render error only names a
+            // variable or a filter.
             tera.add_raw_template(&key, &value)
                 .map_err(|_| anyhow::anyhow!("failed to parse the template of {:?} in the env file {:?}", key, f))?;
             let value = tera
@@ -709,9 +711,9 @@ impl Task {
         // Working directory
         let task_working_dir = task_config.working_dir_path(&config.working_dir_path());
 
-        // Environment variables, the later overriding the earlier:
-        // project env_files < project env < task env_files < task env
-        // The dotenv values are templates, rendered with the task context when the task runs.
+        // Environment variables, the later overriding the earlier: project env_files < project env
+        // < task env_files < task env The dotenv values are templates, rendered with the task
+        // context when the task runs.
         let context = task_config
             .context
             .clone()
@@ -788,8 +790,8 @@ impl Task {
         Ok(Self {
             name: Task::qualified_name(project_name, &task_name),
             orig_name: Task::qualified_name(project_name, &task_config.orig_name),
-            // Default to the original name so that task variants do not expose
-            // their internal suffix (-1, -2, ...) in the UI
+            // Default to the original name so that task variants do not expose their internal
+            // suffix (-1, -2, ...) in the UI
             label: task_config
                 .label
                 .clone()
@@ -838,8 +840,9 @@ impl Task {
         })
     }
 
-    /// Takes the values of rendered vars. Rendering resolves every var to a static value,
-    /// so a var that is still dynamic here has not been rendered and has no value to compare.
+    /// Takes the values of rendered vars.
+    /// Rendering resolves every var to a static value, so a var that is still dynamic here has not
+    /// been rendered and has no value to compare.
     fn resolved_vars(vars: &IndexMap<String, VarsConfig>) -> IndexMap<String, JsonValue> {
         vars.iter()
             .filter_map(|(k, v)| match v {
@@ -957,8 +960,8 @@ impl Task {
 
         match (file_name, dir_name) {
             // A directory that is not there holds no files, which is what a task looks like before
-            // it has built its output. The glob builder walks the directory, so it would call that
-            // a failure.
+            // it has built its output.
+            // The glob builder walks the directory, so it would call that a failure.
             (_, Some(dir_name)) if !dir_name.exists() => Ok(vec![]),
             (Some(file_name), Some(dir_name)) => {
                 let matcher = globmatch::Builder::new(file_name.as_ref())

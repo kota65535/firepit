@@ -13,8 +13,7 @@ impl ColorConfig {
         Self { should_strip_ansi }
     }
 
-    /// Infer the color choice from environment variables and checking if stdout
-    /// is a tty
+    /// Infer the color choice from environment variables and checking if stdout is a tty
     pub fn infer() -> Self {
         let env_setting = std::env::var("FORCE_COLOR")
             .ok()
@@ -29,11 +28,11 @@ impl ColorConfig {
 
     /// Apply the UI color mode to the given styled object
     ///
-    /// This is required to match the Go turborepo coloring logic which differs
-    /// from console's coloring detection.
+    /// This is required to match the Go turborepo coloring logic which differs from console's
+    /// coloring detection.
     pub fn apply<D>(&self, obj: StyledObject<D>) -> StyledObject<D> {
-        // Setting this to false will skip emitting any ansi codes associated
-        // with the style when the object is displayed.
+        // Setting this to false will skip emitting any ansi codes associated with the style when
+        // the object is displayed.
         obj.force_styling(!self.should_strip_ansi)
     }
 

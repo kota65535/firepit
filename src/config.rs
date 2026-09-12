@@ -29,8 +29,7 @@ pub struct ProjectConfig {
     #[serde(skip)]
     pub name: String,
 
-    /// Child projects.
-    /// Valid only in a root project config.
+    /// Child projects. Valid only in a root project config.
     /// ```yaml
     /// projects:
     ///   client: packages/client
@@ -39,7 +38,8 @@ pub struct ProjectConfig {
     #[serde(default)]
     pub projects: IndexMap<String, String>,
 
-    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
+    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults)
+    /// instead.
     ///
     /// Shell configuration for all the project tasks.
     /// ```yaml
@@ -51,7 +51,8 @@ pub struct ProjectConfig {
     #[schemars(extend("deprecated" = true))]
     pub shell: ShellConfig,
 
-    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
+    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults)
+    /// instead.
     ///
     /// Working directory for all the project tasks.
     /// ```yaml
@@ -73,7 +74,8 @@ pub struct ProjectConfig {
     #[schemars(extend("x-template" = true))]
     pub vars: IndexMap<String, VarsConfig>,
 
-    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
+    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults)
+    /// instead.
     ///
     /// Environment variables for all the project tasks.
     /// ```yaml
@@ -84,7 +86,8 @@ pub struct ProjectConfig {
     #[schemars(extend("x-template" = true, "deprecated" = true))]
     pub env: IndexMap<String, String>,
 
-    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
+    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults)
+    /// instead.
     ///
     /// Dotenv files for all the project tasks. Their values are templates.
     /// In case of duplicated environment variables, the latter one takes precedence.
@@ -97,7 +100,8 @@ pub struct ProjectConfig {
     #[schemars(extend("x-template" = true, "deprecated" = true))]
     pub env_files: Vec<String>,
 
-    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
+    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults)
+    /// instead.
     ///
     /// Dependency tasks for all the project tasks.
     /// ```yaml
@@ -122,16 +126,14 @@ pub struct ProjectConfig {
     #[serde(default)]
     pub tasks: IndexMap<String, TaskConfig>,
 
-    /// Task concurrency.
-    /// Valid only in a root project config.
+    /// Task concurrency. Valid only in a root project config.
     /// ```yaml
     /// concurrency: 4
     /// ```
     #[serde(default = "default_concurrency")]
     pub concurrency: usize,
 
-    /// Log configuration.
-    /// Valid only in a root project config.
+    /// Log configuration. Valid only in a root project config.
     /// ```yaml
     /// log:
     ///   level: debug
@@ -140,15 +142,13 @@ pub struct ProjectConfig {
     #[serde(default = "default_log")]
     pub log: LogConfig,
 
-    /// Gantt chart output file path.
-    /// Valid only in a root project config.
+    /// Gantt chart output file path. Valid only in a root project config.
     /// ```yaml
     /// gantt_file: gantt.svg
     /// ```
     pub gantt_file: Option<String>,
 
-    /// UI configuration.
-    /// Valid only in a root project config.
+    /// UI configuration. Valid only in a root project config.
     /// ```yaml
     /// ui: cui
     /// ```
@@ -210,9 +210,8 @@ pub fn default_log() -> LogConfig {
 }
 
 pub fn default_log_level() -> String {
-    // Warnings and errors are what a user needs to see; the levels below them
-    // report what firepit is doing, which is only of interest once something
-    // has gone wrong.
+    // Warnings and errors are what a user needs to see; the levels below them report what firepit
+    // is doing, which is only of interest once something has gone wrong.
     "warn".to_string()
 }
 
@@ -506,9 +505,9 @@ impl ProjectConfig {
     }
 
     /// Apply `defaults` entries to all matching tasks.
-    /// For each task, all matching defaults are merged in order (later entries override earlier
-    /// for scalars and maps, arrays are concatenated), then the merged result is applied to the
-    /// task as a base layer (task-specific values take precedence).
+    /// For each task, all matching defaults are merged in order (later entries override earlier for
+    /// scalars and maps, arrays are concatenated), then the merged result is applied to the task as
+    /// a base layer (task-specific values take precedence).
     pub fn apply_defaults(&mut self) -> anyhow::Result<()> {
         // Validate regex patterns and qualify depends_on upfront
         let qualified_defaults: Vec<DefaultsConfig> = self
@@ -639,8 +638,7 @@ pub struct TaskConfig {
     #[serde(skip)]
     pub name: String,
 
-    /// Original name.
-    /// Used for tracking the original of the task variant.
+    /// Original name. Used for tracking the original of the task variant.
     #[serde(skip)]
     pub orig_name: String,
 
@@ -669,14 +667,15 @@ pub struct TaskConfig {
     #[schemars(extend("x-template" = true))]
     pub working_dir: Option<String>,
 
-    /// Template variables. A task variable shadows the project variable of the same name,
-    /// and the `<name>=<value>` CLI argument overrides both.
-    /// Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`,
-    /// `wait_for`, `wait_for.{task, vars}`,
-    /// `service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`
+    /// Template variables.
+    /// A task variable shadows the project variable of the same name, and the `<name>=<value>` CLI
+    /// argument overrides both.
+    /// Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`,
+    /// `depends_on.{task, vars}`, `wait_for`, `wait_for.{task, vars}`, `service.healthcheck.log`
+    /// and `service.healthcheck.exec.{command, working_dir, env, env_files}`
     ///
-    /// A variable declared without a value has no default, so it is required: give it a value
-    /// with the CLI argument or the dependent task's `depends_on.vars`.
+    /// A variable declared without a value has no default, so it is required: give it a value with
+    /// the CLI argument or the dependent task's `depends_on.vars`.
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
     pub vars: IndexMap<String, VarsConfig>,
@@ -691,8 +690,9 @@ pub struct TaskConfig {
     #[schemars(extend("x-template" = true))]
     pub env_files: Vec<String>,
 
-    /// Template context of the rendered task. The values of the dotenv files are templates too,
-    /// but they are read when the task runs, so the context is kept to render them then.
+    /// Template context of the rendered task.
+    /// The values of the dotenv files are templates too, but they are read when the task runs, so
+    /// the context is kept to render them then.
     #[serde(skip)]
     pub context: Option<std::sync::Arc<tera::Context>>,
 
@@ -705,8 +705,8 @@ pub struct TaskConfig {
     ///
     /// Unlike `depends_on`, the listed tasks are not added to the run.
     /// They only order this task after them when they are going to run anyway.
-    /// Naming a task orders this one after every variant of it. Write an entry in object form
-    /// to wait only for the variants whose vars match the given ones.
+    /// Naming a task orders this one after every variant of it.
+    /// Write an entry in object form to wait only for the variants whose vars match the given ones.
     /// ```yaml
     /// wait_for:
     ///   - lint
@@ -719,8 +719,8 @@ pub struct TaskConfig {
     pub wait_for: Vec<WaitForConfig>,
 
     /// Tasks to run after this task finishes, whether it succeeds or fails.
-    /// They run only when this task is part of the run (as a target or a dependency),
-    /// so running a finalizer on its own does not run the task it finalizes.
+    /// They run only when this task is part of the run (as a target or a dependency), so running a
+    /// finalizer on its own does not run the task it finalizes.
     /// Write an entry in object form to override the finalizer's `vars`, as with `depends_on`.
     /// ```yaml
     /// finalized_by:
@@ -733,16 +733,16 @@ pub struct TaskConfig {
     #[schemars(extend("x-template" = true))]
     pub finalized_by: Vec<FinalizedByConfig>,
 
-    /// Tasks this task finalizes, filled per run by the workspace: those whose `finalized_by`
-    /// lists this task. This task runs after all of them finish, whether they succeed or fail.
+    /// Tasks this task finalizes, filled per run by the workspace: those whose `finalized_by` lists
+    /// this task. This task runs after all of them finish, whether they succeed or fail.
     #[serde(skip)]
     pub finalizes: Vec<String>,
 
     /// Service configurations
     pub service: Option<ServiceConfig>,
 
-    /// Grace period in seconds given to the task process after `SIGINT` is sent,
-    /// before it is forcibly killed with `SIGKILL`.
+    /// Grace period in seconds given to the task process after `SIGINT` is sent, before it is
+    /// forcibly killed with `SIGKILL`.
     /// ```yaml
     /// stop_timeout: 30
     /// ```
@@ -817,8 +817,8 @@ pub struct ShellConfig {
 pub struct LogConfig {
     #[serde(default = "default_log_level")]
     /// Log level. Valid values: error, warn, info, debug, trace.
-    /// `warn` and above report what a user needs to act on, `info` what Firepit
-    /// is doing to each task, `debug` and below the internals.
+    /// `warn` and above report what a user needs to act on, `info` what Firepit is doing to each
+    /// task, `debug` and below the internals.
     pub level: String,
 
     /// Log file path.
@@ -996,8 +996,8 @@ pub struct ExecProbeConfig {
     pub env_files: Vec<String>,
 
     /// Interval in seconds.
-    /// The command will run interval seconds after the task is started,
-    /// and then again interval seconds after each previous check completes.
+    /// The command will run interval seconds after the task is started, and then again interval
+    /// seconds after each previous check completes.
     #[serde(default = "default_healthcheck_interval")]
     pub interval: u64,
 
@@ -1182,8 +1182,7 @@ impl JsonSchema for Restart {
 
 /// Task selector for `defaults`.
 /// A string value is treated as a regex pattern matched against the task name.
-/// An array value is treated as an explicit list of task names.
-/// If omitted, all tasks are matched.
+/// An array value is treated as an explicit list of task names. If omitted, all tasks are matched.
 /// ```yaml
 /// defaults:
 ///   - tasks: "^build"        # regex
@@ -1272,8 +1271,8 @@ pub struct DefaultsConfig {
     /// Service configurations
     pub service: Option<ServiceConfig>,
 
-    /// Grace period in seconds given to the task process after `SIGINT` is sent,
-    /// before it is forcibly killed with `SIGKILL`.
+    /// Grace period in seconds given to the task process after `SIGINT` is sent, before it is
+    /// forcibly killed with `SIGKILL`.
     pub stop_timeout: Option<u64>,
 
     /// Inputs file glob patterns
