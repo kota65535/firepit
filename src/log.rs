@@ -23,15 +23,26 @@ pub struct LogRecord {
     /// The task the record is about, or `None` when it is about firepit itself
     pub task: Option<String>,
     pub level: Level,
+    /// Where in firepit the record was made, as `firepit::probe`
+    pub module: String,
     pub message: String,
 }
 
-/// Where the log goes when it has no file to go to.
+impl LogRecord {
+    /// The lines to show, opening with the level and the module.
+    ///
+    /// The output of a task says `INFO` too, so a record has to look like one of
+    /// firepit's -- as a log line, not as another name beside the task's.
+    pub fn lines(&self) -> impl Iterator<Item = String> + '_ {
+        let opening = format!("{} {}: ", self.level.as_str(), self.module);
+        self.message.lines().map(move |line| format!("{opening}{line}"))
+    }
+}
+
+/// Where the log goes on its way to the UI.
 ///
-/// The UI does not exist yet when the logger is installed, and the records made
-/// until it does -- rendering the configuration, resolving the tasks -- are the
-/// user's to see just as much as the later ones, so they are held until there is
-/// somewhere to put them.
+/// The UI does not exist yet when the logger is installed, so the records made
+/// until it does are held rather than dropped.
 #[derive(Clone, Default)]
 pub struct LogSink(Arc<Mutex<SinkState>>);
 
@@ -64,8 +75,8 @@ impl LogSink {
         }
     }
 
-    /// Sends without going through `AppCommandChannel::send`, which logs when it
-    /// fails and would call back into the layer that is sending this.
+    /// Not through `AppCommandChannel::send`, which logs when the channel is
+    /// closed: that record would come back here, fail to send, and log again.
     fn send(app_tx: &AppCommandChannel, record: LogRecord) {
         app_tx.tx.send(AppCommand::Log(record)).ok();
     }
@@ -107,13 +118,13 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for AppLayer {
         self.sink.record(LogRecord {
             task,
             level: *event.metadata().level(),
+            module: event.metadata().target().to_string(),
             message,
         });
     }
 }
 
-/// Reads one field by name, and the fields after it as `key=value` so that a
-/// record does not lose what it was given.
+/// Reads one field by name, keeping the rest as `key=value`.
 struct FieldVisitor {
     wanted: &'static str,
     value: Option<String>,
@@ -150,9 +161,8 @@ impl Visit for FieldVisitor {
 
 /// Installs the logger and returns the sink to connect to the app once it exists.
 ///
-/// The UI always gets the log: a file is somewhere to keep it as well, not
-/// somewhere to put it instead. Configuring one and losing the reason a service
-/// never became ready from the pane would be a poor trade, and a quiet one.
+/// A file is somewhere to keep the log as well, not somewhere to put it instead:
+/// configuring one must not take it out of the UI.
 pub fn init_logger(log: &LogConfig, tokio_console: bool) -> anyhow::Result<LogSink> {
     let sink = LogSink::default();
     let app_layer = AppLayer { sink: sink.clone() }.with_filter(EnvFilter::new(&log.level));

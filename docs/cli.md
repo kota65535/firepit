@@ -62,8 +62,9 @@ It is enabled when CUI mode, and disabled when TUI mode by default.
 ### `--log-file <LOG_FILE>`
 
 Also writes the Firepit log to the specified path. The log always goes to the UI
-as well: in CUI mode along with the output of the tasks, in TUI mode into the pane
-of the task each record is about.
+as well, carrying its level and where in Firepit it was made: in CUI mode along
+with the output of the tasks, in TUI mode into the pane of the task each record
+is about.
 
 ### `--log-level <LOG_LEVEL>`
 

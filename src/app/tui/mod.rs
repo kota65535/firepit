@@ -663,28 +663,23 @@ impl TuiAppState {
         }
     }
 
-    /// Puts a record of the firepit log where it belongs: a task's own records go
-    /// into its pane, next to the output they are about. A record about no task
-    /// has no pane to go in, so the ones worth acting on are shown at the foot of
-    /// the screen and the rest are left to the log file.
+    /// Puts a record in the pane of the task it is about.
     fn record_log(&mut self, record: LogRecord) {
         let style = match record.level {
             Level::ERROR => RED.clone(),
             Level::WARN => YELLOW.clone(),
             _ => GREY.clone(),
         };
-        // A record about no task goes into every pane, since the one the user is
-        // looking at is the one it has to reach and there is no telling which that
-        // is. At the levels that are read by default these are rare enough that
-        // saying it more than once costs less than a place of its own to say it.
+        // A record about no task goes into every pane: the one being looked at is
+        // the one it has to reach, and at the default level these are rare.
         let panes: Vec<&mut Task> = match &record.task {
             // A task that firepit never started has no pane of its own
             Some(task) if self.tasks.contains_key(task) => self.tasks.get_mut(task).into_iter().collect(),
             _ => self.tasks.values_mut().collect(),
         };
         for pane in panes {
-            for line in record.message.lines() {
-                pane.note(&style, line);
+            for line in record.lines() {
+                pane.note(&style, &line);
             }
         }
     }

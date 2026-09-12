@@ -84,27 +84,22 @@ impl CuiApp {
             .insert(task, output_client);
     }
 
-    /// Prints a record of the firepit log along with the output, dim so that it
-    /// does not compete with it, and in the colour of the task it is about.
+    /// Prints a record along with the output, under the name of its task.
     fn print_log(&mut self, record: &LogRecord) {
         let style = match record.level {
             Level::ERROR => RED.clone(),
             Level::WARN => YELLOW.clone(),
             _ => GREY.clone(),
         };
-        match &record.task {
-            Some(task) => {
+        let prefix = match &record.task {
+            Some(task) if !self.no_log_prefix => {
                 let label = self.labels.get(task).unwrap_or(task);
-                let prefix = self.color_selector.string_with_color(label, label);
-                for line in record.message.lines() {
-                    eprintln!("{}{}", prefix, style.apply_to(line));
-                }
+                self.color_selector.string_with_color(label, label).to_string()
             }
-            None => {
-                for line in record.message.lines() {
-                    eprintln!("{}", style.apply_to(line));
-                }
-            }
+            _ => String::new(),
+        };
+        for line in record.lines() {
+            eprintln!("{}{}", prefix, style.apply_to(line));
         }
     }
 

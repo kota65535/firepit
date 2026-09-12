@@ -65,6 +65,7 @@ impl Tui {
         self.send(AppCommand::Log(LogRecord {
             task: task.map(String::from),
             level,
+            module: "firepit::test".to_string(),
             message: message.to_string(),
         }));
     }
@@ -679,7 +680,11 @@ fn task_log_goes_into_its_pane() {
 
     assert_eq!(
         tui.pane_rows()[..3],
-        ["building", "Task is restarting (1/3)", "building again"]
+        [
+            "building",
+            "WARN firepit::test: Task is restarting (1/3)",
+            "building again"
+        ]
     );
     assert_eq!(tui.cell(1, 0).fg, Color::Indexed(3)); // yellow, for a warning
 
@@ -695,9 +700,14 @@ fn non_task_log_goes_into_every_pane() {
     let mut tui = Tui::new(&["build", "serve"]);
     tui.log(None, Level::ERROR, "Failed to copy to the clipboard");
 
-    assert_eq!(tui.pane_row(0), "Failed to copy to the clipboard");
+    // The pane is narrower than the line, which wraps
+    assert!(
+        tui.pane_row(0).starts_with("ERROR firepit::test: Failed to copy"),
+        "{}",
+        tui.pane_row(0)
+    );
     assert_eq!(tui.cell(0, 0).fg, Color::Indexed(1)); // red, for an error
 
     tui.send(AppCommand::Down);
-    assert_eq!(tui.pane_row(0), "Failed to copy to the clipboard");
+    assert!(tui.pane_row(0).starts_with("ERROR firepit::test: Failed to copy"));
 }
