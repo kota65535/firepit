@@ -84,7 +84,6 @@ impl CuiApp {
             .insert(task, output_client);
     }
 
-    /// Prints a record along with the output, under the name of its task.
     fn print_log(&mut self, record: &LogRecord) {
         let style = match record.level {
             Level::ERROR => RED.clone(),

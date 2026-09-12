@@ -17,7 +17,6 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::Layer;
 
-/// A record of the firepit log on its way to the UI.
 #[derive(Debug, Clone)]
 pub struct LogRecord {
     /// The task the record is about, or `None` when it is about firepit itself
@@ -29,10 +28,8 @@ pub struct LogRecord {
 }
 
 impl LogRecord {
-    /// The lines to show, opening with the level and the module.
-    ///
-    /// The output of a task says `INFO` too, so a record has to look like one of
-    /// firepit's -- as a log line, not as another name beside the task's.
+    /// The output of a task says `INFO` too, so a record has to look like one of firepit's -- as a
+    /// log line, not as another name beside the task's.
     pub fn lines(&self) -> impl Iterator<Item = String> + '_ {
         let opening = format!("{} {}: ", self.level.as_str(), self.module);
         self.message.lines().map(move |line| format!("{opening}{line}"))
@@ -41,8 +38,8 @@ impl LogRecord {
 
 /// Where the log goes on its way to the UI.
 ///
-/// The UI does not exist yet when the logger is installed, so the records made
-/// until it does are held rather than dropped.
+/// The UI does not exist yet when the logger is installed, so the records made until it does are
+/// held rather than dropped.
 #[derive(Clone, Default)]
 pub struct LogSink(Arc<Mutex<SinkState>>);
 
@@ -55,7 +52,6 @@ enum SinkState {
 }
 
 impl LogSink {
-    /// Sends everything held so far, and everything after it, to the app.
     pub fn connect(&self, app_tx: &AppCommandChannel) {
         let mut state = self.0.lock().expect("log sink poisoned");
         if let SinkState::Holding(held) = std::mem::take(&mut *state) {
@@ -75,21 +71,20 @@ impl LogSink {
         }
     }
 
-    /// Not through `AppCommandChannel::send`, which logs when the channel is
-    /// closed: that record would come back here, fail to send, and log again.
+    /// Not through `AppCommandChannel::send`, which logs when the channel is closed: that record
+    /// would come back here, fail to send, and log again.
     fn send(app_tx: &AppCommandChannel, record: LogRecord) {
         app_tx.tx.send(AppCommand::Log(record)).ok();
     }
 }
 
-/// Puts every record the filter lets through into the `LogSink`, with the task
-/// it belongs to: the one named by the `name` field of the `task` span it is in.
+/// A record belongs to the task named by the `name` field of the `task` span it is in, and to no
+/// task when it is in none.
 struct AppLayer {
     sink: LogSink,
 }
 
-/// The name of the task a span is about, kept on the span so that the events
-/// inside it can find it.
+/// Kept on a `task` span so that the events inside it can find it.
 struct TaskName(String);
 
 impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for AppLayer {
@@ -159,10 +154,8 @@ impl Visit for FieldVisitor {
     }
 }
 
-/// Installs the logger and returns the sink to connect to the app once it exists.
-///
-/// A file is somewhere to keep the log as well, not somewhere to put it instead:
-/// configuring one must not take it out of the UI.
+/// A file is somewhere to keep the log as well, not somewhere to put it instead: configuring one
+/// must not take it out of the UI.
 pub fn init_logger(log: &LogConfig, tokio_console: bool) -> anyhow::Result<LogSink> {
     let sink = LogSink::default();
     let app_layer = AppLayer { sink: sink.clone() }.with_filter(EnvFilter::new(&log.level));

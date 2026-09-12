@@ -663,15 +663,14 @@ impl TuiAppState {
         }
     }
 
-    /// Puts a record in the pane of the task it is about.
     fn record_log(&mut self, record: LogRecord) {
         let style = match record.level {
             Level::ERROR => RED.clone(),
             Level::WARN => YELLOW.clone(),
             _ => GREY.clone(),
         };
-        // A record about no task goes into every pane: the one being looked at is
-        // the one it has to reach, and at the default level these are rare.
+        // A record about no task goes into every pane: the one being looked at is the one it has to
+        // reach, and at the default level these are rare.
         let panes: Vec<&mut Task> = match &record.task {
             // A task that firepit never started has no pane of its own
             Some(task) if self.tasks.contains_key(task) => self.tasks.get_mut(task).into_iter().collect(),
@@ -920,9 +919,9 @@ impl TuiAppState {
 
         let query_len = query.width();
 
-        // Find the initial search result index: the first match away from the
-        // current view in the direction being searched, or the match at the
-        // far end of the log when there is none left that way.
+        // Find the initial search result index: the first match away from the current view in the
+        // direction being searched, or the match at the far end of the log when there is none left
+        // that way.
         let offset = screen.current_scrollback_len() - screen.scrollback();
         let index = if backward {
             matches.iter().rposition(|m| (m.0 as usize) < offset)

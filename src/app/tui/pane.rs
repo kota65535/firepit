@@ -92,8 +92,8 @@ impl<'a> TerminalPane<'a> {
             }
             LayoutSections::Search { query, backward } => {
                 help_spans.push(key_help_spans(*EXIT_SEARCH));
-                // The prompt echoes the key that opened it, so the direction
-                // the search will run stays visible while typing.
+                // The prompt echoes the key that opened it, so the direction the search will run
+                // stays visible while typing.
                 let prompt = if *backward { '?' } else { '/' };
                 // Show cursor
                 message_spans.push(Span::styled(

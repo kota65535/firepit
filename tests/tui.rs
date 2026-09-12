@@ -535,8 +535,8 @@ fn backward_search_starts_above_the_view_and_reverses_n() {
     for l in lines(20) {
         tui.output(format!("{l}\r\n").as_bytes());
     }
-    // The view sits at the bottom, so a backward search for the common prefix
-    // starts at the last match above it rather than wrapping to the top.
+    // The view sits at the bottom, so a backward search for the common prefix starts at the last
+    // match above it rather than wrapping to the top.
     tui.send(AppCommand::EnterSearch { backward: true });
     for c in "line0".chars() {
         tui.send(AppCommand::SearchInputChar(c));
@@ -669,8 +669,8 @@ fn quitting_closes_the_help_dialog_and_shows_the_quit_message() {
     assert_eq!(tui.pane_row(0), "hello");
 }
 
-/// A record about a task goes into that task's pane, next to the output it is
-/// about, so the two read in the order they happened.
+/// A record about a task goes into that task's pane, next to the output it is about, so the two
+/// read in the order they happened.
 #[test]
 fn task_log_goes_into_its_pane() {
     let mut tui = Tui::new(&["build", "serve"]);
@@ -693,8 +693,8 @@ fn task_log_goes_into_its_pane() {
     assert!(tui.pane_row(0).is_empty());
 }
 
-/// A record about no task goes into every pane: the one the user is looking at
-/// is the one it has to reach, and there is no telling which that is.
+/// A record about no task goes into every pane: the one the user is looking at is the one it has to
+/// reach, and there is no telling which that is.
 #[test]
 fn non_task_log_goes_into_every_pane() {
     let mut tui = Tui::new(&["build", "serve"]);

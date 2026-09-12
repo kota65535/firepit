@@ -4,8 +4,8 @@ pub struct SearchResults {
     pub query: String,
     pub matches: Vec<Match>,
     pub index: usize,
-    /// Search direction, as chosen by `/` or `?`. It decides which way `n`
-    /// walks the matches; `N` always walks the other way.
+    /// Search direction, as chosen by `/` or `?`. It decides which way `n` walks the matches; `N`
+    /// always walks the other way.
     pub backward: bool,
 }
 
@@ -30,8 +30,8 @@ impl SearchResults {
         Some(self.matches[self.index].clone())
     }
 
-    /// Moves to the match `n` would show next: down the log for a forward
-    /// search, up for a backward one.
+    /// Moves to the match `n` would show next: down the log for a forward search, up for a backward
+    /// one.
     pub fn next(&mut self) -> Option<Match> {
         if self.backward {
             self.step_up()

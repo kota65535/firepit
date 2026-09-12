@@ -43,8 +43,8 @@ async fn test_env_file_not_found() {
         Some(false),
     )
     .await;
-    // A file that is not there is how an optional dotenv file looks, so it is
-    // skipped without a word and the files around it are still read
+    // A file that is not there is how an optional dotenv file looks, so it is skipped without a
+    // word and the files around it are still read
     let ws = assert_ok!(result);
     assert_eq_env(
         &ws.root.task("foo").unwrap().env.load().unwrap(),

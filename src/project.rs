@@ -641,11 +641,9 @@ impl EnvConfig {
         for f in self.env_files.iter() {
             let iter = match dotenvy::from_path_iter(f) {
                 Ok(it) => it,
-                // A dotenv file that is not there is how an optional one looks,
-                // so it is not worth a word. Anything else is, but only to
-                // whoever is looking into why the environment came out wrong:
-                // the file is read once per task and once again per run, and
-                // saying it every time would bury the output of the task.
+                // A file that is not there is how an optional one looks. Anything else is worth
+                // knowing, but the file is read once per task and again per run, so saying it every
+                // time would bury the output.
                 Err(e) if e.not_found() => continue,
                 Err(e) => {
                     debug!("failed to read the env file {:?}: {:?}", f, e);
@@ -701,8 +699,7 @@ impl Task {
         }
 
         let task_name = Task::qualified_name(project_name, task_name);
-        // Whatever building the task has to say is about the task, and the pane
-        // it belongs in is the one named here
+        // What building the task has to say belongs in that task's pane
         let span = tracing::error_span!("task", name = task_name);
         let _guard = span.enter();
 
@@ -959,11 +956,9 @@ impl Task {
         let dir_name = pattern.parent();
 
         match (file_name, dir_name) {
-            // A directory that is not there holds no files, which is what a
-            // pattern under it matches. It is how a task whose output has never
-            // been built looks, so it is an answer and not a failure -- and the
-            // glob builder would call it one, since it walks the directory to
-            // resolve where the pattern starts.
+            // A directory that is not there holds no files, which is what a task looks like before
+            // it has built its output. The glob builder walks the directory, so it would call that
+            // a failure.
             (_, Some(dir_name)) if !dir_name.exists() => Ok(vec![]),
             (Some(file_name), Some(dir_name)) => {
                 let matcher = globmatch::Builder::new(file_name.as_ref())

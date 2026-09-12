@@ -1344,8 +1344,8 @@ async fn test_up_to_date() {
     run_task(&path, tasks, stats, None, false).await.unwrap();
 }
 
-/// A directory that is not there holds no files to compare, so the task runs.
-/// It is how one looks before it has ever built its output, not a broken glob.
+/// A directory that is not there holds no files to compare, so the task runs. It is how one looks
+/// before it has ever built its output, not a broken glob.
 #[tokio::test]
 async fn test_up_to_date_with_a_missing_directory() {
     setup();
