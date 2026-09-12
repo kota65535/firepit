@@ -959,6 +959,12 @@ impl Task {
         let dir_name = pattern.parent();
 
         match (file_name, dir_name) {
+            // A directory that is not there holds no files, which is what a
+            // pattern under it matches. It is how a task whose output has never
+            // been built looks, so it is an answer and not a failure -- and the
+            // glob builder would call it one, since it walks the directory to
+            // resolve where the pattern starts.
+            (_, Some(dir_name)) if !dir_name.exists() => Ok(vec![]),
             (Some(file_name), Some(dir_name)) => {
                 let matcher = globmatch::Builder::new(file_name.as_ref())
                     .build(dir_name)

@@ -1344,6 +1344,23 @@ async fn test_up_to_date() {
     run_task(&path, tasks, stats, None, false).await.unwrap();
 }
 
+/// A directory that is not there holds no files to compare, so the task runs.
+/// It is how one looks before it has ever built its output, not a broken glob.
+#[tokio::test]
+async fn test_up_to_date_with_a_missing_directory() {
+    setup();
+    let path = BASE_PATH.join("up_to_date_missing_dir");
+    let tasks = vec![String::from("build")];
+
+    let mut stats = HashMap::new();
+    stats.insert(String::from("#build"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#build"), String::from("built"));
+
+    run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
+}
+
 #[tokio::test]
 async fn test_env_precedence() {
     env::set_var("key0", "os0");
