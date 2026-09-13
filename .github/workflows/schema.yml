@@ -31,10 +31,11 @@ jobs:
         run: ./scripts/schema-to-md.js schema.json docs/schema-body.md
 
       - name: Configure git
-        uses: kota65535/github-git-config-action@519e6d26e10ccdd2ac3437dd5ed32c4042583f09 # v2
+        uses: kota65535/github-git-config-action@8327eed388a57bb175028b68a201c952f5130724 # v4
         with:
-          user.name: github-actions[bot]
-          user.email: 41898282+github-actions[bot]@users.noreply.github.com
+          config: |
+            user.name: github-actions[bot]
+            user.email: 41898282+github-actions[bot]@users.noreply.github.com
           github-token: ${{ secrets.PERSONAL_TOKEN }}
 
       - name: Diff
