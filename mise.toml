@@ -1,6 +1,6 @@
 [tools]
 "node" = "24.21.0"
-"github:axodotdev/cargo-dist" = "0.32.0"
+"github:axodotdev/cargo-dist" = "v0.33.0"
 "github:orhun/git-cliff" = "v2.14.1"
 "cargo:cargo-edit" = "0.13.13"
 "lefthook" = "2.1.12"
