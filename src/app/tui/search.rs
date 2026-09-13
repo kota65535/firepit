@@ -4,8 +4,8 @@ pub struct SearchResults {
     pub query: String,
     pub matches: Vec<Match>,
     pub index: usize,
-    /// Search direction, as chosen by `/` or `?`. It decides which way `n` walks the matches; `N`
-    /// always walks the other way.
+    /// Search direction, as chosen by `/` or `?`.
+    /// It decides which way `n` walks the matches; `N` always walks the other way.
     pub backward: bool,
 }
 

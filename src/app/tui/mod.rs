@@ -86,10 +86,10 @@ pub enum LayoutSections {
 
 /// Takes the terminal back out of raw mode when dropped.
 ///
-/// Leaving raw mode enabled hands the user back a shell with no echo and no
-/// LF -> CRLF translation, so its output comes out staircased. Tying it to a
-/// guard means no early return - from setup, from `cleanup`, or from anything
-/// added to them later - can skip it.
+/// Leaving raw mode enabled hands the user back a shell with no echo and no LF -> CRLF translation,
+/// so its output comes out staircased.
+/// Tying it to a guard means no early return - from setup, from `cleanup`, or from anything added
+/// to them later - can skip it.
 struct RawModeGuard;
 
 impl RawModeGuard {
@@ -136,8 +136,9 @@ pub struct TuiAppState {
     hovered_url_index: Option<usize>,
     /// Message shown at the bottom of the screen, if any.
     toast: Option<Toast>,
-    /// When to copy a multi-click selection. Waiting out the multi-click
-    /// window keeps the double-click stage of a triple-click from copying.
+    /// When to copy a multi-click selection.
+    /// Waiting out the multi-click window keeps the double-click stage of a triple-click from
+    /// copying.
     pending_copy_at: Option<Instant>,
 }
 
@@ -207,9 +208,8 @@ impl TuiApp {
     }
 
     pub async fn run(&mut self, runner_tx: &RunnerCommandChannel) -> anyhow::Result<i32> {
-        // Translate every signal into a quit command, exactly like a Ctrl-C key
-        // press. The app forwards each one to the runner, which turns a repeated
-        // quit into a forced kill.
+        // Translate every signal into a quit command, exactly like a Ctrl-C key press.
+        // The app forwards each one to the runner, which turns a repeated quit into a forced kill.
         let mut signals = self.signal_handler.subscribe();
         let command_tx = self.command_tx.clone();
         tokio_spawn!("app-canceller", async move {
@@ -230,8 +230,8 @@ impl TuiApp {
         }
 
         debug!("App is exiting");
-        // Same summary and exit code as the CUI, printed after the panes so it is
-        // the last thing on the screen.
+        // Same summary and exit code as the CUI, printed after the panes so it is the last thing on
+        // the screen.
         let failed = self.state.failed_tasks();
         print_failure_summary(&failed, self.fail_fast);
         Ok(if failed.is_empty() { 0 } else { 1 })
@@ -275,8 +275,7 @@ impl TuiApp {
         Ok(())
     }
 
-    /// Blocking poll for events, will only return None if app handle has been
-    /// dropped
+    /// Blocking poll for events, will only return None if app handle has been dropped
     async fn poll(&mut self) -> anyhow::Result<Option<AppCommand>> {
         let input_closed = self.crossterm_rx.is_closed();
 
@@ -305,18 +304,17 @@ impl TuiApp {
     }
 
     fn cleanup(&mut self) -> anyhow::Result<()> {
-        // The screen is not cleared before leaving the alternate screen: the
-        // primary screen is restored with its previous contents anyway, and
-        // `Terminal::clear` asks the terminal for the cursor position, which
-        // never answers here because `InputHandler` is reading stdin on
+        // The screen is not cleared before leaving the alternate screen: the primary screen is
+        // restored with its previous contents anyway, and `Terminal::clear` asks the terminal for
+        // the cursor position, which never answers here because `InputHandler` is reading stdin on
         // another thread and consumes the reply.
         crossterm::execute!(
             self.terminal.backend_mut(),
             crossterm::event::DisableMouseCapture,
             crossterm::terminal::LeaveAlternateScreen
         )?;
-        // Writes the tasks' output to the primary screen with explicit CRLFs,
-        // so it has to happen while raw mode is still on.
+        // Writes the tasks' output to the primary screen with explicit CRLFs, so it has to happen
+        // while raw mode is still on.
         self.state.persist_tasks()?;
         crossterm::terminal::disable_raw_mode()?;
         self.terminal.show_cursor()?;
@@ -493,8 +491,8 @@ impl TuiAppState {
         rerun: u64,
         datetime: DateTime<Local>,
     ) -> anyhow::Result<()> {
-        // Separate the output of a new run from the previous one's. The process is
-        // already running by the time the app hears about it, hence the past tense.
+        // Separate the output of a new run from the previous one's.
+        // The process is already running by the time the app hears about it, hence the past tense.
         if restart > 0 || rerun > 0 {
             let text = match (restart, max_restart) {
                 (0, _) => format!("Task re-run ({rerun}), PID: {pid}"),
@@ -525,16 +523,17 @@ impl TuiAppState {
         result: TaskResult,
         datetime: Option<DateTime<Local>>,
     ) -> anyhow::Result<()> {
-        // A task that could not run has produced no output, so its pane is free
-        // to show the cause without mixing with process output.
+        // A task that could not run has produced no output, so its pane is free to show the cause
+        // without mixing with process output.
         if matches!(result, TaskResult::Error(_)) {
             self.task_mut(task)?.note(&RED, &result.pane_message());
         }
         let rerunning = matches!(result, TaskResult::Rerunning);
         self.set_status(task, TaskStatus::Finished(result, datetime))?;
-        // A finished task has no stdin, so staying in interaction mode would leave
-        // the user typing into a dead shell. Re-running tasks are exempt since they
-        // are restarted right away and their stdin comes back.
+        // A finished task has no stdin, so staying in interaction mode would leave the user typing
+        // into a dead shell.
+        // Re-running tasks are exempt since they are restarted right away and their stdin comes
+        // back.
         if !rerunning && self.is_interacting_with(task)? {
             self.exit_interaction();
         }
@@ -563,9 +562,10 @@ impl TuiAppState {
         }
     }
 
-    /// Tasks that are failed when the app exits, as `(label, result)` pairs, for
-    /// the end-of-run summary and the exit code. This is what the sidebar shows at
-    /// that moment: a task fixed by a restart or a re-run is not a failure anymore.
+    /// Tasks that are failed when the app exits, as `(label, result)` pairs, for the end-of-run
+    /// summary and the exit code.
+    /// This is what the sidebar shows at that moment: a task fixed by a restart or a re-run is not
+    /// a failure anymore.
     pub fn failed_tasks(&self) -> Vec<(String, TaskResult)> {
         self.tasks
             .values()
@@ -608,8 +608,8 @@ impl TuiAppState {
         let [table, pane] = horizontal.areas(f.area());
 
         // Update cached URLs for hover/click detection.
-        // Separate borrow scope: detect_urls returns owned data, so the
-        // immutable borrow of self via active_task() ends before assignment.
+        // Separate borrow scope: detect_urls returns owned data, so the immutable borrow of self
+        // via active_task() ends before assignment.
         let new_urls = match self.active_task() {
             Ok(task) => hyperlink::detect_urls(task.output.screen()),
             Err(e) => {
@@ -696,8 +696,8 @@ impl TuiAppState {
     pub fn forward_input(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
         if matches!(self.focus, LayoutSections::Pane) {
             let task = self.active_task_mut()?;
-            // Jump back to the live output before forwarding the input,
-            // otherwise the user types into a view they cannot see.
+            // Jump back to the live output before forwarding the input, otherwise the user types
+            // into a view they cannot see.
             task.output.scroll_to_bottom();
             if let Some(stdin) = task.output.stdin_mut() {
                 stdin
@@ -737,9 +737,8 @@ impl TuiAppState {
         Ok(())
     }
 
-    /// Schedule a copy of the current selection for when the multi-click
-    /// window has passed, so a further click can still upgrade (and cancel)
-    /// it instead of copying twice.
+    /// Schedule a copy of the current selection for when the multi-click window has passed, so a
+    /// further click can still upgrade (and cancel) it instead of copying twice.
     pub fn defer_copy_selection(&mut self) {
         self.pending_copy_at = Some(Instant::now() + DOUBLE_CLICK_DURATION);
     }
@@ -756,8 +755,8 @@ impl TuiAppState {
         }
     }
 
-    /// Drop the toast if its display time has elapsed, clearing the log
-    /// selection together when the toast asks for it (copy toast).
+    /// Drop the toast if its display time has elapsed, clearing the log selection together when the
+    /// toast asks for it (copy toast).
     /// Returns true when the toast was removed and a re-render is needed.
     pub fn expire_toast(&mut self) -> bool {
         match &self.toast {
@@ -767,8 +766,7 @@ impl TuiAppState {
                 ..
             }) if *expires_at <= Instant::now() => {
                 if *clear_selection_on_expire {
-                    // Failing to resolve the active task must not keep the
-                    // expired toast on screen
+                    // Failing to resolve the active task must not keep the expired toast on screen
                     self.clear_selection().ok();
                 }
                 self.toast = None;
@@ -778,8 +776,8 @@ impl TuiAppState {
         }
     }
 
-    /// Drop a pending copy toast and any scheduled copy when the user starts
-    /// a new selection, so neither can fire against the selection being made.
+    /// Drop a pending copy toast and any scheduled copy when the user starts a new selection, so
+    /// neither can fire against the selection being made.
     fn cancel_copy_feedback(&mut self) {
         self.pending_copy_at = None;
         if matches!(
@@ -793,9 +791,9 @@ impl TuiAppState {
         }
     }
 
-    /// Update the hovered URL index from pane-relative mouse coordinates.
-    /// pane_row/pane_col from input.rs are already vt100 visible row/col
-    /// (same coordinates used by line_selection/update_selection).
+    /// Update the hovered URL index from pane-relative mouse coordinates. pane_row/pane_col from
+    /// input.rs are already vt100 visible row/col (same coordinates used by
+    /// line_selection/update_selection).
     fn update_hover(&mut self, pane_row: u16, pane_col: u16) {
         self.hovered_url_index = hyperlink::find_url_at(&self.detected_urls, pane_row, pane_col);
     }
@@ -897,8 +895,7 @@ impl TuiAppState {
                 if previous_row_widths.is_empty() {
                     matches.push(Match(row_idx as u16, col_idx as u16));
                 } else {
-                    // The line is wrapped
-                    // Reset the current row index to the first line
+                    // The line is wrapped Reset the current row index to the first line
                     let first_row_idx = row_idx - previous_row_widths.len();
                     for (row_idx, width) in
                         (first_row_idx..).zip(previous_row_widths.iter().chain(std::iter::once(&current_row_width)))
@@ -1116,9 +1113,9 @@ impl TuiAppState {
                 runner_tx.quit();
             }
             AppCommand::Quit => {
-                // The help dialog covers the whole frame, so leave it: it would
-                // hide both the finalizer logs and the quit message, and force
-                // quit is only bound on the task list.
+                // The help dialog covers the whole frame, so leave it: it would hide both the
+                // finalizer logs and the quit message, and force quit is only bound on the task
+                // list.
                 if matches!(self.focus, LayoutSections::Help { .. }) {
                     self.focus = LayoutSections::TaskList(None);
                 }

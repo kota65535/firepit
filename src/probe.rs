@@ -52,8 +52,8 @@ impl LogLineProbe {
                 // Normal branch, tries to match the pattern with the log event
                 event = log_rx.recv() => {
                     if let Some(event) = event {
-                        // Dropping the whole line on one bad byte would keep the
-                        // pattern from ever matching, with nothing to say why
+                        // Dropping the whole line on one bad byte would keep the pattern from ever
+                        // matching, with nothing to say why
                         let line = String::from_utf8_lossy(&event);
                         if self.regex.is_match(&line) {
                             debug!("Probe succeeded");
@@ -82,8 +82,8 @@ pub struct ExecProbe {
 }
 
 impl ExecProbe {
-    // Public constructor mirroring the exec health-check config fields; a builder
-    // refactor would change the public API without real benefit.
+    // Public constructor mirroring the exec health-check config fields; a builder refactor would
+    // change the public API without real benefit.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         name: &str,
@@ -114,10 +114,10 @@ impl ExecProbe {
 
     /// Runs the health check until it succeeds, fails for good, or is cancelled.
     ///
-    /// Every try is logged with the output of the command, so that a service
-    /// that never becomes ready can be diagnosed from the log. The try that
-    /// gives up is logged at `WARN`, the level at which the log is read by
-    /// default; the ones before it are only of interest once something is wrong.
+    /// Every try is logged with the output of the command, so that a service that never becomes
+    /// ready can be diagnosed from the log.
+    /// The try that gives up is logged at `WARN`, the level at which the log is read by default;
+    /// the ones before it are only of interest once something is wrong.
     pub async fn run(&self, mut cancel_rx: watch::Receiver<()>) -> anyhow::Result<bool> {
         let env = self.env.load()?;
         info!("Probe started. command: {}", self.command);
@@ -141,8 +141,8 @@ impl ExecProbe {
             };
 
             let collector = OutputCollector::new();
-            // How this try ended, and what the command wrote while it ran. A try
-            // that succeeds returns right away, so what is left is a failed one.
+            // How this try ended, and what the command wrote while it ran.
+            // A try that succeeds returns right away, so what is left is a failed one.
             let (outcome, output) = tokio::select! {
                 // Cancelling branch, kill the process and quits immediately
                 _ = cancel_rx.changed() => {
@@ -180,8 +180,8 @@ impl ExecProbe {
 
             // Retry up to `self.retries` times when timeout or finished with non-zero code
             if retries >= self.retries {
-                // The service will not become ready, so say why at a level that is
-                // read by default, together with the output that explains it.
+                // The service will not become ready, so say why at a level that is read by default,
+                // together with the output that explains it.
                 warn!("Probe {outcome}, giving up after {tries} tries{output}");
                 return Ok(false);
             }
@@ -200,8 +200,8 @@ impl ExecProbe {
         }
     }
 
-    /// What the probe command wrote, for the end of a log message: on lines of
-    /// its own so that it stays readable, and nothing at all when it wrote nothing.
+    /// What the probe command wrote, for the end of a log message: on lines of its own so that it
+    /// stays readable, and nothing at all when it wrote nothing.
     fn logged_output(collector: &OutputCollector) -> String {
         let output = collector.take_output();
         let output = output.trim_end();
@@ -246,8 +246,8 @@ mod test {
         });
     }
 
-    /// The output of a probe command goes into the log on lines of its own, so
-    /// that it stays readable, and a command that wrote nothing adds nothing.
+    /// The output of a probe command goes into the log on lines of its own, so that it stays
+    /// readable, and a command that wrote nothing adds nothing.
     #[test]
     fn test_logged_output() {
         let collector = OutputCollector::new();
@@ -374,8 +374,8 @@ mod test {
         assert!(!(result.unwrap()));
     }
 
-    /// A probe process that outlives the probe `timeout` must be stopped, not
-    /// left running until the whole probe finishes.
+    /// A probe process that outlives the probe `timeout` must be stopped, not left running until
+    /// the whole probe finishes.
     #[tokio::test]
     async fn test_exec_probe_timeout_stops_process() {
         setup();

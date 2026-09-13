@@ -101,7 +101,8 @@ impl InputHandler {
 
         // Check if the mouse event is within the sidebar area
         let on_sidebar = if options.has_sidebar {
-            // To make it easier to select log ranges, treat the border and some margin as part of the pane
+            // To make it easier to select log ranges, treat the border and some margin as part of
+            // the pane
             let cutoff = options.sidebar_width.saturating_sub(2);
             let within_sidebar = mouse_event.column < cutoff;
             if !within_sidebar {
@@ -166,9 +167,9 @@ impl InputHandler {
                     Some(AppCommand::ClickPane { row, col: column })
                 } else if options.has_selection {
                     if self.num_of_multiple_clicks() >= 2 {
-                        // A further click may still upgrade this selection
-                        // (double-click -> triple-click), so let the copy wait
-                        // out the multi-click window instead of firing twice.
+                        // A further click may still upgrade this selection (double-click ->
+                        // triple-click), so let the copy wait out the multi-click window instead of
+                        // firing twice.
                         Some(AppCommand::DeferCopySelection)
                     } else {
                         // Releasing a drag selection copies it immediately.
@@ -293,10 +294,10 @@ fn encode_key(key: KeyEvent) -> Vec<u8> {
             buf.push(c);
         }
 
-        // When alt is pressed, send escape first to indicate to the peer that
-        // ALT is pressed.  We do this only for ascii alnum characters because
-        // eg: on macOS generates altgr style glyphs and keeps the ALT key
-        // in the modifier set.  This confuses eg: zsh which then just displays
+        // When alt is pressed, send escape first to indicate to the peer that ALT is pressed.
+        // We do this only for ascii alnum characters because eg: on macOS generates altgr style
+        // glyphs and keeps the ALT key in the modifier set.
+        // This confuses eg: zsh which then just displays
         // <fffffffff> as the input, so we want to avoid that.
         Char(c) if (c.is_ascii_alphanumeric() || c.is_ascii_punctuation()) && mods.contains(KeyModifiers::ALT) => {
             buf.push(0x1b as char);
@@ -307,8 +308,7 @@ fn encode_key(key: KeyEvent) -> Vec<u8> {
             let c = match code {
                 Enter => '\r',
                 Esc => '\x1b',
-                // Backspace sends the default VERASE which is confusingly
-                // the DEL ascii codepoint
+                // Backspace sends the default VERASE which is confusingly the DEL ascii codepoint
                 Backspace => '\x7f',
                 _ => unreachable!(),
             };
@@ -401,8 +401,7 @@ fn encode_key(key: KeyEvent) -> Vec<u8> {
                 };
                 buf.push_str(s);
             } else {
-                // Higher numbered F-keys plus modified F-keys are encoded
-                // using CSI instead of SS3.
+                // Higher numbered F-keys plus modified F-keys are encoded using CSI instead of SS3.
                 let intro = match n {
                     1 => "\x1b[11",
                     2 => "\x1b[12",
@@ -420,8 +419,8 @@ fn encode_key(key: KeyEvent) -> Vec<u8> {
                 };
                 let encoded_mods = encode_modifiers(mods);
                 if encoded_mods == 0 {
-                    // If no modifiers are held, don't send the modifier
-                    // sequence, as the modifier encoding is a CSI-u extension.
+                    // If no modifiers are held, don't send the modifier sequence, as the modifier
+                    // encoding is a CSI-u extension.
                     buf.push_str(intro);
                     buf.push('~');
                 } else {
@@ -449,13 +448,11 @@ fn encode_key(key: KeyEvent) -> Vec<u8> {
 }
 
 /// Map c to its Ctrl equivalent.
-/// In theory, this mapping is simply translating alpha characters
-/// to upper case and then masking them by 0x1f, but xterm inherits
-/// some built-in translation from legacy X11 so that are some
-/// aliased mappings and a couple that might be technically tied
-/// to US keyboard layout (particularly the punctuation characters
-/// produced in combination with SHIFT) that may not be 100%
-/// the right thing to do here for users with non-US layouts.
+/// In theory, this mapping is simply translating alpha characters to upper case and then masking
+/// them by 0x1f, but xterm inherits some built-in translation from legacy X11 so that are some
+/// aliased mappings and a couple that might be technically tied to US keyboard layout (particularly
+/// the punctuation characters produced in combination with SHIFT) that may not be 100% the right
+/// thing to do here for users with non-US layouts.
 fn ctrl_mapping(c: char) -> Option<char> {
     Some(match c {
         '@' | '`' | ' ' | '2' => '\x00',
@@ -495,8 +492,8 @@ fn ctrl_mapping(c: char) -> Option<char> {
     })
 }
 
-/// if SHIFT is held and we have KeyCode::Char('c') we want to normalize
-/// that keycode to KeyCode::Char('C'); that is what this function does.
+/// if SHIFT is held and we have KeyCode::Char('c') we want to normalize that keycode to
+/// KeyCode::Char('C'); that is what this function does.
 fn normalize_shift_to_upper_case(code: KeyCode, modifiers: &KeyModifiers) -> KeyCode {
     if modifiers.contains(KeyModifiers::SHIFT) {
         match code {

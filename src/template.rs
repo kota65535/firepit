@@ -40,8 +40,9 @@ const DYNAMIC_VAR_HINT_THRESHOLD: Duration = Duration::from_secs(1);
 /// Outputs of the dynamic variable commands that have already run, so that a variable with
 /// `cache: true` included by several projects or tasks runs its command only once.
 ///
-/// The cache lives for a single [`ConfigRenderer::render`] call. Re-rendering the config, which is
-/// what happens on every watch event, starts from an empty cache and runs the commands again.
+/// The cache lives for a single [`ConfigRenderer::render`] call.
+/// Re-rendering the config, which is what happens on every watch event, starts from an empty cache
+/// and runs the commands again.
 ///
 /// Every run is timed, cached or not, so that [`DynamicVarCache::warn_runs`] can point out both a
 /// variable that would benefit from `cache: true` and one that has it without ever hitting.
@@ -86,9 +87,9 @@ impl DynamicVarCache {
     /// other way of noticing than the config taking a long time to render.
     ///
     /// A run key ignores the working directory, so a variable shared by several projects lands on
-    /// one entry however many directories it ran in. That is what makes both cases visible: an
-    /// uncached variable worth caching, and a cached one that never hits because each project runs
-    /// it somewhere else.
+    /// one entry however many directories it ran in.
+    /// That is what makes both cases visible: an uncached variable worth caching, and a cached one
+    /// that never hits because each project runs it somewhere else.
     fn warn_runs(&self) {
         for (key, runs) in self.runs.iter() {
             if runs.count < 2 {
@@ -136,8 +137,9 @@ impl DynamicVarCommand {
 }
 
 /// What makes two `cache: true` dynamic variables share a command output: the same command run in
-/// the same directory. A variable shared by several projects runs in each project directory, so
-/// sharing one run across them takes an explicit `working_dir`.
+/// the same directory.
+/// A variable shared by several projects runs in each project directory, so sharing one run across
+/// them takes an explicit `working_dir`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DynamicVarKey {
     command: DynamicVarCommand,
@@ -155,9 +157,9 @@ impl DynamicVarKey {
 
 /// What the warnings count runs by: one declaration, wherever it ran.
 ///
-/// The variable name keeps the runs of two variables that share a command apart, so that neither
-/// is reported for the other's executions, and `cached` keeps a cached variable from being
-/// reported as one that should be cached.
+/// The variable name keeps the runs of two variables that share a command apart, so that neither is
+/// reported for the other's executions, and `cached` keeps a cached variable from being reported as
+/// one that should be cached.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct DynamicVarRunKey {
     name: String,
@@ -187,8 +189,7 @@ impl ProjectConfig {
         context.insert(PROJECT_CONTEXT_KEY, &self.name);
         context.insert(PROJECT_DIR_CONTEXT_KEY, &self.dir.as_os_str().to_str().unwrap_or(""));
 
-        // Render project-level vars.
-        // CLI Argument vars override project-level vars.
+        // Render project-level vars. CLI Argument vars override project-level vars.
         // A CLI value for a typed project var is interpreted according to the declared type.
         let merged = vars
             .iter()
@@ -233,9 +234,9 @@ impl ProjectConfig {
         Ok(context)
     }
 
-    /// Renders the project config, along with the context of each of its tasks. A task context
-    /// runs the commands of the task's dynamic vars, so it is returned to be reused instead of
-    /// being built a second time.
+    /// Renders the project config, along with the context of each of its tasks.
+    /// A task context runs the commands of the task's dynamic vars, so it is returned to be reused
+    /// instead of being built a second time.
     pub async fn render(
         &self,
         context: &tera::Context,
@@ -294,10 +295,11 @@ impl TaskConfig {
             let rk = tera.render_str(k, &context)?;
             if !rk.is_empty() {
                 // A task-level var without a value never inherits: declaring it shadows the
-                // project-level var of the same name. The value must be given explicitly, by the
-                // `<name>=<value>` CLI argument for the tasks being run or by the dependent
-                // task's `depends_on.vars`. Until then it stays null, and is reported as an error
-                // when the task is actually run.
+                // project-level var of the same name.
+                // The value must be given explicitly, by the `<name>=<value>` CLI argument for the
+                // tasks being run or by the dependent task's `depends_on.vars`.
+                // Until then it stays null, and is reported as an error when the task is actually
+                // run.
                 if v.is_unset() {
                     context.insert(rk, &JsonValue::Null);
                     continue;
@@ -640,7 +642,8 @@ impl ConfigRenderer {
 
         // Render task variants.
         // When a dependency task is specified with vars, it is considered as a different task.
-        // Task variants are managed internally with sequentially numbered suffixes, ex: {name}-1, {name}-2.
+        // Task variants are managed internally with sequentially numbered suffixes, ex: {name}-1,
+        // {name}-2.
         for depends_on in task_config.depends_on.iter_mut() {
             // With struct notation
             let DependsOnConfig::Struct(depends_on) = depends_on else {
@@ -732,8 +735,8 @@ impl ConfigRenderer {
     }
 
     /// Renders the variant of the task `dep_task_name` with the given vars merged, for the task
-    /// `task_name` that refers to it, and returns the variant name. An existing variant with the
-    /// same vars is reused.
+    /// `task_name` that refers to it, and returns the variant name.
+    /// An existing variant with the same vars is reused.
     #[async_recursion]
     #[allow(clippy::too_many_arguments)]
     async fn render_variant_task(
@@ -756,7 +759,8 @@ impl ConfigRenderer {
         let mut variant_task = dep_task.clone();
 
         // Merge the given vars into the task vars.
-        // Only the vars that already exist in the task are merged to avoid unnecessary variant tasks.
+        // Only the vars that already exist in the task are merged to avoid unnecessary variant
+        // tasks.
         for (k, v) in vars.iter().filter(|(k, _)| dep_task.vars.contains_key(*k)) {
             // A typed var of the task keeps its type, so the value is interpreted according to it.
             let merged = dep_task.vars.get(k).map_or_else(|| v.clone(), |d| d.with_value(v));
@@ -860,9 +864,9 @@ fn render_env_files(env_files: &[String], tera: &mut Tera, context: &tera::Conte
     Ok(ret)
 }
 
-/// Resolves the vars of a task to their values. A dynamic var has already run while the task
-/// context was built, so its value is taken from the context instead of running the command a
-/// second time.
+/// Resolves the vars of a task to their values.
+/// A dynamic var has already run while the task context was built, so its value is taken from the
+/// context instead of running the command a second time.
 async fn render_value_map(
     map: &IndexMap<String, VarsConfig>,
     tera: &mut Tera,
@@ -981,7 +985,8 @@ async fn render_value(
 }
 
 /// Infers the type of a rendered scalar var from its string form: `"8080"` becomes a number and
-/// `"true"` a boolean. An empty string, or a string that reads as an array or a map, stays a string.
+/// `"true"` a boolean.
+/// An empty string, or a string that reads as an array or a map, stays a string.
 fn infer_scalar(value: JsonValue) -> anyhow::Result<JsonValue> {
     let JsonValue::String(str) = value else {
         return Ok(value);
@@ -1071,8 +1076,8 @@ fn yaml_number_to_json_number(yaml_num: &serde_yaml::Number) -> Option<serde_jso
 
 /// Creates a [`Tera`] instance with the Firepit custom filters registered.
 ///
-/// All template rendering must go through this function so that every template
-/// field supports the same set of filters.
+/// All template rendering must go through this function so that every template field supports the
+/// same set of filters.
 ///
 /// # Examples
 ///
@@ -1090,20 +1095,19 @@ pub fn new_tera() -> Tera {
     tera
 }
 
-/// Tera filter that escapes a value so that it can be safely embedded in a shell
-/// command as a single argument.
+/// Tera filter that escapes a value so that it can be safely embedded in a shell command as a
+/// single argument.
 ///
-/// Strings are quoted with [`shlex`], so whitespace, quotes, newlines and shell
-/// metacharacters in the value cannot break out of the argument.
-/// Numbers, booleans and `null` are quoted the same way after being stringified,
-/// and arrays are quoted element-wise and joined with a single space, which is
-/// handy for passing a list of arguments.
+/// Strings are quoted with [`shlex`], so whitespace, quotes, newlines and shell metacharacters in
+/// the value cannot break out of the argument.
+/// Numbers, booleans and `null` are quoted the same way after being stringified, and arrays are
+/// quoted element-wise and joined with a single space, which is handy for passing a list of
+/// arguments.
 ///
 /// # Errors
 ///
-/// Returns an error when the value is a map, when an array contains a nested
-/// array or map, or when the value contains a nul byte, which cannot be
-/// represented as a shell argument.
+/// Returns an error when the value is a map, when an array contains a nested array or map, or when
+/// the value contains a nul byte, which cannot be represented as a shell argument.
 fn quote_filter(value: &JsonValue, _args: &HashMap<String, JsonValue>) -> tera::Result<JsonValue> {
     let quoted = match value {
         JsonValue::Array(items) => {
@@ -1125,8 +1129,7 @@ fn quote_filter(value: &JsonValue, _args: &HashMap<String, JsonValue>) -> tera::
 ///
 /// # Errors
 ///
-/// Returns an error for arrays and maps, which have no single-argument shell
-/// representation.
+/// Returns an error for arrays and maps, which have no single-argument shell representation.
 fn scalar_to_string(value: &JsonValue) -> tera::Result<String> {
     match value {
         JsonValue::String(s) => Ok(s.clone()),
@@ -1167,8 +1170,8 @@ mod tests {
         // One declaration running in several directories lands on a single entry
         cache.record_run(run_key("slow", "slow", false), long / 2);
         cache.record_run(run_key("slow", "slow", false), long / 2);
-        // Two variables sharing a command are counted apart, so neither is reported for the
-        // other's execution
+        // Two variables sharing a command are counted apart, so neither is reported for the other's
+        // execution
         cache.record_run(run_key("twin-a", "shared", false), long);
         cache.record_run(run_key("twin-b", "shared", false), long);
         // A cached variable is counted apart from an uncached one running the same command, so

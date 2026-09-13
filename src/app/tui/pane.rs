@@ -66,8 +66,8 @@ impl<'a> TerminalPane<'a> {
 
     fn left_footer(&self) -> Text<'_> {
         let mut help_spans = Vec::new();
-        // The line above the key help shows the search input, or a transient
-        // message (copy notification, quit message, ...) when there is one.
+        // The line above the key help shows the search input, or a transient message (copy
+        // notification, quit message, ...) when there is one.
         let mut message_spans = Vec::new();
         match self.section {
             LayoutSections::Pane => {
@@ -106,9 +106,9 @@ impl<'a> TerminalPane<'a> {
             }
         }
 
-        // A message takes the line over the search input: it only shows while
-        // quitting or right after a copy, when search input does not move on
-        // anyway. Unlike the search input it is centered like the key help.
+        // A message takes the line over the search input: it only shows while quitting or right
+        // after a copy, when search input does not move on anyway.
+        // Unlike the search input it is centered like the key help.
         let message_line = match self.toast {
             Some(toast) => Line::from(Span::styled(
                 format!(" {} ", toast),

@@ -1,7 +1,7 @@
 use std::io::Write;
 
-/// Writer that will buffer writes so the underlying writer is only called with
-/// writes that end in a newline
+/// Writer that will buffer writes so the underlying writer is only called with writes that end in a
+/// newline
 pub struct LineWriter<W> {
     writer: W,
     buffer: Vec<u8>,

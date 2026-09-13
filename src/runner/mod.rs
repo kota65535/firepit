@@ -30,8 +30,8 @@ pub const WATCHER_DEBOUNCE_DURATION: Duration = Duration::from_millis(300);
 
 pub struct TaskRunner {
     pub target_tasks: Vec<String>,
-    /// Finalizers pulled into the run by `finalized_by`. Awaited like the targets before
-    /// quitting, but not targets themselves
+    /// Finalizers pulled into the run by `finalized_by`.
+    /// Awaited like the targets before quitting, but not targets themselves
     pub finalizer_tasks: Vec<String>,
     pub tasks: Vec<Task>,
     pub task_graph: TaskGraph,
@@ -54,7 +54,8 @@ impl TaskRunner {
         let target_tasks = ws.target_tasks.clone();
         let finalizer_tasks = ws.finalizer_tasks.clone();
 
-        // The awaited tasks: the run pulls in the finalizers and waits for them just like the targets
+        // The awaited tasks: the run pulls in the finalizers and waits for them just like the
+        // targets
         let awaited_tasks = target_tasks.iter().chain(&finalizer_tasks).cloned().collect::<Vec<_>>();
         let task_graph_all = TaskGraph::new(&all_tasks, Some(&awaited_tasks), ws.force)?;
         let task_graph = task_graph_all.transitive_closure(&awaited_tasks, Direction::Outgoing)?;
@@ -139,8 +140,9 @@ impl TaskRunner {
         // The finalizers, spared by a stop
         let finalizer_tasks: HashSet<String> = self.finalizer_tasks.iter().cloned().collect();
         let finalizers_remaining = Arc::new(Mutex::new(finalizer_tasks.clone()));
-        // Set once the runner is told to quit. From then on only the finalizers run, and the
-        // visitors are stopped when the last of them is done
+        // Set once the runner is told to quit.
+        // From then on only the finalizers run, and the visitors are stopped when the last of them
+        // is done
         let quitting = Arc::new(AtomicBool::new(false));
 
         while !node_rx.is_closed() {
@@ -149,8 +151,8 @@ impl TaskRunner {
                 Ok(event) = self.command_rx.recv() => {
                     match event {
                         RunnerCommand::StopTasks  => {
-                           // Finalizers are left running: they are meant to run to completion
-                           // after the tasks they finalize, failed or not
+                           // Finalizers are left running: they are meant to run to completion after
+                           // the tasks they finalize, failed or not
                            debug!("Stopping all tasks but finalizers");
                            self.manager.stop_except(&finalizer_tasks).await;
                         }
@@ -171,8 +173,8 @@ impl TaskRunner {
                                 let task_graph = self.task_graph.transitive_closure(&tasks, Direction::Incoming)?;
                                 tasks = task_graph.sort()?.iter().map(|t| t.name.clone()).collect();
                             }
-                            // Worth noticing even when only warnings are read: the output
-                            // of the tasks below it belongs to another run
+                            // Worth noticing even when only warnings are read: the output of the
+                            // tasks below it belongs to another run
                             warn!("Re-running tasks: {:?}", tasks);
 
                             debug!("Stopping tasks");
@@ -212,8 +214,9 @@ impl TaskRunner {
                                 tokio::select! {
                                     event = self.command_rx.recv() => {
                                         // A second quit means the user gave up on the graceful
-                                        // shutdown. Anything else is irrelevant while shutting
-                                        // down, so keep waiting instead of disabling this branch.
+                                        // shutdown.
+                                        // Anything else is irrelevant while shutting down, so keep
+                                        // waiting instead of disabling this branch.
                                         if matches!(event, Ok(RunnerCommand::Quit)) {
                                             debug!("Killing tasks");
                                             self.manager.close_by_kill().await;
@@ -281,13 +284,13 @@ impl TaskRunner {
                         // Any error below is a fatal one: the task could not run at all.
                         // Report it like a failure so the UI shows it as an error and the
                         // dependents are skipped, instead of dropping it in `join`.
-                        // The PID is kept outside so the process can be stopped if the
-                        // error happens after it has started.
+                        // The PID is kept outside so the process can be stopped if the error
+                        // happens after it has started.
                         let mut spawned_pid = None;
                         let run = async {
                             // Skip the task if the runner is quitting, unless it is a finalizer.
-                            // Checked first so that the dependents of the tasks stopped by
-                            // quitting are stopped too, not failed.
+                            // Checked first so that the dependents of the tasks stopped by quitting
+                            // are stopped too, not failed.
                             if quitting_cloned.load(Ordering::SeqCst) && !is_finalizer {
                                 debug!("Task does not run as the runner is quitting");
                                 app_tx.finish_task(TaskResult::Stopped, None);
@@ -309,7 +312,8 @@ impl TaskRunner {
                                 return Ok::<(), anyhow::Error>(());
                             }
 
-                            // Skip the task if output files are newer than input files if both defined
+                            // Skip the task if output files are newer than input files if both
+                            // defined
                             if task.is_up_to_date() {
                                 info!("Task output files are newer than input files");
                                 app_tx.finish_task(TaskResult::UpToDate, None);
@@ -325,8 +329,8 @@ impl TaskRunner {
                             // edit of it since the last run can make this fail.
                             let env = task.env.load()?;
 
-                            // The dump carries the environment, so it stays at a level
-                            // that is not read by accident
+                            // The dump carries the environment, so it stays at a level that is not
+                            // read by accident
                             debug!(
                                 "Task is starting.\nrun: {:?}\nrestart: {:?}\nshell: {:?} {:?}\ncommand: {:?}\nenv: {:?}\nworking_dir: {:?}",
                                 num_runs, num_restart, task.shell, &task.shell_args, task.command, env, task.working_dir
@@ -346,9 +350,10 @@ impl TaskRunner {
                             // Notify the app the task started
                             app_tx.start_task(task.name.clone(), pid, num_restart, task.restart.max_restart(), num_runs, start_time);
 
-                            // The final result of the task. Every result but a success blocks
-                            // the dependents, but only a failure triggers fail-fast: a task
-                            // stopped on request should not stop the others.
+                            // The final result of the task.
+                            // Every result but a success blocks the dependents, but only a failure
+                            // triggers fail-fast: a task stopped on request should not stop the
+                            // others.
                             let result = if task.is_service {
                                 // Service task branch
                                 let (probe_cancel_tx, probe_cancel_rx) = watch::channel(());
@@ -407,7 +412,8 @@ impl TaskRunner {
                                             let result = result.with_context(|| format!("task {:?} failed to run", task.name))?;
                                             probe_result = Some(result.unwrap_or(false));
                                             if probe_result == Some(true) {
-                                                // Release the dependents, and keep waiting for the process to finish
+                                                // Release the dependents, and keep waiting for the
+                                                // process to finish
                                                 info!("Task is ready");
                                                 app_tx.ready_task();
                                                 if let Err(e) = callback.send(CallbackMessage(NodeResult::Ready)).await {
@@ -436,8 +442,10 @@ impl TaskRunner {
                                         manager.stop_by_pid(pid).await;
                                         TaskResult::NotReady
                                     }
-                                    // The process finished before the probe, which is a failure regardless of the result.
-                                    // Being stopped or killed is reported as such though, not as a readiness failure.
+                                    // The process finished before the probe, which is a failure
+                                    // regardless of the result.
+                                    // Being stopped or killed is reported as such though, not as a
+                                    // readiness failure.
                                     (_, result) => {
                                         debug!("Task finished before it becomes ready");
                                         if let Err(e) = probe_cancel_tx.send(()) {

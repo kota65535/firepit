@@ -1,10 +1,10 @@
 # Architecture
 
-Firepit is a simple task & service runner with a comfortable TUI, written in
-Rust. It provides an alternative to tools like npm scripts, make, or
-docker-compose for managing development workflows and services. The tool
-supports both single-project and multi-project setups with dependency
-management, file watching, and service health checking.
+Firepit is a simple task & service runner with a comfortable TUI, written in Rust.
+It provides an alternative to tools like npm scripts, make, or docker-compose for managing
+development workflows and services.
+The tool supports both single-project and multi-project setups with dependency management, file
+watching, and service health checking.
 
 ## Components
 
@@ -37,27 +37,22 @@ management, file watching, and service health checking.
    - Shared command types in `src/app/command.rs`
    - Real-time output streaming and log management (`src/log.rs`)
 
-Supporting modules: `src/cli.rs` (CLI argument parsing), `src/template.rs`
-(Tera-based config rendering), `src/probe.rs` (service health check
-probes), `src/app/signal.rs` (signal subscription).
+Supporting modules: `src/cli.rs` (CLI argument parsing), `src/template.rs` (Tera-based config
+rendering), `src/probe.rs` (service health check probes), `src/app/signal.rs` (signal subscription).
 
 ## Key Design Patterns
 
-- **Actor Pattern**: Components communicate via channels (runner, app, file
-  watcher)
+- **Actor Pattern**: Components communicate via channels (runner, app, file watcher)
 - **Graph Processing**: Task dependencies form a DAG processed with petgraph
-- **Template System**: Uses Tera for variable interpolation in
-  configurations
+- **Template System**: Uses Tera for variable interpolation in configurations
 - **Async/Await**: Full async architecture with tokio runtime
 
 ## Task Execution Flow
 
 1. **Configuration Loading**: Parse and validate firepit.yml files
 2. **Dependency Resolution**: Build DAG and perform topological sort
-3. **Concurrent Execution**: Spawn tasks respecting dependencies and
-   concurrency limits
-4. **Process Management**: Monitor processes, handle signals, manage
-   restarts
+3. **Concurrent Execution**: Spawn tasks respecting dependencies and concurrency limits
+4. **Process Management**: Monitor processes, handle signals, manage restarts
 5. **UI Updates**: Stream output and status updates to TUI/CUI
 
 ## Service vs Task Distinction
@@ -65,8 +60,8 @@ probes), `src/app/signal.rs` (signal subscription).
 - **Tasks**: Run once and exit (build, test, install commands)
 - **Services**: Run continuously (web servers, databases, file watchers)
 - Services have health checks and restart policies (default: `never`)
-- Services block dependent tasks until their health check probe succeeds;
-  the service process itself keeps running in the background
+- Services block dependent tasks until their health check probe succeeds; the service process itself
+  keeps running in the background
 
 ## File Watching Implementation
 
@@ -80,8 +75,7 @@ probes), `src/app/signal.rs` (signal subscription).
 ### Project Structure Types
 
 1. **Single Project**: firepit.yml with only `tasks` section
-2. **Multi Project**: Root firepit.yml with `projects` section pointing to
-   subdirectories
+2. **Multi Project**: Root firepit.yml with `projects` section pointing to subdirectories
 
 ### Key Configuration Concepts
 
@@ -89,15 +83,14 @@ probes), `src/app/signal.rs` (signal subscription).
 - **Services**: Long-running tasks with health checks and restart policies
 - **Variables**: Template variables for dynamic configuration
 - **Environment**: Environment variables and dotenv file support
-- **File Watching**: `inputs` file patterns determine which file changes
-  trigger a task re-run in watch mode
-- **Incremental Builds**: a non-service task with both `inputs` and
-  `outputs` defined is skipped as up-to-date when its outputs are newer
-  than its inputs (modification-time comparison)
+- **File Watching**: `inputs` file patterns determine which file changes trigger a task re-run in
+  watch mode
+- **Incremental Builds**: a non-service task with both `inputs` and `outputs` defined is skipped as
+  up-to-date when its outputs are newer than its inputs (modification-time comparison)
 
 ### Configuration Schema
 
-The project maintains a JSON schema (`schema.json`) for firepit.yml
-validation, generated from the configuration structs. When modifying
-configuration structures, regenerate it (see
+The project maintains a JSON schema (`schema.json`) for firepit.yml validation, generated from the
+configuration structs.
+When modifying configuration structures, regenerate it (see
 [CONTRIBUTING.md](CONTRIBUTING.md#generated-files)).

@@ -107,8 +107,8 @@ impl CuiApp {
     }
 
     pub async fn run(&mut self, runner_tx: &RunnerCommandChannel) -> anyhow::Result<i32> {
-        // Translate every signal into a quit command. The app forwards each one
-        // to the runner, which turns a repeated quit into a forced kill.
+        // Translate every signal into a quit command.
+        // The app forwards each one to the runner, which turns a repeated quit into a forced kill.
         let mut signals = self.signal_handler.subscribe();
         let command_tx = self.command_tx.clone();
         tokio_spawn!("app-canceller", async move {
@@ -165,9 +165,9 @@ impl CuiApp {
                     debug!("Target tasks remaining: {:?}", tasks_remaining);
                 }
                 AppCommand::Quit => {
-                    // Keep processing output while the runner shuts down. The
-                    // runner kills the tasks when it receives a second quit, and
-                    // sends `Done` once it has finished either way.
+                    // Keep processing output while the runner shuts down.
+                    // The runner kills the tasks when it receives a second quit, and sends `Done`
+                    // once it has finished either way.
                     quitting = true;
                     runner_tx.quit();
                 }
@@ -182,8 +182,8 @@ impl CuiApp {
             }
         }
 
-        // Stop the runner unless quitting, in which case it has been told already
-        // and has finished by now.
+        // Stop the runner unless quitting, in which case it has been told already and has finished
+        // by now.
         if !quitting {
             runner_tx.quit();
         }

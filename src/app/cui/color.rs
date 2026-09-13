@@ -84,8 +84,8 @@ mod tests {
         assert_ne!(color1, color2);
     }
 
-    /// The label is separated from the output by a pipe, like docker compose,
-    /// leaving the colon free for `project:task` labels.
+    /// The label is separated from the output by a pipe, like docker compose, leaving the colon
+    /// free for `project:task` labels.
     #[test]
     fn prefix_is_label_and_pipe() {
         let selector = super::ColorSelector::default();
