@@ -22,10 +22,15 @@
       "matchUpdateTypes": ["patch"],
       "automerge": true
     },
-    // A dist bump is incomplete until release.yml is regenerated, so it always
-    // needs a human. Keep this after the patch rule so it wins.
+    // dist is pinned twice, in dist-workspace.toml and in mise.toml, under two
+    // different names: the custom manager above and the mise manager. Group
+    // them so both pins move in a single PR and never disagree.
+    //
+    // A dist bump is also incomplete until release.yml is regenerated, so it
+    // always needs a human. Keep this after the patch rule so it wins.
     {
-      "matchDepNames": ["axodotdev/cargo-dist"],
+      "matchDepNames": ["axodotdev/cargo-dist", "github:axodotdev/cargo-dist"],
+      "groupName": "cargo-dist",
       "automerge": false,
       "addLabels": ["needs-dist-generate"]
     },
