@@ -5,8 +5,7 @@
 - **Type:** <code>integer</code>
 - **Required:** no
 - **Default:** `Number of available CPU cores`
-- **Description:** Task concurrency.
-Valid only in a root project config.
+- **Description:** Task concurrency. Valid only in a root project config.
 ```yaml
 concurrency: 4
 ```
@@ -29,7 +28,8 @@ defaults:
 - **Type:** <code>Array&lt;<a href="#dependsonconfig">DependsOnConfig</a>&gt;</code>
 - **Required:** no
 - **Default:** `[]`
-- **Description:** **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
+- **Description:** **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults)
+instead.
 
 Dependency tasks for all the project tasks.
 ```yaml
@@ -43,7 +43,8 @@ depends_on:
 - **Required:** no
 - **Default:** `{}`
 - **Template:** yes
-- **Description:** **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
+- **Description:** **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults)
+instead.
 
 Environment variables for all the project tasks.
 ```yaml
@@ -57,7 +58,8 @@ env:
 - **Required:** no
 - **Default:** `[]`
 - **Template:** yes
-- **Description:** **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
+- **Description:** **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults)
+instead.
 
 Dotenv files for all the project tasks. Their values are templates.
 In case of duplicated environment variables, the latter one takes precedence.
@@ -72,8 +74,7 @@ env_files:
 - **Type:** <code>string</code>
 - **Required:** no
 - **Template:** no
-- **Description:** Gantt chart output file path.
-Valid only in a root project config.
+- **Description:** Gantt chart output file path. Valid only in a root project config.
 ```yaml
 gantt_file: gantt.svg
 ```
@@ -96,8 +97,7 @@ includes:
 - **Type:** <code><a href="#logconfig">LogConfig</a></code>
 - **Required:** no
 - **Default:** `{"file":null,"level":"warn"}`
-- **Description:** Log configuration.
-Valid only in a root project config.
+- **Description:** Log configuration. Valid only in a root project config.
 ```yaml
 log:
   level: debug
@@ -110,8 +110,7 @@ log:
 - **Required:** no
 - **Default:** `{}`
 - **Template:** no
-- **Description:** Child projects.
-Valid only in a root project config.
+- **Description:** Child projects. Valid only in a root project config.
 ```yaml
 projects:
   client: packages/client
@@ -123,7 +122,8 @@ projects:
 - **Type:** <code><a href="#shellconfig">ShellConfig</a></code>
 - **Required:** no
 - **Default:** `{"args":["-c"],"command":"bash"}`
-- **Description:** **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
+- **Description:** **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults)
+instead.
 
 Shell configuration for all the project tasks.
 ```yaml
@@ -145,8 +145,7 @@ shell:
 - **Type:** <code><a href="#ui">UI</a></code>
 - **Required:** no
 - **Default:** `cui`
-- **Description:** UI configuration.
-Valid only in a root project config.
+- **Description:** UI configuration. Valid only in a root project config.
 ```yaml
 ui: cui
 ```
@@ -172,7 +171,8 @@ vars:
 - **Required:** no
 - **Default:** `.`
 - **Template:** yes
-- **Description:** **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults) instead.
+- **Description:** **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults)
+instead.
 
 Working directory for all the project tasks.
 ```yaml
@@ -236,8 +236,8 @@ working_dir: src
 
 - **Type:** <code>integer</code>
 - **Required:** no
-- **Description:** Grace period in seconds given to the task process after `SIGINT` is sent,
-before it is forcibly killed with `SIGKILL`.
+- **Description:** Grace period in seconds given to the task process after `SIGINT` is sent, before it is
+forcibly killed with `SIGKILL`.
 
 ### tasks
 
@@ -304,10 +304,11 @@ If omitted, all tasks are matched.
 - **Type:** <code>boolean</code>
 - **Required:** no
 - **Default:** `false`
-- **Description:** Whether the command output is reused by the other variables running the same command in
-the same working directory. A variable shared by several projects runs in each project
-directory, so sharing one run across them takes an explicit `working_dir`. Leave it off
-for a command that must run every time, ex: allocating a resource.
+- **Description:** Whether the command output is reused by the other variables running the same command in the
+same working directory.
+A variable shared by several projects runs in each project directory, so sharing one run
+across them takes an explicit `working_dir`.
+Leave it off for a command that must run every time, ex: allocating a resource.
 
 ### command
 
@@ -342,8 +343,9 @@ for a command that must run every time, ex: allocating a resource.
 
 - **Type:** <code><a href="#vartype">VarType</a></code>
 - **Required:** no
-- **Description:** Type of the variable, following JSON Schema. The command output is interpreted as this
-type; without it, the type is inferred from the output.
+- **Description:** Type of the variable, following JSON Schema.
+The command output is interpreted as this type; without it, the type is inferred from the
+output.
 
 ### working_dir
 
@@ -383,8 +385,8 @@ type; without it, the type is inferred from the output.
 - **Required:** no
 - **Default:** `5`
 - **Description:** Interval in seconds.
-The command will run interval seconds after the task is started,
-and then again interval seconds after each previous check completes.
+The command will run interval seconds after the task is started, and then again interval
+seconds after each previous check completes.
 
 ### retries
 
@@ -463,8 +465,8 @@ Probe failure during that period will not be counted towards the maximum number 
 - **Default:** `warn`
 - **Template:** no
 - **Description:** Log level. Valid values: error, warn, info, debug, trace.
-`warn` and above report what a user needs to act on, `info` what Firepit
-is doing to each task, `debug` and below the internals.
+`warn` and above report what a user needs to act on, `info` what Firepit is doing to each
+task, `debug` and below the internals.
 
 ## LogProbeConfig
 
@@ -570,8 +572,8 @@ is doing to each task, `debug` and below the internals.
 - **Required:** no
 - **Default:** `[]`
 - **Description:** Tasks to run after this task finishes, whether it succeeds or fails.
-They run only when this task is part of the run (as a target or a dependency),
-so running a finalizer on its own does not run the task it finalizes.
+They run only when this task is part of the run (as a target or a dependency), so running a
+finalizer on its own does not run the task it finalizes.
 Write an entry in object form to override the finalizer's `vars`, as with `depends_on`.
 ```yaml
 finalized_by:
@@ -620,8 +622,8 @@ finalized_by:
 
 - **Type:** <code>integer</code>
 - **Required:** no
-- **Description:** Grace period in seconds given to the task process after `SIGINT` is sent,
-before it is forcibly killed with `SIGKILL`.
+- **Description:** Grace period in seconds given to the task process after `SIGINT` is sent, before it is
+forcibly killed with `SIGKILL`.
 ```yaml
 stop_timeout: 30
 ```
@@ -632,14 +634,15 @@ stop_timeout: 30
 - **Required:** no
 - **Default:** `{}`
 - **Template:** yes
-- **Description:** Template variables. A task variable shadows the project variable of the same name,
-and the `<name>=<value>` CLI argument overrides both.
-Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`, `depends_on.{task, vars}`,
-`wait_for`, `wait_for.{task, vars}`,
-`service.healthcheck.log` and `service.healthcheck.exec.{command, working_dir, env, env_files}`
+- **Description:** Template variables.
+A task variable shadows the project variable of the same name, and the `<name>=<value>` CLI
+argument overrides both.
+Can be used at `label`, `command`, `working_dir`, `env`, `env_files`, `depends_on`,
+`depends_on.{task, vars}`, `wait_for`, `wait_for.{task, vars}`, `service.healthcheck.log`
+and `service.healthcheck.exec.{command, working_dir, env, env_files}`
 
-A variable declared without a value has no default, so it is required: give it a value
-with the CLI argument or the dependent task's `depends_on.vars`.
+A variable declared without a value has no default, so it is required: give it a value with
+the CLI argument or the dependent task's `depends_on.vars`.
 
 ### wait_for
 
@@ -650,8 +653,8 @@ with the CLI argument or the dependent task's `depends_on.vars`.
 
 Unlike `depends_on`, the listed tasks are not added to the run.
 They only order this task after them when they are going to run anyway.
-Naming a task orders this one after every variant of it. Write an entry in object form
-to wait only for the variants whose vars match the given ones.
+Naming a task orders this one after every variant of it.
+Write an entry in object form to wait only for the variants whose vars match the given ones.
 ```yaml
 wait_for:
   - lint
@@ -676,8 +679,7 @@ working_dir: dist
 - **Template:** no
 - **Description:** Task selector for `defaults`.
 A string value is treated as a regex pattern matched against the task name.
-An array value is treated as an explicit list of task names.
-If omitted, all tasks are matched.
+An array value is treated as an explicit list of task names. If omitted, all tasks are matched.
 ```yaml
 defaults:
   - tasks: "^build"        # regex
