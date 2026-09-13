@@ -142,14 +142,16 @@ impl ChildHandle {
         #[cfg(unix)]
         {
             use nix::sys::termios;
-            if let Some((file_desc, mut termios)) = controller
-                .as_raw_fd()
-                .and_then(|fd| Some(fd).zip(termios::tcgetattr(fd).ok()))
-            {
-                // We unset ECHOCTL to disable rendering of the closing of stdin as ^D
-                termios.local_flags &= !nix::sys::termios::LocalFlags::ECHOCTL;
-                if let Err(e) = nix::sys::termios::tcsetattr(file_desc, nix::sys::termios::SetArg::TCSANOW, &termios) {
-                    debug!("failed to unset ECHOCTL: {e}");
+            use std::os::fd::BorrowedFd;
+            // nix takes a borrowed fd rather than a raw one, and portable-pty hands out only the
+            // raw one. The controller owns the fd and outlives this block, so borrowing is sound.
+            if let Some(file_desc) = controller.as_raw_fd().map(|fd| unsafe { BorrowedFd::borrow_raw(fd) }) {
+                if let Ok(mut termios) = termios::tcgetattr(file_desc) {
+                    // We unset ECHOCTL to disable rendering of the closing of stdin as ^D
+                    termios.local_flags &= !termios::LocalFlags::ECHOCTL;
+                    if let Err(e) = termios::tcsetattr(file_desc, termios::SetArg::TCSANOW, &termios) {
+                        debug!("failed to unset ECHOCTL: {e}");
+                    }
                 }
             }
         }
