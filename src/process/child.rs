@@ -1,19 +1,19 @@
 //! `child`
 //!
 //! This module contains the code for spawning a child process and managing it.
-//! It is responsible for forwarding signals to the child process, and closing
-//! the child process when the manager is closed.
+//! It is responsible for forwarding signals to the child process, and closing the child process
+//! when the manager is closed.
 //!
-//! The child process is spawned using the `shared_child` crate, which provides
-//! a cross platform interface for spawning and managing child processes.
+//! The child process is spawned using the `shared_child` crate, which provides a cross platform
+//! interface for spawning and managing child processes.
 //!
-//! Children can be closed in a few ways, either through killing, or more
-//! gracefully by coupling a signal and a timeout.
+//! Children can be closed in a few ways, either through killing, or more gracefully by coupling a
+//! signal and a timeout.
 //!
-//! This loosely follows the actor model, where the child process is an actor
-//! that is spawned and managed by the manager. The manager is responsible for
-//! running these processes to completion, forwarding signals, and closing
-//! them when the manager is closed.
+//! This loosely follows the actor model, where the child process is an actor that is spawned and
+//! managed by the manager.
+//! The manager is responsible for running these processes to completion, forwarding signals, and
+//! closing them when the manager is closed.
 
 const CHILD_POLL_INTERVAL: Duration = Duration::from_micros(50);
 
@@ -61,7 +61,8 @@ pub enum ChildExit {
 
 #[derive(Debug, Clone)]
 pub enum ShutdownStyle {
-    /// Send SIGINT first and if the process still alive after `Duration`, we then follow up with a `Kill`.
+    /// Send SIGINT first and if the process still alive after `Duration`, we then follow up with a
+    /// `Kill`.
     Graceful(Duration),
 
     Kill,
@@ -141,15 +142,16 @@ impl ChildHandle {
         #[cfg(unix)]
         {
             use nix::sys::termios;
-            if let Some((file_desc, mut termios)) = controller
-                .as_raw_fd()
-                .and_then(|fd| Some(fd).zip(termios::tcgetattr(fd).ok()))
-            {
-                // We unset ECHOCTL to disable rendering of the closing of stdin
-                // as ^D
-                termios.local_flags &= !nix::sys::termios::LocalFlags::ECHOCTL;
-                if let Err(e) = nix::sys::termios::tcsetattr(file_desc, nix::sys::termios::SetArg::TCSANOW, &termios) {
-                    debug!("failed to unset ECHOCTL: {e}");
+            use std::os::fd::BorrowedFd;
+            // nix takes a borrowed fd rather than a raw one, and portable-pty hands out only the
+            // raw one. The controller owns the fd and outlives this block, so borrowing is sound.
+            if let Some(file_desc) = controller.as_raw_fd().map(|fd| unsafe { BorrowedFd::borrow_raw(fd) }) {
+                if let Ok(mut termios) = termios::tcgetattr(file_desc) {
+                    // We unset ECHOCTL to disable rendering of the closing of stdin as ^D
+                    termios.local_flags &= !termios::LocalFlags::ECHOCTL;
+                    if let Err(e) = termios::tcsetattr(file_desc, termios::SetArg::TCSANOW, &termios) {
+                        debug!("failed to unset ECHOCTL: {e}");
+                    }
                 }
             }
         }
@@ -170,8 +172,8 @@ impl ChildHandle {
         };
         let output = controller.try_clone_reader().ok().map(ChildOutput::Pty);
 
-        // If we don't want to keep stdin open we take it here and it is immediately
-        // dropped resulting in a EOF being sent to the child process.
+        // If we don't want to keep stdin open we take it here and it is immediately dropped
+        // resulting in a EOF being sent to the child process.
         if !keep_stdin_open {
             stdin.take();
         }
@@ -203,10 +205,10 @@ impl ChildHandle {
                     match child.try_wait() {
                         Ok(Some(status)) => {
                             // portable_pty maps the status of being killed by a signal to a 1 exit
-                            // code. The only way to tell if the task
-                            // exited normally with exit code 1 or got killed by a signal is to
-                            // display it as the signal will be included
-                            // in the message.
+                            // code.
+                            // The only way to tell if the task exited normally with exit code 1 or
+                            // got killed by a signal is to display it as the signal will be
+                            // included in the message.
                             let exit_code = if status.exit_code() == 1 && status.to_string().contains("Terminated by") {
                                 None
                             } else {
@@ -229,10 +231,9 @@ impl ChildHandle {
 
     /// Kill the child process and every descendant of it.
     ///
-    /// The child is spawned as the leader of its own process group, so we
-    /// signal the whole group. Killing only the direct child would leave
-    /// grandchildren running, and since they inherit the output pipes, they
-    /// keep the pipes open and make waiting for the child output hang forever.
+    /// The child is spawned as the leader of its own process group, so we signal the whole group.
+    /// Killing only the direct child would leave grandchildren running, and since they inherit the
+    /// output pipes, they keep the pipes open and make waiting for the child output hang forever.
     pub async fn kill(&mut self) -> io::Result<()> {
         if let Some(pid) = self.pid {
             debug!("sending SIGKILL to the process group of child {}", pid);
@@ -241,13 +242,13 @@ impl ChildHandle {
             unsafe {
                 libc::kill(pgid, libc::SIGKILL);
             }
-            // The signal covers the child itself, so all that is left is to
-            // reap it. Errors here mean the child is already gone.
+            // The signal covers the child itself, so all that is left is to reap it.
+            // Errors here mean the child is already gone.
             self.wait().await?;
             return Ok(());
         }
-        // Without a pid there is no process group to signal, so fall back to
-        // killing the handle directly
+        // Without a pid there is no process group to signal, so fall back to killing the handle
+        // directly
         match &mut self.imp {
             ChildHandleImpl::Tokio(child) => child.kill().await,
             ChildHandleImpl::Pty(child) => {
@@ -309,12 +310,12 @@ impl fmt::Debug for ChildOutput {
 impl ShutdownStyle {
     /// Process the shutdown style for the given child process.
     ///
-    /// If an exit channel is provided, the exit code will be sent to the
-    /// channel when the child process exits.
+    /// If an exit channel is provided, the exit code will be sent to the channel when the child
+    /// process exits.
     async fn process(&self, child: &mut ChildHandle, receiver: &mut mpsc::Receiver<ChildCommand>) -> ChildState {
         match self {
-            // Windows doesn't give the ability to send a signal to a process so we
-            // can't make use of the graceful shutdown timeout.
+            // Windows doesn't give the ability to send a signal to a process so we can't make use
+            // of the graceful shutdown timeout.
             #[allow(unused)]
             ShutdownStyle::Graceful(timeout) => {
                 // try ro run the command for the given timeout
@@ -341,13 +342,14 @@ impl ShutdownStyle {
                     tokio::select! {
                         result = tokio::time::timeout(*timeout, fut) => {
                             match result {
-                                // We ignore the exit code and mark it as killed since we sent a SIGINT
-                                // This avoids reliance on an underlying process exiting with
-                                // no exit code or a non-zero in order for turbo to operate correctly.
+                                // We ignore the exit code and mark it as killed since we sent a
+                                // SIGINT This avoids reliance on an underlying process exiting with
+                                // no exit code or a non-zero in order for turbo to operate
+                                // correctly.
                                 Ok(Ok(_exit_code)) => ChildState::Exited(ChildExit::Killed),
                                 Ok(Err(e)) => {
-                                    // Reported to the user as an unknown result, so the
-                                    // reason for it must not be dropped here
+                                    // Reported to the user as an unknown result, so the reason for
+                                    // it must not be dropped here
                                     error!("Failed to wait for the child to stop: {e}");
                                     ChildState::Exited(ChildExit::Failed)
                                 }
@@ -387,8 +389,7 @@ impl ShutdownStyle {
     }
 }
 
-/// The structure that holds logic regarding interacting with the underlying
-/// child process
+/// The structure that holds logic regarding interacting with the underlying child process
 #[derive(Debug)]
 struct ChildStateManager {
     shutdown_style: ShutdownStyle,
@@ -398,8 +399,8 @@ struct ChildStateManager {
 
 /// A child process that can be interacted with asynchronously.
 ///
-/// This is a wrapper around the `tokio::process::Child` struct, which provides
-/// a cross platform interface for spawning and managing child processes.
+/// This is a wrapper around the `tokio::process::Child` struct, which provides a cross platform
+/// interface for spawning and managing child processes.
 #[derive(Debug, Clone)]
 pub struct Child {
     pid: Option<u32>,
@@ -434,8 +435,8 @@ pub enum ChildCommand {
 }
 
 impl Child {
-    /// Start a child process, returning a handle that can be used to interact
-    /// with it. The command will be started immediately.
+    /// Start a child process, returning a handle that can be used to interact with it.
+    /// The command will be started immediately.
     pub fn spawn(command: Command, shutdown_style: ShutdownStyle, pty_size: Option<PtySize>) -> io::Result<Self> {
         let label = command.label();
         let SpawnResult {
@@ -452,8 +453,8 @@ impl Child {
 
         let (command_tx, mut command_rx) = ChildCommandChannel::new();
 
-        // we use a watch channel to communicate the exit code back to the
-        // caller. we are interested in three cases:
+        // we use a watch channel to communicate the exit code back to the caller. we are interested
+        // in three cases:
         // - the child process exits
         // - the child process is killed (and doesn't have an exit code)
         // - the child process fails somehow (some syscall fails)
@@ -463,8 +464,7 @@ impl Child {
         let task_state = state.clone();
 
         let _task = tokio_spawn!("child", { label = label }, async move {
-            // On Windows it is important that this gets dropped once the child process
-            // exits
+            // On Windows it is important that this gets dropped once the child process exits
             let controller = controller;
             debug!("Waiting for child command");
             let manager = ChildStateManager {
@@ -520,8 +520,7 @@ impl Child {
                 }
             };
 
-            // if this fails, it's because the channel is dropped (toctou)
-            // we can just ignore it
+            // if this fails, it's because the channel is dropped (toctou) we can just ignore it
             child.stop().await.ok();
         };
 
@@ -547,15 +546,15 @@ impl Child {
                 None => return,
             };
 
-            // if this fails, it's because the channel is dropped (toctou)
-            // we can just ignore it
+            // if this fails, it's because the channel is dropped (toctou) we can just ignore it
             child.kill().await.ok();
         };
 
         let (_, code) = join! {
             fut,
             async {
-                // if this fails, it is because the watch receiver is dropped. just ignore it do a best-effort
+                // if this fails, it is because the watch receiver is dropped. just ignore it do a
+                // best-effort
                 watch.changed().await.ok();
                 *watch.borrow()
             }
@@ -615,8 +614,8 @@ impl Child {
         mut stdout_pipe: impl Write,
         mut stdout_lines: R,
     ) -> Result<Option<ChildExit>, std::io::Error> {
-        // TODO: in order to not impose that a stdout_pipe is Send we send the bytes
-        // across a channel
+        // TODO: in order to not impose that a stdout_pipe is Send we send the bytes across a
+        // channel
         let (byte_tx, mut byte_rx) = mpsc::channel(48);
         let pid = self.pid;
         tokio_spawn_blocking!("child", { pid = pid }, move || {
@@ -714,9 +713,9 @@ impl Child {
                 }
                 else => {
                     trace!("flushing child stdout/stderr buffers");
-                    // In the case that both futures read a complete line
-                    // the future not chosen in the select will return None if it's at EOF
-                    // as the number of bytes read will be 0.
+                    // In the case that both futures read a complete line the future not chosen in
+                    // the select will return None if it's at EOF as the number of bytes read will
+                    // be 0.
                     // We check and flush the buffers to avoid missing the last line of output.
                     if !stdout_buffer.is_empty() {
                         add_trailing_newline(&mut stdout_buffer);
@@ -746,8 +745,7 @@ impl Child {
 // Adds a trailing newline if necessary to the buffer
 fn add_trailing_newline(buffer: &mut Vec<u8>) {
     // If the line doesn't end with a newline, that indicates we hit a EOF.
-    // We add a newline so output from other tasks doesn't get written to the same
-    // line.
+    // We add a newline so output from other tasks doesn't get written to the same line.
     if buffer.last() != Some(&b'\n') {
         buffer.push(b'\n');
     }
@@ -762,10 +760,10 @@ impl ChildStateManager {
         receiver: &mut mpsc::Receiver<ChildCommand>,
     ) {
         let state = match command {
-            // we received a command to stop the child process, or the channel was closed.
-            // in theory this happens when the last child is dropped, however in practice
-            // we will always get a `Permit` from the recv call before the channel can be
-            // dropped, and the channel is not closed while there are still permits
+            // we received a command to stop the child process, or the channel was closed. in theory
+            // this happens when the last child is dropped, however in practice we will always get a
+            // `Permit` from the recv call before the channel can be dropped, and the channel is not
+            // closed while there are still permits
             Some(ChildCommand::Stop) | None => {
                 debug!("stopping child process");
                 self.shutdown_style.process(child, receiver).await
@@ -799,8 +797,8 @@ impl ChildStateManager {
         // the child process exited
         let child_exit = match status {
             Ok(Some(c)) => ChildExit::Finished(Some(c)),
-            // if we hit this case, it means that the child process was killed
-            // by someone else, and we should report that it was killed
+            // if we hit this case, it means that the child process was killed by someone else, and
+            // we should report that it was killed
             Ok(None) => ChildExit::KilledExternal,
             Err(e) => {
                 error!("Failed to wait for the child: {e}");

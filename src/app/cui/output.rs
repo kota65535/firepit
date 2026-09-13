@@ -4,8 +4,8 @@ use std::{
     sync::{Arc, Mutex, RwLock},
 };
 
-/// OutputSink represent a sink for outputs that can be written to from multiple
-/// threads through the use of Loggers.
+/// OutputSink represent a sink for outputs that can be written to from multiple threads through the
+/// use of Loggers.
 pub struct OutputSink<W> {
     writers: Arc<Mutex<SinkWriters<W>>>,
 }
@@ -35,11 +35,11 @@ pub struct OutputWriter<'a, W> {
 pub enum OutputClientBehavior {
     /// Every line sent to the client will get immediately sent to the sink
     Passthrough,
-    /// Every line sent to the client will get immediately sent to the sink,
-    /// but a buffer will be built up as well and returned when finish is called
+    /// Every line sent to the client will get immediately sent to the sink, but a buffer will be
+    /// built up as well and returned when finish is called
     InMemoryBuffer,
-    // Every line sent to the client will get tracked in the buffer only being
-    // sent to the sink once finish is called.
+    // Every line sent to the client will get tracked in the buffer only being sent to the sink once
+    // finish is called.
     Grouped,
 }
 
@@ -63,11 +63,10 @@ impl<W: Write> OutputSink<W> {
         }
     }
 
-    /// Produces a new client that will send all bytes that it receives to the
-    /// underlying sink. Behavior of how these bytes are sent is controlled
-    /// by the behavior parameter. Note that OutputClient intentionally doesn't
-    /// implement Sync as if you want to write to the same sink
-    /// from multiple threads, then you should create a logger for each thread.
+    /// Produces a new client that will send all bytes that it receives to the underlying sink.
+    /// Behavior of how these bytes are sent is controlled by the behavior parameter.
+    /// Note that OutputClient intentionally doesn't implement Sync as if you want to write to the
+    /// same sink from multiple threads, then you should create a logger for each thread.
     pub fn logger(&self, behavior: OutputClientBehavior) -> OutputClient<W> {
         let buffer = match behavior {
             OutputClientBehavior::Passthrough => None,
@@ -83,8 +82,8 @@ impl<W: Write> OutputSink<W> {
 }
 
 impl<W: Write> OutputClient<W> {
-    /// A writer that will write to the underlying sink's out writer according
-    /// to this client's behavior.
+    /// A writer that will write to the underlying sink's out writer according to this client's
+    /// behavior.
     pub fn stdout(&self) -> OutputWriter<'_, W> {
         OutputWriter {
             logger: self,
@@ -93,8 +92,8 @@ impl<W: Write> OutputClient<W> {
         }
     }
 
-    /// A writer that will write to the underlying sink's err writer according
-    /// to this client's behavior.
+    /// A writer that will write to the underlying sink's err writer according to this client's
+    /// behavior.
     pub fn stderr(&self) -> OutputWriter<'_, W> {
         OutputWriter {
             logger: self,
@@ -103,14 +102,13 @@ impl<W: Write> OutputClient<W> {
         }
     }
 
-    /// Consume the client and flush any bytes to the underlying sink if
-    /// necessary
+    /// Consume the client and flush any bytes to the underlying sink if necessary
     pub fn finish(self) -> io::Result<Option<Vec<u8>>> {
         let Self { buffer, .. } = self;
         let buffers = buffer.map(|cell| cell.into_inner().expect("should not poisoned"));
         Ok(buffers.map(|buffers| {
-            // TODO: it might be worth the list traversal to calculate length so we do a
-            // single allocation
+            // TODO: it might be worth the list traversal to calculate length so we do a single
+            // allocation
             let mut bytes = Vec::new();
             for SinkBytes { buffer, .. } in buffers {
                 bytes.extend_from_slice(&buffer[..]);
@@ -124,8 +122,8 @@ impl<W: Write> OutputClient<W> {
             self.behavior,
             OutputClientBehavior::InMemoryBuffer | OutputClientBehavior::Grouped
         ) {
-            // This reconstruction is necessary to change the type of bytes from
-            // SinkBytes<'a> to SinkBytes<'static>
+            // This reconstruction is necessary to change the type of bytes from SinkBytes<'a> to
+            // SinkBytes<'static>
             let bytes = SinkBytes {
                 destination: bytes.destination,
                 buffer: bytes.buffer.to_vec().into(),
@@ -166,8 +164,8 @@ impl<'a, W: Write> Write for OutputWriter<'a, W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         for line in buf.split_inclusive(|b| *b == b'\n') {
             self.buffer.extend_from_slice(line);
-            // If the line doesn't end in a newline we assume it isn't finished and add it
-            // to the buffer
+            // If the line doesn't end in a newline we assume it isn't finished and add it to the
+            // buffer
             if line.ends_with(b"\n") {
                 self.logger.handle_bytes(SinkBytes {
                     buffer: self.buffer.as_slice().into(),

@@ -10,8 +10,8 @@ pub mod tui;
 /// Prints the failed tasks to stderr in red, as a summary at the end of a run.
 /// `failed` holds `(label, result)` pairs. Both UIs use this so the output is the same.
 ///
-/// With `fail_fast` only the first failure is shown: it is the one that made the
-/// runner stop the other tasks, which are listed as failed only because of that.
+/// With `fail_fast` only the first failure is shown: it is the one that made the runner stop the
+/// other tasks, which are listed as failed only because of that.
 pub fn print_failure_summary(failed: &[(String, TaskResult)], fail_fast: bool) {
     match failed {
         [] => {}

@@ -6,8 +6,8 @@ use std::{
     process::Stdio,
 };
 
-/// A command builder that can be used to build both regular
-/// child processes and ones spawned hooked up to a PTY
+/// A command builder that can be used to build both regular child processes and ones spawned hooked
+/// up to a PTY
 #[derive(Debug, Clone)]
 pub struct Command {
     program: OsString,

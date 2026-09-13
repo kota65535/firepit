@@ -2,8 +2,9 @@
 //!
 //! A variable is a scalar value, a typed declaration or a dynamic variable, see [`VarsConfig`].
 //! A typed declaration is a JSON Schema: its `type` plus any other keyword written next to it
-//! (`enum`, `pattern`, `minimum`, `items`, ...). This module converts a value to the declared type
-//! and delegates the validation to the `jsonschema` crate.
+//! (`enum`, `pattern`, `minimum`, `items`, ...).
+//! This module converts a value to the declared type and delegates the validation to the
+//! `jsonschema` crate.
 
 use crate::config::{absolute_or_join, deserialize_hash_map, ShellConfig};
 use anyhow::Context;
@@ -44,8 +45,8 @@ pub enum VarsConfig {
 impl VarsConfig {
     /// Returns whether the variable is declared without a value, ex: `foo:` or
     /// `foo: { type: string }`.
-    /// Such a variable has no default, so it is required: it must be given a value before the
-    /// task runs, by the `<name>=<value>` CLI argument or the dependent task's `depends_on.vars`.
+    /// Such a variable has no default, so it is required: it must be given a value before the task
+    /// runs, by the `<name>=<value>` CLI argument or the dependent task's `depends_on.vars`.
     pub fn is_unset(&self) -> bool {
         match self {
             VarsConfig::Static(JsonValue::Null) => true,
@@ -54,8 +55,8 @@ impl VarsConfig {
         }
     }
 
-    /// Returns the config to use when `value` overrides this declaration (from the CLI argument
-    /// or `depends_on.vars`): a typed declaration keeps its type, so the value is interpreted
+    /// Returns the config to use when `value` overrides this declaration (from the CLI argument or
+    /// `depends_on.vars`): a typed declaration keeps its type, so the value is interpreted
     /// according to it; otherwise the value replaces the declaration as is.
     pub fn with_value(&self, value: &VarsConfig) -> VarsConfig {
         let declared = match self {
@@ -73,8 +74,8 @@ impl VarsConfig {
         }
     }
 
-    /// Checks the declaration itself: the JSON Schema keywords must be known, require `type`,
-    /// and form a valid schema.
+    /// Checks the declaration itself: the JSON Schema keywords must be known, require `type`, and
+    /// form a valid schema.
     ///
     /// # Errors
     ///
@@ -117,7 +118,8 @@ pub struct TypedVars {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default: Option<JsonValue>,
 
-    /// Any other JSON Schema keyword (`enum`, `pattern`, `minimum`, `items`, ...) validates the value.
+    /// Any other JSON Schema keyword (`enum`, `pattern`, `minimum`, `items`, ...) validates the
+    /// value.
     #[serde(flatten)]
     pub schema: VarSchema,
 }
@@ -135,8 +137,9 @@ pub struct DynamicVars {
     #[schemars(extend("x-template" = true))]
     pub command: String,
 
-    /// Type of the variable, following JSON Schema. The command output is interpreted as this
-    /// type; without it, the type is inferred from the output.
+    /// Type of the variable, following JSON Schema.
+    /// The command output is interpreted as this type; without it, the type is inferred from the
+    /// output.
     #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
     pub r#type: Option<VarType>,
 
@@ -162,10 +165,11 @@ pub struct DynamicVars {
     #[schemars(extend("x-template" = true))]
     pub working_dir: Option<String>,
 
-    /// Whether the command output is reused by the other variables running the same command in
-    /// the same working directory. A variable shared by several projects runs in each project
-    /// directory, so sharing one run across them takes an explicit `working_dir`. Leave it off
-    /// for a command that must run every time, ex: allocating a resource.
+    /// Whether the command output is reused by the other variables running the same command in the
+    /// same working directory.
+    /// A variable shared by several projects runs in each project directory, so sharing one run
+    /// across them takes an explicit `working_dir`.
+    /// Leave it off for a command that must run every time, ex: allocating a resource.
     #[serde(default)]
     pub cache: bool,
 
@@ -210,8 +214,8 @@ fn var_schema(ty: VarType, schema: &VarSchema) -> JsonValue {
 ///
 /// # Errors
 ///
-/// Returns an error when a keyword is unknown, `type` is missing, or the schema is not a valid
-/// JSON Schema (ex: `minimum: "abc"`, an invalid `pattern`).
+/// Returns an error when a keyword is unknown, `type` is missing, or the schema is not a valid JSON
+/// Schema (ex: `minimum: "abc"`, an invalid `pattern`).
 pub fn validate_var_declaration(ty: Option<VarType>, schema: &VarSchema) -> anyhow::Result<()> {
     if schema.is_empty() {
         return Ok(());
@@ -246,9 +250,9 @@ fn check_known_keywords(schema: &JsonValue, path: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Locates `sub`, a subschema yielded by `subresources_of(schema)`, in `schema`: it is the value
-/// of a keyword, or an element of an array or map that is. Returns the path such as `items`,
-/// `anyOf.1` or `properties.name`.
+/// Locates `sub`, a subschema yielded by `subresources_of(schema)`, in `schema`: it is the value of
+/// a keyword, or an element of an array or map that is.
+/// Returns the path such as `items`, `anyOf.1` or `properties.name`.
 fn subschema_path(schema: &JsonValue, sub: &JsonValue) -> Option<String> {
     for (key, value) in schema.as_object()? {
         if std::ptr::eq(value, sub) {
@@ -321,8 +325,8 @@ impl VarType {
         }
     }
 
-    /// Interprets `value` as this type: a string given for a non-string type (ex: the CLI
-    /// argument `list="[a, b]"`) is parsed as YAML, then the value is checked against the type.
+    /// Interprets `value` as this type: a string given for a non-string type (ex: the CLI argument
+    /// `list="[a, b]"`) is parsed as YAML, then the value is checked against the type.
     ///
     /// # Errors
     ///

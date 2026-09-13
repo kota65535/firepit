@@ -5,43 +5,43 @@ version = "0.13.13"
 backend = "cargo:cargo-edit"
 
 [[tools.dprint]]
-version = "0.56.1"
+version = "0.57.4"
 backend = "aqua:dprint/dprint"
 
 [tools.dprint."platforms.linux-arm64"]
-checksum = "sha256:e9dc29baca00edf30d66b1b7a8de490c3a1bda4091bbc7b69f01f4a88db06c01"
-url = "https://github.com/dprint/dprint/releases/download/0.56.1/dprint-aarch64-unknown-linux-gnu.zip"
-url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/524191407"
+checksum = "sha256:ff961314e7c1ca6a02eaada0e37920a37c668fbc09fd85838c2aced41a4bc0e4"
+url = "https://github.com/dprint/dprint/releases/download/0.57.4/dprint-aarch64-unknown-linux-gnu.zip"
+url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/546351169"
 
 [tools.dprint."platforms.linux-arm64-musl"]
-checksum = "sha256:6f9541637ff47289409d709e4b006eeed84fd11c212dc029c4d26504a2cae0ff"
-url = "https://github.com/dprint/dprint/releases/download/0.56.1/dprint-aarch64-unknown-linux-musl.zip"
-url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/524191400"
+checksum = "sha256:e1b713806f7f7b94072ba2b069aa19ac28f475dbb1fbc5b672d3030a2ab001ee"
+url = "https://github.com/dprint/dprint/releases/download/0.57.4/dprint-aarch64-unknown-linux-musl.zip"
+url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/546351166"
 
 [tools.dprint."platforms.linux-x64"]
-checksum = "sha256:51729ee501593c84e2a2e8233f55959edf2bbd95cbb3998e9f8a81ecad942dba"
-url = "https://github.com/dprint/dprint/releases/download/0.56.1/dprint-x86_64-unknown-linux-gnu.zip"
-url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/524191408"
+checksum = "sha256:1d26357d8bc66898d4ecc7dafca3d2971cfe222ba487228bd2ce5c3b3a309c33"
+url = "https://github.com/dprint/dprint/releases/download/0.57.4/dprint-x86_64-unknown-linux-gnu.zip"
+url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/546351175"
 
 [tools.dprint."platforms.linux-x64-musl"]
-checksum = "sha256:913032d493340643d6b98ce250a2407c5d0abab8613b3e16a09d92661131425a"
-url = "https://github.com/dprint/dprint/releases/download/0.56.1/dprint-x86_64-unknown-linux-musl.zip"
-url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/524191404"
+checksum = "sha256:03f3e8002f9d952bf53325fc8853686d2e8808b9e5b652b215600ba147e73a5c"
+url = "https://github.com/dprint/dprint/releases/download/0.57.4/dprint-x86_64-unknown-linux-musl.zip"
+url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/546351170"
 
 [tools.dprint."platforms.macos-arm64"]
-checksum = "sha256:c9af77af134987fada60344e8b9f23b2238081f7eea94a7bcd53ec49369354f6"
-url = "https://github.com/dprint/dprint/releases/download/0.56.1/dprint-aarch64-apple-darwin.zip"
-url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/524191394"
+checksum = "sha256:f9e752812791f258e89ff88a7affd05c793b0db3d929718651eae7df5f19eb2e"
+url = "https://github.com/dprint/dprint/releases/download/0.57.4/dprint-aarch64-apple-darwin.zip"
+url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/546351171"
 
 [tools.dprint."platforms.macos-x64"]
-checksum = "sha256:f944e33a1bf8f6125eaa5ea77ee8a01db96093a6fb80df127b390f2a106774f7"
-url = "https://github.com/dprint/dprint/releases/download/0.56.1/dprint-x86_64-apple-darwin.zip"
-url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/524191392"
+checksum = "sha256:8978bd5d9a564ec19472545fb853da9ec468e024e75d39c3a9df9fd5750ecdfd"
+url = "https://github.com/dprint/dprint/releases/download/0.57.4/dprint-x86_64-apple-darwin.zip"
+url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/546351172"
 
 [tools.dprint."platforms.windows-x64"]
-checksum = "sha256:d2c5ee170ff88c0b16ea1f5f214e4d74877c7edb9ca701da5c9851c0c1ef9338"
-url = "https://github.com/dprint/dprint/releases/download/0.56.1/dprint-x86_64-pc-windows-msvc.zip"
-url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/524191393"
+checksum = "sha256:1038af32fade7a79f9c3a690d9546bb17be13dd7b4568a3684692fdcb0a52a1d"
+url = "https://github.com/dprint/dprint/releases/download/0.57.4/dprint-x86_64-pc-windows-msvc.zip"
+url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/546351162"
 
 [[tools."github:axodotdev/cargo-dist"]]
 version = "0.33.0"
@@ -130,43 +130,43 @@ url = "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8
 url_api = "https://api.github.com/repos/gitleaks/gitleaks/releases/assets/378333178"
 
 [[tools."github:orhun/git-cliff"]]
-version = "2.13.1"
+version = "2.14.1"
 backend = "github:orhun/git-cliff"
 
 [tools."github:orhun/git-cliff"."platforms.linux-arm64"]
-checksum = "sha256:9619b7f0c584229f8a2331c1905afe88bd938bdc9102926c2073836a42f02455"
-url = "https://github.com/orhun/git-cliff/releases/download/v2.13.1/git-cliff-2.13.1-aarch64-unknown-linux-gnu.tar.gz"
-url_api = "https://api.github.com/repos/orhun/git-cliff/releases/assets/405850077"
+checksum = "sha256:e99dc84135c6bc27aefc9d8226f7297119ed6750a32f45418f4587bc6cb260d8"
+url = "https://github.com/orhun/git-cliff/releases/download/v2.14.1/git-cliff-2.14.1-aarch64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/orhun/git-cliff/releases/assets/539696829"
 
 [tools."github:orhun/git-cliff"."platforms.linux-arm64-musl"]
-checksum = "sha256:4054c124b926c117f3fa048939bc8be0a954f29f3b6f367627e8cb22c1971882"
-url = "https://github.com/orhun/git-cliff/releases/download/v2.13.1/git-cliff-2.13.1-aarch64-unknown-linux-musl.tar.gz"
-url_api = "https://api.github.com/repos/orhun/git-cliff/releases/assets/405850720"
+checksum = "sha256:ee79fa39a8bb100b12937b0ac4800cc4436ae48f678ef8a1502ce99754552b0c"
+url = "https://github.com/orhun/git-cliff/releases/download/v2.14.1/git-cliff-2.14.1-aarch64-unknown-linux-musl.tar.gz"
+url_api = "https://api.github.com/repos/orhun/git-cliff/releases/assets/539696760"
 
 [tools."github:orhun/git-cliff"."platforms.linux-x64"]
-checksum = "sha256:9a1263f24e59a2f508c7b3d3283c9dea94a8bf697f96dbc18cc783cac6284546"
-url = "https://github.com/orhun/git-cliff/releases/download/v2.13.1/git-cliff-2.13.1-x86_64-unknown-linux-gnu.tar.gz"
-url_api = "https://api.github.com/repos/orhun/git-cliff/releases/assets/405850439"
+checksum = "sha256:dfe9bef0c7a00d05fafe78e6e591a1a280d39dd495b8066764db0a559acde67f"
+url = "https://github.com/orhun/git-cliff/releases/download/v2.14.1/git-cliff-2.14.1-x86_64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/orhun/git-cliff/releases/assets/539696847"
 
 [tools."github:orhun/git-cliff"."platforms.linux-x64-musl"]
-checksum = "sha256:200d2535da6d9703f3bcc8a4d159c3b55eacdb01cf2148c55b3eee9dd04d5249"
-url = "https://github.com/orhun/git-cliff/releases/download/v2.13.1/git-cliff-2.13.1-x86_64-unknown-linux-musl.tar.gz"
-url_api = "https://api.github.com/repos/orhun/git-cliff/releases/assets/405850671"
+checksum = "sha256:cba6ae86f0a4205784eed8ef049fe53c904138806e33a1bda2e25026b17198eb"
+url = "https://github.com/orhun/git-cliff/releases/download/v2.14.1/git-cliff-2.14.1-x86_64-unknown-linux-musl.tar.gz"
+url_api = "https://api.github.com/repos/orhun/git-cliff/releases/assets/539696922"
 
 [tools."github:orhun/git-cliff"."platforms.macos-arm64"]
-checksum = "sha256:21547ae4a0421164070ab75c2522864ea5565858a011fabc5f583061b20f1226"
-url = "https://github.com/orhun/git-cliff/releases/download/v2.13.1/git-cliff-2.13.1-aarch64-apple-darwin.tar.gz"
-url_api = "https://api.github.com/repos/orhun/git-cliff/releases/assets/405849885"
+checksum = "sha256:2e2d1f60963aa6a201dbd21df14d7f44025328b8bb33437695f15a516598615a"
+url = "https://github.com/orhun/git-cliff/releases/download/v2.14.1/git-cliff-2.14.1-aarch64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/orhun/git-cliff/releases/assets/539696537"
 
 [tools."github:orhun/git-cliff"."platforms.macos-x64"]
-checksum = "sha256:6e60ae390d375cecb9d8008c49f0e724a8dfe40390b532ef5501e421d2cc8acb"
-url = "https://github.com/orhun/git-cliff/releases/download/v2.13.1/git-cliff-2.13.1-x86_64-apple-darwin.tar.gz"
-url_api = "https://api.github.com/repos/orhun/git-cliff/releases/assets/405850193"
+checksum = "sha256:d1ca51bfd8b8c2a09434532bdb85bab50179b7c0bde2378aa48f3c1a7dc2fd36"
+url = "https://github.com/orhun/git-cliff/releases/download/v2.14.1/git-cliff-2.14.1-x86_64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/orhun/git-cliff/releases/assets/539697282"
 
 [tools."github:orhun/git-cliff"."platforms.windows-x64"]
-checksum = "sha256:3ae3a5549e85c7ad5b20192ebcfee4371269deca51255f6f2f2e051c6541f5ca"
-url = "https://github.com/orhun/git-cliff/releases/download/v2.13.1/git-cliff-2.13.1-x86_64-pc-windows-msvc.zip"
-url_api = "https://api.github.com/repos/orhun/git-cliff/releases/assets/405851866"
+checksum = "sha256:791aa263079aa7894e24d4e2f8e978aa6214e9dd9dbf04f79ae5f3565758f1a1"
+url = "https://github.com/orhun/git-cliff/releases/download/v2.14.1/git-cliff-2.14.1-x86_64-pc-windows-msvc.zip"
+url_api = "https://api.github.com/repos/orhun/git-cliff/releases/assets/539702434"
 
 [[tools.lefthook]]
 version = "2.1.12"
@@ -215,37 +215,36 @@ url_api = "https://api.github.com/repos/evilmartians/lefthook/releases/assets/53
 provenance = "github-attestations"
 
 [[tools.node]]
-version = "24.20.0"
+version = "24.21.0"
 backend = "core:node"
 
 [tools.node."platforms.linux-arm64"]
-checksum = "sha256:3515603e2487879a39bc75716f1a2affd027500c64ba50e845cf72cb33219013"
-url = "https://nodejs.org/dist/v24.20.0/node-v24.20.0-linux-arm64.tar.gz"
+checksum = "sha256:724282c3b43aec998aa9527380465b45d229e021b58035f5f4f63095eabfe5d5"
+url = "https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-arm64.tar.gz"
 
 [tools.node."platforms.linux-arm64-musl"]
-checksum = "sha256:987113866ab9018998f09f74072afe7136f3da8b934e35d89531e1e49890062f"
-url = "https://nodejs.org/dist/v24.20.0/node-v24.20.0.tar.gz"
-install = "source"
+checksum = "sha256:3048b0811e158ca0d8672b59c839861763e144492980d8d29b369dfee45747e4"
+url = "https://unofficial-builds.nodejs.org/download/release/v24.21.0/node-v24.21.0-linux-arm64-musl.tar.gz"
 
 [tools.node."platforms.linux-x64"]
-checksum = "sha256:855d581f8a4eb1a8117e3426de25fe02770592febcfb31369aee1ffbfee9e8ec"
-url = "https://nodejs.org/dist/v24.20.0/node-v24.20.0-linux-x64.tar.gz"
+checksum = "sha256:6e1db87ef58b8819e5d5402eff1536491b18edd8eb7bee5ef7897876e88dc5ff"
+url = "https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-x64.tar.gz"
 
 [tools.node."platforms.linux-x64-musl"]
-checksum = "sha256:9ae1399fef4bd8990e15773ce1327b336a20b9e97d8c7549f4f42ca73c43f562"
-url = "https://unofficial-builds.nodejs.org/download/release/v24.20.0/node-v24.20.0-linux-x64-musl.tar.gz"
+checksum = "sha256:01a713e34da98e7b4d2a3191ee7ca3f93dd0384d1a2ef23c379b2161ee6e133a"
+url = "https://unofficial-builds.nodejs.org/download/release/v24.21.0/node-v24.21.0-linux-x64-musl.tar.gz"
 
 [tools.node."platforms.macos-arm64"]
-checksum = "sha256:40e5607e5ecb3db9192723776da2d75d966260fc74a7a9e731c1bd67dda96bc8"
-url = "https://nodejs.org/dist/v24.20.0/node-v24.20.0-darwin-arm64.tar.gz"
+checksum = "sha256:bed7eea5325e1108f32ce5228ddd6a5f0f08a499ee42aa7442aea583702f6057"
+url = "https://nodejs.org/dist/v24.21.0/node-v24.21.0-darwin-arm64.tar.gz"
 
 [tools.node."platforms.macos-x64"]
-checksum = "sha256:9e5b2644cf107befb6aefca676b96d3296bc10138096f022ed378d6233ed81f4"
-url = "https://nodejs.org/dist/v24.20.0/node-v24.20.0-darwin-x64.tar.gz"
+checksum = "sha256:1462cb3b3046b815cf8ea436d3da450ec1a9f11dac7e5a46b0ada5305d7e8097"
+url = "https://nodejs.org/dist/v24.21.0/node-v24.21.0-darwin-x64.tar.gz"
 
 [tools.node."platforms.windows-x64"]
-checksum = "sha256:6cac9ffbca8f6a47091e4b5c772e0606049c3871cb67d900c0cedde630e545ba"
-url = "https://nodejs.org/dist/v24.20.0/node-v24.20.0-win-x64.zip"
+checksum = "sha256:158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541"
+url = "https://nodejs.org/dist/v24.21.0/node-v24.21.0-win-x64.zip"
 
 [[tools."npm:@commitlint/cli"]]
 version = "21.2.2"

@@ -1,13 +1,12 @@
 //! `process`
 //!
-//! This module contains the code that is responsible for running the commands
-//! that are queued by run. It consists of a set of child processes that are
-//! spawned and managed by the manager. The manager is responsible for
-//! running these processes to completion, forwarding signals, and closing
-//! them when the manager is closed.
+//! This module contains the code that is responsible for running the commands that are queued by
+//! run. It consists of a set of child processes that are spawned and managed by the manager.
+//! The manager is responsible for running these processes to completion, forwarding signals, and
+//! closing them when the manager is closed.
 //!
-//! As of now, the manager will execute futures in a random order, and
-//! must be either `wait`ed on or `stop`ped to drive state.
+//! As of now, the manager will execute futures in a random order, and must be either `wait`ed on or
+//! `stop`ped to drive state.
 
 mod child;
 mod command;
@@ -22,10 +21,10 @@ use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tracing::{debug, trace};
 
-/// A process manager that is responsible for spawning and managing child
-/// processes. When the manager is Open, new child processes can be spawned
-/// using `spawn`. When the manager is Closed, all currently-running children
-/// will be closed, and no new children can be spawned.
+/// A process manager that is responsible for spawning and managing child processes.
+/// When the manager is Open, new child processes can be spawned using `spawn`.
+/// When the manager is Closed, all currently-running children will be closed, and no new children
+/// can be spawned.
 #[derive(Debug, Clone)]
 pub struct ProcessManager {
     state: Arc<Mutex<ProcessManagerInner>>,
@@ -60,8 +59,7 @@ impl ProcessManager {
 
     /// Construct a process manager and infer if pty should be used
     pub fn infer() -> Self {
-        // Only use PTY if we're not on windows and we're currently hooked up to a
-        // in a TTY
+        // Only use PTY if we're not on windows and we're currently hooked up to a in a TTY
         let use_pty = atty::is(atty::Stream::Stdout);
         Self::new(use_pty)
     }
@@ -76,12 +74,12 @@ impl ProcessManager {
 impl ProcessManager {
     /// Spawn a new child process to run the given command.
     ///
-    /// The handle of the child can be either waited or stopped by the caller,
-    /// as well as the entire process manager.
+    /// The handle of the child can be either waited or stopped by the caller, as well as the entire
+    /// process manager.
     ///
-    /// If spawn returns None, the process manager is closed and the child
-    /// process was not spawned. If spawn returns Some(Err), the process
-    /// manager is open, but the child process failed to spawn.
+    /// If spawn returns None, the process manager is closed and the child process was not spawned.
+    /// If spawn returns Some(Err), the process manager is open, but the child process failed to
+    /// spawn.
     pub async fn spawn(&self, command: Command, stop_timeout: Duration) -> Option<io::Result<Child>> {
         let label = command.label();
         trace!("acquiring lock for spawning {label}");
@@ -144,10 +142,9 @@ impl ProcessManager {
 
     /// Close the process manager, running the given callback on each child
     ///
-    /// note: this is designed to be called multiple times, ie calling close
-    /// with two different strategies will propagate both signals to the child
-    /// processes. clearing the task queue and re-enabling spawning are both
-    /// idempotent operations
+    /// note: this is designed to be called multiple times, ie calling close with two different
+    /// strategies will propagate both signals to the child processes. clearing the task queue and
+    /// re-enabling spawning are both idempotent operations
     async fn close_inner<F, C>(&self, callback: F)
     where
         F: Fn(Child) -> C + Sync + Send + Copy + 'static,

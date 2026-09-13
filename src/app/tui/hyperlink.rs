@@ -17,8 +17,8 @@ pub struct UrlSegment {
 
 /// Detect URLs in the visible rows of a vt100 screen.
 ///
-/// Joins wrapped rows into logical lines (same pattern as the search logic),
-/// finds `https://` and `http://` URLs, then maps them back to (row, col) segments.
+/// Joins wrapped rows into logical lines (same pattern as the search logic), finds `https://` and
+/// `http://` URLs, then maps them back to (row, col) segments.
 pub fn detect_urls(screen: &vt100::Screen) -> Vec<UrlSpan> {
     let size = screen.size();
     let cols = size.1;

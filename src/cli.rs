@@ -25,14 +25,13 @@ pub const TASK_ARGS_VAR_NAME: &str = "args";
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Args {
-    /// Task names or variables.
-    /// Variable are in "Name=Value" format (e.g. ENV=prod, DEBUG=true)
+    /// Task names or variables. Variable are in "Name=Value" format (e.g. ENV=prod, DEBUG=true)
     #[arg(required = false)]
     pub tasks_or_vars: Vec<String>,
 
     /// Extra arguments forwarded to tasks.
-    /// Everything after `--` is shell-escaped, joined with spaces, and assigned to the
-    /// `args` variable, so it can be referenced in task commands as `{{ args }}`.
+    /// Everything after `--` is shell-escaped, joined with spaces, and assigned to the `args`
+    /// variable, so it can be referenced in task commands as `{{ args }}`.
     #[arg(last = true, value_name = "ARGS")]
     pub task_args: Vec<String>,
 
@@ -48,8 +47,8 @@ pub struct Args {
     #[arg(short, long, default_value = "false")]
     pub force: bool,
 
-    // The following 3 fields are a dirty workaround for clap not supporting automatic negation flags.
-    // cf. https://github.com/clap-rs/clap/issues/815
+    // The following 3 fields are a dirty workaround for clap not supporting automatic negation
+    // flags. cf. https://github.com/clap-rs/clap/issues/815
     #[arg(long = "ff", overrides_with = "_no_fail_fast", hide = true)]
     _fail_fast: bool,
 
