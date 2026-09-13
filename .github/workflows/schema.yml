@@ -33,8 +33,9 @@ jobs:
       - name: Configure git
         uses: kota65535/github-git-config-action@c5482d1756b66694dc643fe34abfdd2e31557142 # v4
         with:
-          user.name: github-actions[bot]
-          user.email: 41898282+github-actions[bot]@users.noreply.github.com
+          config: |
+            user.name: github-actions[bot]
+            user.email: 41898282+github-actions[bot]@users.noreply.github.com
           github-token: ${{ secrets.PERSONAL_TOKEN }}
 
       - name: Diff
