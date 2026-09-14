@@ -464,7 +464,7 @@ impl TuiAppState {
         Ok(())
     }
 
-    pub fn scroll_to_row(&mut self, row: u16) -> anyhow::Result<()> {
+    pub fn scroll_to_row(&mut self, row: usize) -> anyhow::Result<()> {
         self.active_task_mut()?.output.scroll_to(row);
         Ok(())
     }
@@ -858,7 +858,7 @@ impl TuiAppState {
             return Ok(());
         }
         if let Some(Match(row, col)) = results.current() {
-            self.highlight_cell(row, col, query_len as u16, false)?;
+            self.highlight_cell(row, col, query_len, false)?;
         }
         Ok(())
     }
@@ -893,7 +893,7 @@ impl TuiAppState {
                 // Convert byte offset to display width to handle wide chars properly
                 let mut col_idx = line_buf[..offset].width();
                 if previous_row_widths.is_empty() {
-                    matches.push(Match(row_idx as u16, col_idx as u16));
+                    matches.push(Match(row_idx, col_idx));
                 } else {
                     // The line is wrapped Reset the current row index to the first line
                     let first_row_idx = row_idx - previous_row_widths.len();
@@ -902,7 +902,7 @@ impl TuiAppState {
                     {
                         if col_idx < *width {
                             // The match exists in this line
-                            matches.push(Match(row_idx as u16, col_idx as u16));
+                            matches.push(Match(row_idx, col_idx));
                             break;
                         }
                         // The match may be in the next line
@@ -921,16 +921,16 @@ impl TuiAppState {
         // that way.
         let offset = screen.current_scrollback_len() - screen.scrollback();
         let index = if backward {
-            matches.iter().rposition(|m| (m.0 as usize) < offset)
+            matches.iter().rposition(|m| m.0 < offset)
         } else {
-            matches.iter().position(|m| offset <= (m.0 as usize))
+            matches.iter().position(|m| offset <= m.0)
         }
         .unwrap_or(matches.len().saturating_sub(1));
 
         let search_results = SearchResults::new(&task.name, query, matches, index, backward)?;
 
         if let Some(Match(row, col)) = search_results.current() {
-            self.highlight_cell(row, col, query_len as u16, true)?;
+            self.highlight_cell(row, col, query_len, true)?;
             self.scroll_to_row(row)?;
         }
 
@@ -940,9 +940,9 @@ impl TuiAppState {
 
     fn highlight_cell(
         &mut self,
-        mut num_row: u16,
-        mut num_col: u16,
-        length: u16,
+        mut num_row: usize,
+        mut num_col: usize,
+        length: usize,
         highlight: bool,
     ) -> anyhow::Result<()> {
         let task = self.active_task_mut()?;
@@ -951,7 +951,7 @@ impl TuiAppState {
         let mut rest = length;
         while rest > 0 {
             // Stop if no rows left
-            let Some(row) = screen.grid_mut().all_rows_mut().nth(num_row as usize) else {
+            let Some(row) = screen.grid_mut().all_rows_mut().nth(num_row) else {
                 break;
             };
             for idx in num_col..num_col + length {
@@ -959,7 +959,7 @@ impl TuiAppState {
                     break;
                 }
                 // If no column left, go to next line
-                let Some(c) = row.get_mut(idx) else { break };
+                let Some(c) = row.get_mut(idx as u16) else { break };
 
                 c.attrs_mut().bgcolor = if highlight {
                     vt100::Color::Idx(3) // Yellow
@@ -984,7 +984,7 @@ impl TuiAppState {
         self.remove_search_highlight()?;
 
         if let Some(Match(row, col)) = results.next() {
-            self.highlight_cell(row, col, query_len as u16, true)?;
+            self.highlight_cell(row, col, query_len, true)?;
             self.scroll_to_row(row)?;
         }
 
@@ -1003,7 +1003,7 @@ impl TuiAppState {
         self.remove_search_highlight()?;
 
         if let Some(Match(row, col)) = results.previous() {
-            self.highlight_cell(row, col, query_len as u16, true)?;
+            self.highlight_cell(row, col, query_len, true)?;
             self.scroll_to_row(row)?;
         }
 

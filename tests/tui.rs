@@ -572,6 +572,24 @@ fn search_scrolls_to_match_in_scrollback() {
 }
 
 #[test]
+fn search_finds_matches_past_the_u16_row_limit() {
+    let mut tui = Tui::new(&["build"]);
+    // A narrow pane keeps the scrollback of this many rows cheap
+    tui.resize(ROWS, 20);
+    for i in 0..70_000 {
+        tui.output(format!("l{i}\r\n").as_bytes());
+    }
+
+    tui.send(AppCommand::EnterSearch { backward: true });
+    for c in "l69000".chars() {
+        tui.send(AppCommand::SearchInputChar(c));
+    }
+    tui.send(AppCommand::SearchRun);
+    assert_eq!(tui.pane_row(0), "l69000");
+    assert_eq!(tui.cell(0, 0).bg, Color::Indexed(3));
+}
+
+#[test]
 fn mouse_selection_is_inverted_and_copyable() {
     let mut tui = Tui::new(&["build"]);
     tui.output(b"hello world\r\nsecond\r\n");
