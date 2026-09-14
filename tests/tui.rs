@@ -634,6 +634,34 @@ fn search_highlight_keeps_the_visible_part_of_a_wrapped_match() {
 }
 
 #[test]
+fn search_highlight_follows_a_resize() {
+    let mut tui = Tui::new(&["build"]);
+    let width = usize::from(tui.state.active_task().unwrap().output.size().1);
+    let filler_len = width - 3;
+    let filler: String = std::iter::repeat_n('a', filler_len).collect();
+    // Two lines that each wrap, so "needle" spills onto the row below and the second one sits two
+    // rows further down than it does once the lines stop wrapping
+    tui.output(format!("{filler}needle\r\n{filler}needle\r\n").as_bytes());
+
+    tui.send(AppCommand::EnterSearch { backward: false });
+    for c in "needle".chars() {
+        tui.send(AppCommand::SearchInputChar(c));
+    }
+    tui.send(AppCommand::SearchRun);
+    tui.send(AppCommand::SearchNext);
+    assert_eq!(tui.cell(2, filler_len as u16).bg, Color::Indexed(3));
+    assert_eq!(tui.cell(3, 0).bg, Color::Indexed(3));
+
+    // Wider terminal: neither line wraps anymore, so both matches move up a row
+    tui.resize(ROWS, COLS + 20);
+    for col in filler_len as u16..filler_len as u16 + 6 {
+        assert_eq!(tui.cell(0, col).bg, Color::Indexed(3), "col {col}");
+    }
+    assert_eq!(tui.cell(1, filler_len as u16).bg, Color::Reset);
+    assert_eq!(tui.cell(2, filler_len as u16).bg, Color::Reset);
+}
+
+#[test]
 fn search_finds_matches_past_the_u16_row_limit() {
     let mut tui = Tui::new(&["build"]);
     // A narrow pane keeps the scrollback of this many rows cheap

@@ -43,7 +43,6 @@ use std::io::{self, Stdout, Write};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::{sync::mpsc, time::Instant};
 use tracing::{debug, error, Level};
-use unicode_width::UnicodeWidthStr;
 
 /// How long a transient toast (e.g. "Copied to clipboard") stays visible.
 const TOAST_DURATION: std::time::Duration = std::time::Duration::from_millis(1500);
@@ -595,7 +594,8 @@ impl TuiAppState {
         let output_cols = self.size.output_cols(self.has_sidebar);
         self.tasks.values_mut().for_each(|task| {
             task.output.resize(output_rows, output_cols);
-        })
+        });
+        self.recompute_search();
     }
 
     pub fn view(&mut self, f: &mut Frame) {
@@ -847,67 +847,18 @@ impl TuiAppState {
     }
 
     pub fn run_search(&mut self) -> anyhow::Result<()> {
-        let LayoutSections::Search { query, backward } = &mut self.focus else {
+        let LayoutSections::Search { query, backward } = &self.focus else {
             return Ok(());
         };
         if query.is_empty() {
             return Ok(());
         }
+        let (query, backward) = (query.clone(), *backward);
 
-        let backward = *backward;
-        let query = query.clone();
-        let task = self.active_task_mut()?;
-        let screen = task.output.screen_mut();
-        let size = screen.size();
-
-        let mut matches = Vec::new();
-        let mut line_buf = String::new();
-        let mut previous_row_widths = Vec::new();
-        for (row_idx, row) in screen.grid_mut().all_rows_mut().enumerate() {
-            let mut s = String::new();
-            row.write_contents(&mut s, 0, size.1, true);
-            let current_row_width = s.width();
-            line_buf.push_str(&s);
-            if row.wrapped() {
-                previous_row_widths.push(current_row_width);
-                continue;
-            }
-            for (offset, _) in line_buf.match_indices(&query) {
-                // Convert byte offset to display width to handle wide chars properly
-                let mut col_idx = line_buf[..offset].width();
-                if previous_row_widths.is_empty() {
-                    matches.push(Match(row_idx, col_idx));
-                } else {
-                    // The line is wrapped Reset the current row index to the first line
-                    let first_row_idx = row_idx - previous_row_widths.len();
-                    for (row_idx, width) in
-                        (first_row_idx..).zip(previous_row_widths.iter().chain(std::iter::once(&current_row_width)))
-                    {
-                        if col_idx < *width {
-                            // The match exists in this line
-                            matches.push(Match(row_idx, col_idx));
-                            break;
-                        }
-                        // The match may be in the next line
-                        col_idx -= *width;
-                    }
-                }
-            }
-            previous_row_widths.clear();
-            line_buf.clear();
-        }
-
-        // Find the initial search result index: the first match away from the current view in the
-        // direction being searched, or the match at the far end of the log when there is none left
-        // that way.
-        let offset = search::first_visible_row(screen);
-        let index = if backward {
-            matches.iter().rposition(|m| m.0 < offset)
-        } else {
-            matches.iter().position(|m| offset <= m.0)
-        }
-        .unwrap_or(matches.len().saturating_sub(1));
-
+        let task = self.active_task()?;
+        let screen = task.output.screen();
+        let matches = search::find_matches(screen, &query);
+        let index = search::initial_index(&matches, screen, backward);
         let search_results = SearchResults::new(&task.name, query, matches, index, backward)?;
 
         if let Some(Match(row, _)) = search_results.current() {
@@ -916,6 +867,23 @@ impl TuiAppState {
 
         self.focus = LayoutSections::TaskList(Some(search_results));
         Ok(())
+    }
+
+    /// Re-runs the current search against the re-wrapped grid.
+    ///
+    /// A resize re-wraps every line, so the row a match was found on no longer points at it.
+    fn recompute_search(&mut self) {
+        let LayoutSections::TaskList(Some(results)) = &self.focus else {
+            return;
+        };
+        let mut results = results.clone();
+        let Ok(task) = self.task(&results.task) else {
+            return;
+        };
+        let screen = task.output.screen();
+        results.matches = search::find_matches(screen, &results.query);
+        results.index = search::initial_index(&results.matches, screen, results.backward);
+        self.focus = LayoutSections::TaskList(Some(results));
     }
 
     pub fn next_search_result(&mut self) -> anyhow::Result<()> {

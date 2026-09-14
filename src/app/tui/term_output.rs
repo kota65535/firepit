@@ -1,8 +1,9 @@
 use crate::app::command::Direction;
 use std::{io::Write, mem};
 
-// Ensure that the scrollback length is sufficient to hold the entire log.
-// If the number of rows exceeds this, search highlights may not work properly.
+// Long enough to hold the entire log of a normal run.
+// ponytail: past this the oldest rows are dropped, which shifts every row index a running search
+// recorded; give rows a stable id if logs this long become normal.
 const SCROLLBACK_LEN: usize = 1024 * 1024;
 
 /// The number of lines in the whole grid.
