@@ -93,10 +93,9 @@ impl TerminalOutput {
         self.parser.screen_mut().set_scrollback(0);
     }
 
-    pub fn scroll_to(&mut self, row: u16) {
+    pub fn scroll_to(&mut self, row: usize) {
         let screen = self.parser.screen_mut();
         let scrollback_len = screen.current_scrollback_len();
-        let row = row as usize;
         screen.set_scrollback(scrollback_len.saturating_sub(row));
     }
 

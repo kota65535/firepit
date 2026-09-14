@@ -9,8 +9,9 @@ pub struct SearchResults {
     pub backward: bool,
 }
 
+/// The row and column a match starts at, counted over the whole grid including the scrollback.
 #[derive(Debug, Clone)]
-pub struct Match(pub u16, pub u16);
+pub struct Match(pub usize, pub usize);
 
 impl SearchResults {
     pub fn new(task: &str, query: String, matches: Vec<Match>, index: usize, backward: bool) -> anyhow::Result<Self> {
