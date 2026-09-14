@@ -572,6 +572,24 @@ fn search_scrolls_to_match_in_scrollback() {
 }
 
 #[test]
+fn search_highlight_restores_the_colors_the_task_emitted() {
+    let mut tui = Tui::new(&["build"]);
+    // Red background from the task itself, on the very cells the search will highlight
+    tui.output(b"\x1b[41mfoo\x1b[0m bar\r\n");
+    assert_eq!(tui.cell(0, 0).bg, Color::Indexed(1));
+
+    tui.send(AppCommand::EnterSearch { backward: false });
+    for c in "foo".chars() {
+        tui.send(AppCommand::SearchInputChar(c));
+    }
+    tui.send(AppCommand::SearchRun);
+    assert_eq!(tui.cell(0, 0).bg, Color::Indexed(3));
+
+    tui.send(AppCommand::ExitSearch);
+    assert_eq!(tui.cell(0, 0).bg, Color::Indexed(1));
+}
+
+#[test]
 fn search_finds_matches_past_the_u16_row_limit() {
     let mut tui = Tui::new(&["build"]);
     // A narrow pane keeps the scrollback of this many rows cheap

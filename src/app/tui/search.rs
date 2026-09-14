@@ -13,6 +13,11 @@ pub struct SearchResults {
 #[derive(Debug, Clone)]
 pub struct Match(pub usize, pub usize);
 
+/// The grid row the top of the view currently shows.
+pub fn first_visible_row(screen: &vt100::Screen) -> usize {
+    screen.current_scrollback_len() - screen.scrollback()
+}
+
 impl SearchResults {
     pub fn new(task: &str, query: String, matches: Vec<Match>, index: usize, backward: bool) -> anyhow::Result<Self> {
         Ok(Self {

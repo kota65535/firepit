@@ -1,5 +1,6 @@
 use crate::app::tui::hyperlink::UrlSegment;
 use crate::app::tui::lib::key_help_spans;
+use crate::app::tui::search::{self, Match};
 use crate::app::tui::task::Task;
 use crate::app::tui::LayoutSections;
 use itertools::Itertools;
@@ -11,6 +12,7 @@ use ratatui::{
     widgets::{Block, Widget},
 };
 use tui_term::widget::{Cursor, PseudoTerminal};
+use unicode_width::UnicodeWidthStr;
 
 static STOP_TASK: &(&str, &str) = &("[s]", "Stop");
 static RERUN_TASK: &(&str, &str) = &("[r]", "Re-run");
@@ -132,6 +134,34 @@ impl<'a> TerminalPane<'a> {
 
 const RIGHT_FOOTER_WIDTH: u16 = 10;
 
+/// Paints `width` cells from (`row`, `col`) of `area`, continuing onto the rows below when the
+/// match runs past the right edge, as a wrapped line does.
+///
+/// `size` is the size of the terminal grid, which is narrower than `area` where the scrollbar
+/// overlaps it.
+fn highlight_match(
+    buf: &mut ratatui::prelude::Buffer,
+    area: Rect,
+    size: (u16, u16),
+    row: usize,
+    col: usize,
+    width: usize,
+) {
+    let (rows, cols) = (size.0 as usize, size.1 as usize);
+    let (mut row, mut col) = (row, col);
+    let mut rest = width;
+    while rest > 0 && row < rows {
+        if col >= cols {
+            row += 1;
+            col = 0;
+            continue;
+        }
+        buf[(area.x + col as u16, area.y + row as u16)].set_bg(Color::Indexed(3));
+        col += 1;
+        rest -= 1;
+    }
+}
+
 impl<'a> Widget for &TerminalPane<'a> {
     fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer)
     where
@@ -172,6 +202,20 @@ impl<'a> Widget for &TerminalPane<'a> {
         let cursor = Cursor::default().visibility(screen.scrollback() == 0);
         let term = PseudoTerminal::new(screen).cursor(cursor).block(terminal_block);
         term.render(main_area, buf);
+
+        // Search highlight: overlay yellow background on the current match.
+        // Drawn over the buffer rather than written into the grid, so the colors the task itself
+        // emitted survive the search.
+        if let LayoutSections::TaskList(Some(results)) = self.section {
+            if results.task == self.task.name {
+                if let Some(Match(row, col)) = results.current() {
+                    let first_visible = search::first_visible_row(screen);
+                    if let Some(row) = row.checked_sub(first_visible) {
+                        highlight_match(buf, inner, screen.size(), row, col, results.query.width());
+                    }
+                }
+            }
+        }
 
         // Hover highlight: overlay blue + underline on hovered URL segments
         if let Some(segments) = self.hovered_segments {

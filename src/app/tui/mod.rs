@@ -839,27 +839,10 @@ impl TuiAppState {
     }
 
     pub fn enter_search(&mut self, backward: bool) -> anyhow::Result<()> {
-        self.remove_search_highlight()?;
         self.focus = LayoutSections::Search {
             query: "".to_string(),
             backward,
         };
-        Ok(())
-    }
-
-    pub fn remove_search_highlight(&mut self) -> anyhow::Result<()> {
-        let LayoutSections::TaskList(Some(results)) = &mut self.focus else {
-            return Ok(());
-        };
-        let results = results.clone();
-        let query_len = results.query.width();
-        let task = self.active_task_mut()?;
-        if task.name != results.task {
-            return Ok(());
-        }
-        if let Some(Match(row, col)) = results.current() {
-            self.highlight_cell(row, col, query_len, false)?;
-        }
         Ok(())
     }
 
@@ -914,12 +897,10 @@ impl TuiAppState {
             line_buf.clear();
         }
 
-        let query_len = query.width();
-
         // Find the initial search result index: the first match away from the current view in the
         // direction being searched, or the match at the far end of the log when there is none left
         // that way.
-        let offset = screen.current_scrollback_len() - screen.scrollback();
+        let offset = search::first_visible_row(screen);
         let index = if backward {
             matches.iter().rposition(|m| m.0 < offset)
         } else {
@@ -929,48 +910,11 @@ impl TuiAppState {
 
         let search_results = SearchResults::new(&task.name, query, matches, index, backward)?;
 
-        if let Some(Match(row, col)) = search_results.current() {
-            self.highlight_cell(row, col, query_len, true)?;
+        if let Some(Match(row, _)) = search_results.current() {
             self.scroll_to_row(row)?;
         }
 
         self.focus = LayoutSections::TaskList(Some(search_results));
-        Ok(())
-    }
-
-    fn highlight_cell(
-        &mut self,
-        mut num_row: usize,
-        mut num_col: usize,
-        length: usize,
-        highlight: bool,
-    ) -> anyhow::Result<()> {
-        let task = self.active_task_mut()?;
-        let screen = task.output.screen_mut();
-        // Rest of chars to highlight
-        let mut rest = length;
-        while rest > 0 {
-            // Stop if no rows left
-            let Some(row) = screen.grid_mut().all_rows_mut().nth(num_row) else {
-                break;
-            };
-            for idx in num_col..num_col + length {
-                if rest == 0 {
-                    break;
-                }
-                // If no column left, go to next line
-                let Some(c) = row.get_mut(idx as u16) else { break };
-
-                c.attrs_mut().bgcolor = if highlight {
-                    vt100::Color::Idx(3) // Yellow
-                } else {
-                    vt100::Color::Default
-                };
-                rest -= 1;
-            }
-            num_row += 1;
-            num_col = 0;
-        }
         Ok(())
     }
 
@@ -979,12 +923,8 @@ impl TuiAppState {
             return Ok(());
         };
         let mut results = results.clone();
-        let query_len = results.query.width();
 
-        self.remove_search_highlight()?;
-
-        if let Some(Match(row, col)) = results.next() {
-            self.highlight_cell(row, col, query_len, true)?;
+        if let Some(Match(row, _)) = results.next() {
             self.scroll_to_row(row)?;
         }
 
@@ -998,12 +938,8 @@ impl TuiAppState {
             return Ok(());
         };
         let mut results = results.clone();
-        let query_len = results.query.width();
 
-        self.remove_search_highlight()?;
-
-        if let Some(Match(row, col)) = results.previous() {
-            self.highlight_cell(row, col, query_len, true)?;
+        if let Some(Match(row, _)) = results.previous() {
             self.scroll_to_row(row)?;
         }
 
@@ -1013,20 +949,7 @@ impl TuiAppState {
     }
 
     pub fn exit_search(&mut self) -> anyhow::Result<()> {
-        if let LayoutSections::TaskList(results) = &mut self.focus {
-            let Some(mut results) = results.clone() else {
-                return Ok(());
-            };
-            let task = self.active_task_mut()?;
-            if task.name != results.task {
-                return Ok(());
-            }
-            self.remove_search_highlight()?;
-            results.reset();
-        };
-
         self.focus = LayoutSections::TaskList(None);
-
         Ok(())
     }
 
