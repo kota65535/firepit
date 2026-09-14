@@ -137,17 +137,22 @@ const RIGHT_FOOTER_WIDTH: u16 = 10;
 /// Paints `width` cells from (`row`, `col`) of `area`, continuing onto the rows below when the
 /// match runs past the right edge, as a wrapped line does.
 ///
-/// `size` is the size of the terminal grid, which is narrower than `area` where the scrollbar
-/// overlaps it.
+/// `row` is relative to the top of the view and may be negative when a wrapped match starts above
+/// it; the rows of such a match that are on screen still get painted.
+///
+/// `size` is the size of the terminal grid, which decides where the match wraps. It is not the size
+/// of `area`: the scrollbar overlaps `area` on the right, and on a terminal only a few columns wide
+/// the grid keeps a minimum size that `area` does not have, so every cell is also clipped to
+/// `area`.
 fn highlight_match(
     buf: &mut ratatui::prelude::Buffer,
     area: Rect,
     size: (u16, u16),
-    row: usize,
+    row: isize,
     col: usize,
     width: usize,
 ) {
-    let (rows, cols) = (size.0 as usize, size.1 as usize);
+    let (rows, cols) = (size.0 as isize, size.1 as usize);
     let (mut row, mut col) = (row, col);
     let mut rest = width;
     while rest > 0 && row < rows {
@@ -156,7 +161,13 @@ fn highlight_match(
             col = 0;
             continue;
         }
-        buf[(area.x + col as u16, area.y + row as u16)].set_bg(Color::Indexed(3));
+        if row >= 0 {
+            let x = area.x + col as u16;
+            let y = area.y + row as u16;
+            if x < area.right() && y < area.bottom() {
+                buf[(x, y)].set_bg(Color::Indexed(3));
+            }
+        }
         col += 1;
         rest -= 1;
     }
@@ -209,10 +220,8 @@ impl<'a> Widget for &TerminalPane<'a> {
         if let LayoutSections::TaskList(Some(results)) = self.section {
             if results.task == self.task.name {
                 if let Some(Match(row, col)) = results.current() {
-                    let first_visible = search::first_visible_row(screen);
-                    if let Some(row) = row.checked_sub(first_visible) {
-                        highlight_match(buf, inner, screen.size(), row, col, results.query.width());
-                    }
+                    let row = row as isize - search::first_visible_row(screen) as isize;
+                    highlight_match(buf, inner, screen.size(), row, col, results.query.width());
                 }
             }
         }
