@@ -249,10 +249,3 @@ url = "https://nodejs.org/dist/v24.21.0/node-v24.21.0-win-x64.zip"
 [[tools."npm:@commitlint/cli"]]
 version = "21.2.2"
 backend = "npm:@commitlint/cli"
-
-[[tools.rust]]
-version = "1.98.1"
-backend = "core:rust"
-
-[tools.rust.options]
-components = "clippy,rustfmt"
