@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.31.0] - 2026-09-16
+
+### 🚀 Features
+
+- *(tui)* Highlight every search match (#446)
+
+### 🐛 Bug Fixes
+
+- *(deps)* Update rust crate strum to 0.28.0 (#43)
+- *(deps)* Update rust crate nix to 0.31.0 (#431)
+- *(deps)* Update rust crate jsonschema to 0.56.0 (#407)
+- *(tui)* Find search matches past row 65535 (#439)
+- *(tui)* Keep the colors a task emitted through a search (#440)
+- *(tui)* Keep the view in place across a resize (#445)
+- *(tui)* Re-run the search after a resize (#441)
+- *(tui)* Stop a panic when a task redraws over a selection (#447)
+
+### 🎨 Styling
+
+- Rewrap comments and docs at 100 columns (#430)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(renovate)* Group the two cargo-dist pins into one PR (#433)
+
 ## [0.30.0] - 2026-09-12
 
 ### 🚀 Features
