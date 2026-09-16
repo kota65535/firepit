@@ -134,9 +134,12 @@ impl<'a> TerminalPane<'a> {
 
 const RIGHT_FOOTER_WIDTH: u16 = 10;
 
-/// The background a match sits on, brighter for the one `n` and `N` are walking from.
-const MATCH_BG: Color = Color::Indexed(8);
+/// Both colors of a match have to be set: a background alone leaves the text in whatever color the
+/// task emitted, which can be unreadable against it. Neither background is a color a task is
+/// likely to have used itself, so a highlight never reads as part of the output.
+const MATCH_BG: Color = Color::Indexed(15);
 const CURRENT_MATCH_BG: Color = Color::Indexed(3);
+const MATCH_FG: Color = Color::Black;
 
 /// Paints `width` cells from (`row`, `col`) of `area`, continuing onto the rows below when the
 /// match runs past the right edge, as a wrapped line does.
@@ -148,6 +151,8 @@ const CURRENT_MATCH_BG: Color = Color::Indexed(3);
 /// of `area`: the scrollbar overlaps `area` on the right, and on a terminal only a few columns wide
 /// the grid keeps a minimum size that `area` does not have, so every cell is also clipped to
 /// `area`.
+///
+/// The match `n` and `N` walk from gets the second of the two backgrounds.
 fn highlight_match(
     buf: &mut ratatui::prelude::Buffer,
     area: Rect,
@@ -155,7 +160,7 @@ fn highlight_match(
     row: isize,
     col: usize,
     width: usize,
-    bg: Color,
+    current: bool,
 ) {
     let (rows, cols) = (size.0 as isize, size.1 as usize);
     let (mut row, mut col) = (row, col);
@@ -170,7 +175,8 @@ fn highlight_match(
             let x = area.x + col as u16;
             let y = area.y + row as u16;
             if x < area.right() && y < area.bottom() {
-                buf[(x, y)].set_bg(bg);
+                let bg = if current { CURRENT_MATCH_BG } else { MATCH_BG };
+                buf[(x, y)].set_style(Style::default().bg(bg).fg(MATCH_FG));
             }
         }
         col += 1;
@@ -238,12 +244,8 @@ impl<'a> Widget for &TerminalPane<'a> {
                     if row >= rows as isize {
                         break;
                     }
-                    let bg = if idx == results.index {
-                        CURRENT_MATCH_BG
-                    } else {
-                        MATCH_BG
-                    };
-                    highlight_match(buf, inner, screen.size(), row, *col, width, bg);
+                    let current = idx == results.index;
+                    highlight_match(buf, inner, screen.size(), row, *col, width, current);
                 }
             }
         }
