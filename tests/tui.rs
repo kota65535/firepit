@@ -681,6 +681,31 @@ fn search_finds_matches_past_the_u16_row_limit() {
 }
 
 #[test]
+fn selection_survives_the_task_clearing_the_screen() {
+    let mut tui = Tui::new(&["build"]);
+    tui.output(b"hello world\r\nsecond line\r\n");
+    tui.send(AppCommand::UpdateSelection {
+        rows: 0,
+        cols: 2,
+        edge: None,
+    });
+    tui.send(AppCommand::UpdateSelection {
+        rows: 0,
+        cols: 6,
+        edge: None,
+    });
+
+    // A task redrawing its output clears the screen out from under the selection
+    tui.output(b"\x1b[2J\x1b[Hredrawn\r\n");
+    tui.send(AppCommand::UpdateSelection {
+        rows: 1,
+        cols: 3,
+        edge: None,
+    });
+    assert_eq!(tui.pane_row(0), "redrawn");
+}
+
+#[test]
 fn mouse_selection_is_inverted_and_copyable() {
     let mut tui = Tui::new(&["build"]);
     tui.output(b"hello world\r\nsecond\r\n");
