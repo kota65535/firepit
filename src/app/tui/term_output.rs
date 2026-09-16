@@ -5,6 +5,11 @@ use std::{io::Write, mem};
 // If the number of rows exceeds this, search highlights may not work properly.
 const SCROLLBACK_LEN: usize = 1024 * 1024;
 
+/// The number of lines in the whole grid.
+fn total_lines(screen: &vt100::Screen) -> usize {
+    screen.grid().all_rows().filter(|row| !row.wrapped()).count()
+}
+
 /// The number of rows the line starting at `start` occupies.
 fn rows_in_line(screen: &vt100::Screen, start: usize) -> usize {
     screen
@@ -18,14 +23,20 @@ fn rows_in_line(screen: &vt100::Screen, start: usize) -> usize {
 pub struct TerminalOutput {
     output: Vec<u8>,
     parser: vt100::Parser,
+    scrollback_len: usize,
     stdin: Option<Box<dyn Write + Send>>,
 }
 
 impl TerminalOutput {
     pub fn new(rows: u16, cols: u16, stdin: Option<Box<dyn Write + Send>>) -> Self {
+        Self::with_scrollback_len(rows, cols, SCROLLBACK_LEN, stdin)
+    }
+
+    fn with_scrollback_len(rows: u16, cols: u16, scrollback_len: usize, stdin: Option<Box<dyn Write + Send>>) -> Self {
         Self {
             output: Vec::new(),
-            parser: vt100::Parser::new(rows, cols, SCROLLBACK_LEN),
+            parser: vt100::Parser::new(rows, cols, scrollback_len),
+            scrollback_len,
             stdin,
         }
     }
@@ -70,7 +81,7 @@ impl TerminalOutput {
         // Where the view sits has to be expressed in something a re-wrap does not move. A row index
         // is not that, so take the line the top row belongs to and how far into it that row is.
         let anchor = (self.parser.screen().scrollback() > 0).then(|| self.view_anchor());
-        let mut new_parser = vt100::Parser::new(rows, cols, SCROLLBACK_LEN);
+        let mut new_parser = vt100::Parser::new(rows, cols, self.scrollback_len);
         new_parser.process(&self.output);
         // Completely swap out the old vterm with a new correctly sized one
         mem::swap(&mut self.parser, &mut new_parser);
@@ -80,39 +91,49 @@ impl TerminalOutput {
         }
     }
 
-    /// The line the top row of the view belongs to, and how many rows into that line it is.
+    /// The line the top row of the view belongs to, counted back from the last line of the grid,
+    /// and how many rows into that line the top row is.
+    ///
+    /// Counting back rather than forward matters once the scrollback has overflowed: the two
+    /// widths keep a different number of lines, so only the end of the grid is common to both.
     fn view_anchor(&self) -> (usize, usize) {
         let screen = self.parser.screen();
         let top = screen.current_scrollback_len() - screen.scrollback();
-        let mut line = 0;
+        let mut lines_before = 0;
         let mut row_in_line = 0;
         for row in screen.grid().all_rows().take(top) {
             if row.wrapped() {
                 row_in_line += 1;
             } else {
-                line += 1;
+                lines_before += 1;
                 row_in_line = 0;
             }
         }
-        (line, row_in_line)
+        (total_lines(screen) - lines_before, row_in_line)
     }
 
-    /// Scrolls so the given line is back at the top of the view.
-    fn restore_view(&mut self, (line, row_in_line): (usize, usize)) {
+    /// Scrolls so the line the anchor names is back at the top of the view.
+    fn restore_view(&mut self, (lines_from_end, row_in_line): (usize, usize)) {
         let screen = self.parser.screen_mut();
+        let Some(line) = total_lines(screen).checked_sub(lines_from_end) else {
+            // The line has been dropped from the scrollback since
+            self.scroll_to_bottom();
+            return;
+        };
         let mut seen = 0;
-        let mut top = screen.current_scrollback_len() + screen.size().0 as usize;
+        let mut top = None;
         for (idx, row) in screen.grid().all_rows().enumerate() {
             if seen == line {
                 // A narrower terminal can leave the line with fewer rows than it had
-                top = idx + row_in_line.min(rows_in_line(screen, idx));
+                top = Some(idx + row_in_line.min(rows_in_line(screen, idx)));
                 break;
             }
             if !row.wrapped() {
                 seen += 1;
             }
         }
-        let scrollback = screen.current_scrollback_len().saturating_sub(top);
+        // Falling back to the bottom on a line that is not there leaves the view somewhere real
+        let scrollback = top.map_or(0, |top| screen.current_scrollback_len().saturating_sub(top));
         screen.set_scrollback(scrollback);
     }
 
@@ -363,6 +384,26 @@ mod tests {
 
         output.resize(4, 40);
         assert!(top_row(&output).starts_with('4'), "{}", top_row(&output));
+    }
+
+    #[test]
+    fn resize_keeps_the_line_when_the_scrollback_has_overflowed() {
+        // A scrollback that overflows: the two widths keep a different number of lines, so an
+        // anchor counted from the start of the grid would name a different line after the resize
+        let mut output = TerminalOutput::with_scrollback_len(4, 20, 20, None);
+        for i in 0..40 {
+            output.process(format!("{i:02}{}\r\n", "x".repeat(23)).as_bytes());
+        }
+        output.scroll(Direction::Up, 9).unwrap();
+        let before = top_row(&output);
+
+        output.resize(4, 40);
+        let after = top_row(&output);
+        assert_eq!(
+            before.chars().take(2).collect::<String>(),
+            after.chars().take(2).collect::<String>(),
+            "before={before} after={after}"
+        );
     }
 
     #[test]
