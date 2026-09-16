@@ -512,19 +512,27 @@ fn search_highlights_matches() {
     assert!(footer.contains("[Esc] Exit Search"), "{footer}");
 
     tui.send(AppCommand::SearchRun);
-    // First match highlighted, second not
-    assert_eq!(tui.cell(0, 0).bg, Color::Indexed(3));
-    assert_eq!(tui.cell(0, 2).bg, Color::Indexed(3));
-    assert_eq!(tui.cell(0, 3).bg, Color::Reset);
-    assert_eq!(tui.cell(1, 4).bg, Color::Reset);
+    // Every match is lit, the current one on the brighter of the two backgrounds
+    for col in [0, 2] {
+        assert_eq!(tui.cell(0, col).bg, Color::Indexed(3), "current match");
+        assert_eq!(tui.cell(0, col).fg, Color::Black);
+    }
+    for col in [4, 6] {
+        assert_eq!(tui.cell(1, col).bg, Color::Indexed(15), "other match");
+        assert_eq!(tui.cell(1, col).fg, Color::Black);
+    }
+    assert_eq!(tui.cell(0, 3).bg, Color::Reset, "past the match");
+    assert_eq!(tui.cell(1, 3).bg, Color::Reset, "before the match");
     assert!(tui.footer().contains("Next/Prev Match"));
 
+    // n swaps which match is the current one, both stay lit
     tui.send(AppCommand::SearchNext);
-    assert_eq!(tui.cell(0, 0).bg, Color::Reset);
+    assert_eq!(tui.cell(0, 0).bg, Color::Indexed(15));
     assert_eq!(tui.cell(1, 4).bg, Color::Indexed(3));
     assert_eq!(tui.cell(1, 6).bg, Color::Indexed(3));
 
     tui.send(AppCommand::ExitSearch);
+    assert_eq!(tui.cell(0, 0).bg, Color::Reset);
     assert_eq!(tui.cell(1, 4).bg, Color::Reset);
     assert!(!tui.footer().contains("Next/Prev Match"));
 }
@@ -574,9 +582,10 @@ fn search_scrolls_to_match_in_scrollback() {
 #[test]
 fn search_highlight_restores_the_colors_the_task_emitted() {
     let mut tui = Tui::new(&["build"]);
-    // Red background from the task itself, on the very cells the search will highlight
-    tui.output(b"\x1b[41mfoo\x1b[0m bar\r\n");
-    assert_eq!(tui.cell(0, 0).bg, Color::Indexed(1));
+    // A background from the task itself, on the very cells the search will highlight. Blue rather
+    // than a color the highlight also uses, so the two cannot be confused.
+    tui.output(b"\x1b[44mfoo\x1b[0m bar\r\n");
+    assert_eq!(tui.cell(0, 0).bg, Color::Indexed(4));
 
     tui.send(AppCommand::EnterSearch { backward: false });
     for c in "foo".chars() {
@@ -586,7 +595,7 @@ fn search_highlight_restores_the_colors_the_task_emitted() {
     assert_eq!(tui.cell(0, 0).bg, Color::Indexed(3));
 
     tui.send(AppCommand::ExitSearch);
-    assert_eq!(tui.cell(0, 0).bg, Color::Indexed(1));
+    assert_eq!(tui.cell(0, 0).bg, Color::Indexed(4));
 }
 
 #[test]
@@ -657,8 +666,8 @@ fn search_highlight_follows_a_resize() {
     tui.resize(ROWS, COLS + 20);
     for col in filler_len as u16..filler_len as u16 + 6 {
         assert_eq!(tui.cell(1, col).bg, Color::Indexed(3), "col {col}");
+        assert_eq!(tui.cell(0, col).bg, Color::Indexed(15), "col {col}");
     }
-    assert_eq!(tui.cell(0, filler_len as u16).bg, Color::Reset);
     assert_eq!(tui.cell(2, filler_len as u16).bg, Color::Reset);
 }
 
