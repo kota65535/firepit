@@ -512,19 +512,23 @@ fn search_highlights_matches() {
     assert!(footer.contains("[Esc] Exit Search"), "{footer}");
 
     tui.send(AppCommand::SearchRun);
-    // First match highlighted, second not
-    assert_eq!(tui.cell(0, 0).bg, Color::Indexed(3));
+    // Every match is lit, the current one apart from the rest
+    assert_eq!(tui.cell(0, 0).bg, Color::Indexed(3), "current match");
     assert_eq!(tui.cell(0, 2).bg, Color::Indexed(3));
-    assert_eq!(tui.cell(0, 3).bg, Color::Reset);
-    assert_eq!(tui.cell(1, 4).bg, Color::Reset);
+    assert_eq!(tui.cell(0, 3).bg, Color::Reset, "past the match");
+    assert_eq!(tui.cell(1, 3).bg, Color::Reset, "before the match");
+    assert_eq!(tui.cell(1, 4).bg, Color::Indexed(8), "other match");
+    assert_eq!(tui.cell(1, 6).bg, Color::Indexed(8));
     assert!(tui.footer().contains("Next/Prev Match"));
 
+    // n swaps which match is the current one, both stay lit
     tui.send(AppCommand::SearchNext);
-    assert_eq!(tui.cell(0, 0).bg, Color::Reset);
+    assert_eq!(tui.cell(0, 0).bg, Color::Indexed(8));
     assert_eq!(tui.cell(1, 4).bg, Color::Indexed(3));
     assert_eq!(tui.cell(1, 6).bg, Color::Indexed(3));
 
     tui.send(AppCommand::ExitSearch);
+    assert_eq!(tui.cell(0, 0).bg, Color::Reset);
     assert_eq!(tui.cell(1, 4).bg, Color::Reset);
     assert!(!tui.footer().contains("Next/Prev Match"));
 }
@@ -657,8 +661,8 @@ fn search_highlight_follows_a_resize() {
     tui.resize(ROWS, COLS + 20);
     for col in filler_len as u16..filler_len as u16 + 6 {
         assert_eq!(tui.cell(1, col).bg, Color::Indexed(3), "col {col}");
+        assert_eq!(tui.cell(0, col).bg, Color::Indexed(8), "col {col}");
     }
-    assert_eq!(tui.cell(0, filler_len as u16).bg, Color::Reset);
     assert_eq!(tui.cell(2, filler_len as u16).bg, Color::Reset);
 }
 

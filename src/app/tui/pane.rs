@@ -134,6 +134,10 @@ impl<'a> TerminalPane<'a> {
 
 const RIGHT_FOOTER_WIDTH: u16 = 10;
 
+/// The background a match sits on, brighter for the one `n` and `N` are walking from.
+const MATCH_BG: Color = Color::Indexed(8);
+const CURRENT_MATCH_BG: Color = Color::Indexed(3);
+
 /// Paints `width` cells from (`row`, `col`) of `area`, continuing onto the rows below when the
 /// match runs past the right edge, as a wrapped line does.
 ///
@@ -151,6 +155,7 @@ fn highlight_match(
     row: isize,
     col: usize,
     width: usize,
+    bg: Color,
 ) {
     let (rows, cols) = (size.0 as isize, size.1 as usize);
     let (mut row, mut col) = (row, col);
@@ -165,7 +170,7 @@ fn highlight_match(
             let x = area.x + col as u16;
             let y = area.y + row as u16;
             if x < area.right() && y < area.bottom() {
-                buf[(x, y)].set_bg(Color::Indexed(3));
+                buf[(x, y)].set_bg(bg);
             }
         }
         col += 1;
@@ -214,14 +219,31 @@ impl<'a> Widget for &TerminalPane<'a> {
         let term = PseudoTerminal::new(screen).cursor(cursor).block(terminal_block);
         term.render(main_area, buf);
 
-        // Search highlight: overlay yellow background on the current match.
+        // Search highlight: overlay a background on every match on screen.
         // Drawn over the buffer rather than written into the grid, so the colors the task itself
         // emitted survive the search.
         if let LayoutSections::TaskList(Some(results)) = self.section {
             if results.task == self.task.name {
-                if let Some(Match(row, col)) = results.current() {
-                    let row = row as isize - search::first_visible_row(screen) as isize;
-                    highlight_match(buf, inner, screen.size(), row, col, results.query.width());
+                let (rows, cols) = screen.size();
+                let width = results.query.width();
+                let first_visible = search::first_visible_row(screen);
+                // A match starting this far above the view can still wrap into it
+                let reach = width.div_ceil(usize::from(cols).max(1));
+                let from = results
+                    .matches
+                    .partition_point(|m| m.0 < first_visible.saturating_sub(reach));
+                for (idx, Match(row, col)) in results.matches.iter().enumerate().skip(from) {
+                    let row = *row as isize - first_visible as isize;
+                    // The matches are in row order, so the rest are below the view too
+                    if row >= rows as isize {
+                        break;
+                    }
+                    let bg = if idx == results.index {
+                        CURRENT_MATCH_BG
+                    } else {
+                        MATCH_BG
+                    };
+                    highlight_match(buf, inner, screen.size(), row, *col, width, bg);
                 }
             }
         }
