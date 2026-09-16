@@ -572,6 +572,68 @@ fn search_scrolls_to_match_in_scrollback() {
 }
 
 #[test]
+fn search_highlight_restores_the_colors_the_task_emitted() {
+    let mut tui = Tui::new(&["build"]);
+    // Red background from the task itself, on the very cells the search will highlight
+    tui.output(b"\x1b[41mfoo\x1b[0m bar\r\n");
+    assert_eq!(tui.cell(0, 0).bg, Color::Indexed(1));
+
+    tui.send(AppCommand::EnterSearch { backward: false });
+    for c in "foo".chars() {
+        tui.send(AppCommand::SearchInputChar(c));
+    }
+    tui.send(AppCommand::SearchRun);
+    assert_eq!(tui.cell(0, 0).bg, Color::Indexed(3));
+
+    tui.send(AppCommand::ExitSearch);
+    assert_eq!(tui.cell(0, 0).bg, Color::Indexed(1));
+}
+
+#[test]
+fn search_highlight_survives_a_tiny_terminal() {
+    // The vt100 grid keeps a minimum width the rendered pane does not have, so the overlay has to
+    // clip to the pane rather than trust the grid size
+    for cols in 1..=6 {
+        let mut tui = Tui::new(&["build"]);
+        tui.output(b"foo\r\n");
+        tui.send(AppCommand::EnterSearch { backward: false });
+        for c in "foo".chars() {
+            tui.send(AppCommand::SearchInputChar(c));
+        }
+        tui.send(AppCommand::SearchRun);
+        tui.resize(ROWS, cols);
+        tui.draw();
+    }
+}
+
+#[test]
+fn search_highlight_keeps_the_visible_part_of_a_wrapped_match() {
+    let mut tui = Tui::new(&["build"]);
+    let width = usize::from(tui.state.active_task().unwrap().output.size().1);
+    let filler: String = std::iter::repeat_n('a', width - 3).collect();
+    tui.output(format!("{filler}needle\r\n").as_bytes());
+    for l in lines(10) {
+        tui.output(format!("{l}\r\n").as_bytes());
+    }
+
+    tui.send(AppCommand::EnterSearch { backward: false });
+    for c in "needle".chars() {
+        tui.send(AppCommand::SearchInputChar(c));
+    }
+    tui.send(AppCommand::SearchRun);
+    assert_eq!(tui.cell(1, 0).bg, Color::Indexed(3));
+
+    // Scroll down by one so the row the match starts on goes off the top; the rest of it is still
+    // on screen and stays highlighted
+    tui.send(AppCommand::ScrollDown(ScrollSize::One));
+    assert_eq!(tui.pane_row(0), "dle");
+    for col in 0..3 {
+        assert_eq!(tui.cell(0, col).bg, Color::Indexed(3), "col {col}");
+    }
+    assert_eq!(tui.cell(0, 3).bg, Color::Reset);
+}
+
+#[test]
 fn search_finds_matches_past_the_u16_row_limit() {
     let mut tui = Tui::new(&["build"]);
     // A narrow pane keeps the scrollback of this many rows cheap

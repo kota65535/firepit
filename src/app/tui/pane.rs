@@ -1,5 +1,6 @@
 use crate::app::tui::hyperlink::UrlSegment;
 use crate::app::tui::lib::key_help_spans;
+use crate::app::tui::search::{self, Match};
 use crate::app::tui::task::Task;
 use crate::app::tui::LayoutSections;
 use itertools::Itertools;
@@ -11,6 +12,7 @@ use ratatui::{
     widgets::{Block, Widget},
 };
 use tui_term::widget::{Cursor, PseudoTerminal};
+use unicode_width::UnicodeWidthStr;
 
 static STOP_TASK: &(&str, &str) = &("[s]", "Stop");
 static RERUN_TASK: &(&str, &str) = &("[r]", "Re-run");
@@ -132,6 +134,45 @@ impl<'a> TerminalPane<'a> {
 
 const RIGHT_FOOTER_WIDTH: u16 = 10;
 
+/// Paints `width` cells from (`row`, `col`) of `area`, continuing onto the rows below when the
+/// match runs past the right edge, as a wrapped line does.
+///
+/// `row` is relative to the top of the view and may be negative when a wrapped match starts above
+/// it; the rows of such a match that are on screen still get painted.
+///
+/// `size` is the size of the terminal grid, which decides where the match wraps. It is not the size
+/// of `area`: the scrollbar overlaps `area` on the right, and on a terminal only a few columns wide
+/// the grid keeps a minimum size that `area` does not have, so every cell is also clipped to
+/// `area`.
+fn highlight_match(
+    buf: &mut ratatui::prelude::Buffer,
+    area: Rect,
+    size: (u16, u16),
+    row: isize,
+    col: usize,
+    width: usize,
+) {
+    let (rows, cols) = (size.0 as isize, size.1 as usize);
+    let (mut row, mut col) = (row, col);
+    let mut rest = width;
+    while rest > 0 && row < rows {
+        if col >= cols {
+            row += 1;
+            col = 0;
+            continue;
+        }
+        if row >= 0 {
+            let x = area.x + col as u16;
+            let y = area.y + row as u16;
+            if x < area.right() && y < area.bottom() {
+                buf[(x, y)].set_bg(Color::Indexed(3));
+            }
+        }
+        col += 1;
+        rest -= 1;
+    }
+}
+
 impl<'a> Widget for &TerminalPane<'a> {
     fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer)
     where
@@ -172,6 +213,18 @@ impl<'a> Widget for &TerminalPane<'a> {
         let cursor = Cursor::default().visibility(screen.scrollback() == 0);
         let term = PseudoTerminal::new(screen).cursor(cursor).block(terminal_block);
         term.render(main_area, buf);
+
+        // Search highlight: overlay yellow background on the current match.
+        // Drawn over the buffer rather than written into the grid, so the colors the task itself
+        // emitted survive the search.
+        if let LayoutSections::TaskList(Some(results)) = self.section {
+            if results.task == self.task.name {
+                if let Some(Match(row, col)) = results.current() {
+                    let row = row as isize - search::first_visible_row(screen) as isize;
+                    highlight_match(buf, inner, screen.size(), row, col, results.query.width());
+                }
+            }
+        }
 
         // Hover highlight: overlay blue + underline on hovered URL segments
         if let Some(segments) = self.hovered_segments {
