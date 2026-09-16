@@ -31,7 +31,7 @@ jobs:
         run: ./scripts/schema-to-md.js schema.json docs/schema-body.md
 
       - name: Configure git
-        uses: kota65535/github-git-config-action@8327eed388a57bb175028b68a201c952f5130724 # v4
+        uses: kota65535/github-git-config-action@eb3fcc7a6de4e2de783bd2af9195c82377286a54 # v4
         with:
           config: |
             user.name: github-actions[bot]
