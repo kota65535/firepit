@@ -652,12 +652,13 @@ fn search_highlight_follows_a_resize() {
     assert_eq!(tui.cell(2, filler_len as u16).bg, Color::Indexed(3));
     assert_eq!(tui.cell(3, 0).bg, Color::Indexed(3));
 
-    // Wider terminal: neither line wraps anymore, so both matches move up a row
+    // Wider terminal: neither line wraps anymore, so the second match moves up to the second row
+    // and the highlight follows it there rather than staying on a row that no longer holds it
     tui.resize(ROWS, COLS + 20);
     for col in filler_len as u16..filler_len as u16 + 6 {
-        assert_eq!(tui.cell(0, col).bg, Color::Indexed(3), "col {col}");
+        assert_eq!(tui.cell(1, col).bg, Color::Indexed(3), "col {col}");
     }
-    assert_eq!(tui.cell(1, filler_len as u16).bg, Color::Reset);
+    assert_eq!(tui.cell(0, filler_len as u16).bg, Color::Reset);
     assert_eq!(tui.cell(2, filler_len as u16).bg, Color::Reset);
 }
 
@@ -818,4 +819,25 @@ fn non_task_log_goes_into_every_pane() {
 
     tui.send(AppCommand::Down);
     assert!(tui.pane_row(0).starts_with("ERROR firepit::test: Failed to copy"));
+}
+
+#[test]
+fn backward_search_keeps_its_match_across_a_resize() {
+    let mut tui = Tui::new(&["build"]);
+    for l in lines(20) {
+        tui.output(format!("{l}\r\n").as_bytes());
+    }
+    // A backward search puts its match on the top row of the view
+    tui.send(AppCommand::EnterSearch { backward: true });
+    for c in "line0".chars() {
+        tui.send(AppCommand::SearchInputChar(c));
+    }
+    tui.send(AppCommand::SearchRun);
+    assert_eq!(tui.pane_row(0), "line09");
+    assert_eq!(tui.cell(0, 0).bg, Color::Indexed(3));
+
+    // A width change that does not rewrap these lines must not move the search off it
+    tui.resize(ROWS, COLS + 20);
+    assert_eq!(tui.pane_row(0), "line09");
+    assert_eq!(tui.cell(0, 0).bg, Color::Indexed(3));
 }

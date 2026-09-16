@@ -880,9 +880,10 @@ impl TuiAppState {
         let Ok(task) = self.task(&results.task) else {
             return;
         };
-        let screen = task.output.screen();
-        results.matches = search::find_matches(screen, &results.query);
-        results.index = search::initial_index(&results.matches, screen, results.backward);
+        // Rewrapping moves the matches but not their order, so keeping the index leaves the view
+        // on the same occurrence. Picking one afresh would walk away from the match being looked at.
+        results.matches = search::find_matches(task.output.screen(), &results.query);
+        results.index = results.index.min(results.matches.len().saturating_sub(1));
         self.focus = LayoutSections::TaskList(Some(results));
     }
 
