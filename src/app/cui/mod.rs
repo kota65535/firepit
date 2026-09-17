@@ -18,15 +18,18 @@ use crate::tokio_spawn;
 use anyhow::Context;
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
-use std::io::{stdout, Stdout, Write};
+use std::io::{stderr, stdout, Write};
 use std::sync::{Arc, RwLock};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
 use tracing::{debug, error, Level};
 
+/// Task output goes to firepit's own stdout or stderr, which are different types.
+type TaskOutputClient = OutputClient<PrefixedWriter<Box<dyn Write + Send>>>;
+
 pub struct CuiApp {
     color_selector: ColorSelector,
-    output_clients: Arc<RwLock<HashMap<String, OutputClient<PrefixedWriter<Stdout>>>>>,
+    output_clients: Arc<RwLock<HashMap<String, TaskOutputClient>>>,
     command_tx: AppCommandChannel,
     command_rx: mpsc::UnboundedReceiver<AppCommand>,
     signal_handler: SignalHandler,
@@ -68,14 +71,14 @@ impl CuiApp {
             self.labels.get(&task).unwrap_or(&task)
         };
         let out = PrefixedWriter::new(
-            ColorConfig::infer(),
+            ColorConfig::infer(atty::Stream::Stdout),
             self.color_selector.string_with_color(prefix, prefix),
-            stdout(),
+            Box::new(stdout()) as Box<dyn Write + Send>,
         );
         let err = PrefixedWriter::new(
-            ColorConfig::infer(),
+            ColorConfig::infer(atty::Stream::Stderr),
             self.color_selector.string_with_color(prefix, prefix),
-            stdout(),
+            Box::new(stderr()) as Box<dyn Write + Send>,
         );
         let output_client = OutputSink::new(out, err).logger(OutputClientBehavior::Passthrough);
         self.output_clients
@@ -138,13 +141,17 @@ impl CuiApp {
         while let Some(event) = self.command_rx.recv().await {
             match event {
                 AppCommand::StartTask { task, .. } => self.register_output_client(&task),
-                AppCommand::TaskOutput { task, output } => {
+                AppCommand::TaskOutput { task, output, stderr } => {
                     let output_clients = self.output_clients.read().expect("lock poisoned");
                     let output_client = output_clients.get(&task).context("output client not found")?;
-                    output_client
-                        .stdout()
+                    let (mut writer, name) = if stderr {
+                        (output_client.stderr(), "stderr")
+                    } else {
+                        (output_client.stdout(), "stdout")
+                    };
+                    writer
                         .write_all(output.as_slice())
-                        .context("failed to write to stdout")?;
+                        .with_context(|| format!("failed to write to {name}"))?;
                 }
                 AppCommand::Log(record) => self.print_log(&record),
                 AppCommand::FinishTask {

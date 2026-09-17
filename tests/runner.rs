@@ -1655,7 +1655,7 @@ fn handle_events(
                         AppCommand::Quit => {
                             break;
                         }
-                        AppCommand::TaskOutput { task, output } => {
+                        AppCommand::TaskOutput { task, output, .. } => {
                             let str = String::from_utf8(output.clone()).unwrap();
                             let str_trimmed = str.trim().to_string();
                             match raw_outputs.get(&task) {
@@ -1706,4 +1706,52 @@ fn handle_events(
             assert_eq!(runs_expected, runs);
         }
     })
+}
+
+/// Without a pty, the task's stdout and stderr stay apart all the way to the app.
+/// Under a pty the kernel merges them before firepit reads them, so the split cannot be tested
+/// there.
+#[tokio::test]
+async fn test_stderr_separation() {
+    setup();
+    let path = path::absolute(BASE_PATH.join("stderr")).unwrap();
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &[String::from("foo")],
+        &path,
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    let mut runner = TaskRunner::new(&ws).unwrap();
+    let (app_tx, mut app_rx) = AppCommandChannel::new();
+    let runner_fut = tokio::spawn(async move { runner.run(&app_tx, true).await.ok() });
+
+    // The commands are queued, so draining them once the runner is done cannot miss any output.
+    runner_fut.await.ok();
+
+    let mut stdout_lines = Vec::new();
+    let mut stderr_lines = Vec::new();
+    while let Ok(event) = app_rx.try_recv() {
+        if let AppCommand::TaskOutput { output, stderr, .. } = event {
+            let lines = if stderr { &mut stderr_lines } else { &mut stdout_lines };
+            lines.extend(
+                String::from_utf8(output)
+                    .unwrap()
+                    .lines()
+                    .map(|l| l.trim().to_string())
+                    .filter(|l| !l.is_empty()),
+            );
+        }
+    }
+
+    assert_eq!(vec!["out"], stdout_lines);
+    assert_eq!(vec!["err"], stderr_lines);
 }

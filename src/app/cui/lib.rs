@@ -13,8 +13,8 @@ impl ColorConfig {
         Self { should_strip_ansi }
     }
 
-    /// Infer the color choice from environment variables and checking if stdout is a tty
-    pub fn infer() -> Self {
+    /// Infer the color choice from environment variables and checking if the stream is a tty
+    pub fn infer(stream: atty::Stream) -> Self {
         let env_setting = std::env::var("FORCE_COLOR")
             .ok()
             .and_then(|force_color| match force_color.as_str() {
@@ -22,7 +22,7 @@ impl ColorConfig {
                 "true" | "1" | "2" | "3" => Some(false),
                 _ => None,
             });
-        let should_strip_ansi = env_setting.unwrap_or_else(|| !atty::is(atty::Stream::Stdout));
+        let should_strip_ansi = env_setting.unwrap_or_else(|| !atty::is(stream));
         Self { should_strip_ansi }
     }
 
