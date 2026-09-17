@@ -37,7 +37,7 @@ pub struct CuiApp {
     labels: HashMap<String, String>,
     quit_on_done: bool,
     fail_fast: bool,
-    no_log_prefix: bool,
+    no_prefix: bool,
 }
 
 impl CuiApp {
@@ -46,7 +46,7 @@ impl CuiApp {
         labels: &HashMap<String, String>,
         quit_on_done: bool,
         fail_fast: bool,
-        no_log_prefix: bool,
+        no_prefix: bool,
     ) -> anyhow::Result<Self> {
         let (command_tx, command_rx) = AppCommandChannel::new();
         Ok(Self {
@@ -59,13 +59,13 @@ impl CuiApp {
             labels: labels.clone(),
             quit_on_done,
             fail_fast,
-            no_log_prefix,
+            no_prefix,
         })
     }
 
     fn register_output_client(&mut self, task: &str) {
         let task = task.to_string();
-        let prefix = if self.no_log_prefix {
+        let prefix = if self.no_prefix {
             ""
         } else {
             self.labels.get(&task).unwrap_or(&task)
@@ -94,7 +94,7 @@ impl CuiApp {
             _ => GREY.clone(),
         };
         let prefix = match &record.task {
-            Some(task) if !self.no_log_prefix => {
+            Some(task) if !self.no_prefix => {
                 let label = self.labels.get(task).unwrap_or(task);
                 self.color_selector.string_with_color(label, label).to_string()
             }
