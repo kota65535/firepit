@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.31.1] - 2026-09-17
+
+### 🐛 Bug Fixes
+
+- *(cui)* Write a task's stderr to firepit's stderr (#448)
+
 ## [0.31.0] - 2026-09-16
 
 ### 🚀 Features
