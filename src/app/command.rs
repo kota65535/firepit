@@ -27,6 +27,10 @@ pub enum AppCommand {
     TaskOutput {
         task: String,
         output: Vec<u8>,
+        /// Whether the bytes came from the task's stderr rather than its stdout.
+        /// Always false under a pty, where the kernel merges the two streams before firepit sees
+        /// them.
+        stderr: bool,
     },
     ReadyTask {
         task: String,
@@ -158,6 +162,8 @@ pub struct AppCommandChannel {
     name: String,
     logs: Arc<Mutex<Vec<u8>>>,
     log_subscribers: Vec<mpsc::UnboundedSender<Vec<u8>>>,
+    /// Which of the task's streams the `Write` implementation writes bytes for.
+    stderr: bool,
 }
 
 impl AppCommandChannel {
@@ -188,9 +194,18 @@ impl AppCommandChannel {
                 name: "".to_string(),
                 logs: Default::default(),
                 log_subscribers: Default::default(),
+                stderr: false,
             },
             rx,
         )
+    }
+
+    /// Produces a channel whose written bytes are reported as the task's stderr.
+    pub fn as_stderr(&self) -> Self {
+        Self {
+            stderr: true,
+            ..self.clone()
+        }
     }
 
     pub fn with_name(&mut self, name: &str) -> Self {
@@ -236,7 +251,11 @@ impl AppCommandChannel {
     }
 
     pub fn output(&self, task: String, output: Vec<u8>) {
-        self.send(AppCommand::TaskOutput { task, output })
+        self.send(AppCommand::TaskOutput {
+            task,
+            output,
+            stderr: self.stderr,
+        })
     }
 
     pub fn set_stdin(&self, task: String, stdin: Box<dyn Write + Send>) {

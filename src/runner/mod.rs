@@ -634,7 +634,10 @@ impl TaskRunner {
 
         // Wait until complete
         debug!("Process is waiting for output. PID={}", pid);
-        let result = match process.wait_with_piped_outputs(app_tx.clone(), app_tx.clone()).await {
+        let result = match process
+            .wait_with_piped_outputs(app_tx.clone(), app_tx.as_stderr())
+            .await
+        {
             Ok(Some(exit_status)) => match exit_status {
                 ChildExit::Finished(Some(0)) => TaskResult::Success,
                 ChildExit::Finished(Some(code)) => TaskResult::Failure(code),

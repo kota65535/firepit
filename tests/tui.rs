@@ -58,6 +58,7 @@ impl Tui {
         self.send(AppCommand::TaskOutput {
             task: "build".to_string(),
             output: bytes.to_vec(),
+            stderr: false,
         });
     }
 

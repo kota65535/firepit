@@ -1,0 +1,3 @@
+tasks:
+  foo:
+    command: sh -c 'echo out; echo err >&2'

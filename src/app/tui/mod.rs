@@ -978,7 +978,7 @@ impl TuiAppState {
             AppCommand::Log(record) => {
                 self.record_log(record);
             }
-            AppCommand::TaskOutput { task, output } => {
+            AppCommand::TaskOutput { task, output, .. } => {
                 self.process_output(&task, &output)?;
             }
             AppCommand::ReadyTask { task } => {
