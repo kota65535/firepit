@@ -71,12 +71,12 @@ impl CuiApp {
             self.labels.get(&task).unwrap_or(&task)
         };
         let out = PrefixedWriter::new(
-            ColorConfig::infer(),
+            ColorConfig::infer(atty::Stream::Stdout),
             self.color_selector.string_with_color(prefix, prefix),
             Box::new(stdout()) as Box<dyn Write + Send>,
         );
         let err = PrefixedWriter::new(
-            ColorConfig::infer(),
+            ColorConfig::infer(atty::Stream::Stderr),
             self.color_selector.string_with_color(prefix, prefix),
             Box::new(stderr()) as Box<dyn Write + Send>,
         );
