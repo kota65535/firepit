@@ -83,6 +83,10 @@ pub struct Args {
 
     /// Disable task label prefixes in CUI log output
     #[arg(long, default_value = "false")]
+    pub no_prefix: bool,
+
+    /// Deprecated alias of `--no-prefix`
+    #[arg(long, hide = true, default_value = "false")]
     pub no_log_prefix: bool,
 
     /// Enable instrumentation for tokio-console
@@ -176,7 +180,7 @@ pub async fn run() -> anyhow::Result<i32> {
                 &ws.labels(),
                 !args.watch,
                 ws.fail_fast,
-                args.no_log_prefix,
+                args.no_prefix || args.no_log_prefix,
             )?;
             let runner_tx = runner.command_tx();
             let command_tx = app.command_tx();
@@ -205,6 +209,9 @@ pub async fn run() -> anyhow::Result<i32> {
     let mut deprecation_warnings = root.deprecated_warnings();
     for child in children.values() {
         deprecation_warnings.extend(child.deprecated_warnings());
+    }
+    if args.no_log_prefix {
+        deprecation_warnings.push("`--no-log-prefix` is deprecated. Use `--no-prefix` instead.".to_string());
     }
 
     let quit_on_done = !args.watch && root.ui != UI::Tui;
@@ -363,8 +370,17 @@ fn save_gantt_chart(gantt: &str, path: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_tasks_or_vars;
+    use super::{parse_tasks_or_vars, Args};
+    use clap::Parser;
     use serde_json::json;
+
+    #[test]
+    fn deprecated_no_log_prefix_is_still_accepted() {
+        let args = Args::try_parse_from(["firepit", "--no-log-prefix"]).unwrap();
+
+        assert!(args.no_log_prefix);
+        assert!(!args.no_prefix);
+    }
 
     #[test]
     fn parse_tasks_and_vars_keeps_raw_strings() {
