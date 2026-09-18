@@ -39,6 +39,11 @@ pub struct Args {
     #[arg(short, long, default_value = ".")]
     pub dir: String,
 
+    /// Project in which a task given by a simple name is looked up.
+    /// Defaults to the project of the working directory.
+    #[arg(short, long)]
+    pub project: Option<String>,
+
     /// Watch mode
     #[arg(short, long, default_value = "false")]
     pub watch: bool,
@@ -146,12 +151,24 @@ pub async fn run() -> anyhow::Result<i32> {
         .map(|(k, v)| (k, VarsConfig::Static(v)))
         .collect::<IndexMap<_, _>>();
 
+    // `--dir` says where to look for the config files, and the project it lands in is also where a
+    // simple task name is looked up. `--project` overrides only the latter, so the two combine
+    // instead of conflicting.
+    let task_dir = match &args.project {
+        Some(name) => children
+            .get(name)
+            .with_context(|| format!("project {:?} is not defined", name))?
+            .dir
+            .clone(),
+        None => dir.clone(),
+    };
+
     // Aggregate information in config files into a more workable form
     let ws = Workspace::new(
         &root,
         &children,
         &tasks,
-        dir.as_path(),
+        task_dir.as_path(),
         &vars,
         args.force,
         args.watch,
