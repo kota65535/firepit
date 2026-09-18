@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.32.0] - 2026-09-18
+
+### 🚀 Features
+
+- *(cli)* Rename --no-log-prefix to --no-prefix (#449)
+
 ## [0.31.1] - 2026-09-17
 
 ### 🐛 Bug Fixes
