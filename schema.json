@@ -19,7 +19,7 @@
       }
     },
     "depends_on": {
-      "description": "**Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults)\ninstead.\n\nDependency tasks for all the project tasks.\n```yaml\ndepends_on:\n  - ':install'\n```",
+      "description": "**Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults)\ninstead.\n\nDependency tasks for all the project tasks.\n```yaml\ndepends_on:\n  - :install\n```",
       "type": "array",
       "default": [],
       "deprecated": true,
