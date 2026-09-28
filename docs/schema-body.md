@@ -34,7 +34,7 @@ instead.
 Dependency tasks for all the project tasks.
 ```yaml
 depends_on:
-  - '#install'
+  - ':install'
 ```
 
 ### env
