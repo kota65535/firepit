@@ -78,7 +78,7 @@ async fn test_variant_label() {
     let ws = Workspace::new(
         &root,
         &children,
-        &[String::from("#foo")],
+        &[String::from(":foo")],
         &std::env::current_dir().unwrap(),
         &IndexMap::new(),
         false,
@@ -91,10 +91,10 @@ async fn test_variant_label() {
 
     let labels = ws.labels();
     // Default labels do not include the internal variant suffix
-    assert_eq!(labels.get("#foo"), Some(&String::from("#foo")));
-    assert_eq!(labels.get("#bar-1"), Some(&String::from("#bar")));
+    assert_eq!(labels.get(":foo"), Some(&String::from(":foo")));
+    assert_eq!(labels.get(":bar-1"), Some(&String::from(":bar")));
     // Explicit labels are rendered with the variant vars
-    assert_eq!(labels.get("#baz-1"), Some(&String::from("baz 2")));
+    assert_eq!(labels.get(":baz-1"), Some(&String::from("baz 2")));
 }
 
 #[tokio::test]
@@ -104,7 +104,7 @@ async fn test_empty_string_task_var_renders_as_string_in_label() {
     let ws = Workspace::new(
         &root,
         &children,
-        &[String::from("#tf")],
+        &[String::from(":tf")],
         &std::env::current_dir().unwrap(),
         &IndexMap::new(),
         false,
@@ -116,7 +116,7 @@ async fn test_empty_string_task_var_renders_as_string_in_label() {
     .unwrap();
 
     let labels = ws.labels();
-    assert_eq!(labels.get("#tf"), Some(&String::from("#tf ")));
+    assert_eq!(labels.get(":tf"), Some(&String::from(":tf ")));
 }
 
 #[tokio::test]
@@ -128,7 +128,7 @@ async fn test_unset_task_var_shadows_project_var() {
     let result = Workspace::new(
         &root,
         &children,
-        &[String::from("#shadow")],
+        &[String::from(":shadow")],
         &std::env::current_dir().unwrap(),
         &IndexMap::new(),
         false,
@@ -147,7 +147,7 @@ async fn test_unset_task_var_shadowing_project_var_given_by_cli() {
     let ws = Workspace::new(
         &root,
         &children,
-        &[String::from("#shadow")],
+        &[String::from(":shadow")],
         &std::env::current_dir().unwrap(),
         &IndexMap::from([(String::from("env"), VarsConfig::Static(serde_json::Value::from("prod")))]),
         false,
@@ -158,7 +158,7 @@ async fn test_unset_task_var_shadowing_project_var_given_by_cli() {
     .await
     .unwrap();
 
-    assert_eq!(ws.task("#shadow").unwrap().command, String::from("echo \"prod\""));
+    assert_eq!(ws.task(":shadow").unwrap().command, String::from("echo \"prod\""));
 }
 
 #[tokio::test]
@@ -168,7 +168,7 @@ async fn test_unset_task_var_given_by_dependent_task() {
     let ws = Workspace::new(
         &root,
         &children,
-        &[String::from("#dependent")],
+        &[String::from(":dependent")],
         &std::env::current_dir().unwrap(),
         &IndexMap::new(),
         false,
@@ -180,7 +180,7 @@ async fn test_unset_task_var_given_by_dependent_task() {
     .unwrap();
 
     assert_eq!(
-        ws.task("#required-1").unwrap().command,
+        ws.task(":required-1").unwrap().command,
         String::from("echo \"us-east-1\"")
     );
 }
@@ -192,7 +192,7 @@ async fn test_unset_task_var_without_value() {
     let result = Workspace::new(
         &root,
         &children,
-        &[String::from("#required")],
+        &[String::from(":required")],
         &std::env::current_dir().unwrap(),
         &IndexMap::new(),
         false,
@@ -213,7 +213,7 @@ async fn test_unset_dep_var_is_not_given_by_cli() {
     let result = Workspace::new(
         &root,
         &children,
-        &[String::from("#dependent_nocli")],
+        &[String::from(":dependent_nocli")],
         &std::env::current_dir().unwrap(),
         &IndexMap::from([(
             String::from("region"),
@@ -236,7 +236,7 @@ async fn test_unset_task_var_of_other_task_is_ignored() {
     let result = Workspace::new(
         &root,
         &children,
-        &[String::from("#plain")],
+        &[String::from(":plain")],
         &std::env::current_dir().unwrap(),
         &IndexMap::new(),
         false,
@@ -257,7 +257,7 @@ async fn test_unset_project_var_without_cli() {
     let result = Workspace::new(
         &root,
         &children,
-        &[String::from("#bar")],
+        &[String::from(":bar")],
         &std::env::current_dir().unwrap(),
         &IndexMap::new(),
         false,
@@ -276,7 +276,7 @@ async fn test_unset_project_var_given_by_cli() {
     let ws = Workspace::new(
         &root,
         &children,
-        &[String::from("#bar")],
+        &[String::from(":bar")],
         &std::env::current_dir().unwrap(),
         &IndexMap::from([(String::from("env"), VarsConfig::Static(serde_json::Value::from("prod")))]),
         false,
@@ -287,7 +287,7 @@ async fn test_unset_project_var_given_by_cli() {
     .await
     .unwrap();
 
-    assert_eq!(ws.task("#bar").unwrap().command, String::from("echo \"prod\""));
+    assert_eq!(ws.task(":bar").unwrap().command, String::from("echo \"prod\""));
 }
 
 #[tokio::test]
@@ -298,7 +298,7 @@ async fn test_unset_project_var_of_other_project_is_ignored() {
     let result = Workspace::new(
         &root,
         &children,
-        &[String::from("a#build")],
+        &[String::from("a:build")],
         &std::env::current_dir().unwrap(),
         &IndexMap::new(),
         false,
@@ -317,7 +317,7 @@ async fn test_unset_project_var_of_involved_project() {
     let result = Workspace::new(
         &root,
         &children,
-        &[String::from("b#deploy")],
+        &[String::from("b:deploy")],
         &std::env::current_dir().unwrap(),
         &IndexMap::new(),
         false,
@@ -338,7 +338,7 @@ async fn test_unset_task_var_with_unset_project_var() {
     let result = Workspace::new(
         &root,
         &children,
-        &[String::from("#foo")],
+        &[String::from(":foo")],
         &std::env::current_dir().unwrap(),
         &IndexMap::new(),
         false,
@@ -357,7 +357,7 @@ async fn test_unset_task_var_given_by_cli() {
     let ws = Workspace::new(
         &root,
         &children,
-        &[String::from("#foo")],
+        &[String::from(":foo")],
         &std::env::current_dir().unwrap(),
         &IndexMap::from([(String::from("env"), VarsConfig::Static(serde_json::Value::from("prod")))]),
         false,
@@ -368,7 +368,7 @@ async fn test_unset_task_var_given_by_cli() {
     .await
     .unwrap();
 
-    assert_eq!(ws.task("#foo").unwrap().command, String::from("echo \"prod\""));
+    assert_eq!(ws.task(":foo").unwrap().command, String::from("echo \"prod\""));
 }
 
 #[tokio::test]
@@ -379,7 +379,7 @@ async fn test_undeclared_cli_var() {
     let result = Workspace::new(
         &root,
         &children,
-        &[String::from("#plain")],
+        &[String::from(":plain")],
         &std::env::current_dir().unwrap(),
         &IndexMap::from([(
             String::from("regoin"),
@@ -402,7 +402,7 @@ async fn test_args_cli_var_needs_no_declaration() {
     let result = Workspace::new(
         &root,
         &children,
-        &[String::from("#plain")],
+        &[String::from(":plain")],
         &std::env::current_dir().unwrap(),
         &IndexMap::from([(
             String::from("args"),
@@ -426,7 +426,7 @@ async fn test_cli_var_declared_by_other_task() {
     let result = Workspace::new(
         &root,
         &children,
-        &[String::from("#plain")],
+        &[String::from(":plain")],
         &std::env::current_dir().unwrap(),
         &IndexMap::from([(
             String::from("region"),
@@ -466,7 +466,7 @@ async fn test_multi() {
     );
     assert_eq!(
         root.depends_on.iter().map(|s| s.task.clone()).collect::<Vec<_>>(),
-        vec!["#install".to_string()]
+        vec![":install".to_string()]
     );
     assert_eq!(root.command, "echo \"root x\"".to_string());
 
@@ -583,7 +583,7 @@ async fn test_undeclared_args_renders_as_empty_string() {
     let ws = Workspace::new(
         &root,
         &children,
-        &[String::from("#plain")],
+        &[String::from(":plain")],
         &std::env::current_dir().unwrap(),
         &IndexMap::new(),
         false,
@@ -594,7 +594,7 @@ async fn test_undeclared_args_renders_as_empty_string() {
     .await
     .unwrap();
 
-    assert_eq!(ws.task("#plain").unwrap().command, String::from("echo \"[]\""));
+    assert_eq!(ws.task(":plain").unwrap().command, String::from("echo \"[]\""));
 }
 
 #[tokio::test]
@@ -604,7 +604,7 @@ async fn test_undeclared_args_overridden_by_cli_var() {
     let ws = Workspace::new(
         &root,
         &children,
-        &[String::from("#plain")],
+        &[String::from(":plain")],
         &std::env::current_dir().unwrap(),
         &IndexMap::from([(
             String::from("args"),
@@ -619,7 +619,7 @@ async fn test_undeclared_args_overridden_by_cli_var() {
     .unwrap();
 
     assert_eq!(
-        ws.task("#plain").unwrap().command,
+        ws.task(":plain").unwrap().command,
         String::from("echo \"[--nocapture]\"")
     );
 }
@@ -632,7 +632,7 @@ async fn test_declared_args_overrides_the_implicit_default() {
     let ws = Workspace::new(
         &root,
         &children,
-        &[String::from("#declared")],
+        &[String::from(":declared")],
         &std::env::current_dir().unwrap(),
         &IndexMap::new(),
         false,
@@ -644,7 +644,7 @@ async fn test_declared_args_overrides_the_implicit_default() {
     .unwrap();
 
     assert_eq!(
-        ws.task("#declared").unwrap().command,
+        ws.task(":declared").unwrap().command,
         String::from("echo \"[default]\"")
     );
 }
@@ -658,7 +658,7 @@ async fn test_dependency_override_of_undeclared_args() {
     let ws = Workspace::new(
         &root,
         &children,
-        &[String::from("#dep_outer")],
+        &[String::from(":dep_outer")],
         &std::env::current_dir().unwrap(),
         &IndexMap::new(),
         false,
@@ -671,7 +671,7 @@ async fn test_dependency_override_of_undeclared_args() {
 
     // The override makes a variant of the dependency, so follow `depends_on` to the variant
     // rather than looking the task up by its name in the config
-    let outer = ws.task("#dep_outer").unwrap();
+    let outer = ws.task(":dep_outer").unwrap();
     let dep = outer.depends_on.first().expect("dep_outer depends on dep_inner");
     let inner = ws.task(&dep.task).expect("the variant is part of the run");
     assert_eq!(inner.command, String::from("echo \"[-x]\""));
@@ -686,7 +686,7 @@ async fn test_project_var_referencing_undeclared_args() {
     let ws = Workspace::new(
         &root,
         &children,
-        &[String::from("#uses_project_var")],
+        &[String::from(":uses_project_var")],
         &std::env::current_dir().unwrap(),
         &IndexMap::new(),
         false,
@@ -698,7 +698,89 @@ async fn test_project_var_referencing_undeclared_args() {
     .unwrap();
 
     assert_eq!(
-        ws.task("#uses_project_var").unwrap().command,
+        ws.task(":uses_project_var").unwrap().command,
         String::from("echo \"[pre  post]\"")
     );
+}
+
+#[tokio::test]
+async fn test_legacy_separator() {
+    let path = Path::new("tests/fixtures/project/legacy_sep");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &[String::from("foo#foo"), String::from("#baz")],
+        &std::env::current_dir().unwrap(),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    // `#` in CLI arguments and config references is converted to `:`
+    assert_eq!(ws.target_tasks, vec![String::from("foo:foo"), String::from(":baz")]);
+    let deps = ws.task("foo:foo").unwrap().depends_on;
+    assert_eq!(deps.iter().map(|d| d.task.clone()).collect::<Vec<_>>(), vec!["bar:bar"]);
+
+    // The deprecated separator is reported
+    let warnings = root.deprecated_warnings();
+    assert!(warnings
+        .iter()
+        .any(|w| w.contains("\"foo#foo\"") && w.contains("deprecated separator")));
+}
+
+#[tokio::test]
+async fn test_colon_in_task_name() {
+    let path = Path::new("tests/fixtures/project/colon_name");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &[
+            String::from("build:watch"),
+            String::from("foo:build"),
+            String::from(":dev"),
+        ],
+        &std::path::absolute(path).unwrap(),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    // `build:watch` is a task name since there is no project `build`,
+    // `foo:build` is a task of project `foo`, `:dev` is a root task
+    assert_eq!(
+        ws.target_tasks,
+        vec![
+            String::from(":build:watch"),
+            String::from("foo:build"),
+            String::from(":dev")
+        ]
+    );
+    let deps = ws.task(":dev").unwrap().depends_on;
+    assert_eq!(
+        deps.iter().map(|d| d.task.clone()).collect::<Vec<_>>(),
+        vec![":build:watch", "foo:build"]
+    );
+
+    // A name containing `:` is reported
+    let warnings = root.deprecated_warnings();
+    assert!(warnings
+        .iter()
+        .any(|w| w.contains("\"build:watch\"") && w.contains("contains ':'")));
+}
+
+#[test]
+fn test_name_collision() {
+    let path = Path::new("tests/fixtures/project/name_collision");
+    let err = ProjectConfig::new_multi(path).unwrap_err();
+    assert!(format!("{:#}", err).contains("ambiguous"), "{:#}", err);
 }

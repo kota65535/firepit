@@ -10,4 +10,4 @@ tasks:
       echo "foo ${A}"
       cat {{ root_dir }}/root.txt
     depends_on:
-      - bar#bar
+      - bar:bar

@@ -11,7 +11,7 @@ shell:
     - args-foo
 
 depends_on:
-  - "#install"
+  - ":install"
 
 tasks:
   foo:

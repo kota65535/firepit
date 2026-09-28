@@ -106,7 +106,7 @@ pub struct ProjectConfig {
     /// Dependency tasks for all the project tasks.
     /// ```yaml
     /// depends_on:
-    ///   - '#install'
+    ///   - ':install'
     /// ```
     #[serde(default)]
     #[schemars(extend("x-template" = true, "deprecated" = true))]
@@ -177,6 +177,10 @@ pub struct ProjectConfig {
     #[serde(skip)]
     #[derivative(Debug = "ignore")]
     pub raw: Value,
+
+    /// Task references written in the deprecated `project#task` form, for deprecation warnings.
+    #[serde(skip)]
+    pub legacy_refs: Vec<String>,
 }
 
 pub fn default_shell() -> ShellConfig {
@@ -236,10 +240,11 @@ impl ProjectConfig {
             &root_config.dir.as_os_str().to_str().unwrap_or(""),
         );
 
+        let project_names = root_config.projects.keys().cloned().collect::<HashSet<_>>();
         if root_config.is_root() {
             // Multi project
             for (name, path) in &root_config.projects {
-                if name.contains("#") {
+                if name.contains(Task::LEGACY_SEP) {
                     anyhow::bail!("Project name must not contain '#'. Found: {:?}", name)
                 }
                 let mut child_config = ProjectConfig::new(name, root_config.dir.join(path).as_path())?;
@@ -258,7 +263,52 @@ impl ProjectConfig {
         root_config = root_config.merge(&context)?;
         root_config.apply_defaults()?;
 
+        for config in iter::once(&mut root_config).chain(children.values_mut()) {
+            config.resolve_task_refs(&project_names);
+        }
+        Self::check_name_collisions(&root_config, &children)?;
+
         Ok((root_config, children))
+    }
+
+    /// Resolves task references containing `:` that were left unqualified by
+    /// [`Task::qualified_name`] because they look like `project:task`.
+    /// If the project does not exist, the reference is a task name containing `:`,
+    /// so it is qualified with the referring project.
+    fn resolve_task_refs(&mut self, project_names: &HashSet<String>) {
+        let project = self.name.clone();
+        let resolve = |t: &str| -> String {
+            match Task::split_name(t) {
+                (Some(p), _) if !p.is_empty() && !project_names.contains(p) => {
+                    format!("{}{}{}", project, Task::SEP, t)
+                }
+                _ => t.to_string(),
+            }
+        };
+        for task in self.tasks.values_mut() {
+            task.depends_on = task.depends_on.iter().map(|d| d.with_task(resolve(d.task()))).collect();
+            task.wait_for = task.wait_for.iter().map(|w| w.with_task(resolve(w.task()))).collect();
+            task.finalized_by = task
+                .finalized_by
+                .iter()
+                .map(|f| f.with_task(resolve(f.task())))
+                .collect();
+        }
+    }
+
+    /// Full task names must be unique. A project or task name containing `:` may collide with
+    /// another project's task, ex: task `b:c` of project `a` and task `c` of project `a:b`.
+    fn check_name_collisions(root: &ProjectConfig, children: &IndexMap<String, ProjectConfig>) -> anyhow::Result<()> {
+        let mut seen = HashSet::new();
+        for t in iter::once(root).chain(children.values()).flat_map(|p| p.tasks.values()) {
+            if !seen.insert(t.full_name()) {
+                anyhow::bail!(
+                    "task name {:?} is ambiguous: it is defined by more than one project. Avoid ':' in project and task names",
+                    t.full_name()
+                );
+            }
+        }
+        Ok(())
     }
 
     pub fn validate_multi(root: &ProjectConfig, children: &IndexMap<String, ProjectConfig>) -> anyhow::Result<()> {
@@ -332,6 +382,15 @@ impl ProjectConfig {
 
         // Task name & dependency task name
         for (k, v) in data.tasks.iter_mut() {
+            data.legacy_refs.extend(
+                v.depends_on
+                    .iter()
+                    .map(|d| d.task())
+                    .chain(v.wait_for.iter().map(|w| w.task()))
+                    .chain(v.finalized_by.iter().map(|f| f.task()))
+                    .filter(|t| t.contains(Task::LEGACY_SEP))
+                    .map(|t| t.to_string()),
+            );
             v.name = k.clone();
             v.orig_name = k.clone();
             v.project = name.to_string();
@@ -501,6 +560,22 @@ impl ProjectConfig {
                 ));
             }
         }
+        for r in self.legacy_refs.iter() {
+            warnings.push(format!(
+                "{}: task reference {:?} uses the deprecated separator '#'. Use ':' instead, ex: {:?}",
+                file,
+                r,
+                Task::from_legacy(r).unwrap_or_default()
+            ));
+        }
+        for name in self.projects.keys().chain(self.tasks.keys()) {
+            if name.contains(Task::SEP) {
+                warnings.push(format!(
+                    "{}: name {:?} contains ':', which is now the project/task separator. Names containing ':' will be rejected in a future version",
+                    file, name
+                ));
+            }
+        }
         warnings
     }
 
@@ -509,6 +584,18 @@ impl ProjectConfig {
     /// scalars and maps, arrays are concatenated), then the merged result is applied to the task as
     /// a base layer (task-specific values take precedence).
     pub fn apply_defaults(&mut self) -> anyhow::Result<()> {
+        self.legacy_refs.extend(
+            self.defaults
+                .iter()
+                .flat_map(|d| {
+                    d.depends_on
+                        .iter()
+                        .map(|d| d.task())
+                        .chain(d.wait_for.iter().map(|w| w.task()))
+                })
+                .filter(|t| t.contains(Task::LEGACY_SEP))
+                .map(|t| t.to_string()),
+        );
         // Validate regex patterns and qualify depends_on upfront
         let qualified_defaults: Vec<DefaultsConfig> = self
             .defaults
@@ -759,7 +846,7 @@ pub struct TaskConfig {
 
 impl TaskConfig {
     pub fn full_name(&self) -> String {
-        format!("{}#{}", self.project, self.name)
+        format!("{}{}{}", self.project, Task::SEP, self.name)
     }
 
     pub fn is_service(&self) -> bool {
@@ -770,7 +857,7 @@ impl TaskConfig {
     }
 
     pub fn full_orig_name(&self) -> String {
-        format!("{}#{}", self.project, self.orig_name)
+        format!("{}{}{}", self.project, Task::SEP, self.orig_name)
     }
 
     pub fn working_dir_path(&self, dir: &Path) -> PathBuf {
@@ -838,6 +925,14 @@ impl DependsOnConfig {
         match self {
             DependsOnConfig::String(s) => s,
             DependsOnConfig::Struct(s) => &s.task,
+        }
+    }
+
+    /// Returns a copy of this entry with the task name replaced.
+    pub fn with_task(&self, task: String) -> Self {
+        match self {
+            DependsOnConfig::String(_) => DependsOnConfig::String(task),
+            DependsOnConfig::Struct(s) => DependsOnConfig::Struct(DependsOnConfigStruct { task, ..s.clone() }),
         }
     }
 }

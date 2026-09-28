@@ -16,7 +16,7 @@ shell:
     - args-root
 
 depends_on:
-  - "#install"
+  - ":install"
 
 tasks:
   root:

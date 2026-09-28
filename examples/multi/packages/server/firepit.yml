@@ -8,7 +8,7 @@ vars:
   db_url_base: postgresql://postgres:postgres@localhost
 
 depends_on:
-  - "#install"
+  - ":install"
 
 tasks:
   dev:

@@ -215,7 +215,7 @@ tasks:
 ```
 
 ```
-fire deploy                # error: task "#deploy" requires vars that are not set: "version"
+fire deploy                # error: task ":deploy" requires vars that are not set: "version"
 fire deploy version=1.2.3  # runs: ./deploy.sh 1.2.3
 ```
 
@@ -784,8 +784,8 @@ tasks:
   dev:
     command: bun run dev
     depends_on:
-      - "#install"
-      - server#dev
+      - ":install"
+      - server:dev
     service: true
 ```
 
@@ -794,19 +794,24 @@ tasks:
   dev:
     command: bun run dev
     depends_on:
-      - "#install"
+      - ":install"
     service: true
 ```
 
 :::
 
-Tasks can be referenced across projects using the form `{project}#{task}`.
-Note that the root project name is treated as an empty string, so you can reference root tasks with `#{task}`.
+Tasks can be referenced across projects using the form `{project}:{task}`.
+Note that the root project name is treated as an empty string, so you can reference root tasks with `:{task}`.
+
+::: warning
+The former separator `#` (`{project}#{task}`) is deprecated and will be removed in a future version.
+For the same reason, a project or task name containing `:` is discouraged and will be rejected once `#` is removed.
+:::
 
 For example, to run client's dev task:
 
 ```bash
-fire client#dev
+fire client:dev
 ```
 
 Move to the client directory and run the dev task directly:

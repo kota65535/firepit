@@ -1,5 +1,3 @@
 tasks:
   bar:
     command: echo "bar"
-    depends_on:
-      - ":baz"

@@ -235,8 +235,8 @@ fn test_defaults_regex() {
     assert!(lint.env.get("NODE_ENV").is_none());
 
     // `wait_for` from defaults is qualified and applied to the matching tasks only
-    assert_eq!(wait_for_names(build), vec!["#lint"]);
-    assert_eq!(wait_for_names(test), vec!["#lint"]);
+    assert_eq!(wait_for_names(build), vec![":lint"]);
+    assert_eq!(wait_for_names(test), vec![":lint"]);
     assert!(install.wait_for.is_empty());
     assert!(lint.wait_for.is_empty());
 }
@@ -405,10 +405,10 @@ async fn test_render_ignores_empty_depends_on() {
     assert!(children.is_empty());
 
     let run = root.tasks.get("run").unwrap();
-    assert_eq!(depends_on_names(run), vec!["#setup"]);
+    assert_eq!(depends_on_names(run), vec![":setup"]);
 
     let with_env = root.tasks.get("with-env").unwrap();
-    assert_eq!(depends_on_names(with_env), vec!["#setup"]);
+    assert_eq!(depends_on_names(with_env), vec![":setup"]);
 }
 
 #[tokio::test]
@@ -421,7 +421,7 @@ async fn test_render_ignores_empty_wait_for() {
     assert!(children.is_empty());
 
     let run = root.tasks.get("run").unwrap();
-    assert_eq!(wait_for_names(run), vec!["#setup"]);
+    assert_eq!(wait_for_names(run), vec![":setup"]);
 }
 
 #[test]

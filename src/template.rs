@@ -407,14 +407,14 @@ impl TaskConfig {
                 DependsOnConfig::String(task) => {
                     let task = tera.render_str(task, context)?;
                     // Ignore if rendered task name is empty
-                    if !task.ends_with("#") {
+                    if !Task::split_name(&task).1.is_empty() {
                         rendered_depends_on.push(DependsOnConfig::String(task))
                     }
                 }
                 DependsOnConfig::Struct(dep) => {
                     let task = tera.render_str(&dep.task, context)?;
                     // Ignore if rendered task name is empty
-                    if !task.ends_with("#") {
+                    if !Task::split_name(&task).1.is_empty() {
                         let vars = render_dep_vars(&dep.vars, &mut tera, context)?;
                         rendered_depends_on.push(DependsOnConfig::Struct(DependsOnConfigStruct {
                             task,
@@ -432,7 +432,7 @@ impl TaskConfig {
         for wait_for in config.wait_for.iter() {
             let task = tera.render_str(wait_for.task(), context)?;
             // Ignore if rendered task name is empty
-            if task.ends_with("#") {
+            if Task::split_name(&task).1.is_empty() {
                 continue;
             }
             match wait_for {
@@ -450,7 +450,7 @@ impl TaskConfig {
         for finalized_by in config.finalized_by.iter() {
             let task = tera.render_str(finalized_by.task(), context)?;
             // Ignore if rendered task name is empty
-            if task.ends_with("#") {
+            if Task::split_name(&task).1.is_empty() {
                 continue;
             }
             match finalized_by {
@@ -574,7 +574,7 @@ impl ConfigRenderer {
         root_config: &'a ProjectConfig,
         child_configs: &'a IndexMap<String, ProjectConfig>,
     ) -> Option<(&'a TaskConfig, &'a ProjectConfig)> {
-        if let Some((p, t)) = task_name.split_once("#") {
+        if let Some((p, t)) = task_name.split_once(Task::SEP) {
             if p.is_empty() {
                 return match root_config.tasks.get(t) {
                     Some(t) => Some((t, root_config)),
@@ -596,7 +596,7 @@ impl ConfigRenderer {
         root_config: &'a ProjectConfig,
         child_configs: &'a IndexMap<String, ProjectConfig>,
     ) -> Vec<&'a TaskConfig> {
-        if let Some((p, orig_name)) = orig_name.split_once("#") {
+        if let Some((p, orig_name)) = orig_name.split_once(Task::SEP) {
             if p.is_empty() {
                 return root_config
                     .tasks

@@ -6,4 +6,4 @@ tasks:
   baz:
     command: echo "baz"
     depends_on:
-      - foo:foo
+      - foo#foo
