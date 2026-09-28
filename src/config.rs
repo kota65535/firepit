@@ -106,7 +106,7 @@ pub struct ProjectConfig {
     /// Dependency tasks for all the project tasks.
     /// ```yaml
     /// depends_on:
-    ///   - ':install'
+    ///   - :install
     /// ```
     #[serde(default)]
     #[schemars(extend("x-template" = true, "deprecated" = true))]

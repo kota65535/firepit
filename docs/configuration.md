@@ -784,7 +784,7 @@ tasks:
   dev:
     command: bun run dev
     depends_on:
-      - ":install"
+      - :install
       - server:dev
     service: true
 ```
@@ -794,7 +794,7 @@ tasks:
   dev:
     command: bun run dev
     depends_on:
-      - ":install"
+      - :install
     service: true
 ```
 

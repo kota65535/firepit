@@ -4,7 +4,7 @@ includes:
   - "{{ root_dir }}/firepit-base.yml"
 
 depends_on:
-  - ":install"
+  - :install
 
 tasks:
   dev:
