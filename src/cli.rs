@@ -3,6 +3,7 @@ use crate::app::cui::CuiApp;
 use crate::app::tui::TuiApp;
 use crate::config::{ProjectConfig, UI};
 use crate::log::init_logger;
+use crate::project::Task;
 use crate::project::Workspace;
 use crate::runner::TaskRunner;
 use crate::tokio_spawn;
@@ -212,6 +213,13 @@ pub async fn run() -> anyhow::Result<i32> {
     }
     if args.no_log_prefix {
         deprecation_warnings.push("`--no-log-prefix` is deprecated. Use `--no-prefix` instead.".to_string());
+    }
+    for task in tasks.iter().filter(|t| t.contains(Task::LEGACY_SEP)) {
+        deprecation_warnings.push(format!(
+            "task {:?} uses the deprecated separator '#'. Use ':' instead, ex: {:?}",
+            task,
+            Task::from_legacy(task).unwrap_or_default()
+        ));
     }
 
     let quit_on_done = !args.watch && root.ui != UI::Tui;
