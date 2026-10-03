@@ -5,43 +5,50 @@ version = "0.13.13"
 backend = "cargo:cargo-edit"
 
 [[tools.dprint]]
-version = "0.57.4"
+version = "0.59.0"
 backend = "aqua:dprint/dprint"
 
 [tools.dprint."platforms.linux-arm64"]
-checksum = "sha256:ff961314e7c1ca6a02eaada0e37920a37c668fbc09fd85838c2aced41a4bc0e4"
-url = "https://github.com/dprint/dprint/releases/download/0.57.4/dprint-aarch64-unknown-linux-gnu.zip"
-url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/546351169"
+checksum = "sha256:4c767249bd35be5d3a0fab98a2eb94bcc439330a45d40c2681032d27ed1032b1"
+url = "https://github.com/dprint/dprint/releases/download/0.59.0/dprint-aarch64-unknown-linux-gnu.zip"
+url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/606399175"
+provenance = "github-attestations"
 
 [tools.dprint."platforms.linux-arm64-musl"]
-checksum = "sha256:e1b713806f7f7b94072ba2b069aa19ac28f475dbb1fbc5b672d3030a2ab001ee"
-url = "https://github.com/dprint/dprint/releases/download/0.57.4/dprint-aarch64-unknown-linux-musl.zip"
-url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/546351166"
+checksum = "sha256:b90a0e7ede5fbae3e9f4e0e50455902a7e436f575c8db3b9b7fea9b7a0303210"
+url = "https://github.com/dprint/dprint/releases/download/0.59.0/dprint-aarch64-unknown-linux-musl.zip"
+url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/606399170"
+provenance = "github-attestations"
 
 [tools.dprint."platforms.linux-x64"]
-checksum = "sha256:1d26357d8bc66898d4ecc7dafca3d2971cfe222ba487228bd2ce5c3b3a309c33"
-url = "https://github.com/dprint/dprint/releases/download/0.57.4/dprint-x86_64-unknown-linux-gnu.zip"
-url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/546351175"
+checksum = "sha256:1705b1be1773955e882a69c29aebd3862d5b466c951f47495ad6cb423c224f86"
+url = "https://github.com/dprint/dprint/releases/download/0.59.0/dprint-x86_64-unknown-linux-gnu.zip"
+url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/606399168"
+provenance = "github-attestations"
 
 [tools.dprint."platforms.linux-x64-musl"]
-checksum = "sha256:03f3e8002f9d952bf53325fc8853686d2e8808b9e5b652b215600ba147e73a5c"
-url = "https://github.com/dprint/dprint/releases/download/0.57.4/dprint-x86_64-unknown-linux-musl.zip"
-url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/546351170"
+checksum = "sha256:c1e709d629caf8c1f8ef8328f2b5136c68dd5e878b36b04403bf9dfd133c559f"
+url = "https://github.com/dprint/dprint/releases/download/0.59.0/dprint-x86_64-unknown-linux-musl.zip"
+url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/606399172"
+provenance = "github-attestations"
 
 [tools.dprint."platforms.macos-arm64"]
-checksum = "sha256:f9e752812791f258e89ff88a7affd05c793b0db3d929718651eae7df5f19eb2e"
-url = "https://github.com/dprint/dprint/releases/download/0.57.4/dprint-aarch64-apple-darwin.zip"
-url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/546351171"
+checksum = "sha256:1888b152b3541c3690ec5291dd58bde7116e6c8beb4aa1f242187f22071df22f"
+url = "https://github.com/dprint/dprint/releases/download/0.59.0/dprint-aarch64-apple-darwin.zip"
+url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/606399171"
+provenance = "github-attestations"
 
 [tools.dprint."platforms.macos-x64"]
-checksum = "sha256:8978bd5d9a564ec19472545fb853da9ec468e024e75d39c3a9df9fd5750ecdfd"
-url = "https://github.com/dprint/dprint/releases/download/0.57.4/dprint-x86_64-apple-darwin.zip"
-url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/546351172"
+checksum = "sha256:cf3efa1f000125feac934f1afcf76daa35dad4c79dc22ae4c58f92de114e0845"
+url = "https://github.com/dprint/dprint/releases/download/0.59.0/dprint-x86_64-apple-darwin.zip"
+url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/606399167"
+provenance = "github-attestations"
 
 [tools.dprint."platforms.windows-x64"]
-checksum = "sha256:1038af32fade7a79f9c3a690d9546bb17be13dd7b4568a3684692fdcb0a52a1d"
-url = "https://github.com/dprint/dprint/releases/download/0.57.4/dprint-x86_64-pc-windows-msvc.zip"
-url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/546351162"
+checksum = "sha256:f75040d7288d3cf0a271b025dedcab589edec6b363c481790ff53850dadae6f5"
+url = "https://github.com/dprint/dprint/releases/download/0.59.0/dprint-x86_64-pc-windows-msvc.zip"
+url_api = "https://api.github.com/repos/dprint/dprint/releases/assets/606399165"
+provenance = "github-attestations"
 
 [[tools."github:axodotdev/cargo-dist"]]
 version = "0.33.0"
