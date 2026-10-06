@@ -157,7 +157,7 @@ pub struct ProjectConfig {
 
     /// Gantt chart output file path. Valid only in a root project config.
     /// ```yaml
-    /// gantt_file: gantt.svg
+    /// gantt_file: gantt.mmd
     /// ```
     pub gantt_file: Option<String>,
 

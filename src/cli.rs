@@ -13,8 +13,7 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use nix::unistd::getcwd;
 use serde_json::Value;
-use std::fs::File;
-use std::io::Write;
+use std::fs;
 use std::path;
 use tracing::debug;
 
@@ -205,32 +204,31 @@ pub async fn run() -> anyhow::Result<i32> {
     // The log has somewhere to go now, including everything held until this point
     log_sink.connect(&app_tx);
 
-    // Collect deprecation warnings before root is moved into the runner task
-    let mut deprecation_warnings = root.deprecated_warnings();
+    let mut warnings = root.deprecated_warnings();
     for child in children.values() {
-        deprecation_warnings.extend(child.deprecated_warnings());
+        warnings.extend(child.deprecated_warnings());
     }
     if args.no_log_prefix {
-        deprecation_warnings.push("`--no-log-prefix` is deprecated. Use `--no-prefix` instead.".to_string());
+        warnings.push("`--no-log-prefix` is deprecated. Use `--no-prefix` instead.".to_string());
     }
 
     let quit_on_done = !args.watch && root.ui != UI::Tui;
     let runner_fut = tokio_spawn!("runner", async move {
         let result = runner.start(&app_tx, quit_on_done).await;
-        if result.is_ok() {
-            if let Some(gantt_path) = root.gantt_file {
-                if let Ok(gantt) = runner.gantt() {
-                    save_gantt_chart(&gantt, &gantt_path);
-                }
-            }
-        }
-        result
+        (result, runner.gantt())
     });
-    runner_fut.await??;
+    let (runner_result, gantt) = runner_fut.await?;
+    // Written even if the runner failed, as that is when the chart is wanted the most
+    if let Some(path) = root.gantt_file {
+        if let Err(e) = fs::write(&path, gantt) {
+            warnings.push(format!("failed to write Gantt chart file {:?}: {}", path, e));
+        }
+    }
+    runner_result?;
     let exit_code = app_fut.await?;
 
-    // Print deprecation warnings after UI cleanup so they are visible to the user
-    for warning in &deprecation_warnings {
+    // Print warnings after UI cleanup so they are visible to the user
+    for warning in &warnings {
         eprintln!("{} {}", BOLD_YELLOW.apply_to("warning:"), warning);
     }
 
@@ -353,19 +351,6 @@ fn project_task_lines(project: &ProjectConfig) -> Vec<String> {
         ret.push(format!("  • {}", BOLD_YELLOW.apply_to(v.name.clone())));
     }
     ret
-}
-
-fn save_gantt_chart(gantt: &str, path: &str) {
-    let mut file = match File::create(path) {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!("Failed to create gantt chart file: {:?}", e);
-            return;
-        }
-    };
-    if file.write_all(gantt.as_bytes()).is_err() {
-        eprintln!("failed to write gantt chart file");
-    }
 }
 
 #[cfg(test)]
