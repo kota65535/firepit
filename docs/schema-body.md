@@ -106,15 +106,23 @@ log:
 
 ### projects
 
-- **Type:** <code>Map&lt;string, string&gt;</code>
+- **Type:** <code><a href="#projectsconfig">ProjectsConfig</a></code>
 - **Required:** no
 - **Default:** `{}`
-- **Template:** no
 - **Description:** Child projects. Valid only in a root project config.
 ```yaml
 projects:
   client: packages/client
   server: packages/server
+```
+A list can mix globs, paths, and project names to paths.
+A glob or a path takes the directory name as the project name, and a glob matches only
+directories with a config file.
+```yaml
+projects:
+  - packages/*
+  - tools/cli
+  - www: apps/website
 ```
 
 ### shell
@@ -483,6 +491,16 @@ task, `debug` and below the internals.
 - **Required:** no
 - **Default:** `20`
 - **Description:** Timeout in seconds
+
+## ProjectEntryConfig
+
+- **Type:** <code>string | Map&lt;string, string&gt;</code>
+- **Template:** no
+
+## ProjectsConfig
+
+- **Type:** <code>Map&lt;string, string&gt; | Array&lt;<a href="#projectentryconfig">ProjectEntryConfig</a>&gt;</code>
+- **Template:** no
 
 ## Restart
 

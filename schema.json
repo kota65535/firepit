@@ -73,11 +73,8 @@
       }
     },
     "projects": {
-      "description": "Child projects. Valid only in a root project config.\n```yaml\nprojects:\n  client: packages/client\n  server: packages/server\n```",
-      "type": "object",
-      "additionalProperties": {
-        "type": "string"
-      },
+      "description": "Child projects. Valid only in a root project config.\n```yaml\nprojects:\n  client: packages/client\n  server: packages/server\n```\nA list can mix globs, paths, and project names to paths.\nA glob or a path takes the directory name as the project name, and a glob matches only\ndirectories with a config file.\n```yaml\nprojects:\n  - packages/*\n  - tools/cli\n  - www: apps/website\n```",
+      "$ref": "#/$defs/ProjectsConfig",
       "default": {}
     },
     "shell": {
@@ -500,6 +497,39 @@
       },
       "required": [
         "log"
+      ]
+    },
+    "ProjectEntryConfig": {
+      "anyOf": [
+        {
+          "description": "Glob or path",
+          "type": "string"
+        },
+        {
+          "description": "Project name to path",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "ProjectsConfig": {
+      "anyOf": [
+        {
+          "description": "Project names to paths",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "Globs, paths, or project names to paths",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProjectEntryConfig"
+          }
+        }
       ]
     },
     "Restart": {
