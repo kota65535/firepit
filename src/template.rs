@@ -12,7 +12,7 @@ use async_recursion::async_recursion;
 use indexmap::IndexMap;
 use serde_json::Value as JsonValue;
 use serde_yaml::Value;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -537,6 +537,15 @@ impl ConfigRenderer {
             task_contexts.extend(child_task_contexts);
         }
 
+        let projects = self.root_config.projects.keys().cloned().collect::<HashSet<_>>();
+        for t in root_config
+            .tasks
+            .values_mut()
+            .chain(child_configs.values_mut().flat_map(|c| c.tasks.values_mut()))
+        {
+            t.resolve_refs(&projects);
+        }
+
         tasks.sort();
         for t in tasks.iter() {
             Self::render_variant_tasks(
@@ -775,6 +784,7 @@ impl ConfigRenderer {
 
         // Render
         let mut rendered_variant_task = variant_task.render(&variant_context, cache).await?;
+        rendered_variant_task.resolve_refs(&raw_root_config.projects.keys().cloned().collect());
 
         debug!(
             "Variant?: {:?}, dependent: {:?}\ncontext: {:#?}\nvars: {:#?}",

@@ -475,7 +475,7 @@ impl Project {
     }
 
     pub fn task(&self, name: &str) -> Option<Task> {
-        self.tasks.get(&Task::qualified_name(&self.name, name)).cloned()
+        self.tasks.get(&Task::full_name(&self.name, name)).cloned()
     }
 }
 
@@ -706,7 +706,7 @@ impl Task {
             anyhow::bail!("Task name must not contain '#'. Found: {:?}", task_name)
         }
 
-        let task_name = Task::qualified_name(project_name, task_name);
+        let task_name = Task::full_name(project_name, task_name);
         // What building the task has to say belongs in that task's pane
         let span = tracing::error_span!("task", name = task_name);
         let _guard = span.enter();
@@ -794,14 +794,14 @@ impl Task {
         };
 
         Ok(Self {
-            name: Task::qualified_name(project_name, &task_name),
-            orig_name: Task::qualified_name(project_name, &task_config.orig_name),
+            name: task_name.clone(),
+            orig_name: Task::full_name(project_name, &task_config.orig_name),
             // Default to the original name so that task variants do not expose their internal
             // suffix (-1, -2, ...) in the UI
             label: task_config
                 .label
                 .clone()
-                .unwrap_or_else(|| Task::qualified_name(project_name, &task_config.orig_name)),
+                .unwrap_or_else(|| Task::full_name(project_name, &task_config.orig_name)),
             command: task_config.command.clone().unwrap_or("".to_string()),
             shell: task_shell.command,
             shell_args: task_shell.args,
@@ -881,16 +881,24 @@ impl Task {
             .map(|(p, t)| format!("{}{}{}", p, Self::SEP, t))
     }
 
+    /// Full name of a task of the project. Unlike [`Self::qualified_name`] it never takes the name
+    /// for qualified already, since a task name may contain `:`.
+    pub fn full_name(project_name: &str, task_name: &str) -> String {
+        format!("{}{}{}", project_name, Self::SEP, task_name)
+    }
+
     /// Qualifies a task name with the project name unless it is already qualified.
     /// A reference in the deprecated `project#task` form is converted to `project:task`.
     pub fn qualified_name(project_name: &str, task_name: &str) -> String {
         if let Some(name) = Self::from_legacy(task_name) {
             return name;
         }
-        if task_name.contains(Self::SEP) {
+        // Whether a template names a project is only known once it is rendered, so it is left to
+        // `TaskConfig::resolve_refs`
+        if task_name.contains(Self::SEP) || task_name.contains("{{") {
             task_name.to_string()
         } else {
-            format!("{}{}{}", project_name, Self::SEP, task_name)
+            Self::full_name(project_name, task_name)
         }
     }
 

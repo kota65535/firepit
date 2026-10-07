@@ -1755,3 +1755,38 @@ async fn test_stderr_separation() {
     assert_eq!(vec!["out"], stdout_lines);
     assert_eq!(vec!["err"], stderr_lines);
 }
+
+#[tokio::test]
+async fn test_colon_name() {
+    setup();
+    let path = BASE_PATH.join("colon_name");
+
+    for target in ["literal", "template"] {
+        let mut statuses = HashMap::new();
+        statuses.insert(String::from("foo:build"), String::from("Finished: Success"));
+        statuses.insert(String::from(":build:watch"), String::from("Finished: Success"));
+        statuses.insert(format!(":{}", target), String::from("Finished: Success"));
+
+        let mut outputs = HashMap::new();
+        outputs.insert(String::from("foo:build"), String::from("foo build"));
+        outputs.insert(String::from(":build:watch"), String::from("root build:watch"));
+        outputs.insert(format!(":{}", target), String::from(target));
+
+        run_task(&path, vec![String::from(target)], statuses, Some(outputs), false)
+            .await
+            .unwrap();
+    }
+
+    // A task of a child project whose name contains `:`
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("foo:x:y"), String::from("Finished: Success"));
+    statuses.insert(String::from("foo:local"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("foo:x:y"), String::from("foo x:y"));
+    outputs.insert(String::from("foo:local"), String::from("local"));
+
+    run_task(&path, vec![String::from("foo:local")], statuses, Some(outputs), false)
+        .await
+        .unwrap();
+}

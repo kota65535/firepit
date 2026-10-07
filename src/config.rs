@@ -240,7 +240,6 @@ impl ProjectConfig {
             &root_config.dir.as_os_str().to_str().unwrap_or(""),
         );
 
-        let project_names = root_config.projects.keys().cloned().collect::<HashSet<_>>();
         if root_config.is_root() {
             // Multi project
             for (name, path) in &root_config.projects {
@@ -263,37 +262,9 @@ impl ProjectConfig {
         root_config = root_config.merge(&context)?;
         root_config.apply_defaults()?;
 
-        for config in iter::once(&mut root_config).chain(children.values_mut()) {
-            config.resolve_task_refs(&project_names);
-        }
         Self::check_name_collisions(&root_config, &children)?;
 
         Ok((root_config, children))
-    }
-
-    /// Resolves task references containing `:` that were left unqualified by
-    /// [`Task::qualified_name`] because they look like `project:task`.
-    /// If the project does not exist, the reference is a task name containing `:`,
-    /// so it is qualified with the referring project.
-    fn resolve_task_refs(&mut self, project_names: &HashSet<String>) {
-        let project = self.name.clone();
-        let resolve = |t: &str| -> String {
-            match Task::split_name(t) {
-                (Some(p), _) if !p.is_empty() && !project_names.contains(p) => {
-                    format!("{}{}{}", project, Task::SEP, t)
-                }
-                _ => t.to_string(),
-            }
-        };
-        for task in self.tasks.values_mut() {
-            task.depends_on = task.depends_on.iter().map(|d| d.with_task(resolve(d.task()))).collect();
-            task.wait_for = task.wait_for.iter().map(|w| w.with_task(resolve(w.task()))).collect();
-            task.finalized_by = task
-                .finalized_by
-                .iter()
-                .map(|f| f.with_task(resolve(f.task())))
-                .collect();
-        }
     }
 
     /// Full task names must be unique. A project or task name containing `:` may collide with
@@ -845,8 +816,28 @@ pub struct TaskConfig {
 }
 
 impl TaskConfig {
+    /// Qualifies the task references with the project of this task once they are rendered.
+    /// `a:b` names task `b` of project `a` if the project exists, and otherwise a task of this
+    /// project named `a:b`, which [`Task::qualified_name`] cannot tell apart on its own.
+    pub fn resolve_refs(&mut self, projects: &HashSet<String>) {
+        let resolve = |t: &str| -> String {
+            let t = Task::qualified_name(&self.project, t);
+            match Task::split_name(&t) {
+                (Some(p), _) if !p.is_empty() && !projects.contains(p) => Task::full_name(&self.project, &t),
+                _ => t,
+            }
+        };
+        self.depends_on = self.depends_on.iter().map(|d| d.with_task(resolve(d.task()))).collect();
+        self.wait_for = self.wait_for.iter().map(|w| w.with_task(resolve(w.task()))).collect();
+        self.finalized_by = self
+            .finalized_by
+            .iter()
+            .map(|f| f.with_task(resolve(f.task())))
+            .collect();
+    }
+
     pub fn full_name(&self) -> String {
-        format!("{}{}{}", self.project, Task::SEP, self.name)
+        Task::full_name(&self.project, &self.name)
     }
 
     pub fn is_service(&self) -> bool {
@@ -857,7 +848,7 @@ impl TaskConfig {
     }
 
     pub fn full_orig_name(&self) -> String {
-        format!("{}{}{}", self.project, Task::SEP, self.orig_name)
+        Task::full_name(&self.project, &self.orig_name)
     }
 
     pub fn working_dir_path(&self, dir: &Path) -> PathBuf {
