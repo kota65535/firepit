@@ -424,6 +424,22 @@ async fn test_render_ignores_empty_wait_for() {
     assert_eq!(wait_for_names(run), vec!["#setup"]);
 }
 
+#[tokio::test]
+async fn test_render_ignores_missing_optional_entries() {
+    let path = Path::new("tests/fixtures/config/render_optional_entries");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let mut renderer = ConfigRenderer::new(&root, &children, &IndexMap::new(), false);
+    let (root, children) = renderer.render().await.unwrap();
+    ProjectConfig::validate_multi(&root, &children).unwrap();
+
+    // A missing task or project is ignored, even with vars that would make a variant, while an
+    // existing one is kept
+    let run = children.get("foo").unwrap().tasks.get("run").unwrap();
+    assert_eq!(depends_on_names(run), vec!["bar#build", "foo#setup-1"]);
+    assert!(run.wait_for.is_empty());
+    assert!(run.finalized_by.is_empty());
+}
+
 #[test]
 fn test_defaults_stop_timeout() {
     let path = Path::new("tests/fixtures/config/defaults_stop_timeout");

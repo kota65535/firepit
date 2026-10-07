@@ -282,6 +282,13 @@ If omitted, all tasks are matched.
 - **Default:** `true`
 - **Description:** Whether the task restarts if this dependency task restarts.
 
+### optional
+
+- **Type:** <code>boolean</code>
+- **Required:** no
+- **Default:** `false`
+- **Description:** Whether to ignore this entry when the task does not exist, ex: on a project that lacks it.
+
 ### task
 
 - **Type:** <code>string</code>
@@ -429,6 +436,13 @@ Probe failure during that period will not be counted towards the maximum number 
 - **Template:** yes
 
 ## FinalizedByConfigStruct
+
+### optional
+
+- **Type:** <code>boolean</code>
+- **Required:** no
+- **Default:** `false`
+- **Description:** Whether to ignore this entry when the task does not exist, ex: on a project that lacks it.
 
 ### task
 
@@ -742,6 +756,13 @@ variable), otherwise an object with `type` is a typed declaration.
 - **Template:** yes
 
 ## WaitForConfigStruct
+
+### optional
+
+- **Type:** <code>boolean</code>
+- **Required:** no
+- **Default:** `false`
+- **Description:** Whether to ignore this entry when the task does not exist, ex: on a project that lacks it.
 
 ### task
 

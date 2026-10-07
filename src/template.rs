@@ -420,6 +420,7 @@ impl TaskConfig {
                             task,
                             vars,
                             cascade: dep.cascade,
+                            optional: dep.optional,
                         }));
                     }
                 }
@@ -439,7 +440,11 @@ impl TaskConfig {
                 WaitForConfig::String(_) => rendered_wait_for.push(WaitForConfig::String(task)),
                 WaitForConfig::Struct(w) => {
                     let vars = render_dep_vars(&w.vars, &mut tera, context)?;
-                    rendered_wait_for.push(WaitForConfig::Struct(WaitForConfigStruct { task, vars }));
+                    rendered_wait_for.push(WaitForConfig::Struct(WaitForConfigStruct {
+                        task,
+                        vars,
+                        optional: w.optional,
+                    }));
                 }
             }
         }
@@ -457,7 +462,11 @@ impl TaskConfig {
                 FinalizedByConfig::String(_) => rendered_finalized_by.push(FinalizedByConfig::String(task)),
                 FinalizedByConfig::Struct(f) => {
                     let vars = render_dep_vars(&f.vars, &mut tera, context)?;
-                    rendered_finalized_by.push(FinalizedByConfig::Struct(FinalizedByConfigStruct { task, vars }));
+                    rendered_finalized_by.push(FinalizedByConfig::Struct(FinalizedByConfigStruct {
+                        task,
+                        vars,
+                        optional: f.optional,
+                    }));
                 }
             }
         }
@@ -639,6 +648,18 @@ impl ConfigRenderer {
         );
 
         let mut task_config = task_config.clone();
+
+        // Dropped before a missing task is looked up to make a variant, or reported by validation
+        let exists = |name: &str| Self::get_task(name, raw_root_config, raw_child_configs).is_some();
+        task_config
+            .depends_on
+            .retain(|d| !matches!(d, DependsOnConfig::Struct(s) if s.optional && !exists(&s.task)));
+        task_config
+            .wait_for
+            .retain(|w| !matches!(w, WaitForConfig::Struct(s) if s.optional && !exists(&s.task)));
+        task_config
+            .finalized_by
+            .retain(|f| !matches!(f, FinalizedByConfig::Struct(s) if s.optional && !exists(&s.task)));
 
         // Render task variants.
         // When a dependency task is specified with vars, it is considered as a different task.
