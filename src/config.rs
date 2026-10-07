@@ -822,9 +822,9 @@ impl TaskConfig {
     pub fn resolve_refs(&mut self, projects: &HashSet<String>) {
         let resolve = |t: &str| -> String {
             let t = Task::qualified_name(&self.project, t);
-            match Task::split_name(&t) {
-                (Some(p), _) if !p.is_empty() && !projects.contains(p) => Task::full_name(&self.project, &t),
-                _ => t,
+            match Task::split_name(&t, projects.iter().map(String::as_str)) {
+                Some(_) => t,
+                None => Task::full_name(&self.project, &t),
             }
         };
         self.depends_on = self.depends_on.iter().map(|d| d.with_task(resolve(d.task()))).collect();

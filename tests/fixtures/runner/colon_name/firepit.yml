@@ -2,9 +2,10 @@
 # otherwise, also when the reference is a template
 projects:
   foo: foo
+  a:b: ab
 
 vars:
-  project_task: foo:build
+  target: foo
   colon_task: build:watch
 
 tasks:
@@ -18,5 +19,9 @@ tasks:
   template:
     command: echo "template"
     depends_on:
-      - "{{ project_task }}"
+      - "{{ target }}:build"
       - "{{ colon_task }}"
+  colon_project:
+    command: echo "colon_project"
+    depends_on:
+      - a:b:c

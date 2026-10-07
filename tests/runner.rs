@@ -1777,6 +1777,25 @@ async fn test_colon_name() {
             .unwrap();
     }
 
+    // A task of a project whose name contains `:`
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("a:b:c"), String::from("Finished: Success"));
+    statuses.insert(String::from(":colon_project"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("a:b:c"), String::from("a:b c"));
+    outputs.insert(String::from(":colon_project"), String::from("colon_project"));
+
+    run_task(
+        &path,
+        vec![String::from("colon_project")],
+        statuses,
+        Some(outputs),
+        false,
+    )
+    .await
+    .unwrap();
+
     // A task of a child project whose name contains `:`
     let mut statuses = HashMap::new();
     statuses.insert(String::from("foo:x:y"), String::from("Finished: Success"));

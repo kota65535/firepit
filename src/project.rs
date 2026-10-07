@@ -51,9 +51,9 @@ impl Workspace {
             let task = task.as_str();
             // `foo:build` is project foo's task `build` if project foo exists,
             // otherwise it is a task named `foo:build`.
-            let (project_name, task_name) = match Task::split_name(task) {
-                (Some(p), t) if p.is_empty() || child_configs.contains_key(p) => (Some(p), t),
-                _ => (None, task),
+            let (project_name, task_name) = match Task::split_name(task, child_configs.keys().map(String::as_str)) {
+                Some((p, t)) => (Some(p), t),
+                None => (None, task),
             };
             match project_name {
                 // Full name
@@ -165,10 +165,10 @@ impl Workspace {
         child_configs: &'a IndexMap<String, ProjectConfig>,
         name: &str,
     ) -> anyhow::Result<&'a TaskConfig> {
-        let (project_name, task_name) = Task::split_name(name);
-        match project_name {
-            Some("") | None => root_config.task(task_name),
-            Some(p) => child_configs
+        match Task::split_name(name, child_configs.keys().map(String::as_str)) {
+            Some(("", task_name)) => root_config.task(task_name),
+            None => root_config.task(name),
+            Some((p, task_name)) => child_configs
                 .get(p)
                 .with_context(|| format!("project {:?} is not defined", p))?
                 .task(task_name),
@@ -181,10 +181,10 @@ impl Workspace {
         child_configs: &'a mut IndexMap<String, ProjectConfig>,
         name: &str,
     ) -> anyhow::Result<&'a mut TaskConfig> {
-        let (project_name, task_name) = Task::split_name(name);
-        match project_name {
-            Some("") | None => root_config.task_mut(task_name),
-            Some(p) => child_configs
+        match Task::split_name(name, child_configs.keys().map(String::as_str)) {
+            Some(("", task_name)) => root_config.task_mut(task_name),
+            None => root_config.task_mut(name),
+            Some((p, task_name)) => child_configs
                 .get_mut(p)
                 .with_context(|| format!("project {:?} is not defined", p))?
                 .task_mut(task_name),
@@ -864,13 +864,23 @@ impl Task {
     /// Deprecated separator still accepted in task references and CLI arguments.
     pub const LEGACY_SEP: char = '#';
 
-    /// Splits a full task name into the project name and the task name.
-    /// The project name is `Some("")` for a root task and `None` for an unqualified name.
-    pub fn split_name(task_name: &str) -> (Option<&str>, &str) {
-        match task_name.split_once(Self::SEP) {
-            Some((p, t)) => (Some(p), t),
-            None => (None, task_name),
-        }
+    /// Splits a full task name into the project name, `""` for the root project, and the task name.
+    /// A project name may contain `:`, so the first `:` is not necessarily the separator: the longest
+    /// of the given project names that the full name starts with is taken.
+    pub fn split_name<'a, 'p>(
+        task_name: &'a str,
+        projects: impl IntoIterator<Item = &'p str>,
+    ) -> Option<(&'a str, &'a str)> {
+        projects
+            .into_iter()
+            .chain(std::iter::once(""))
+            .filter(|p| {
+                task_name
+                    .strip_prefix(p)
+                    .is_some_and(|rest| rest.starts_with(Self::SEP))
+            })
+            .max_by_key(|p| p.len())
+            .map(|p| (&task_name[..p.len()], &task_name[p.len() + 1..]))
     }
 
     /// Converts a task reference in the deprecated `project#task` form to `project:task`.
