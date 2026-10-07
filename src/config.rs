@@ -344,6 +344,7 @@ impl ProjectConfig {
                         task: Task::qualified_name(&data.name, &s.task),
                         vars: s.vars.clone(),
                         cascade: s.cascade,
+                        optional: s.optional,
                     }),
                 })
                 .collect();
@@ -527,6 +528,7 @@ impl ProjectConfig {
                                 task: Task::qualified_name(&self.name, &s.task),
                                 vars: s.vars.clone(),
                                 cascade: s.cascade,
+                                optional: s.optional,
                             }),
                         })
                         .collect(),
@@ -856,6 +858,9 @@ pub struct DependsOnConfigStruct {
     /// Whether the task restarts if this dependency task restarts.
     #[serde(default = "default_cascade")]
     pub cascade: bool,
+    /// Whether to ignore this entry when the task does not exist, ex: on a project that lacks it.
+    #[serde(default)]
+    pub optional: bool,
 }
 
 fn default_cascade() -> bool {
@@ -881,6 +886,9 @@ pub struct WaitForConfigStruct {
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
     pub vars: IndexMap<String, VarsConfig>,
+    /// Whether to ignore this entry when the task does not exist, ex: on a project that lacks it.
+    #[serde(default)]
+    pub optional: bool,
 }
 
 impl WaitForConfig {
@@ -905,6 +913,7 @@ impl WaitForConfig {
             WaitForConfig::Struct(s) => WaitForConfig::Struct(WaitForConfigStruct {
                 task,
                 vars: s.vars.clone(),
+                optional: s.optional,
             }),
         }
     }
@@ -928,6 +937,9 @@ pub struct FinalizedByConfigStruct {
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
     pub vars: IndexMap<String, VarsConfig>,
+    /// Whether to ignore this entry when the task does not exist, ex: on a project that lacks it.
+    #[serde(default)]
+    pub optional: bool,
 }
 
 impl FinalizedByConfig {
@@ -945,6 +957,7 @@ impl FinalizedByConfig {
             FinalizedByConfig::Struct(s) => FinalizedByConfig::Struct(FinalizedByConfigStruct {
                 task,
                 vars: s.vars.clone(),
+                optional: s.optional,
             }),
         }
     }

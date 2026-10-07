@@ -415,6 +415,23 @@ tasks:
       - compile
 ```
 
+### Optional Dependencies
+
+An entry of `depends_on`, `wait_for` or `finalized_by` with `optional: true` is ignored when the task does not exist, instead of being an error.
+This suits a dependency on a task that only some projects define.
+
+In this example, `build` of the `web` project runs `build` of the `ui` project first if the `ui` project defines one.
+
+```yaml
+# web/firepit.yml
+tasks:
+  build:
+    command: bun run build
+    depends_on:
+      - task: ui#build
+        optional: true
+```
+
 ### Finalizers
 
 The `finalized_by` field is the opposite of `depends_on`: the listed tasks are executed **after** the task finishes, whether it succeeds or fails.

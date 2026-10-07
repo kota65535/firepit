@@ -1,0 +1,27 @@
+tasks:
+  setup:
+    vars:
+      mode: prod
+    command: echo setup {{ mode }}
+
+  run:
+    command: echo run
+    depends_on:
+      - task: bar#build
+        optional: true
+      - task: baz#build
+        optional: true
+      - task: missing
+        optional: true
+        vars:
+          mode: dev
+      - task: setup
+        optional: true
+        vars:
+          mode: dev
+    wait_for:
+      - task: missing
+        optional: true
+    finalized_by:
+      - task: missing
+        optional: true
