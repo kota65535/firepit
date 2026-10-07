@@ -2,6 +2,7 @@ use assertables::assert_starts_with;
 use firepit::config::{DependsOnConfig, HealthCheckConfig, ProjectConfig, ServiceConfig, ShellConfig};
 use firepit::template::ConfigRenderer;
 use indexmap::IndexMap;
+use rstest::rstest;
 use std::path::Path;
 use std::sync::Once;
 use tracing_subscriber::EnvFilter;
@@ -190,13 +191,7 @@ fn test_bad_vars_nested_constraint() {
 }
 
 fn depends_on_names(task: &firepit::config::TaskConfig) -> Vec<String> {
-    task.depends_on
-        .iter()
-        .map(|d| match d {
-            DependsOnConfig::String(s) => s.clone(),
-            DependsOnConfig::Struct(s) => s.task.clone(),
-        })
-        .collect()
+    task.depends_on.iter().map(|d| d.task().to_string()).collect()
 }
 
 fn wait_for_names(task: &firepit::config::TaskConfig) -> Vec<String> {
@@ -438,6 +433,55 @@ async fn test_render_ignores_missing_optional_entries() {
     assert_eq!(depends_on_names(run), vec!["bar#build", "foo#setup-1"]);
     assert!(run.wait_for.is_empty());
     assert!(run.finalized_by.is_empty());
+}
+
+#[tokio::test]
+async fn test_render_template_entries() {
+    let path = Path::new("tests/fixtures/config/render_template_entries");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let mut renderer = ConfigRenderer::new(&root, &children, &IndexMap::new(), false);
+    let (_, children) = renderer.render().await.unwrap();
+    let foo = children.get("foo").unwrap();
+
+    // A single expression takes the value of the var, and the entries of `defaults` come first
+    let build = foo.tasks.get("build").unwrap();
+    assert_eq!(depends_on_names(build), vec!["bar#build", "foo#lint", "foo#clean"]);
+
+    // Each element is read as the entry written in its place: a struct keeps its fields, its vars
+    // make a variant, and a missing optional one is ignored
+    let test = foo.tasks.get("test").unwrap();
+    assert_eq!(
+        depends_on_names(test),
+        vec!["bar#build", "foo#lint", "foo#lint-1", "foo#lint"]
+    );
+    assert!(test.depends_on[..2]
+        .iter()
+        .all(|d| matches!(d, DependsOnConfig::Struct(s) if !s.cascade)));
+    assert!(test.wait_for.is_empty());
+    let finalized_by = test
+        .finalized_by
+        .iter()
+        .map(|f| f.task().to_string())
+        .collect::<Vec<_>>();
+    assert_eq!(finalized_by, vec!["foo#clean"]);
+
+    // The value of a var is not rendered again
+    let raw = foo.tasks.get("raw").unwrap();
+    assert_eq!(depends_on_names(raw), vec!["foo#{{ lint_task }}"]);
+}
+
+#[rstest]
+#[case::number("number", "failed to read 1")]
+#[case::dynamic_vars("dynamic_vars", "var \"A\" cannot be dynamic here")]
+#[case::invalid_yaml("invalid_yaml", "failed to read the rendered template")]
+#[tokio::test]
+async fn test_render_rejects_bad_template_entries(#[case] fixture: &str, #[case] expected: &str) {
+    let path = Path::new("tests/fixtures/config/render_template_entries_bad").join(fixture);
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
+    let mut renderer = ConfigRenderer::new(&root, &children, &IndexMap::new(), false);
+    let err = renderer.render().await.expect_err("should fail");
+    let msg = format!("{:#}", err);
+    assert!(msg.contains(expected), "{msg}");
 }
 
 #[test]

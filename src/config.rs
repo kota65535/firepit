@@ -338,15 +338,7 @@ impl ProjectConfig {
             v.depends_on = v
                 .depends_on
                 .iter()
-                .map(|d| match d {
-                    DependsOnConfig::String(s) => DependsOnConfig::String(Task::qualified_name(name, s)),
-                    DependsOnConfig::Struct(s) => DependsOnConfig::Struct(DependsOnConfigStruct {
-                        task: Task::qualified_name(&data.name, &s.task),
-                        vars: s.vars.clone(),
-                        cascade: s.cascade,
-                        optional: s.optional,
-                    }),
-                })
+                .map(|d| d.with_task(Task::qualified_name(name, d.task())))
                 .collect();
             v.wait_for = v
                 .wait_for
@@ -522,15 +514,7 @@ impl ProjectConfig {
                     depends_on: d
                         .depends_on
                         .iter()
-                        .map(|dep| match dep {
-                            DependsOnConfig::String(s) => DependsOnConfig::String(Task::qualified_name(&self.name, s)),
-                            DependsOnConfig::Struct(s) => DependsOnConfig::Struct(DependsOnConfigStruct {
-                                task: Task::qualified_name(&self.name, &s.task),
-                                vars: s.vars.clone(),
-                                cascade: s.cascade,
-                                optional: s.optional,
-                            }),
-                        })
+                        .map(|dep| dep.with_task(Task::qualified_name(&self.name, dep.task())))
                         .collect(),
                     wait_for: d
                         .wait_for
@@ -698,9 +682,16 @@ pub struct TaskConfig {
     #[serde(skip)]
     pub context: Option<std::sync::Arc<tera::Context>>,
 
-    /// Dependency tasks
-    #[serde(default)]
-    #[schemars(extend("x-template" = true))]
+    /// Dependency tasks.
+    /// Write a template instead of the list to render the list from vars.
+    /// ```yaml
+    /// depends_on: |
+    ///   {% for p in packages %}
+    ///   - {{ p }}#build
+    ///   {% endfor %}
+    /// ```
+    #[serde(default, deserialize_with = "deserialize_entries")]
+    #[schemars(with = "TaskEntries<DependsOnConfig>", extend("x-template" = true))]
     pub depends_on: Vec<DependsOnConfig>,
 
     /// Tasks to run after, without depending on them.
@@ -716,8 +707,8 @@ pub struct TaskConfig {
     ///     vars:
     ///       database: app
     /// ```
-    #[serde(default)]
-    #[schemars(extend("x-template" = true))]
+    #[serde(default, deserialize_with = "deserialize_entries")]
+    #[schemars(with = "TaskEntries<WaitForConfig>", extend("x-template" = true))]
     pub wait_for: Vec<WaitForConfig>,
 
     /// Tasks to run after this task finishes, whether it succeeds or fails.
@@ -731,8 +722,8 @@ pub struct TaskConfig {
     ///     vars:
     ///       channel: ci
     /// ```
-    #[serde(default)]
-    #[schemars(extend("x-template" = true))]
+    #[serde(default, deserialize_with = "deserialize_entries")]
+    #[schemars(with = "TaskEntries<FinalizedByConfig>", extend("x-template" = true))]
     pub finalized_by: Vec<FinalizedByConfig>,
 
     /// Tasks this task finalizes, filled per run by the workspace: those whose `finalized_by` lists
@@ -833,6 +824,10 @@ pub struct LogConfig {
 pub enum DependsOnConfig {
     String(String),
     Struct(DependsOnConfigStruct),
+    /// A template rendering the entries, written in place of the list.
+    /// Made only by `deserialize_entries`, and rendered away with the task.
+    #[serde(skip)]
+    Template(String),
 }
 
 impl DependsOnConfig {
@@ -840,7 +835,29 @@ impl DependsOnConfig {
         match self {
             DependsOnConfig::String(s) => s,
             DependsOnConfig::Struct(s) => &s.task,
+            DependsOnConfig::Template(t) => t,
         }
+    }
+
+    /// Returns a copy of this entry with the task name replaced.
+    /// A template is kept as is, since it names its tasks only once rendered.
+    pub fn with_task(&self, task: String) -> Self {
+        match self {
+            DependsOnConfig::String(_) => DependsOnConfig::String(task),
+            DependsOnConfig::Struct(s) => DependsOnConfig::Struct(DependsOnConfigStruct {
+                task,
+                vars: s.vars.clone(),
+                cascade: s.cascade,
+                optional: s.optional,
+            }),
+            DependsOnConfig::Template(t) => DependsOnConfig::Template(t.clone()),
+        }
+    }
+}
+
+impl TaskEntry for DependsOnConfig {
+    fn template(template: String) -> Self {
+        DependsOnConfig::Template(template)
     }
 }
 
@@ -873,6 +890,10 @@ fn default_cascade() -> bool {
 pub enum WaitForConfig {
     String(String),
     Struct(WaitForConfigStruct),
+    /// A template rendering the entries, written in place of the list.
+    /// Made only by `deserialize_entries`, and rendered away with the task.
+    #[serde(skip)]
+    Template(String),
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
@@ -896,17 +917,19 @@ impl WaitForConfig {
         match self {
             WaitForConfig::String(s) => s,
             WaitForConfig::Struct(s) => &s.task,
+            WaitForConfig::Template(t) => t,
         }
     }
 
     pub fn vars(&self) -> Option<&IndexMap<String, VarsConfig>> {
         match self {
-            WaitForConfig::String(_) => None,
+            WaitForConfig::String(_) | WaitForConfig::Template(_) => None,
             WaitForConfig::Struct(s) => Some(&s.vars),
         }
     }
 
     /// Returns a copy of this entry with the task name replaced.
+    /// A template is kept as is, since it names its tasks only once rendered.
     pub fn with_task(&self, task: String) -> Self {
         match self {
             WaitForConfig::String(_) => WaitForConfig::String(task),
@@ -915,7 +938,14 @@ impl WaitForConfig {
                 vars: s.vars.clone(),
                 optional: s.optional,
             }),
+            WaitForConfig::Template(t) => WaitForConfig::Template(t.clone()),
         }
+    }
+}
+
+impl TaskEntry for WaitForConfig {
+    fn template(template: String) -> Self {
+        WaitForConfig::Template(template)
     }
 }
 
@@ -925,6 +955,10 @@ impl WaitForConfig {
 pub enum FinalizedByConfig {
     String(String),
     Struct(FinalizedByConfigStruct),
+    /// A template rendering the entries, written in place of the list.
+    /// Made only by `deserialize_entries`, and rendered away with the task.
+    #[serde(skip)]
+    Template(String),
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
@@ -947,10 +981,12 @@ impl FinalizedByConfig {
         match self {
             FinalizedByConfig::String(s) => s,
             FinalizedByConfig::Struct(s) => &s.task,
+            FinalizedByConfig::Template(t) => t,
         }
     }
 
     /// Returns a copy of this entry with the task name replaced.
+    /// A template is kept as is, since it names its tasks only once rendered.
     pub fn with_task(&self, task: String) -> Self {
         match self {
             FinalizedByConfig::String(_) => FinalizedByConfig::String(task),
@@ -959,7 +995,14 @@ impl FinalizedByConfig {
                 vars: s.vars.clone(),
                 optional: s.optional,
             }),
+            FinalizedByConfig::Template(t) => FinalizedByConfig::Template(t.clone()),
         }
+    }
+}
+
+impl TaskEntry for FinalizedByConfig {
+    fn template(template: String) -> Self {
+        FinalizedByConfig::Template(template)
     }
 }
 
@@ -1272,13 +1315,13 @@ pub struct DefaultsConfig {
     pub env_files: Vec<String>,
 
     /// Dependency tasks
-    #[serde(default)]
-    #[schemars(extend("x-template" = true))]
+    #[serde(default, deserialize_with = "deserialize_entries")]
+    #[schemars(with = "TaskEntries<DependsOnConfig>", extend("x-template" = true))]
     pub depends_on: Vec<DependsOnConfig>,
 
     /// Tasks to run after, without depending on them
-    #[serde(default)]
-    #[schemars(extend("x-template" = true))]
+    #[serde(default, deserialize_with = "deserialize_entries")]
+    #[schemars(with = "TaskEntries<WaitForConfig>", extend("x-template" = true))]
     pub wait_for: Vec<WaitForConfig>,
 
     /// Service configurations
@@ -1304,6 +1347,53 @@ pub enum UI {
     Cui,
     #[serde(rename = "tui")]
     Tui,
+}
+
+/// An entry of a list of tasks: `depends_on`, `wait_for` or `finalized_by`.
+pub trait TaskEntry {
+    /// Makes the entry standing for a template written in place of the list.
+    fn template(template: String) -> Self;
+}
+
+// Only describes the schema, see `deserialize_entries`
+/// A list of tasks, or a template rendering it.
+#[derive(JsonSchema)]
+#[serde(untagged)]
+#[schemars(rename = "{T}List")]
+#[allow(dead_code)]
+enum TaskEntries<T> {
+    List(Vec<T>),
+    /// A template rendering a YAML list of the entries.
+    /// A single `{{ ... }}` takes the value of the expression instead, such as an array var.
+    Template(String),
+}
+
+/// Deserializes a list of tasks, or a template rendering it into a single
+/// [`TaskEntry::template`] entry, which keeps its place among the entries of `defaults`.
+pub(crate) fn deserialize_entries<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de> + TaskEntry,
+{
+    struct EntriesVisitor<T>(std::marker::PhantomData<T>);
+
+    impl<'de, T: Deserialize<'de> + TaskEntry> de::Visitor<'de> for EntriesVisitor<T> {
+        type Value = Vec<T>;
+
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("a list of tasks or a template rendering it")
+        }
+
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+            Ok(vec![T::template(v.to_string())])
+        }
+
+        fn visit_seq<A: de::SeqAccess<'de>>(self, seq: A) -> Result<Self::Value, A::Error> {
+            Vec::deserialize(de::value::SeqAccessDeserializer::new(seq))
+        }
+    }
+
+    deserializer.deserialize_any(EntriesVisitor(std::marker::PhantomData))
 }
 
 /// Deserializes IndexMap while converting number to string, which is the default behavior.

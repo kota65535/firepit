@@ -1,0 +1,50 @@
+vars:
+  deps:
+    type: array
+    default: ["bar#build", lint]
+  none:
+    type: array
+    default: []
+  raw:
+    type: array
+    default: '{% raw %}["{{ lint_task }}"]{% endraw %}'
+  lint_task: lint
+
+defaults:
+  - tasks: "^build$"
+    depends_on: "{{ deps }}"
+
+tasks:
+  lint:
+    vars:
+      mode: prod
+    command: echo lint {{ mode }}
+
+  clean:
+    command: echo clean
+
+  build:
+    command: echo build
+    depends_on:
+      - clean
+
+  test:
+    command: echo test
+    depends_on: |
+      {% for d in deps %}
+      - task: "{{ d }}"
+        cascade: false
+      {% endfor %}
+      - task: lint
+        vars:
+          mode: dev
+      - task: missing
+        optional: true
+      - "{{ lint_task }}"
+    wait_for: "{{ none }}"
+    finalized_by: |
+      - clean
+
+  raw:
+    command: echo raw
+    depends_on: "{{ raw }}"

@@ -1,0 +1,8 @@
+tasks:
+  setup:
+    command: echo setup
+
+  run:
+    command: echo run
+    depends_on: |
+      - [setup

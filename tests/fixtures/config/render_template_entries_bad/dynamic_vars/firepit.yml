@@ -1,0 +1,13 @@
+tasks:
+  setup:
+    vars:
+      A: ""
+    command: echo setup {{ A }}
+
+  run:
+    command: echo run
+    depends_on: |
+      - task: setup
+        vars:
+          A:
+            command: echo 1
