@@ -183,7 +183,7 @@ working_dir: src
 
 ### depends_on
 
-- **Type:** <code>Array&lt;<a href="#dependsonconfig">DependsOnConfig</a>&gt;</code>
+- **Type:** <code><a href="#dependsonconfiglist">DependsOnConfigList</a></code>
 - **Required:** no
 - **Default:** `[]`
 - **Description:** Dependency tasks
@@ -256,7 +256,7 @@ If omitted, all tasks are matched.
 
 ### wait_for
 
-- **Type:** <code>Array&lt;<a href="#waitforconfig">WaitForConfig</a>&gt;</code>
+- **Type:** <code><a href="#waitforconfiglist">WaitForConfigList</a></code>
 - **Required:** no
 - **Default:** `[]`
 - **Description:** Tasks to run after, without depending on them
@@ -272,6 +272,12 @@ If omitted, all tasks are matched.
 
 - **Type:** <code>string | <a href="#dependsonconfigstruct">DependsOnConfigStruct</a></code>
 - **Template:** yes
+
+## DependsOnConfigList
+
+- **Type:** <code>Array&lt;<a href="#dependsonconfig">DependsOnConfig</a>&gt; | string</code>
+- **Template:** no
+- **Description:** A list of tasks, or a template rendering it.
 
 ## DependsOnConfigStruct
 
@@ -435,6 +441,12 @@ Probe failure during that period will not be counted towards the maximum number 
 - **Type:** <code>string | <a href="#finalizedbyconfigstruct">FinalizedByConfigStruct</a></code>
 - **Template:** yes
 
+## FinalizedByConfigList
+
+- **Type:** <code>Array&lt;<a href="#finalizedbyconfig">FinalizedByConfig</a>&gt; | string</code>
+- **Template:** no
+- **Description:** A list of tasks, or a template rendering it.
+
 ## FinalizedByConfigStruct
 
 ### optional
@@ -552,10 +564,17 @@ task, `debug` and below the internals.
 
 ### depends_on
 
-- **Type:** <code>Array&lt;<a href="#dependsonconfig">DependsOnConfig</a>&gt;</code>
+- **Type:** <code><a href="#dependsonconfiglist">DependsOnConfigList</a></code>
 - **Required:** no
 - **Default:** `[]`
-- **Description:** Dependency tasks
+- **Description:** Dependency tasks.
+Write a template instead of the list to render the list from vars.
+```yaml
+depends_on: |
+  {% for p in packages %}
+  - {{ p }}#build
+  {% endfor %}
+```
 
 ### description
 
@@ -582,7 +601,7 @@ task, `debug` and below the internals.
 
 ### finalized_by
 
-- **Type:** <code>Array&lt;<a href="#finalizedbyconfig">FinalizedByConfig</a>&gt;</code>
+- **Type:** <code><a href="#finalizedbyconfiglist">FinalizedByConfigList</a></code>
 - **Required:** no
 - **Default:** `[]`
 - **Description:** Tasks to run after this task finishes, whether it succeeds or fails.
@@ -660,7 +679,7 @@ the CLI argument or the dependent task's `depends_on.vars`.
 
 ### wait_for
 
-- **Type:** <code>Array&lt;<a href="#waitforconfig">WaitForConfig</a>&gt;</code>
+- **Type:** <code><a href="#waitforconfiglist">WaitForConfigList</a></code>
 - **Required:** no
 - **Default:** `[]`
 - **Description:** Tasks to run after, without depending on them.
@@ -754,6 +773,12 @@ variable), otherwise an object with `type` is a typed declaration.
 
 - **Type:** <code>string | <a href="#waitforconfigstruct">WaitForConfigStruct</a></code>
 - **Template:** yes
+
+## WaitForConfigList
+
+- **Type:** <code>Array&lt;<a href="#waitforconfig">WaitForConfig</a>&gt; | string</code>
+- **Template:** no
+- **Description:** A list of tasks, or a template rendering it.
 
 ## WaitForConfigStruct
 

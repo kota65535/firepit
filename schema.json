@@ -128,11 +128,8 @@
       "properties": {
         "depends_on": {
           "description": "Dependency tasks",
-          "type": "array",
+          "$ref": "#/$defs/DependsOnConfigList",
           "default": [],
-          "items": {
-            "$ref": "#/$defs/DependsOnConfig"
-          },
           "x-template": true
         },
         "env": {
@@ -222,11 +219,8 @@
         },
         "wait_for": {
           "description": "Tasks to run after, without depending on them",
-          "type": "array",
+          "$ref": "#/$defs/WaitForConfigList",
           "default": [],
-          "items": {
-            "$ref": "#/$defs/WaitForConfig"
-          },
           "x-template": true
         },
         "working_dir": {
@@ -249,6 +243,21 @@
         }
       ],
       "x-template": true
+    },
+    "DependsOnConfigList": {
+      "description": "A list of tasks, or a template rendering it.",
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DependsOnConfig"
+          }
+        },
+        {
+          "description": "A template rendering a YAML list of the entries.\nA single `{{ ... }}` takes the value of the expression instead, such as an array var.",
+          "type": "string"
+        }
+      ]
     },
     "DependsOnConfigStruct": {
       "type": "object",
@@ -438,6 +447,21 @@
       ],
       "x-template": true
     },
+    "FinalizedByConfigList": {
+      "description": "A list of tasks, or a template rendering it.",
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FinalizedByConfig"
+          }
+        },
+        {
+          "description": "A template rendering a YAML list of the entries.\nA single `{{ ... }}` takes the value of the expression instead, such as an array var.",
+          "type": "string"
+        }
+      ]
+    },
     "FinalizedByConfigStruct": {
       "type": "object",
       "properties": {
@@ -591,12 +615,9 @@
           "x-template": true
         },
         "depends_on": {
-          "description": "Dependency tasks",
-          "type": "array",
+          "description": "Dependency tasks.\nWrite a template instead of the list to render the list from vars.\n```yaml\ndepends_on: |\n  {% for p in packages %}\n  - {{ p }}#build\n  {% endfor %}\n```",
+          "$ref": "#/$defs/DependsOnConfigList",
           "default": [],
-          "items": {
-            "$ref": "#/$defs/DependsOnConfig"
-          },
           "x-template": true
         },
         "description": {
@@ -626,11 +647,8 @@
         },
         "finalized_by": {
           "description": "Tasks to run after this task finishes, whether it succeeds or fails.\nThey run only when this task is part of the run (as a target or a dependency), so running a\nfinalizer on its own does not run the task it finalizes.\nWrite an entry in object form to override the finalizer's `vars`, as with `depends_on`.\n```yaml\nfinalized_by:\n  - db-down\n  - task: notify\n    vars:\n      channel: ci\n```",
-          "type": "array",
+          "$ref": "#/$defs/FinalizedByConfigList",
           "default": [],
-          "items": {
-            "$ref": "#/$defs/FinalizedByConfig"
-          },
           "x-template": true
         },
         "inputs": {
@@ -699,11 +717,8 @@
         },
         "wait_for": {
           "description": "Tasks to run after, without depending on them.\n\nUnlike `depends_on`, the listed tasks are not added to the run.\nThey only order this task after them when they are going to run anyway.\nNaming a task orders this one after every variant of it.\nWrite an entry in object form to wait only for the variants whose vars match the given ones.\n```yaml\nwait_for:\n  - lint\n  - task: migrate\n    vars:\n      database: app\n```",
-          "type": "array",
+          "$ref": "#/$defs/WaitForConfigList",
           "default": [],
-          "items": {
-            "$ref": "#/$defs/WaitForConfig"
-          },
           "x-template": true
         },
         "working_dir": {
@@ -796,6 +811,21 @@
         }
       ],
       "x-template": true
+    },
+    "WaitForConfigList": {
+      "description": "A list of tasks, or a template rendering it.",
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WaitForConfig"
+          }
+        },
+        {
+          "description": "A template rendering a YAML list of the entries.\nA single `{{ ... }}` takes the value of the expression instead, such as an array var.",
+          "type": "string"
+        }
+      ]
     },
     "WaitForConfigStruct": {
       "type": "object",
