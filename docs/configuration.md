@@ -775,6 +775,17 @@ tasks:
     command: bun install
 ```
 
+`projects` can also be a list of globs, paths, and project names to paths.
+A glob or a path takes the directory name as the project name.
+A glob matches only directories that have a `firepit.yml`, and does not support `**`.
+
+```yaml
+projects:
+  - packages/*
+  - tools/cli
+  - www: apps/website
+```
+
 Each `firepit.yml` in subprojects defines its own tasks.
 
 ::: code-group

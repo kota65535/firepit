@@ -300,7 +300,7 @@ fn print_summary(root: &ProjectConfig, children: &IndexMap<String, ProjectConfig
             lines.extend(project_task_lines(root));
             lines.push("".to_string());
             for c in children.values() {
-                let dir = root.projects.get(&c.name).cloned().unwrap_or_default();
+                let dir = c.dir.strip_prefix(&root.dir).unwrap_or(&c.dir).display();
                 lines.push("─".to_string());
                 lines.push(format!("{} {}", BOLD.apply_to("Project:  "), c.name));
                 lines.push(format!("{} {}", BOLD.apply_to("Directory:"), dir));
@@ -310,7 +310,7 @@ fn print_summary(root: &ProjectConfig, children: &IndexMap<String, ProjectConfig
         } else {
             // Show the current project's tasks only
             if let Some(c) = children.values().find(|v| cwd == v.dir) {
-                let dir = root.projects.get(&c.name).cloned().unwrap_or_default();
+                let dir = c.dir.strip_prefix(&root.dir).unwrap_or(&c.dir).display();
                 lines.push(format!("{} {}", BOLD.apply_to("Project:  "), c.name));
                 lines.push(format!("{} {}", BOLD.apply_to("Directory:"), dir));
                 lines.extend(project_task_lines(c));
