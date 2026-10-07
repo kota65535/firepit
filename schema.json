@@ -258,6 +258,11 @@
           "type": "boolean",
           "default": true
         },
+        "optional": {
+          "description": "Whether to ignore this entry when the task does not exist, ex: on a project that lacks it.",
+          "type": "boolean",
+          "default": false
+        },
         "task": {
           "description": "Dependency task name",
           "type": "string",
@@ -436,6 +441,11 @@
     "FinalizedByConfigStruct": {
       "type": "object",
       "properties": {
+        "optional": {
+          "description": "Whether to ignore this entry when the task does not exist, ex: on a project that lacks it.",
+          "type": "boolean",
+          "default": false
+        },
         "task": {
           "description": "Finalizer task name",
           "type": "string",
@@ -790,6 +800,11 @@
     "WaitForConfigStruct": {
       "type": "object",
       "properties": {
+        "optional": {
+          "description": "Whether to ignore this entry when the task does not exist, ex: on a project that lacks it.",
+          "type": "boolean",
+          "default": false
+        },
         "task": {
           "description": "Name of the task to wait for",
           "type": "string",
