@@ -5,6 +5,7 @@ use chrono::{DateTime, Local};
 #[derive(Debug)]
 struct Run {
     task: String,
+    label: String,
     start: DateTime<Local>,
     ready: Option<DateTime<Local>>,
     end: Option<(DateTime<Local>, TaskResult)>,
@@ -18,9 +19,10 @@ pub struct Timeline {
 
 impl Timeline {
     /// Records a new run of `task`, and returns its ID.
-    pub fn start(&mut self, task: &str, time: DateTime<Local>) -> usize {
+    pub fn start(&mut self, task: &str, label: &str, time: DateTime<Local>) -> usize {
         self.runs.push(Run {
             task: task.to_string(),
+            label: label.to_string(),
             start: time,
             ready: None,
             end: None,
@@ -62,7 +64,7 @@ impl Timeline {
             let crit = if failed { "crit, " } else { "" };
             let ms = |t: DateTime<Local>| t.timestamp_millis();
             // A colon ends the name of a Mermaid task, so it is written as an entity code
-            let task = run.task.replace(':', "#58;");
+            let task = run.label.replace(':', "#58;");
             match run.ready {
                 // A service gets a bar of its own for the time it is ready, so that the time it
                 // takes to be ready stands out
@@ -93,8 +95,8 @@ mod tests {
     #[test]
     fn test_runs() {
         let mut tl = Timeline::default();
-        let a = tl.start("#a", t(1000));
-        let b = tl.start("#b", t(1500));
+        let a = tl.start("#a", "#a", t(1000));
+        let b = tl.start("#b", "#b", t(1500));
         tl.finish(a, t(2000), TaskResult::Success);
         tl.finish(b, t(3000), TaskResult::Failure(1));
         let gantt = tl.to_mermaid("#a, #b", t(9000));
@@ -105,7 +107,7 @@ mod tests {
     #[test]
     fn test_service_ready() {
         let mut tl = Timeline::default();
-        let id = tl.start("#s", t(1000));
+        let id = tl.start("#s", "#s", t(1000));
         tl.ready(id, t(1200));
         tl.finish(id, t(5000), TaskResult::Stopped);
         assert_eq!(
@@ -117,10 +119,10 @@ mod tests {
     #[test]
     fn test_reruns_are_kept() {
         let mut tl = Timeline::default();
-        let first = tl.start("#a", t(1000));
+        let first = tl.start("#a", "#a", t(1000));
         // A rerun request ends the run before its process is done
         tl.finish_task("#a", t(2000), TaskResult::Rerunning);
-        let second = tl.start("#a", t(2100));
+        let second = tl.start("#a", "#a", t(2100));
         tl.finish(first, t(2200), TaskResult::Stopped);
         tl.finish(second, t(3000), TaskResult::Success);
         assert_eq!(
@@ -132,7 +134,7 @@ mod tests {
     #[test]
     fn test_run_in_progress_ends_now() {
         let mut tl = Timeline::default();
-        tl.start("#a", t(1000));
+        tl.start("#a", "#a", t(1000));
         tl.finish_task("#b", t(1500), TaskResult::Stopped);
         assert_eq!(body(&tl.to_mermaid("", t(9000))), ["\t#a : 1000, 9000"]);
     }
@@ -140,8 +142,17 @@ mod tests {
     #[test]
     fn test_colon_in_task_name() {
         let mut tl = Timeline::default();
-        let id = tl.start("child#a:b", t(1000));
+        let id = tl.start("child#a:b", "child#a:b", t(1000));
         tl.finish(id, t(2000), TaskResult::Success);
         assert_eq!(body(&tl.to_mermaid("", t(9000))), ["\tchild#a#58;b : 1000, 2000"]);
+    }
+
+    #[test]
+    fn test_label() {
+        let mut tl = Timeline::default();
+        let id = tl.start("#a-1", "#a", t(1000));
+        tl.finish_task("#a-1", t(2000), TaskResult::Stopped);
+        tl.finish(id, t(3000), TaskResult::Success);
+        assert_eq!(body(&tl.to_mermaid("", t(9000))), ["\t#a : 1000, 2000"]);
     }
 }

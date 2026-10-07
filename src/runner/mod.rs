@@ -12,6 +12,7 @@ use anyhow::Context;
 use chrono::Local;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
+use itertools::Itertools;
 use petgraph::Direction;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -344,7 +345,7 @@ impl TaskRunner {
                             let pid = process.pid().unwrap_or(0);
                             spawned_pid = Some(pid);
                             let start_time = Local::now();
-                            let id = timeline.lock().expect("not poisoned").start(&task.name, start_time);
+                            let id = timeline.lock().expect("not poisoned").start(&task.name, &task.label, start_time);
                             run_id = Some(id);
 
                             // Notify the app the task started
@@ -661,9 +662,14 @@ impl TaskRunner {
 
     /// Renders the runs so far as a Mermaid Gantt chart.
     pub fn gantt(&self) -> String {
+        let title = self
+            .target_tasks
+            .iter()
+            .map(|name| self.tasks.iter().find(|t| &t.name == name).map_or(name, |t| &t.label))
+            .join(", ");
         self.timeline
             .lock()
             .expect("not poisoned")
-            .to_mermaid(&self.target_tasks.join(", "), Local::now())
+            .to_mermaid(&title, Local::now())
     }
 }
