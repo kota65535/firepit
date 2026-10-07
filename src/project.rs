@@ -47,7 +47,14 @@ impl Workspace {
         // List targe tasks
         let mut target_tasks = Vec::new();
         for task in tasks.iter() {
-            let (project_name, task_name) = Task::split_name(task);
+            let task = Task::from_legacy(task).unwrap_or_else(|| task.clone());
+            let task = task.as_str();
+            // `foo:build` is project foo's task `build` if project foo exists,
+            // otherwise it is a task named `foo:build`.
+            let (project_name, task_name) = match Task::split_name(task, child_configs.keys().map(String::as_str)) {
+                Some((p, t)) => (Some(p), t),
+                None => (None, task),
+            };
             match project_name {
                 // Full name
                 Some(_) => {
@@ -70,7 +77,7 @@ impl Workspace {
                         let task = child_configs
                             .values()
                             .find(|c| current_dir == c.dir)
-                            .with_context(|| format!("project {:?} is not defined", project_name))?
+                            .with_context(|| format!("no project is defined at {:?}", current_dir))?
                             .task(task_name)?;
                         target_tasks.push(task.full_name());
                     }
@@ -152,16 +159,16 @@ impl Workspace {
         })
     }
 
-    /// Looks up a task config by its full name, ex: `#foo` or `project#foo`.
+    /// Looks up a task config by its full name, ex: `:foo` or `project:foo`.
     fn task_config<'a>(
         root_config: &'a ProjectConfig,
         child_configs: &'a IndexMap<String, ProjectConfig>,
         name: &str,
     ) -> anyhow::Result<&'a TaskConfig> {
-        let (project_name, task_name) = Task::split_name(name);
-        match project_name {
-            Some("") | None => root_config.task(task_name),
-            Some(p) => child_configs
+        match Task::split_name(name, child_configs.keys().map(String::as_str)) {
+            Some(("", task_name)) => root_config.task(task_name),
+            None => root_config.task(name),
+            Some((p, task_name)) => child_configs
                 .get(p)
                 .with_context(|| format!("project {:?} is not defined", p))?
                 .task(task_name),
@@ -174,10 +181,10 @@ impl Workspace {
         child_configs: &'a mut IndexMap<String, ProjectConfig>,
         name: &str,
     ) -> anyhow::Result<&'a mut TaskConfig> {
-        let (project_name, task_name) = Task::split_name(name);
-        match project_name {
-            Some("") | None => root_config.task_mut(task_name),
-            Some(p) => child_configs
+        match Task::split_name(name, child_configs.keys().map(String::as_str)) {
+            Some(("", task_name)) => root_config.task_mut(task_name),
+            None => root_config.task_mut(name),
+            Some((p, task_name)) => child_configs
                 .get_mut(p)
                 .with_context(|| format!("project {:?} is not defined", p))?
                 .task_mut(task_name),
@@ -388,7 +395,6 @@ impl Workspace {
             .join("\n");
 
         // Example command reproducing what the user ran, with the missing vars appended.
-        // The "#" prefix of root project tasks is internal, so strip it.
         let cli_settable = project_vars
             .iter()
             .flat_map(|(_, names)| names.iter())
@@ -402,7 +408,7 @@ impl Workspace {
         if !cli_settable.is_empty() {
             let tasks = target_tasks
                 .iter()
-                .map(|t| t.strip_prefix('#').unwrap_or(t))
+                .map(|t| Task::display_name(t))
                 .collect::<Vec<_>>()
                 .join(" ");
             msg = format!("{}\nSet them like: fire {} {}", msg, tasks, cli_settable.join(" "));
@@ -469,7 +475,7 @@ impl Project {
     }
 
     pub fn task(&self, name: &str) -> Option<Task> {
-        self.tasks.get(&Task::qualified_name(&self.name, name)).cloned()
+        self.tasks.get(&Task::full_name(&self.name, name)).cloned()
     }
 }
 
@@ -696,11 +702,11 @@ impl Task {
         task_name: &str,
         task_config: &TaskConfig,
     ) -> anyhow::Result<Task> {
-        if task_name.contains("#") {
+        if task_name.contains(Task::LEGACY_SEP) {
             anyhow::bail!("Task name must not contain '#'. Found: {:?}", task_name)
         }
 
-        let task_name = Task::qualified_name(project_name, task_name);
+        let task_name = Task::full_name(project_name, task_name);
         // What building the task has to say belongs in that task's pane
         let span = tracing::error_span!("task", name = task_name);
         let _guard = span.enter();
@@ -788,14 +794,14 @@ impl Task {
         };
 
         Ok(Self {
-            name: Task::qualified_name(project_name, &task_name),
-            orig_name: Task::qualified_name(project_name, &task_config.orig_name),
+            name: task_name.clone(),
+            orig_name: Task::full_name(project_name, &task_config.orig_name),
             // Default to the original name so that task variants do not expose their internal
             // suffix (-1, -2, ...) in the UI
             label: task_config
                 .label
                 .clone()
-                .unwrap_or_else(|| Task::qualified_name(project_name, &task_config.orig_name)),
+                .unwrap_or_else(|| Task::full_name(project_name, &task_config.orig_name)),
             command: task_config.command.clone().unwrap_or("".to_string()),
             shell: task_shell.command,
             shell_args: task_shell.args,
@@ -852,21 +858,63 @@ impl Task {
             .collect()
     }
 
-    pub fn split_name(task_name: &str) -> (Option<&str>, &str) {
-        if task_name.contains('#') {
-            if let Some((p, t)) = task_name.split_once('#') {
-                return (Some(p), t);
-            }
-        }
-        (None, task_name)
+    /// Separator between a project name and a task name in a full task name, ex: `project:task`.
+    pub const SEP: char = ':';
+
+    /// Deprecated separator still accepted in task references and CLI arguments.
+    pub const LEGACY_SEP: char = '#';
+
+    /// Splits a full task name into the project name, `""` for the root project, and the task name.
+    /// A project name may contain `:`, so the first `:` is not necessarily the separator: the longest
+    /// of the given project names that the full name starts with is taken.
+    pub fn split_name<'a, 'p>(
+        task_name: &'a str,
+        projects: impl IntoIterator<Item = &'p str>,
+    ) -> Option<(&'a str, &'a str)> {
+        projects
+            .into_iter()
+            .chain(std::iter::once(""))
+            .filter(|p| {
+                task_name
+                    .strip_prefix(p)
+                    .is_some_and(|rest| rest.starts_with(Self::SEP))
+            })
+            .max_by_key(|p| p.len())
+            .map(|p| (&task_name[..p.len()], &task_name[p.len() + 1..]))
     }
 
+    /// Converts a task reference in the deprecated `project#task` form to `project:task`.
+    /// Returns `None` if the reference does not use the deprecated separator.
+    pub fn from_legacy(task_name: &str) -> Option<String> {
+        task_name
+            .split_once(Self::LEGACY_SEP)
+            .map(|(p, t)| format!("{}{}{}", p, Self::SEP, t))
+    }
+
+    /// Full name of a task of the project. Unlike [`Self::qualified_name`] it never takes the name
+    /// for qualified already, since a task name may contain `:`.
+    pub fn full_name(project_name: &str, task_name: &str) -> String {
+        format!("{}{}{}", project_name, Self::SEP, task_name)
+    }
+
+    /// Qualifies a task name with the project name unless it is already qualified.
+    /// A reference in the deprecated `project#task` form is converted to `project:task`.
     pub fn qualified_name(project_name: &str, task_name: &str) -> String {
-        if task_name.contains('#') {
+        if let Some(name) = Self::from_legacy(task_name) {
+            return name;
+        }
+        // Whether a template names a project is only known once it is rendered, so it is left to
+        // `TaskConfig::resolve_refs`
+        if task_name.contains(Self::SEP) || task_name.contains("{{") {
             task_name.to_string()
         } else {
-            format!("{}#{}", project_name, task_name)
+            Self::full_name(project_name, task_name)
         }
+    }
+
+    /// Name usable as a CLI argument: the root project prefix is omitted, ex: `:foo` -> `foo`.
+    pub fn display_name(task_name: &str) -> &str {
+        task_name.strip_prefix(Self::SEP).unwrap_or(task_name)
     }
 
     pub fn match_inputs(&self, paths: &HashSet<PathBuf>) -> bool {

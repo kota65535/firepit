@@ -1,0 +1,11 @@
+projects:
+  foo: foo
+
+tasks:
+  build:watch:
+    command: echo "build:watch"
+  dev:
+    command: echo "dev"
+    depends_on:
+      - build:watch
+      - foo:build

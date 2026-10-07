@@ -12,7 +12,7 @@ use async_recursion::async_recursion;
 use indexmap::IndexMap;
 use serde_json::Value as JsonValue;
 use serde_yaml::Value;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -407,14 +407,14 @@ impl TaskConfig {
                 DependsOnConfig::String(task) => {
                     let task = tera.render_str(task, context)?;
                     // Ignore if rendered task name is empty
-                    if !task.ends_with("#") {
+                    if !is_empty_ref(&task) {
                         rendered_depends_on.push(DependsOnConfig::String(task))
                     }
                 }
                 DependsOnConfig::Struct(dep) => {
                     let task = tera.render_str(&dep.task, context)?;
                     // Ignore if rendered task name is empty
-                    if !task.ends_with("#") {
+                    if !is_empty_ref(&task) {
                         let vars = render_dep_vars(&dep.vars, &mut tera, context)?;
                         rendered_depends_on.push(DependsOnConfig::Struct(DependsOnConfigStruct {
                             task,
@@ -432,7 +432,7 @@ impl TaskConfig {
         for wait_for in config.wait_for.iter() {
             let task = tera.render_str(wait_for.task(), context)?;
             // Ignore if rendered task name is empty
-            if task.ends_with("#") {
+            if is_empty_ref(&task) {
                 continue;
             }
             match wait_for {
@@ -450,7 +450,7 @@ impl TaskConfig {
         for finalized_by in config.finalized_by.iter() {
             let task = tera.render_str(finalized_by.task(), context)?;
             // Ignore if rendered task name is empty
-            if task.ends_with("#") {
+            if is_empty_ref(&task) {
                 continue;
             }
             match finalized_by {
@@ -537,6 +537,15 @@ impl ConfigRenderer {
             task_contexts.extend(child_task_contexts);
         }
 
+        let projects = self.root_config.projects.keys().cloned().collect::<HashSet<_>>();
+        for t in root_config
+            .tasks
+            .values_mut()
+            .chain(child_configs.values_mut().flat_map(|c| c.tasks.values_mut()))
+        {
+            t.resolve_refs(&projects);
+        }
+
         tasks.sort();
         for t in tasks.iter() {
             Self::render_variant_tasks(
@@ -574,7 +583,7 @@ impl ConfigRenderer {
         root_config: &'a ProjectConfig,
         child_configs: &'a IndexMap<String, ProjectConfig>,
     ) -> Option<(&'a TaskConfig, &'a ProjectConfig)> {
-        if let Some((p, t)) = task_name.split_once("#") {
+        if let Some((p, t)) = Task::split_name(task_name, child_configs.keys().map(String::as_str)) {
             if p.is_empty() {
                 return match root_config.tasks.get(t) {
                     Some(t) => Some((t, root_config)),
@@ -596,7 +605,7 @@ impl ConfigRenderer {
         root_config: &'a ProjectConfig,
         child_configs: &'a IndexMap<String, ProjectConfig>,
     ) -> Vec<&'a TaskConfig> {
-        if let Some((p, orig_name)) = orig_name.split_once("#") {
+        if let Some((p, orig_name)) = Task::split_name(orig_name, child_configs.keys().map(String::as_str)) {
             if p.is_empty() {
                 return root_config
                     .tasks
@@ -775,6 +784,7 @@ impl ConfigRenderer {
 
         // Render
         let mut rendered_variant_task = variant_task.render(&variant_context, cache).await?;
+        rendered_variant_task.resolve_refs(&raw_root_config.projects.keys().cloned().collect());
 
         debug!(
             "Variant?: {:?}, dependent: {:?}\ncontext: {:#?}\nvars: {:#?}",
@@ -804,8 +814,8 @@ impl ConfigRenderer {
             .entry(dep_task.full_orig_name())
             .and_modify(|v| *v += 1)
             .or_insert(1);
-        let variant_task_name = format!("{}-{}", dep_task.full_name(), suffix);
-        rendered_variant_task.name = Task::split_name(&variant_task_name).1.to_string();
+        rendered_variant_task.name = format!("{}-{}", dep_task.name, suffix);
+        let variant_task_name = rendered_variant_task.full_name();
 
         debug!(
             "Variant: {:?}, dependent: {:?}\ncontext: {:#?}\nvars: {:#?}",
@@ -1140,6 +1150,11 @@ fn scalar_to_string(value: &JsonValue) -> tera::Result<String> {
             "the `quote` filter accepts a string, number, boolean, null or an array of them",
         )),
     }
+}
+
+/// A reference rendered to an empty task name, ex: `foo:{{ task }}` with an empty `task`, is ignored.
+fn is_empty_ref(task: &str) -> bool {
+    task.is_empty() || task.ends_with(Task::SEP)
 }
 
 #[cfg(test)]

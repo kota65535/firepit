@@ -2,4 +2,4 @@ tasks:
   foo:
     command: echo "foo"
     depends_on:
-      - bar#bar
+      - bar:bar

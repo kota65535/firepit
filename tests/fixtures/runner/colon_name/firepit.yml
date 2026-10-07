@@ -1,0 +1,27 @@
+# Test that `a:b` names task `b` of project `a` if the project exists, and a task named `a:b`
+# otherwise, also when the reference is a template
+projects:
+  foo: foo
+  a:b: ab
+
+vars:
+  target: foo
+  colon_task: build:watch
+
+tasks:
+  build:watch:
+    command: echo "root build:watch"
+  literal:
+    command: echo "literal"
+    depends_on:
+      - foo:build
+      - build:watch
+  template:
+    command: echo "template"
+    depends_on:
+      - "{{ target }}:build"
+      - "{{ colon_task }}"
+  colon_project:
+    command: echo "colon_project"
+    depends_on:
+      - a:b:c

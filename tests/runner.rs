@@ -50,14 +50,14 @@ async fn test_basic_single() {
     let tasks = vec![String::from("foo")];
 
     let mut statuses = HashMap::new();
-    statuses.insert(String::from("#foo"), String::from("Finished: Success"));
-    statuses.insert(String::from("#bar"), String::from("Finished: Success"));
-    statuses.insert(String::from("#baz"), String::from("Finished: Success"));
+    statuses.insert(String::from(":foo"), String::from("Finished: Success"));
+    statuses.insert(String::from(":bar"), String::from("Finished: Success"));
+    statuses.insert(String::from(":baz"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#foo"), String::from("foo"));
-    outputs.insert(String::from("#bar"), String::from("bar"));
-    outputs.insert(String::from("#baz"), String::from("baz"));
+    outputs.insert(String::from(":foo"), String::from("foo"));
+    outputs.insert(String::from(":bar"), String::from("bar"));
+    outputs.insert(String::from(":baz"), String::from("baz"));
 
     run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
@@ -69,13 +69,13 @@ async fn test_basic_empty() {
     let tasks = vec![String::from("foo")];
 
     let mut statuses = HashMap::new();
-    statuses.insert(String::from("#foo"), String::from("Finished: Success"));
-    statuses.insert(String::from("#bar"), String::from("Finished: Success"));
-    statuses.insert(String::from("#baz"), String::from("Finished: Success"));
+    statuses.insert(String::from(":foo"), String::from("Finished: Success"));
+    statuses.insert(String::from(":bar"), String::from("Finished: Success"));
+    statuses.insert(String::from(":baz"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#bar"), String::from("bar"));
-    outputs.insert(String::from("#baz"), String::from("baz"));
+    outputs.insert(String::from(":bar"), String::from("bar"));
+    outputs.insert(String::from(":baz"), String::from("baz"));
 
     run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
@@ -87,12 +87,12 @@ async fn test_basic_failure() {
     let tasks = vec![String::from("foo")];
 
     let mut statuses = HashMap::new();
-    statuses.insert(String::from("#foo"), String::from("Finished: BadDeps"));
-    statuses.insert(String::from("#bar"), String::from("Finished: BadDeps"));
-    statuses.insert(String::from("#baz"), String::from("Finished: Failure(1)"));
+    statuses.insert(String::from(":foo"), String::from("Finished: BadDeps"));
+    statuses.insert(String::from(":bar"), String::from("Finished: BadDeps"));
+    statuses.insert(String::from(":baz"), String::from("Finished: Failure(1)"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#baz"), String::from("baz"));
+    outputs.insert(String::from(":baz"), String::from("baz"));
 
     run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
@@ -106,9 +106,9 @@ async fn test_spawn_failure() {
     let tasks = vec![String::from("foo")];
 
     let mut statuses = HashMap::new();
-    statuses.insert(String::from("#foo"), String::from("Finished: BadDeps"));
+    statuses.insert(String::from(":foo"), String::from("Finished: BadDeps"));
     statuses.insert(
-        String::from("#bar"),
+        String::from(":bar"),
         String::from("Finished: Error(\"failed to spawn process: No such file or directory (os error 2)\")"),
     );
 
@@ -127,12 +127,12 @@ async fn test_wait_for() {
     let tasks = vec![String::from("format"), String::from("lint")];
 
     let mut statuses = HashMap::new();
-    statuses.insert(String::from("#lint"), String::from("Finished: Success"));
-    statuses.insert(String::from("#format"), String::from("Finished: Success"));
+    statuses.insert(String::from(":lint"), String::from("Finished: Success"));
+    statuses.insert(String::from(":format"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#lint"), String::from("lint"));
-    outputs.insert(String::from("#format"), String::from("lint,format,"));
+    outputs.insert(String::from(":lint"), String::from("lint"));
+    outputs.insert(String::from(":format"), String::from("lint,format,"));
 
     run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
@@ -147,14 +147,14 @@ async fn test_wait_for_variant() {
     let tasks = vec![String::from("format"), String::from("setup-app")];
 
     let mut statuses = HashMap::new();
-    statuses.insert(String::from("#migrate-1"), String::from("Finished: Success"));
-    statuses.insert(String::from("#setup-app"), String::from("Finished: Success"));
-    statuses.insert(String::from("#format"), String::from("Finished: Success"));
+    statuses.insert(String::from(":migrate-1"), String::from("Finished: Success"));
+    statuses.insert(String::from(":setup-app"), String::from("Finished: Success"));
+    statuses.insert(String::from(":format"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#migrate-1"), String::from("migrate app"));
-    outputs.insert(String::from("#setup-app"), String::from("app"));
-    outputs.insert(String::from("#format"), String::from("migrate app,format,"));
+    outputs.insert(String::from(":migrate-1"), String::from("migrate app"));
+    outputs.insert(String::from(":setup-app"), String::from("app"));
+    outputs.insert(String::from(":format"), String::from("migrate app,format,"));
 
     run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
@@ -169,14 +169,14 @@ async fn test_wait_for_typed_vars() {
     let tasks = vec![String::from("check"), String::from("app")];
 
     let mut statuses = HashMap::new();
-    statuses.insert(String::from("#serve-1"), String::from("Finished: Success"));
-    statuses.insert(String::from("#app"), String::from("Finished: Success"));
-    statuses.insert(String::from("#check"), String::from("Finished: Success"));
+    statuses.insert(String::from(":serve-1"), String::from("Finished: Success"));
+    statuses.insert(String::from(":app"), String::from("Finished: Success"));
+    statuses.insert(String::from(":check"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#serve-1"), String::from("serve 8080"));
-    outputs.insert(String::from("#app"), String::from("app"));
-    outputs.insert(String::from("#check"), String::from("serve 8080,check,"));
+    outputs.insert(String::from(":serve-1"), String::from("serve 8080"));
+    outputs.insert(String::from(":app"), String::from("app"));
+    outputs.insert(String::from(":check"), String::from("serve 8080,check,"));
 
     run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
@@ -191,14 +191,14 @@ async fn test_wait_for_self() {
     let tasks = vec![String::from("build"), String::from("other")];
 
     let mut statuses = HashMap::new();
-    statuses.insert(String::from("#lint-1"), String::from("Finished: Success"));
-    statuses.insert(String::from("#build"), String::from("Finished: Success"));
-    statuses.insert(String::from("#other"), String::from("Finished: Success"));
+    statuses.insert(String::from(":lint-1"), String::from("Finished: Success"));
+    statuses.insert(String::from(":build"), String::from("Finished: Success"));
+    statuses.insert(String::from(":other"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#lint-1"), String::from("lint true"));
-    outputs.insert(String::from("#build"), String::from("build"));
-    outputs.insert(String::from("#other"), String::from("other"));
+    outputs.insert(String::from(":lint-1"), String::from("lint true"));
+    outputs.insert(String::from(":build"), String::from("build"));
+    outputs.insert(String::from(":other"), String::from("other"));
 
     run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
@@ -213,14 +213,14 @@ async fn test_wait_for_undeclared_var() {
     let tasks = vec![String::from("app"), String::from("seed")];
 
     let mut statuses = HashMap::new();
-    statuses.insert(String::from("#migrate-1"), String::from("Finished: Success"));
-    statuses.insert(String::from("#app"), String::from("Finished: Success"));
-    statuses.insert(String::from("#seed"), String::from("Finished: Success"));
+    statuses.insert(String::from(":migrate-1"), String::from("Finished: Success"));
+    statuses.insert(String::from(":app"), String::from("Finished: Success"));
+    statuses.insert(String::from(":seed"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#migrate-1"), String::from("migrate app"));
-    outputs.insert(String::from("#app"), String::from("app"));
-    outputs.insert(String::from("#seed"), String::from("migrate app,seed,"));
+    outputs.insert(String::from(":migrate-1"), String::from("migrate app"));
+    outputs.insert(String::from(":app"), String::from("app"));
+    outputs.insert(String::from(":seed"), String::from("migrate app,seed,"));
 
     run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
@@ -246,21 +246,21 @@ async fn test_wait_for_vars() {
 
     let mut statuses = HashMap::new();
     for t in [
-        "#foo", "#foo2", "#foo3", "#gen1", "#gen2", "#gen3", "#bar-1", "#bar-2", "#bar-3",
+        ":foo", ":foo2", ":foo3", ":gen1", ":gen2", ":gen3", ":bar-1", ":bar-2", ":bar-3",
     ] {
         statuses.insert(String::from(t), String::from("Finished: Success"));
     }
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#gen1"), String::from("gen1"));
-    outputs.insert(String::from("#gen2"), String::from("gen2"));
-    outputs.insert(String::from("#gen3"), String::from("gen3"));
-    outputs.insert(String::from("#bar-1"), String::from("bar aaa bbb"));
-    outputs.insert(String::from("#bar-2"), String::from("bar aaa zzz"));
-    outputs.insert(String::from("#bar-3"), String::from("bar xxx bbb"));
-    outputs.insert(String::from("#foo"), String::from("foo"));
-    outputs.insert(String::from("#foo2"), String::from("foo2"));
-    outputs.insert(String::from("#foo3"), String::from("foo3"));
+    outputs.insert(String::from(":gen1"), String::from("gen1"));
+    outputs.insert(String::from(":gen2"), String::from("gen2"));
+    outputs.insert(String::from(":gen3"), String::from("gen3"));
+    outputs.insert(String::from(":bar-1"), String::from("bar aaa bbb"));
+    outputs.insert(String::from(":bar-2"), String::from("bar aaa zzz"));
+    outputs.insert(String::from(":bar-3"), String::from("bar xxx bbb"));
+    outputs.insert(String::from(":foo"), String::from("foo"));
+    outputs.insert(String::from(":foo2"), String::from("foo2"));
+    outputs.insert(String::from(":foo3"), String::from("foo3"));
 
     run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
@@ -274,12 +274,12 @@ async fn test_wait_for_failure() {
     let tasks = vec![String::from("format"), String::from("lint")];
 
     let mut statuses = HashMap::new();
-    statuses.insert(String::from("#lint"), String::from("Finished: Failure(3)"));
-    statuses.insert(String::from("#format"), String::from("Finished: Success"));
+    statuses.insert(String::from(":lint"), String::from("Finished: Failure(3)"));
+    statuses.insert(String::from(":format"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#lint"), String::from("lint"));
-    outputs.insert(String::from("#format"), String::from("format"));
+    outputs.insert(String::from(":lint"), String::from("lint"));
+    outputs.insert(String::from(":format"), String::from("format"));
 
     run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
@@ -293,11 +293,11 @@ async fn test_wait_for_failure_fail_fast() {
     let tasks = vec![String::from("format"), String::from("lint")];
 
     let mut statuses = HashMap::new();
-    statuses.insert(String::from("#lint"), String::from("Finished: Failure(3)"));
-    statuses.insert(String::from("#format"), String::from("Finished: BadDeps"));
+    statuses.insert(String::from(":lint"), String::from("Finished: Failure(3)"));
+    statuses.insert(String::from(":format"), String::from("Finished: BadDeps"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#lint"), String::from("lint"));
+    outputs.insert(String::from(":lint"), String::from("lint"));
 
     run_task_with_fail_fast(&path, tasks, statuses, Some(outputs))
         .await
@@ -313,17 +313,17 @@ async fn test_wait_for_watch() {
     let tasks = vec![String::from("format"), String::from("lint")];
 
     let mut statuses = HashMap::new();
-    statuses.insert(String::from("#lint"), String::from("Finished: Success"));
-    statuses.insert(String::from("#format"), String::from("Finished: Success"));
+    statuses.insert(String::from(":lint"), String::from("Finished: Success"));
+    statuses.insert(String::from(":format"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#lint"), String::from("lint\nlint"));
-    outputs.insert(String::from("#format"), String::from("format"));
+    outputs.insert(String::from(":lint"), String::from("lint\nlint"));
+    outputs.insert(String::from(":format"), String::from("format"));
 
     // `lint` re-runs once, `format` not at all
     let mut runs = HashMap::new();
-    runs.insert(String::from("#lint"), 1);
-    runs.insert(String::from("#format"), 0);
+    runs.insert(String::from(":lint"), 1);
+    runs.insert(String::from(":format"), 0);
 
     run_task_with_watch(
         &path,
@@ -351,10 +351,10 @@ async fn test_wait_for_not_run() {
     let tasks = vec![String::from("format")];
 
     let mut statuses = HashMap::new();
-    statuses.insert(String::from("#format"), String::from("Finished: Success"));
+    statuses.insert(String::from(":format"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#format"), String::from("format"));
+    outputs.insert(String::from(":format"), String::from("format"));
 
     run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
@@ -368,17 +368,17 @@ async fn test_basic_multi(#[case] dir: &str) {
     let path = BASE_PATH.join("basic_multi").join(dir);
 
     // With qualified task name
-    let tasks = vec![String::from("#baz")];
+    let tasks = vec![String::from(":baz")];
 
     let mut statuses = HashMap::new();
-    statuses.insert(String::from("foo#foo"), String::from("Finished: Success"));
-    statuses.insert(String::from("bar#bar"), String::from("Finished: Success"));
-    statuses.insert(String::from("#baz"), String::from("Finished: Success"));
+    statuses.insert(String::from("foo:foo"), String::from("Finished: Success"));
+    statuses.insert(String::from("bar:bar"), String::from("Finished: Success"));
+    statuses.insert(String::from(":baz"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("foo#foo"), String::from("foo"));
-    outputs.insert(String::from("bar#bar"), String::from("bar"));
-    outputs.insert(String::from("#baz"), String::from("baz"));
+    outputs.insert(String::from("foo:foo"), String::from("foo"));
+    outputs.insert(String::from("bar:bar"), String::from("bar"));
+    outputs.insert(String::from(":baz"), String::from("baz"));
 
     run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 
@@ -386,12 +386,12 @@ async fn test_basic_multi(#[case] dir: &str) {
     let tasks = vec![String::from("foo")];
 
     let mut statuses = HashMap::new();
-    statuses.insert(String::from("foo#foo"), String::from("Finished: Success"));
-    statuses.insert(String::from("bar#bar"), String::from("Finished: Success"));
+    statuses.insert(String::from("foo:foo"), String::from("Finished: Success"));
+    statuses.insert(String::from("bar:bar"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("foo#foo"), String::from("foo"));
-    outputs.insert(String::from("bar#bar"), String::from("bar"));
+    outputs.insert(String::from("foo:foo"), String::from("foo"));
+    outputs.insert(String::from("bar:bar"), String::from("bar"));
 
     run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
@@ -418,10 +418,10 @@ async fn test_finalized_by() {
     )
     .await
     .unwrap();
-    assert_eq!(ws.target_tasks, vec!["#build"]);
-    assert_eq!(ws.finalizer_tasks, vec!["#cleanup", "#notify"]);
+    assert_eq!(ws.target_tasks, vec![":build"]);
+    assert_eq!(ws.finalizer_tasks, vec![":cleanup", ":notify"]);
 
-    let statuses = ["#install", "#build", "#cleanup", "#notify"]
+    let statuses = [":install", ":build", ":cleanup", ":notify"]
         .iter()
         .map(|t| (t.to_string(), String::from("Finished: Success")))
         .collect::<HashMap<_, _>>();
@@ -442,9 +442,9 @@ async fn test_finalized_by() {
     )
     .await
     .unwrap();
-    assert_eq!(ws.target_tasks, vec!["#cleanup", "#build"]);
-    assert_eq!(ws.finalizer_tasks, vec!["#notify"]);
-    let statuses = ["#install", "#build", "#cleanup", "#notify"]
+    assert_eq!(ws.target_tasks, vec![":cleanup", ":build"]);
+    assert_eq!(ws.finalizer_tasks, vec![":notify"]);
+    let statuses = [":install", ":build", ":cleanup", ":notify"]
         .iter()
         .map(|t| (t.to_string(), String::from("Finished: Success")))
         .collect::<HashMap<_, _>>();
@@ -452,7 +452,7 @@ async fn test_finalized_by() {
 
     // Running a finalizer alone does not run the task it finalizes
     let tasks = vec![String::from("cleanup")];
-    let statuses = ["#cleanup", "#notify"]
+    let statuses = [":cleanup", ":notify"]
         .iter()
         .map(|t| (t.to_string(), String::from("Finished: Success")))
         .collect::<HashMap<_, _>>();
@@ -467,9 +467,9 @@ async fn test_finalized_by_failure() {
     // Finalizers run even if the task fails, while normal dependents are skipped
     let tasks = vec![String::from("deploy")];
     let mut statuses = HashMap::new();
-    statuses.insert(String::from("#build"), String::from("Finished: Failure(1)"));
-    statuses.insert(String::from("#cleanup"), String::from("Finished: Success"));
-    statuses.insert(String::from("#deploy"), String::from("Finished: BadDeps"));
+    statuses.insert(String::from(":build"), String::from("Finished: Failure(1)"));
+    statuses.insert(String::from(":cleanup"), String::from("Finished: Success"));
+    statuses.insert(String::from(":deploy"), String::from("Finished: BadDeps"));
     run_task(&path, tasks, statuses, None, false).await.unwrap();
 }
 
@@ -481,8 +481,8 @@ async fn test_finalized_by_dependent() {
     // A finalizer that also depends on the task is skipped when the task fails
     let tasks = vec![String::from("build")];
     let mut statuses = HashMap::new();
-    statuses.insert(String::from("#build"), String::from("Finished: Failure(1)"));
-    statuses.insert(String::from("#report"), String::from("Finished: BadDeps"));
+    statuses.insert(String::from(":build"), String::from("Finished: Failure(1)"));
+    statuses.insert(String::from(":report"), String::from("Finished: BadDeps"));
     run_task(&path, tasks, statuses, None, false).await.unwrap();
 }
 
@@ -493,7 +493,7 @@ async fn test_finalized_by_quit_on_done() {
 
     // The runner waits for the finalizers before quitting on done
     let tasks = vec![String::from("build")];
-    let statuses = ["#install", "#build", "#cleanup", "#notify"]
+    let statuses = [":install", ":build", ":cleanup", ":notify"]
         .iter()
         .map(|t| (t.to_string(), String::from("Finished: Success")))
         .collect::<HashMap<_, _>>();
@@ -522,9 +522,9 @@ async fn test_finalized_by_fail_fast() {
     // A failure under fail-fast stops the other tasks, but a running finalizer completes
     let tasks = vec![String::from("ok"), String::from("bad")];
     let mut statuses = HashMap::new();
-    statuses.insert(String::from("#ok"), String::from("Finished: Success"));
-    statuses.insert(String::from("#bad"), String::from("Finished: Failure(1)"));
-    statuses.insert(String::from("#slow-cleanup"), String::from("Finished: Success"));
+    statuses.insert(String::from(":ok"), String::from("Finished: Success"));
+    statuses.insert(String::from(":bad"), String::from("Finished: Failure(1)"));
+    statuses.insert(String::from(":slow-cleanup"), String::from("Finished: Success"));
     run_task_with_fail_fast(&path, tasks, statuses, None).await.unwrap();
 }
 
@@ -535,14 +535,14 @@ async fn test_finalized_by_force() {
     let tasks = vec![String::from("build")];
 
     // Without force, the dependency and its finalizer run
-    let statuses = ["#prepare", "#build", "#cleanup"]
+    let statuses = [":prepare", ":build", ":cleanup"]
         .iter()
         .map(|t| (t.to_string(), String::from("Finished: Success")))
         .collect::<HashMap<_, _>>();
     run_task(&path, tasks.clone(), statuses, None, false).await.unwrap();
 
     // With force, the dependency is skipped, and so is its finalizer
-    let statuses = HashMap::from([(String::from("#build"), String::from("Finished: Success"))]);
+    let statuses = HashMap::from([(String::from(":build"), String::from("Finished: Success"))]);
     run_task(&path, tasks, statuses, None, true).await.unwrap();
 }
 
@@ -553,15 +553,15 @@ async fn test_finalized_by_vars() {
     let tasks = vec![String::from("build-a"), String::from("build-b")];
 
     // A finalizer given vars runs as a variant, one per set of vars
-    let statuses = ["#build-a", "#build-b", "#cleanup-1", "#cleanup-2"]
+    let statuses = [":build-a", ":build-b", ":cleanup-1", ":cleanup-2"]
         .iter()
         .map(|t| (t.to_string(), String::from("Finished: Success")))
         .collect::<HashMap<_, _>>();
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#build-a"), String::from("build-a"));
-    outputs.insert(String::from("#build-b"), String::from("build-b"));
-    outputs.insert(String::from("#cleanup-1"), String::from("cleanup a"));
-    outputs.insert(String::from("#cleanup-2"), String::from("cleanup b"));
+    outputs.insert(String::from(":build-a"), String::from("build-a"));
+    outputs.insert(String::from(":build-b"), String::from("build-b"));
+    outputs.insert(String::from(":cleanup-1"), String::from("cleanup a"));
+    outputs.insert(String::from(":cleanup-2"), String::from("cleanup b"));
     run_task(&path, tasks, statuses, Some(outputs), false).await.unwrap();
 }
 
@@ -572,7 +572,7 @@ async fn test_finalized_by_service() {
     let tasks = vec![String::from("client")];
 
     // The finalizer of a service runs when the service exits, not when it becomes ready
-    let statuses = ["#server", "#client", "#cleanup"]
+    let statuses = [":server", ":client", ":cleanup"]
         .iter()
         .map(|t| (t.to_string(), String::from("Finished: Success")))
         .collect::<HashMap<_, _>>();
@@ -581,8 +581,8 @@ async fn test_finalized_by_service() {
 
 #[tokio::test]
 #[rstest]
-#[case("finalized_by_service_finalizer", "#cleanup")]
-#[case("finalized_by_service_finalizer_variant", "#cleanup-1")]
+#[case("finalized_by_service_finalizer", ":cleanup")]
+#[case("finalized_by_service_finalizer_variant", ":cleanup-1")]
 async fn test_finalized_by_service_finalizer(#[case] dir: &str, #[case] finalizer: &str) {
     setup();
     let path = BASE_PATH.join(dir);
@@ -648,8 +648,8 @@ async fn test_finalized_by_service_quit() {
     runner_fut.await.unwrap().unwrap();
 
     let mut expected = HashMap::new();
-    expected.insert(String::from("#server"), String::from("Finished: Stopped"));
-    expected.insert(String::from("#cleanup"), String::from("Finished: Success"));
+    expected.insert(String::from(":server"), String::from("Finished: Stopped"));
+    expected.insert(String::from(":cleanup"), String::from("Finished: Success"));
     assert_eq!(expected, statuses);
 }
 
@@ -701,7 +701,7 @@ async fn test_service_quit_before_ready() {
     runner_fut.await.unwrap().unwrap();
 
     let mut expected = HashMap::new();
-    expected.insert(String::from("#server"), String::from("Finished: Stopped"));
+    expected.insert(String::from(":server"), String::from("Finished: Stopped"));
     assert_eq!(expected, statuses);
 }
 
@@ -736,7 +736,7 @@ async fn test_service_quit_dependents() {
     let events = async {
         while let Some(event) = app_rx.recv().await {
             match event {
-                AppCommand::StartTask { task, .. } if task == "#server" => {
+                AppCommand::StartTask { task, .. } if task == ":server" => {
                     runner_tx.quit();
                 }
                 AppCommand::FinishTask { task, result, .. } => {
@@ -754,9 +754,9 @@ async fn test_service_quit_dependents() {
 
     // The finalizer keeps the runner going long enough for `app` to be visited
     let mut expected = HashMap::new();
-    expected.insert(String::from("#server"), String::from("Finished: Stopped"));
-    expected.insert(String::from("#cleanup"), String::from("Finished: Success"));
-    expected.insert(String::from("#app"), String::from("Finished: Stopped"));
+    expected.insert(String::from(":server"), String::from("Finished: Stopped"));
+    expected.insert(String::from(":cleanup"), String::from("Finished: Success"));
+    expected.insert(String::from(":app"), String::from("Finished: Stopped"));
     assert_eq!(expected, statuses);
 }
 
@@ -768,7 +768,7 @@ async fn test_service_killed_before_ready() {
     let tasks = vec![String::from("server")];
 
     let mut statuses = HashMap::new();
-    statuses.insert(String::from("#server"), String::from("Finished: Killed"));
+    statuses.insert(String::from(":server"), String::from("Finished: Killed"));
 
     run_task(&path, tasks, statuses, None, false).await.unwrap();
 }
@@ -781,7 +781,7 @@ async fn test_killed() {
     let tasks = vec![String::from("foo")];
 
     let mut statuses = HashMap::new();
-    statuses.insert(String::from("#foo"), String::from("Finished: Killed"));
+    statuses.insert(String::from(":foo"), String::from("Finished: Killed"));
 
     run_task(&path, tasks, statuses, None, false).await.unwrap();
 }
@@ -800,18 +800,18 @@ async fn test_vars() {
     ];
 
     let mut stats = HashMap::new();
-    stats.insert(String::from("#number"), String::from("Finished: Success"));
-    stats.insert(String::from("#string"), String::from("Finished: Success"));
-    stats.insert(String::from("#boolean"), String::from("Finished: Success"));
-    stats.insert(String::from("#array"), String::from("Finished: Success"));
-    stats.insert(String::from("#map"), String::from("Finished: Success"));
+    stats.insert(String::from(":number"), String::from("Finished: Success"));
+    stats.insert(String::from(":string"), String::from("Finished: Success"));
+    stats.insert(String::from(":boolean"), String::from("Finished: Success"));
+    stats.insert(String::from(":array"), String::from("Finished: Success"));
+    stats.insert(String::from(":map"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#number"), String::from("1\nok"));
-    outputs.insert(String::from("#string"), String::from("bar\nok"));
-    outputs.insert(String::from("#boolean"), String::from("true\nok"));
-    outputs.insert(String::from("#array"), String::from("1,2\nok"));
-    outputs.insert(String::from("#map"), String::from("1,2\nok"));
+    outputs.insert(String::from(":number"), String::from("1\nok"));
+    outputs.insert(String::from(":string"), String::from("bar\nok"));
+    outputs.insert(String::from(":boolean"), String::from("true\nok"));
+    outputs.insert(String::from(":array"), String::from("1,2\nok"));
+    outputs.insert(String::from(":map"), String::from("1,2\nok"));
 
     run_task_with_vars(&path, tasks, stats, Some(outputs), IndexMap::new(), false)
         .await
@@ -831,16 +831,16 @@ async fn test_vars_from_cli() {
     ];
 
     let mut stats = HashMap::new();
-    stats.insert(String::from("#number"), String::from("Finished: Success"));
-    stats.insert(String::from("#string"), String::from("Finished: Success"));
-    stats.insert(String::from("#string2"), String::from("Finished: Success"));
-    stats.insert(String::from("#boolean"), String::from("Finished: Success"));
+    stats.insert(String::from(":number"), String::from("Finished: Success"));
+    stats.insert(String::from(":string"), String::from("Finished: Success"));
+    stats.insert(String::from(":string2"), String::from("Finished: Success"));
+    stats.insert(String::from(":boolean"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#number"), String::from("2\nok"));
-    outputs.insert(String::from("#string"), String::from("baz\nok"));
-    outputs.insert(String::from("#string2"), String::from("piyo\nok"));
-    outputs.insert(String::from("#boolean"), String::from("false\nok"));
+    outputs.insert(String::from(":number"), String::from("2\nok"));
+    outputs.insert(String::from(":string"), String::from("baz\nok"));
+    outputs.insert(String::from(":string2"), String::from("piyo\nok"));
+    outputs.insert(String::from(":boolean"), String::from("false\nok"));
 
     let vars = IndexMap::from([
         ("cli_number".to_string(), VarsConfig::Static(Value::from(1))),
@@ -876,18 +876,18 @@ async fn test_vars_typed() {
     let mut stats = HashMap::new();
     let mut outputs = HashMap::new();
     for (task, out) in [
-        ("#version", "1.10\nok"),
-        ("#count", "1\nok"),
-        ("#ratio", "0.5"),
-        ("#flag", "on"),
-        ("#list", "a,1.10\nok"),
-        ("#map", "1,1\nok"),
-        ("#required-1", "x 'y z'"),
-        ("#dependent", "dependent"),
-        ("#required_str-1", "8080\nok"),
-        ("#dependent_str", "dependent_str"),
-        ("#dyn_string", "1e10\nok"),
-        ("#dyn_array", "a,b\nok"),
+        (":version", "1.10\nok"),
+        (":count", "1\nok"),
+        (":ratio", "0.5"),
+        (":flag", "on"),
+        (":list", "a,1.10\nok"),
+        (":map", "1,1\nok"),
+        (":required-1", "x 'y z'"),
+        (":dependent", "dependent"),
+        (":required_str-1", "8080\nok"),
+        (":dependent_str", "dependent_str"),
+        (":dyn_string", "1e10\nok"),
+        (":dyn_array", "a,b\nok"),
     ] {
         stats.insert(task.to_string(), String::from("Finished: Success"));
         outputs.insert(task.to_string(), out.to_string());
@@ -910,11 +910,11 @@ async fn test_vars_typed_cli() {
     let mut stats = HashMap::new();
     let mut outputs = HashMap::new();
     for (task, out) in [
-        ("#version", "2.0\nok"),
-        ("#count", "42\nok"),
-        ("#flag", "off"),
-        ("#list", "p,q\nok"),
-        ("#required", "1 two"),
+        (":version", "2.0\nok"),
+        (":count", "42\nok"),
+        (":flag", "off"),
+        (":list", "p,q\nok"),
+        (":required", "1 two"),
     ] {
         stats.insert(task.to_string(), String::from("Finished: Success"));
         outputs.insert(task.to_string(), out.to_string());
@@ -969,11 +969,11 @@ async fn test_vars_constraints() {
     let mut stats = HashMap::new();
     let mut outputs = HashMap::new();
     for (task, out) in [
-        ("#env", "prod"),
-        ("#version", "1.2.3"),
-        ("#port", "1024"),
-        ("#region", "ap-northeast-1"),
-        ("#tags", "x,y"),
+        (":env", "prod"),
+        (":version", "1.2.3"),
+        (":port", "1024"),
+        (":region", "ap-northeast-1"),
+        (":tags", "x,y"),
     ] {
         stats.insert(task.to_string(), String::from("Finished: Success"));
         outputs.insert(task.to_string(), out.to_string());
@@ -1019,16 +1019,16 @@ async fn test_vars_required() {
     let tasks = vec![String::from("cli"), String::from("dependent")];
 
     let mut stats = HashMap::new();
-    stats.insert(String::from("#cli"), String::from("Finished: Success"));
-    stats.insert(String::from("#dependent"), String::from("Finished: Success"));
-    stats.insert(String::from("#required-1"), String::from("Finished: Success"));
+    stats.insert(String::from(":cli"), String::from("Finished: Success"));
+    stats.insert(String::from(":dependent"), String::from("Finished: Success"));
+    stats.insert(String::from(":required-1"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
     // Unset var is given a value by the CLI
-    outputs.insert(String::from("#cli"), String::from("ap-northeast-1"));
+    outputs.insert(String::from(":cli"), String::from("ap-northeast-1"));
     // Unset var is given a value by the dependent task
-    outputs.insert(String::from("#required-1"), String::from("prod"));
-    outputs.insert(String::from("#dependent"), String::from("dependent"));
+    outputs.insert(String::from(":required-1"), String::from("prod"));
+    outputs.insert(String::from(":dependent"), String::from("dependent"));
 
     let vars = IndexMap::from([("region".to_string(), VarsConfig::Static(Value::from("ap-northeast-1")))]);
     run_task_with_vars(&path, tasks, stats, Some(outputs), vars, false)
@@ -1041,17 +1041,17 @@ async fn test_vars_builtin() {
     setup();
 
     let path = BASE_PATH.join("vars_builtin");
-    let tasks = vec![String::from("foo"), String::from("p1#bar"), String::from("p2#baz")];
+    let tasks = vec![String::from("foo"), String::from("p1:bar"), String::from("p2:baz")];
 
     let mut stats = HashMap::new();
-    stats.insert(String::from("#foo"), String::from("Finished: Success"));
-    stats.insert(String::from("p1#bar"), String::from("Finished: Success"));
-    stats.insert(String::from("p2#baz"), String::from("Finished: Success"));
+    stats.insert(String::from(":foo"), String::from("Finished: Success"));
+    stats.insert(String::from("p1:bar"), String::from("Finished: Success"));
+    stats.insert(String::from("p2:baz"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#foo"), String::from("\n\n#foo\ntrue"));
-    outputs.insert(String::from("p1#bar"), String::from("p1\np1\np1#bar"));
-    outputs.insert(String::from("p2#baz"), String::from("p2\np2\np2#baz"));
+    outputs.insert(String::from(":foo"), String::from("\n\n:foo\ntrue"));
+    outputs.insert(String::from("p1:bar"), String::from("p1\np1\np1:bar"));
+    outputs.insert(String::from("p2:baz"), String::from("p2\np2\np2:baz"));
 
     run_task_with_watch(&path, tasks, stats, Some(outputs), None, None, None, false, async {}).await
 }
@@ -1060,17 +1060,17 @@ async fn test_vars_builtin() {
 async fn test_vars_multi() {
     setup();
     let path = BASE_PATH.join("vars_multi");
-    let tasks = vec![String::from("#baz")];
+    let tasks = vec![String::from(":baz")];
 
     let mut stats = HashMap::new();
-    stats.insert(String::from("foo#foo"), String::from("Finished: Success"));
-    stats.insert(String::from("bar#bar"), String::from("Finished: Success"));
-    stats.insert(String::from("#baz"), String::from("Finished: Success"));
+    stats.insert(String::from("foo:foo"), String::from("Finished: Success"));
+    stats.insert(String::from("bar:bar"), String::from("Finished: Success"));
+    stats.insert(String::from(":baz"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("foo#foo"), String::from("foo 10\nroot"));
-    outputs.insert(String::from("bar#bar"), String::from("bar 2\nfoo"));
-    outputs.insert(String::from("#baz"), String::from("baz 3\nbar"));
+    outputs.insert(String::from("foo:foo"), String::from("foo 10\nroot"));
+    outputs.insert(String::from("bar:bar"), String::from("bar 2\nfoo"));
+    outputs.insert(String::from(":baz"), String::from("baz 3\nbar"));
 
     run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
 }
@@ -1083,24 +1083,24 @@ async fn test_vars_dep() {
     let tasks = vec![String::from("foo")];
 
     let mut stats = HashMap::new();
-    stats.insert(String::from("#foo"), String::from("Finished: Success"));
-    stats.insert(String::from("#bar"), String::from("Finished: Success"));
-    stats.insert(String::from("#baz"), String::from("Finished: Success"));
-    stats.insert(String::from("#baz-1"), String::from("Finished: Success"));
-    stats.insert(String::from("#qux-1"), String::from("Finished: Success"));
-    stats.insert(String::from("#qux-2"), String::from("Finished: Success"));
-    stats.insert(String::from("#quux-1"), String::from("Finished: Success"));
-    stats.insert(String::from("#quux-2"), String::from("Finished: Success"));
+    stats.insert(String::from(":foo"), String::from("Finished: Success"));
+    stats.insert(String::from(":bar"), String::from("Finished: Success"));
+    stats.insert(String::from(":baz"), String::from("Finished: Success"));
+    stats.insert(String::from(":baz-1"), String::from("Finished: Success"));
+    stats.insert(String::from(":qux-1"), String::from("Finished: Success"));
+    stats.insert(String::from(":qux-2"), String::from("Finished: Success"));
+    stats.insert(String::from(":quux-1"), String::from("Finished: Success"));
+    stats.insert(String::from(":quux-2"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#foo"), String::from("foo 1"));
-    outputs.insert(String::from("#bar"), String::from("bar 2"));
-    outputs.insert(String::from("#baz"), String::from("baz 3"));
-    outputs.insert(String::from("#baz-1"), String::from("baz 4"));
-    outputs.insert(String::from("#qux-1"), String::from("qux 4 6"));
-    outputs.insert(String::from("#qux-2"), String::from("qux 5 5"));
-    outputs.insert(String::from("#quux-1"), String::from("quux 3"));
-    outputs.insert(String::from("#quux-2"), String::from("quux 4"));
+    outputs.insert(String::from(":foo"), String::from("foo 1"));
+    outputs.insert(String::from(":bar"), String::from("bar 2"));
+    outputs.insert(String::from(":baz"), String::from("baz 3"));
+    outputs.insert(String::from(":baz-1"), String::from("baz 4"));
+    outputs.insert(String::from(":qux-1"), String::from("qux 4 6"));
+    outputs.insert(String::from(":qux-2"), String::from("qux 5 5"));
+    outputs.insert(String::from(":quux-1"), String::from("quux 3"));
+    outputs.insert(String::from(":quux-2"), String::from("quux 4"));
 
     run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
 }
@@ -1113,20 +1113,20 @@ async fn test_vars_dep_multi() {
     let tasks = vec![String::from("foo")];
 
     let mut stats = HashMap::new();
-    stats.insert(String::from("p1#foo"), String::from("Finished: Success"));
-    stats.insert(String::from("p1#bar-1"), String::from("Finished: Success"));
-    stats.insert(String::from("p2#baz-1"), String::from("Finished: Success"));
-    stats.insert(String::from("p2#baz-2"), String::from("Finished: Success"));
-    stats.insert(String::from("p2#qux"), String::from("Finished: Success"));
-    stats.insert(String::from("p2#qux-1"), String::from("Finished: Success"));
+    stats.insert(String::from("p1:foo"), String::from("Finished: Success"));
+    stats.insert(String::from("p1:bar-1"), String::from("Finished: Success"));
+    stats.insert(String::from("p2:baz-1"), String::from("Finished: Success"));
+    stats.insert(String::from("p2:baz-2"), String::from("Finished: Success"));
+    stats.insert(String::from("p2:qux"), String::from("Finished: Success"));
+    stats.insert(String::from("p2:qux-1"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("p1#foo"), String::from("foo 2"));
-    outputs.insert(String::from("p1#bar-1"), String::from("bar 3"));
-    outputs.insert(String::from("p2#baz-1"), String::from("baz 4"));
-    outputs.insert(String::from("p2#baz-2"), String::from("baz 5"));
-    outputs.insert(String::from("p2#qux"), String::from("qux 5"));
-    outputs.insert(String::from("p2#qux-1"), String::from("qux 4"));
+    outputs.insert(String::from("p1:foo"), String::from("foo 2"));
+    outputs.insert(String::from("p1:bar-1"), String::from("bar 3"));
+    outputs.insert(String::from("p2:baz-1"), String::from("baz 4"));
+    outputs.insert(String::from("p2:baz-2"), String::from("baz 5"));
+    outputs.insert(String::from("p2:qux"), String::from("qux 5"));
+    outputs.insert(String::from("p2:qux-1"), String::from("qux 4"));
 
     let vars = IndexMap::from([("A".to_string(), VarsConfig::Static(Value::from(2)))]);
 
@@ -1143,18 +1143,18 @@ async fn test_vars_dep_same() {
     let tasks = vec![String::from("foo"), String::from("bar")];
 
     let mut stats = HashMap::new();
-    stats.insert(String::from("#foo"), String::from("Finished: Success"));
-    stats.insert(String::from("#bar"), String::from("Finished: Success"));
-    stats.insert(String::from("#baz-1"), String::from("Finished: Success"));
-    stats.insert(String::from("#qux-1"), String::from("Finished: Success"));
-    stats.insert(String::from("#qux-2"), String::from("Finished: Success"));
+    stats.insert(String::from(":foo"), String::from("Finished: Success"));
+    stats.insert(String::from(":bar"), String::from("Finished: Success"));
+    stats.insert(String::from(":baz-1"), String::from("Finished: Success"));
+    stats.insert(String::from(":qux-1"), String::from("Finished: Success"));
+    stats.insert(String::from(":qux-2"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#foo"), String::from("foo"));
-    outputs.insert(String::from("#bar"), String::from("bar 2"));
-    outputs.insert(String::from("#baz-1"), String::from("baz 4"));
-    outputs.insert(String::from("#qux-1"), String::from("qux 6"));
-    outputs.insert(String::from("#qux-2"), String::from("qux 5"));
+    outputs.insert(String::from(":foo"), String::from("foo"));
+    outputs.insert(String::from(":bar"), String::from("bar 2"));
+    outputs.insert(String::from(":baz-1"), String::from("baz 4"));
+    outputs.insert(String::from(":qux-1"), String::from("qux 6"));
+    outputs.insert(String::from(":qux-2"), String::from("qux 5"));
 
     run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
 }
@@ -1167,7 +1167,7 @@ async fn test_vars_dynamic() {
     let tasks = vec![String::from("foo")];
 
     let mut stats = HashMap::new();
-    stats.insert(String::from("#foo"), String::from("Finished: Success"));
+    stats.insert(String::from(":foo"), String::from("Finished: Success"));
 
     let output = Command::new("git")
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
@@ -1177,7 +1177,7 @@ async fn test_vars_dynamic() {
 
     let mut outputs = HashMap::new();
     outputs.insert(
-        String::from("#foo"),
+        String::from(":foo"),
         format!("12345 workflows/ true foo {}\nA\nB\nC\nD\nE", branch),
     );
 
@@ -1192,10 +1192,10 @@ async fn test_vars_dynamic_task() {
     let tasks = vec![String::from("foo")];
 
     let mut stats = HashMap::new();
-    stats.insert(String::from("#foo"), String::from("Finished: Success"));
+    stats.insert(String::from(":foo"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#foo"), String::from("12345 project-#foo perl\nA\nC"));
+    outputs.insert(String::from(":foo"), String::from("12345 project-:foo perl\nA\nC"));
 
     run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
 }
@@ -1234,10 +1234,10 @@ async fn test_service() {
     let tasks = vec![String::from("foo")];
 
     let mut stats = HashMap::new();
-    stats.insert(String::from("#foo"), String::from("Finished: Success"));
-    stats.insert(String::from("#bar"), String::from("Ready"));
-    stats.insert(String::from("#baz"), String::from("Ready"));
-    stats.insert(String::from("#qux"), String::from("Ready"));
+    stats.insert(String::from(":foo"), String::from("Finished: Success"));
+    stats.insert(String::from(":bar"), String::from("Ready"));
+    stats.insert(String::from(":baz"), String::from("Ready"));
+    stats.insert(String::from(":qux"), String::from("Ready"));
 
     run_task(&path, tasks, stats, None, false).await.unwrap();
 }
@@ -1249,9 +1249,9 @@ async fn test_service_failure() {
     let tasks = vec![String::from("foo")];
 
     let mut stats = HashMap::new();
-    stats.insert(String::from("#foo"), String::from("Finished: BadDeps"));
-    stats.insert(String::from("#bar"), String::from("Finished: NotReady"));
-    stats.insert(String::from("#baz"), String::from("Finished: NotReady"));
+    stats.insert(String::from(":foo"), String::from("Finished: BadDeps"));
+    stats.insert(String::from(":bar"), String::from("Finished: NotReady"));
+    stats.insert(String::from(":baz"), String::from("Finished: NotReady"));
 
     run_task(&path, tasks, stats, None, false).await.unwrap();
 }
@@ -1263,22 +1263,22 @@ async fn test_watch() {
     let tasks = vec![String::from("foo")];
 
     let mut stats = HashMap::new();
-    stats.insert(String::from("#foo"), String::from("Finished: Success"));
-    stats.insert(String::from("#bar"), String::from("Finished: Success"));
-    stats.insert(String::from("#baz"), String::from("Finished: Success"));
-    stats.insert(String::from("#qux"), String::from("Finished: Success"));
+    stats.insert(String::from(":foo"), String::from("Finished: Success"));
+    stats.insert(String::from(":bar"), String::from("Finished: Success"));
+    stats.insert(String::from(":baz"), String::from("Finished: Success"));
+    stats.insert(String::from(":qux"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#foo"), String::from("foo\nfoo"));
-    outputs.insert(String::from("#bar"), String::from("bar\nbar"));
-    outputs.insert(String::from("#baz"), String::from("baz"));
-    outputs.insert(String::from("#qux"), String::from("qux\nqux"));
+    outputs.insert(String::from(":foo"), String::from("foo\nfoo"));
+    outputs.insert(String::from(":bar"), String::from("bar\nbar"));
+    outputs.insert(String::from(":baz"), String::from("baz"));
+    outputs.insert(String::from(":qux"), String::from("qux\nqux"));
 
     let mut runs = HashMap::new();
-    runs.insert(String::from("#foo"), 1);
-    runs.insert(String::from("#bar"), 1);
-    runs.insert(String::from("#baz"), 0);
-    runs.insert(String::from("#qux"), 1);
+    runs.insert(String::from(":foo"), 1);
+    runs.insert(String::from(":bar"), 1);
+    runs.insert(String::from(":baz"), 0);
+    runs.insert(String::from(":qux"), 1);
 
     run_task_with_watch(
         &path,
@@ -1307,12 +1307,12 @@ async fn test_watch_service() {
     let tasks = vec![String::from("foo")];
 
     let mut stats = HashMap::new();
-    stats.insert(String::from("#foo"), String::from("Finished: Success"));
-    stats.insert(String::from("#bar"), String::from("Ready"));
+    stats.insert(String::from(":foo"), String::from("Finished: Success"));
+    stats.insert(String::from(":bar"), String::from("Ready"));
 
     let mut runs = HashMap::new();
-    runs.insert(String::from("#foo"), 1);
-    runs.insert(String::from("#bar"), 1);
+    runs.insert(String::from(":foo"), 1);
+    runs.insert(String::from(":bar"), 1);
 
     {
         let mut f = File::create(path.join("bar.txt")).unwrap();
@@ -1337,9 +1337,9 @@ async fn test_up_to_date() {
     File::create(path.join("foo.out")).ok();
 
     let mut stats = HashMap::new();
-    stats.insert(String::from("#foo"), String::from("Finished: UpToDate"));
-    stats.insert(String::from("#bar"), String::from("Finished: Success"));
-    stats.insert(String::from("#baz"), String::from("Finished: Success"));
+    stats.insert(String::from(":foo"), String::from("Finished: UpToDate"));
+    stats.insert(String::from(":bar"), String::from("Finished: Success"));
+    stats.insert(String::from(":baz"), String::from("Finished: Success"));
 
     run_task(&path, tasks, stats, None, false).await.unwrap();
 }
@@ -1353,10 +1353,10 @@ async fn test_up_to_date_with_a_missing_directory() {
     let tasks = vec![String::from("build")];
 
     let mut stats = HashMap::new();
-    stats.insert(String::from("#build"), String::from("Finished: Success"));
+    stats.insert(String::from(":build"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
-    outputs.insert(String::from("#build"), String::from("built"));
+    outputs.insert(String::from(":build"), String::from("built"));
 
     run_task(&path, tasks, stats, Some(outputs), false).await.unwrap();
 }
@@ -1377,11 +1377,11 @@ async fn test_env_precedence() {
     let tasks = vec![String::from("foo")];
 
     let mut stats = HashMap::new();
-    stats.insert(String::from("#foo"), String::from("Finished: Success"));
+    stats.insert(String::from(":foo"), String::from("Finished: Success"));
 
     let mut outputs = HashMap::new();
     outputs.insert(
-        String::from("#foo"),
+        String::from(":foo"),
         String::from("os0 file1 file2 pj3 file4 file5 task6"),
     );
 
@@ -1401,19 +1401,19 @@ async fn test_working_dir_inheritance() {
     ];
 
     let mut stats = HashMap::new();
-    stats.insert(String::from("#inherit"), String::from("Finished: Success"));
-    stats.insert(String::from("#join"), String::from("Finished: Success"));
-    stats.insert(String::from("#service_inherit"), String::from("Ready"));
-    stats.insert(String::from("#service_join"), String::from("Ready"));
+    stats.insert(String::from(":inherit"), String::from("Finished: Success"));
+    stats.insert(String::from(":join"), String::from("Finished: Success"));
+    stats.insert(String::from(":service_inherit"), String::from("Ready"));
+    stats.insert(String::from(":service_join"), String::from("Ready"));
 
     let base_dir = path::absolute(&path).unwrap();
     let mut outputs = HashMap::new();
     outputs.insert(
-        String::from("#inherit"),
+        String::from(":inherit"),
         base_dir.join("workdir").to_string_lossy().to_string(),
     );
     outputs.insert(
-        String::from("#join"),
+        String::from(":join"),
         base_dir.join("workdir").join("task").to_string_lossy().to_string(),
     );
 
@@ -1754,4 +1754,58 @@ async fn test_stderr_separation() {
 
     assert_eq!(vec!["out"], stdout_lines);
     assert_eq!(vec!["err"], stderr_lines);
+}
+
+#[tokio::test]
+async fn test_colon_name() {
+    setup();
+    let path = BASE_PATH.join("colon_name");
+
+    for target in ["literal", "template"] {
+        let mut statuses = HashMap::new();
+        statuses.insert(String::from("foo:build"), String::from("Finished: Success"));
+        statuses.insert(String::from(":build:watch"), String::from("Finished: Success"));
+        statuses.insert(format!(":{}", target), String::from("Finished: Success"));
+
+        let mut outputs = HashMap::new();
+        outputs.insert(String::from("foo:build"), String::from("foo build"));
+        outputs.insert(String::from(":build:watch"), String::from("root build:watch"));
+        outputs.insert(format!(":{}", target), String::from(target));
+
+        run_task(&path, vec![String::from(target)], statuses, Some(outputs), false)
+            .await
+            .unwrap();
+    }
+
+    // A task of a project whose name contains `:`
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("a:b:c"), String::from("Finished: Success"));
+    statuses.insert(String::from(":colon_project"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("a:b:c"), String::from("a:b c"));
+    outputs.insert(String::from(":colon_project"), String::from("colon_project"));
+
+    run_task(
+        &path,
+        vec![String::from("colon_project")],
+        statuses,
+        Some(outputs),
+        false,
+    )
+    .await
+    .unwrap();
+
+    // A task of a child project whose name contains `:`
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("foo:x:y"), String::from("Finished: Success"));
+    statuses.insert(String::from("foo:local"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("foo:x:y"), String::from("foo x:y"));
+    outputs.insert(String::from("foo:local"), String::from("local"));
+
+    run_task(&path, vec![String::from("foo:local")], statuses, Some(outputs), false)
+        .await
+        .unwrap();
 }

@@ -70,7 +70,7 @@ mod tests {
 
     #[test]
     fn pane_rows_matches_rendered_terminal_body_height() {
-        let tasks = ["#foo"];
+        let tasks = [":foo"];
         let size = SizeInfo::new(40, 160, tasks.iter().copied());
 
         assert_eq!(size.pane_rows(), 36);
@@ -78,7 +78,7 @@ mod tests {
 
     #[test]
     fn pane_rows_keeps_vt100_height_nonzero() {
-        let tasks = ["#foo"];
+        let tasks = [":foo"];
         let size = SizeInfo::new(2, 80, tasks.iter().copied());
 
         assert_eq!(size.pane_rows(), 1);
