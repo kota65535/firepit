@@ -1,0 +1,3 @@
+tasks:
+  hello:
+    command: echo hello

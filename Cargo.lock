@@ -1077,6 +1077,7 @@ dependencies = [
  "derivative",
  "dotenvy",
  "futures",
+ "glob",
  "globmatch",
  "human-panic",
  "indexmap",

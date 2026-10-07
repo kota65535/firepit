@@ -142,6 +142,40 @@ fn test_bad_child() {
 }
 
 #[test]
+fn test_projects_glob() {
+    let path = Path::new("tests/fixtures/config/projects_glob");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    // A dir without the config file and a dot dir are not projects
+    assert_eq!(children.keys().collect::<Vec<_>>(), vec!["a", "b", "cli", "www"]);
+    assert_eq!(children["www"].dir, root.dir.join("apps/website"));
+
+    // A child found by a glob leads to the root as well
+    let (_, children) = ProjectConfig::new_multi(&path.join("packages/a")).unwrap();
+    assert!(children.contains_key("a"));
+}
+
+#[test]
+fn test_projects_glob_recursive() {
+    let path = Path::new("tests/fixtures/config/projects_glob_recursive");
+    let err = ProjectConfig::new_multi(path).expect_err("");
+    assert!(format!("{:#}", err).contains("`**`"), "{err:#}");
+}
+
+#[test]
+fn test_projects_glob_duplicate_dir() {
+    let path = Path::new("tests/fixtures/config/projects_glob_dup_dir");
+    let err = ProjectConfig::new_multi(path).expect_err("");
+    assert!(format!("{:#}", err).contains("listed more than once"), "{err:#}");
+}
+
+#[test]
+fn test_projects_glob_duplicate_name() {
+    let path = Path::new("tests/fixtures/config/projects_glob_dup_name");
+    let err = ProjectConfig::new_multi(path).expect_err("");
+    assert!(format!("{:#}", err).contains("listed more than once"), "{err:#}");
+}
+
+#[test]
 fn test_bad_type() {
     let path = Path::new("tests/fixtures/config/bad_type");
     let err = ProjectConfig::new_multi(path).expect_err("");

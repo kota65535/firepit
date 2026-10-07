@@ -35,8 +35,21 @@ pub struct ProjectConfig {
     ///   client: packages/client
     ///   server: packages/server
     /// ```
+    /// A list can mix globs, paths, and project names to paths.
+    /// A glob or a path takes the directory name as the project name, and a glob matches only
+    /// directories with a config file.
+    /// ```yaml
+    /// projects:
+    ///   - packages/*
+    ///   - tools/cli
+    ///   - www: apps/website
+    /// ```
     #[serde(default)]
-    pub projects: IndexMap<String, String>,
+    pub projects: ProjectsConfig,
+
+    /// Child project directories (absolute) by project name, resolved from `projects`
+    #[serde(skip)]
+    pub project_dirs: IndexMap<String, PathBuf>,
 
     /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults)
     /// instead.
@@ -238,11 +251,11 @@ impl ProjectConfig {
 
         if root_config.is_root() {
             // Multi project
-            for (name, path) in &root_config.projects {
+            for (name, dir) in &root_config.project_dirs {
                 if name.contains("#") {
                     anyhow::bail!("Project name must not contain '#'. Found: {:?}", name)
                 }
-                let mut child_config = ProjectConfig::new(name, root_config.dir.join(path).as_path())?;
+                let mut child_config = ProjectConfig::new(name, dir)?;
                 for t in child_config.tasks.values_mut() {
                     t.project = name.clone();
                 }
@@ -314,6 +327,8 @@ impl ProjectConfig {
 
         // Name
         data.name = name.to_string();
+
+        data.project_dirs = data.projects.resolve(dir)?;
 
         // Var declarations
         for (k, v) in data.vars.iter() {
@@ -450,7 +465,7 @@ impl ProjectConfig {
     }
 
     pub fn is_child(&self, root: &ProjectConfig) -> bool {
-        root.projects.values().any(|p| Path::join(&root.dir, p) == self.dir)
+        root.project_dirs.values().any(|d| *d == self.dir)
     }
 
     pub fn working_dir_path(&self) -> PathBuf {
@@ -825,6 +840,110 @@ pub struct LogConfig {
 
     /// Log file path.
     pub file: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(untagged)]
+pub enum ProjectsConfig {
+    /// Project names to paths
+    Map(IndexMap<String, String>),
+    /// Globs, paths, or project names to paths
+    List(Vec<ProjectEntryConfig>),
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(untagged)]
+pub enum ProjectEntryConfig {
+    /// Glob or path
+    Path(String),
+    /// Project name to path
+    Named(IndexMap<String, String>),
+}
+
+impl Default for ProjectsConfig {
+    fn default() -> Self {
+        ProjectsConfig::Map(IndexMap::new())
+    }
+}
+
+impl ProjectsConfig {
+    pub fn is_empty(&self) -> bool {
+        match self {
+            ProjectsConfig::Map(m) => m.is_empty(),
+            ProjectsConfig::List(l) => l.is_empty(),
+        }
+    }
+
+    fn resolve(&self, root: &Path) -> anyhow::Result<IndexMap<String, PathBuf>> {
+        let mut entries = Vec::new();
+        match self {
+            ProjectsConfig::Map(m) => entries.extend(m.iter().map(|(n, p)| (n.clone(), root.join(p)))),
+            ProjectsConfig::List(l) => {
+                for e in l {
+                    match e {
+                        ProjectEntryConfig::Named(m) => match m.iter().collect::<Vec<_>>().as_slice() {
+                            [(n, p)] => entries.push(((*n).clone(), root.join(p))),
+                            _ => anyhow::bail!("projects: {:?} must have exactly one project name", m),
+                        },
+                        // A plain path is not globbed, so a missing config file is an error rather
+                        // than a silently skipped project
+                        ProjectEntryConfig::Path(p) if !p.contains(['*', '?', '[']) => {
+                            let dir = root.join(p);
+                            entries.push((dir_name(&dir)?, dir));
+                        }
+                        ProjectEntryConfig::Path(p) => {
+                            for dir in glob_projects(root, p)? {
+                                entries.push((dir_name(&dir)?, dir));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut dirs = IndexMap::new();
+        for (name, dir) in entries {
+            if dirs.contains_key(&name) {
+                anyhow::bail!("projects: project name {:?} is listed more than once", name);
+            }
+            if dirs.values().any(|d| *d == dir) {
+                anyhow::bail!("projects: directory {:?} is listed more than once", dir);
+            }
+            dirs.insert(name, dir);
+        }
+        Ok(dirs)
+    }
+}
+
+fn dir_name(dir: &Path) -> anyhow::Result<String> {
+    dir.file_name()
+        .and_then(|n| n.to_str())
+        .map(str::to_string)
+        .with_context(|| format!("projects: cannot take a project name from {:?}", dir))
+}
+
+/// Directories matching `pattern` under `root` that have a config file, in alphabetical order.
+fn glob_projects(root: &Path, pattern: &str) -> anyhow::Result<Vec<PathBuf>> {
+    // `**` walks the whole tree, `node_modules` and `target` included, on every run
+    if pattern.contains("**") {
+        anyhow::bail!("projects: {:?}: `**` is not supported", pattern);
+    }
+    let root = root
+        .to_str()
+        .with_context(|| format!("projects: cannot glob under a non UTF-8 path {:?}", root))?;
+    let full_pattern = format!("{}/{}", glob::Pattern::escape(root), pattern);
+    let options = glob::MatchOptions {
+        require_literal_leading_dot: true,
+        ..Default::default()
+    };
+    let mut dirs = Vec::new();
+    for entry in glob::glob_with(&full_pattern, options).with_context(|| format!("projects: {:?}", pattern))? {
+        let path = entry.with_context(|| format!("projects: {:?}", pattern))?;
+        if CONFIG_FILE.iter().any(|f| path.join(f).is_file()) {
+            dirs.push(path);
+        }
+    }
+    Ok(dirs)
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
