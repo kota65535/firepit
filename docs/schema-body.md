@@ -76,7 +76,7 @@ env_files:
 - **Template:** no
 - **Description:** Gantt chart output file path. Valid only in a root project config.
 ```yaml
-gantt_file: gantt.svg
+gantt_file: gantt.mmd
 ```
 
 ### includes

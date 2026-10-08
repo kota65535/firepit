@@ -77,6 +77,8 @@ Level of the Firepit log. Options are: `error`, `warn`, `info`, `debug`, `trace`
 ### `--gantt-file <GANTT_FILE>`
 
 Outputs a Gantt chart showing the execution time of each task in [Mermaid](https://mermaid.js.org/) format to the specified path.
+Each run of a task is a bar, and a failed one is marked as critical.
+The time a service is ready is a bar of its own, marked as active.
 
 ### `--tui`
 

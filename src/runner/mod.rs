@@ -4,14 +4,15 @@ use crate::probe::Probe;
 use crate::process::{Child, ChildExit, Command, ProcessManager};
 use crate::project::{Task, Workspace};
 use crate::runner::command::{RunnerCommand, RunnerCommandChannel};
+use crate::runner::gantt::Timeline;
 use crate::runner::graph::{CallbackMessage, NodeResult, TaskGraph, VisitorCommand, VisitorHandle, VisitorMessage};
 use crate::runner::watcher::{FileWatcher, FileWatcherHandle, WatcherCommand};
 use crate::tokio_spawn;
 use anyhow::Context;
-use chrono::{DateTime, Local};
+use chrono::Local;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use indexmap::IndexMap;
+use itertools::Itertools;
 use petgraph::Direction;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -23,6 +24,7 @@ use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
 pub mod command;
+pub mod gantt;
 pub mod graph;
 pub mod watcher;
 
@@ -44,8 +46,7 @@ pub struct TaskRunner {
 
     pub fail_fast: bool,
 
-    pub start_times: Arc<Mutex<IndexMap<String, DateTime<Local>>>>,
-    pub end_times: Arc<Mutex<IndexMap<String, DateTime<Local>>>>,
+    pub timeline: Arc<Mutex<Timeline>>,
 }
 
 impl TaskRunner {
@@ -83,8 +84,7 @@ impl TaskRunner {
             command_tx,
             command_rx,
             fail_fast: ws.fail_fast,
-            start_times: Arc::new(Mutex::new(IndexMap::new())),
-            end_times: Arc::new(Mutex::new(IndexMap::new())),
+            timeline: Arc::new(Mutex::new(Timeline::default())),
         })
     }
 
@@ -159,7 +159,7 @@ impl TaskRunner {
                         RunnerCommand::StopTask { task } => {
                             debug!("Stopping task: {}", task);
                             let end_time =  Local::now();
-                            self.end_times.lock().expect("not poisoned").insert( task.clone(), end_time);
+                            self.timeline.lock().expect("not poisoned").finish_task(&task, end_time, TaskResult::Stopped);
                             app_tx.clone().with_name(&task).finish_task(TaskResult::Stopped, Some(end_time));
                             self.manager.stop_by_label(&task).await;
                         }
@@ -180,7 +180,7 @@ impl TaskRunner {
                             debug!("Stopping tasks");
                             for task in tasks.iter() {
                                 let end_time =  Local::now();
-                                self.end_times.lock().expect("not poisoned").insert( task.clone(), end_time);
+                                self.timeline.lock().expect("not poisoned").finish_task(task, end_time, TaskResult::Rerunning);
                                 app_tx.clone().with_name(task).finish_task(TaskResult::Rerunning, Some(end_time));
                                 self.manager.stop_by_label(task).await;
                             }
@@ -267,8 +267,7 @@ impl TaskRunner {
                     let finalizers_remaining_cloned = finalizers_remaining.clone();
                     let quitting_cloned = quitting.clone();
                     let is_finalizer = finalizer_tasks.contains(&task.name);
-                    let start_times_cloned = self.start_times.clone();
-                    let end_times_cloned = self.end_times.clone();
+                    let timeline = self.timeline.clone();
                     task_fut.push(tokio_spawn!("task", { name = task_name }, async move {
                         let node_done = || {
                             Self::node_done(
@@ -287,6 +286,7 @@ impl TaskRunner {
                         // The PID is kept outside so the process can be stopped if the error
                         // happens after it has started.
                         let mut spawned_pid = None;
+                        let mut run_id = None;
                         let run = async {
                             // Skip the task if the runner is quitting, unless it is a finalizer.
                             // Checked first so that the dependents of the tasks stopped by quitting
@@ -345,7 +345,8 @@ impl TaskRunner {
                             let pid = process.pid().unwrap_or(0);
                             spawned_pid = Some(pid);
                             let start_time = Local::now();
-                            start_times_cloned.lock().expect("not poisoned").insert(task.name.clone(), start_time);
+                            let id = timeline.lock().expect("not poisoned").start(&task.name, &task.label, start_time);
+                            run_id = Some(id);
 
                             // Notify the app the task started
                             app_tx.start_task(task.name.clone(), pid, num_restart, task.restart.max_restart(), num_runs, start_time);
@@ -374,8 +375,8 @@ impl TaskRunner {
                                             let result = result.with_context(|| format!("task {:?} failed to run", task.name))??;
 
                                             let end_time =  Local::now();
-                                            end_times_cloned.lock().expect("not poisoned").insert(task.name.clone(),  Local::now());
-                                            app_tx.finish_task(result.clone().unwrap_or(TaskResult::Unknown), Some(end_time));
+                                            let finished = result.clone().unwrap_or(TaskResult::Unknown);
+                                            app_tx.finish_task(finished.clone(), Some(end_time));
 
                                             let should_restart = match &result {
                                                 Some(result) => {
@@ -396,6 +397,11 @@ impl TaskRunner {
                                                 }
                                                 None => false
                                             };
+                                            // A service exiting before it is ready failed whatever its exit code,
+                                            // which is decided after the loop unless it restarts
+                                            if should_restart || probe_result == Some(true) {
+                                                timeline.lock().expect("not poisoned").finish(id, end_time, finished);
+                                            }
                                             if should_restart {
                                                 warn!("Task is restarting ({}/{})", num_restart + 1, task.restart.max_restart().map_or("\u{221e}".to_string(), |m| m.to_string()));
                                                 // Send a message to restart
@@ -415,6 +421,7 @@ impl TaskRunner {
                                                 // Release the dependents, and keep waiting for the
                                                 // process to finish
                                                 info!("Task is ready");
+                                                timeline.lock().expect("not poisoned").ready(id, Local::now());
                                                 app_tx.ready_task();
                                                 if let Err(e) = callback.send(CallbackMessage(NodeResult::Ready)).await {
                                                     debug!("Failed to send callback event: {:?}", e)
@@ -437,7 +444,7 @@ impl TaskRunner {
                                     (Some(false), _) => {
                                         warn!("Task is not ready");
                                         let end_time =  Local::now();
-                                        end_times_cloned.lock().expect("not poisoned").insert(task.name.clone(),  Local::now());
+                                        timeline.lock().expect("not poisoned").finish(id, end_time, TaskResult::NotReady);
                                         app_tx.finish_task(TaskResult::NotReady, Some(end_time));
                                         manager.stop_by_pid(pid).await;
                                         TaskResult::NotReady
@@ -452,11 +459,11 @@ impl TaskRunner {
                                             debug!("Failed to send cancel probe: {:?}", e)
                                         }
                                         let end_time =  Local::now();
-                                        end_times_cloned.lock().expect("not poisoned").insert(task.name.clone(), end_time);
                                         let result = match result {
                                             Some(Some(r @ (TaskResult::Stopped | TaskResult::Killed))) => r,
                                             _ => TaskResult::NotReady,
                                         };
+                                        timeline.lock().expect("not poisoned").finish(id, end_time, result.clone());
                                         app_tx.finish_task(result.clone(), Some(end_time));
                                         result
                                     }
@@ -465,8 +472,8 @@ impl TaskRunner {
                                 // Normal task branch
                                 let result = Self::run_process(task.clone(), process, app_tx.clone()).await?;
                                 let end_time =  Local::now();
-                                end_times_cloned.lock().expect("not poisoned").insert(task.name.clone(), end_time);
                                 let result = result.unwrap_or(TaskResult::Unknown);
+                                timeline.lock().expect("not poisoned").finish(id, end_time, result.clone());
                                 app_tx.finish_task(result.clone(), Some(end_time));
                                 result
                             };
@@ -497,7 +504,11 @@ impl TaskRunner {
                             if let Some(pid) = spawned_pid {
                                 manager.stop_by_pid(pid).await;
                             }
-                            app_tx.finish_task(TaskResult::Error(format!("{e:#}")), Some(Local::now()));
+                            let end_time = Local::now();
+                            if let Some(id) = run_id {
+                                timeline.lock().expect("not poisoned").finish(id, end_time, TaskResult::Error(format!("{e:#}")));
+                            }
+                            app_tx.finish_task(TaskResult::Error(format!("{e:#}")), Some(end_time));
                             if fail_fast {
                                 command_tx.stop_tasks();
                             }
@@ -653,41 +664,16 @@ impl TaskRunner {
         Ok(Some(result))
     }
 
-    pub fn gantt(&self) -> anyhow::Result<String> {
-        let started_times = self
-            .start_times
+    /// Renders the runs so far as a Mermaid Gantt chart.
+    pub fn gantt(&self) -> String {
+        let title = self
+            .target_tasks
+            .iter()
+            .map(|name| self.tasks.iter().find(|t| &t.name == name).map_or(name, |t| &t.label))
+            .join(", ");
+        self.timeline
             .lock()
             .expect("not poisoned")
-            .iter()
-            .map(|(k, v)| (k.clone(), *v))
-            .collect::<IndexMap<_, _>>();
-        let finished_times = self
-            .end_times
-            .lock()
-            .expect("not poisoned")
-            .iter()
-            .map(|(k, v)| (k.clone(), *v))
-            .collect::<IndexMap<_, _>>();
-
-        let title = self.target_tasks.join(", ");
-
-        let mut gantt = format!("gantt\n\ttitle {}\n\tdateFormat x\n\taxisFormat %H:%M:%S\n", title);
-
-        for (task, start_time) in started_times.iter() {
-            let end_time = finished_times.get(task);
-            if end_time.is_none() {
-                continue;
-            }
-            let end_time = end_time.unwrap();
-
-            gantt.push_str(&format!(
-                "\t{} : {}, {}\n",
-                task,
-                start_time.timestamp_millis(),
-                end_time.timestamp_millis()
-            ));
-        }
-
-        Ok(gantt)
+            .to_mermaid(&title, Local::now())
     }
 }
