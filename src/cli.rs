@@ -224,15 +224,18 @@ pub async fn run() -> anyhow::Result<i32> {
             warnings.push(format!("failed to write Gantt chart file {:?}: {}", path, e));
         }
     }
-    runner_result?;
-    let exit_code = app_fut.await?;
+    // A failed runner never tells the app the run is done, so the app is not waited for
+    let result = match runner_result {
+        Ok(()) => app_fut.await?,
+        Err(e) => Err(e),
+    };
 
     // Print warnings after UI cleanup so they are visible to the user
     for warning in &warnings {
         eprintln!("{} {}", BOLD_YELLOW.apply_to("warning:"), warning);
     }
 
-    exit_code
+    result
 }
 
 fn parse_tasks_or_vars(

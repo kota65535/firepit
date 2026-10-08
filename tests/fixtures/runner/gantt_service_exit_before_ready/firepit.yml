@@ -1,0 +1,6 @@
+tasks:
+  server:
+    command: "true"
+    service:
+      healthcheck:
+        log: never printed

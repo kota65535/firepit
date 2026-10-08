@@ -376,8 +376,7 @@ impl TaskRunner {
 
                                             let end_time =  Local::now();
                                             let finished = result.clone().unwrap_or(TaskResult::Unknown);
-                                            timeline.lock().expect("not poisoned").finish(id, end_time, finished.clone());
-                                            app_tx.finish_task(finished, Some(end_time));
+                                            app_tx.finish_task(finished.clone(), Some(end_time));
 
                                             let should_restart = match &result {
                                                 Some(result) => {
@@ -398,6 +397,11 @@ impl TaskRunner {
                                                 }
                                                 None => false
                                             };
+                                            // A service exiting before it is ready failed whatever its exit code,
+                                            // which is decided after the loop unless it restarts
+                                            if should_restart || probe_result == Some(true) {
+                                                timeline.lock().expect("not poisoned").finish(id, end_time, finished);
+                                            }
                                             if should_restart {
                                                 warn!("Task is restarting ({}/{})", num_restart + 1, task.restart.max_restart().map_or("\u{221e}".to_string(), |m| m.to_string()));
                                                 // Send a message to restart

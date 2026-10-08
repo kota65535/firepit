@@ -1755,3 +1755,45 @@ async fn test_stderr_separation() {
     assert_eq!(vec!["out"], stdout_lines);
     assert_eq!(vec!["err"], stderr_lines);
 }
+
+/// A service exiting before it becomes ready failed, even if its process succeeded.
+#[tokio::test]
+async fn test_gantt_service_exit_before_ready() {
+    setup();
+    let path = path::absolute(BASE_PATH.join("gantt_service_exit_before_ready")).unwrap();
+    let tasks = vec![String::from("server")];
+
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &tasks,
+        &path,
+        &IndexMap::new(),
+        false,
+        false,
+        None,
+        Some(false),
+    )
+    .await
+    .unwrap();
+    let mut runner = TaskRunner::new(&ws).unwrap();
+    let (app_tx, mut app_rx) = AppCommandChannel::new();
+    let runner_fut = tokio::spawn(async move {
+        runner.run(&app_tx, true).await.unwrap();
+        runner.gantt()
+    });
+    let events = async {
+        while let Some(event) = app_rx.recv().await {
+            if let AppCommand::Done = event {
+                break;
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(DEFAULT_TEST_TIMEOUT_SECONDS), events)
+        .await
+        .expect("timed out");
+    let gantt = runner_fut.await.unwrap();
+
+    assert!(gantt.contains("\t#server : crit, "), "{}", gantt);
+}
