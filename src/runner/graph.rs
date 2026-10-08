@@ -296,6 +296,9 @@ impl TaskGraph {
 
                     let deps_ok = loop {
                         tokio::select! {
+                            // A restart is handled first, so that this node does not go on with a
+                            // run that has already been re-run
+                            biased;
                             // Visitor command branch
                             Ok(command) = visitor_rx.recv() => {
                                 match command {
@@ -340,6 +343,9 @@ impl TaskGraph {
                                 // Loop for restarting service tasks
                                 'recv: loop {
                                     tokio::select! {
+                                        // A restart is handled first, as the runner drops the
+                                        // callback of a run that has been re-run
+                                        biased;
                                         // Visitor command branch
                                         Ok(command) = visitor_rx.recv() => {
                                             match command {

@@ -144,6 +144,10 @@ impl TaskRunner {
         // From then on only the finalizers run, and the visitors are stopped when the last of them
         // is done
         let quitting = Arc::new(AtomicBool::new(false));
+        // The run each task is to start next, counted by the re-runs asked for.
+        // A visitor that asked to start a task before learning it was re-run asks for an earlier
+        // run, which is not started: the new run follows
+        let mut latest_runs = HashMap::<String, u64>::new();
 
         while !node_rx.is_closed() {
             tokio::select! {
@@ -184,6 +188,9 @@ impl TaskRunner {
                             // Worth noticing even when only warnings are read: the output of the
                             // tasks below it belongs to another run
                             warn!("Re-running tasks: {:?}", tasks);
+                            for task in tasks.iter() {
+                                *latest_runs.entry(task.clone()).or_default() += 1;
+                            }
 
                             debug!("Stopping tasks");
                             for task in tasks.iter() {
@@ -263,6 +270,10 @@ impl TaskRunner {
                         num_restart,
                         callback,
                     } = message;
+                    if num_runs < latest_runs.get(&task.name).copied().unwrap_or_default() {
+                        debug!("Ignoring run {} of task {:?}, which has been re-run", num_runs, task.name);
+                        continue;
+                    }
 
                     let mut app_tx = app_tx.clone().with_name(&task.name);
                     let fail_fast = self.fail_fast;

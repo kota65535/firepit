@@ -1,0 +1,8 @@
+tasks:
+  dep:
+    command: sleep 1
+
+  app:
+    command: echo "app"
+    depends_on:
+      - dep

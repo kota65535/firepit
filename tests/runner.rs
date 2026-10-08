@@ -1416,6 +1416,55 @@ async fn test_rerun_order() {
     std::fs::remove_file(&count).ok();
 }
 
+/// Re-running a task along with its running dependency does not skip it for the failure of the
+/// dependency's run stopped to re-run.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_rerun_running_dependency() {
+    setup();
+    let path = path::absolute(BASE_PATH.join("rerun_running")).unwrap();
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
+    let tasks = vec![String::from("app")];
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &tasks,
+        &path,
+        &IndexMap::new(),
+        false,
+        true,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+    let mut runner = TaskRunner::new(&ws).unwrap();
+    let (app_tx, mut app_rx) = AppCommandChannel::new();
+    let runner_tx = runner.command_tx.clone();
+    let runner_fut = tokio::spawn(async move { runner.run(&app_tx, false).await.ok() });
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    runner_tx.restart_task("#app", true);
+
+    let mut results = Vec::new();
+    let _ = tokio::time::timeout(Duration::from_secs(5), async {
+        while let Some(event) = app_rx.recv().await {
+            if let AppCommand::FinishTask { task, result, .. } = event {
+                if task == "#app" {
+                    results.push(format!("{:?}", result));
+                    if results.last().is_some_and(|r| r == "Success") {
+                        break;
+                    }
+                }
+            }
+        }
+    })
+    .await;
+    runner_tx.quit();
+    runner_fut.await.ok();
+
+    assert_eq!(results, vec!["Rerunning", "Success"]);
+}
+
 #[tokio::test]
 async fn test_up_to_date() {
     setup();
