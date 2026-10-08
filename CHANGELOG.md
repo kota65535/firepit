@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.33.0] - 2026-10-08
+
+### 🚀 Features
+
+- *(config)* Add optional to depends_on, wait_for and finalized_by entries (#469)
+- *(config)* Accept globs in projects (#471)
+
+### 🐛 Bug Fixes
+
+- *(runner)* Make the Gantt chart show every run and its outcome (#467)
+
 ## [0.32.0] - 2026-09-18
 
 ### 🚀 Features
