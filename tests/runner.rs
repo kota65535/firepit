@@ -1380,6 +1380,42 @@ async fn test_rerun(#[case] task: &'static str, #[case] with_deps: bool, #[case]
     .await;
 }
 
+/// A dependent re-run along with its dependency waits for the new run of the dependency, rather
+/// than taking the result of the run before.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_rerun_order() {
+    setup();
+    let path = BASE_PATH.join("rerun_order");
+    let count = path.join("count.txt");
+    std::fs::remove_file(&count).ok();
+    let tasks = vec![String::from("app")];
+
+    let mut stats = HashMap::new();
+    stats.insert(String::from("#dep"), String::from("Finished: Success"));
+    stats.insert(String::from("#app"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#dep"), String::from("1\n2"));
+    outputs.insert(String::from("#app"), String::from("1\n2"));
+
+    run_task_with_watch(
+        &path,
+        tasks,
+        stats,
+        Some(outputs),
+        None,
+        None,
+        None,
+        false,
+        |runner_tx| async move {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            runner_tx.restart_task("#app", true);
+        },
+    )
+    .await;
+    std::fs::remove_file(&count).ok();
+}
+
 #[tokio::test]
 async fn test_up_to_date() {
     setup();

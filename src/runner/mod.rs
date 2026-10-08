@@ -194,10 +194,9 @@ impl TaskRunner {
                             }
                             debug!("Stopped tasks");
                             debug!("Restarting visitors");
-                            for task in tasks.iter() {
-                                if let Err(err) = visitor_tx.send(VisitorCommand::Restart { task: task.clone() }) {
-                                    error!("Failed to restart task {:?}: {:?}", task, err);
-                                }
+                            let tasks = tasks.into_iter().collect();
+                            if let Err(err) = visitor_tx.send(VisitorCommand::Restart { tasks }) {
+                                error!("Failed to restart tasks: {:?}", err);
                             }
                         }
                         RunnerCommand::Quit if quitting.load(Ordering::SeqCst) => {

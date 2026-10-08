@@ -68,7 +68,12 @@ pub struct VisitorMessage {
 #[derive(Debug, Clone)]
 pub enum VisitorCommand {
     Stop,
-    Restart { task: String },
+    /// Re-runs the tasks named, all at once.
+    /// A visitor learns from the same message which of its dependencies re-run, so it cannot
+    /// mistake the result of their previous run for that of the new one.
+    Restart {
+        tasks: HashSet<String>,
+    },
 }
 
 pub struct VisitorHandle {
@@ -216,15 +221,16 @@ impl TaskGraph {
         // Each node has a watch channel to send the result for all dependent nodes.
         // A service sends it when it becomes ready, so a second channel tells when the node has
         // finished, which is what its finalizers wait for.
+        // A result comes with the number of the run it is for.
         let mut txs = HashMap::new();
         let mut rxs = HashMap::new();
         let mut done_txs = HashMap::new();
         let mut done_rxs = HashMap::new();
         for node_id in self.graph.node_identifiers() {
-            let (tx, rx) = watch::channel::<NodeResult>(NodeResult::None);
+            let (tx, rx) = watch::channel::<(u64, NodeResult)>((0, NodeResult::None));
             txs.insert(node_id, tx);
             rxs.insert(node_id, rx);
-            let (tx, rx) = watch::channel::<NodeResult>(NodeResult::None);
+            let (tx, rx) = watch::channel::<(u64, NodeResult)>((0, NodeResult::None));
             done_txs.insert(node_id, tx);
             done_rxs.insert(node_id, rx);
         }
@@ -275,6 +281,8 @@ impl TaskGraph {
             nodes_fut.push(tokio_spawn!("node", { task = task_name }, async move {
                 let mut num_runs = 0;
                 let mut num_restart = 0;
+                // The run of each dependency whose result this node waits for
+                let mut dep_runs = vec![0; dep_tasks.len()];
                 'start: loop {
                     if dep_tasks.is_empty() {
                         debug!("No dependency")
@@ -295,12 +303,13 @@ impl TaskGraph {
                                         debug!("Visitor stopped");
                                         return Ok(())
                                     }
-                                    VisitorCommand::Restart { task: task_name } => {
-                                        debug!("Visitor restarted");
-                                        if task.name == task_name {
+                                    VisitorCommand::Restart { tasks } => {
+                                        Self::count_runs(&tasks, &dep_tasks, &mut dep_runs);
+                                        if tasks.contains(&task.name) {
+                                            debug!("Visitor restarted");
                                             num_runs += 1;
-                                            tx.send(NodeResult::None).ok();
-                                            done_tx.send(NodeResult::None).ok();
+                                            tx.send((num_runs, NodeResult::None)).ok();
+                                            done_tx.send((num_runs, NodeResult::None)).ok();
                                             continue 'start;
                                         }
                                         continue
@@ -308,7 +317,7 @@ impl TaskGraph {
                                 };
                             }
                             // Normal branch, waiting for all dependency tasks
-                            Ok(deps_ok) = Self::wait_all_watches(dep_rxs.clone()) => {
+                            Ok(deps_ok) = Self::wait_all_watches(dep_rxs.clone(), &dep_runs) => {
                                 break deps_ok;
                             }
                         }
@@ -338,12 +347,13 @@ impl TaskGraph {
                                                     debug!("Visitor stopped");
                                                     return Ok(())
                                                 }
-                                                VisitorCommand::Restart { task: task_name } => {
-                                                    debug!("Visitor restarted");
-                                                    if task.name == task_name {
+                                                VisitorCommand::Restart { tasks } => {
+                                                    Self::count_runs(&tasks, &dep_tasks, &mut dep_runs);
+                                                    if tasks.contains(&task.name) {
+                                                        debug!("Visitor restarted");
                                                         num_runs += 1;
-                                                        tx.send(NodeResult::None).ok();
-                                                        done_tx.send(NodeResult::None).ok();
+                                                        tx.send((num_runs, NodeResult::None)).ok();
+                                                        done_tx.send((num_runs, NodeResult::None)).ok();
                                                         continue 'start;
                                                     }
                                                     continue 'recv
@@ -363,11 +373,11 @@ impl TaskGraph {
                                                             // no receivers that happen when this
                                                             // node has no dependents
                                                             debug!("Result: {:?}, still waiting for callback", result);
-                                                            tx.send(NodeResult::Success).ok();
+                                                            tx.send((num_runs, NodeResult::Success)).ok();
                                                             continue 'recv;
                                                         }
                                                         NodeResult::Success | NodeResult::Failure => {
-                                                            tx.send(result.clone()).ok();
+                                                            tx.send((num_runs, result.clone())).ok();
                                                             // Finish the visitor
                                                             debug!("Result: {:?}", result);
                                                             break 'send result;
@@ -386,7 +396,7 @@ impl TaskGraph {
                                                     // without signaling that the node processing is
                                                     // finished, we assume that it is finished.
                                                     debug!("Callback sender dropped");
-                                                    tx.send(NodeResult::Failure).ok();
+                                                    tx.send((num_runs, NodeResult::Failure)).ok();
                                                     break 'send NodeResult::Failure;
                                                 }
                                             }
@@ -398,7 +408,7 @@ impl TaskGraph {
                                 // The receiving end of the node channel has been closed/dropped.
                                 // We act as if we have been canceled.
                                 debug!("Failed to send to the runner: {:?}", e);
-                                tx.send(NodeResult::Failure).ok();
+                                tx.send((num_runs, NodeResult::Failure)).ok();
                                 break 'send NodeResult::Failure;
                             }
                         };
@@ -406,7 +416,7 @@ impl TaskGraph {
 
                     debug!("Visitor finished");
                     // Release the finalizers
-                    done_tx.send(result).ok();
+                    done_tx.send((num_runs, result)).ok();
                     let awaited_done = {
                         let mut t = awaited_remaining_cloned.lock().expect("not poisoned");
                         t.remove(&task.name);
@@ -424,12 +434,13 @@ impl TaskGraph {
                                     debug!("Visitor stopped");
                                     return Ok(());
                                 }
-                                VisitorCommand::Restart { task: task_name } => {
-                                    if task.name == task_name {
+                                VisitorCommand::Restart { tasks } => {
+                                    Self::count_runs(&tasks, &dep_tasks, &mut dep_runs);
+                                    if tasks.contains(&task.name) {
                                         debug!("Visitor restarted");
                                         num_runs += 1;
-                                        tx.send(NodeResult::None).ok();
-                                        done_tx.send(NodeResult::None).ok();
+                                        tx.send((num_runs, NodeResult::None)).ok();
+                                        done_tx.send((num_runs, NodeResult::None)).ok();
                                         continue 'start;
                                     }
                                 }
@@ -544,25 +555,33 @@ impl TaskGraph {
     /// releasing this node into a race with the stop.
     /// A task finalized by this node, via `finalized_by`, is never required: the finalizer runs
     /// whatever the result.
-    async fn wait_all_watches(receivers: Vec<(watch::Receiver<NodeResult>, bool)>) -> anyhow::Result<bool> {
-        for (mut rx, required) in receivers {
-            if !(*rx.borrow()).present() {
-                loop {
-                    if rx.changed().await.is_err() {
-                        anyhow::bail!("watch channel closed");
-                    }
-                    if (*rx.borrow()).present() {
-                        break;
-                    }
-                }
-            }
+    /// A result counts only if it is for the given run of the task or a later one: the result of a
+    /// run before, including the failure of a run stopped to re-run, says nothing about the new one.
+    async fn wait_all_watches(
+        receivers: Vec<(watch::Receiver<(u64, NodeResult)>, bool)>,
+        runs: &[u64],
+    ) -> anyhow::Result<bool> {
+        for ((mut rx, required), &run) in receivers.into_iter().zip(runs) {
+            let result = match rx.wait_for(|(r, result)| *r >= run && result.present()).await {
+                Ok(v) => v.1.clone(),
+                Err(_) => anyhow::bail!("watch channel closed"),
+            };
             // A failed dependency makes this node skip its run, so there is nothing left to order
             // against and no reason to wait for the remaining tasks
-            if required && !(*rx.borrow()).success() {
+            if required && !result.success() {
                 return Ok(false);
             }
         }
         Ok(true)
+    }
+
+    /// Counts a run of each dependency the restart re-runs.
+    fn count_runs(restarted: &HashSet<String>, dep_tasks: &[Task], dep_runs: &mut [u64]) {
+        for (t, run) in dep_tasks.iter().zip(dep_runs.iter_mut()) {
+            if restarted.contains(&t.name) {
+                *run += 1;
+            }
+        }
     }
 }
 

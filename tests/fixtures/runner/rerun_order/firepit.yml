@@ -1,0 +1,10 @@
+tasks:
+  # Counts its runs, slowly enough for a dependent that does not wait for it to read the count of
+  # the run before
+  dep:
+    command: n=$(cat count.txt 2>/dev/null || echo 0); sleep 0.5; echo $((n + 1)) | tee count.txt
+
+  app:
+    command: cat count.txt
+    depends_on:
+      - dep
