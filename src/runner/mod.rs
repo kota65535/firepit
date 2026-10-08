@@ -168,6 +168,10 @@ impl TaskRunner {
                                 debug!("Ignoring restart of task {:?} while quitting", task);
                                 continue;
                             }
+                            // A task without a command only groups its dependencies, so re-running
+                            // it alone would do nothing
+                            let with_deps =
+                                with_deps || self.tasks.iter().any(|t| t.name == task && t.command.is_empty());
                             let mut tasks = vec![task.clone()];
                             if with_deps {
                                 let task_graph = self.task_graph.transitive_closure(&tasks, Direction::Outgoing)?;

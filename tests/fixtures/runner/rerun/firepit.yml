@@ -26,3 +26,8 @@ tasks:
 
   cleanup:
     command: echo "cleanup"
+
+  group:
+    depends_on:
+      - foo
+      - sib

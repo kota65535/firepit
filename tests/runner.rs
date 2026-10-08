@@ -1344,16 +1344,18 @@ async fn test_watch_service() {
 /// dependents as well.
 /// A finalizer does not depend on the task it finalizes, so re-running it with `with_deps` re-runs
 /// it alone.
+/// A task without a command re-runs with its dependencies even without `with_deps`.
 #[rstest]
-#[case("#bar", false, &["#foo", "#bar", "#cleanup"])]
-#[case("#bar", true, &["#foo", "#bar", "#baz", "#qux", "#sib", "#cleanup"])]
+#[case("#bar", false, &["#foo", "#bar", "#cleanup", "#group"])]
+#[case("#bar", true, &["#foo", "#bar", "#baz", "#qux", "#sib", "#cleanup", "#group"])]
 #[case("#cleanup", true, &["#cleanup"])]
+#[case("#group", false, &["#foo", "#bar", "#baz", "#qux", "#sib", "#cleanup", "#group"])]
 #[tokio::test]
 async fn test_rerun(#[case] task: &'static str, #[case] with_deps: bool, #[case] rerun: &[&str]) {
     setup();
     let path = BASE_PATH.join("rerun");
-    let tasks = vec![String::from("foo"), String::from("sib")];
-    let all = ["#foo", "#bar", "#baz", "#qux", "#sib", "#cleanup"];
+    let tasks = vec![String::from("group")];
+    let all = ["#foo", "#bar", "#baz", "#qux", "#sib", "#cleanup", "#group"];
 
     let stats = all
         .iter()

@@ -34,6 +34,6 @@ Enter               : Start interaction with a selected task
 Ctrl-Z              : Stop interaction
 
 ## Re-running Tasks
-r                   : Re-run a selected task and dependents
-R                   : Re-run a selected task, dependencies and dependents
+r                   : Re-run a task and dependents (R if no command)
+R                   : Re-run a task, dependencies and dependents
 s                   : Stop a selected task
