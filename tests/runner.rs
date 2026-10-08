@@ -334,7 +334,7 @@ async fn test_wait_for_watch() {
         Some(runs),
         None,
         false,
-        async {
+        |_| async {
             info!("Updating lint input");
             let mut f = File::create(BASE_PATH.join("wait_for_watch").join("lint.txt")).unwrap();
             f.write_all(b"lint").unwrap();
@@ -1053,7 +1053,9 @@ async fn test_vars_builtin() {
     outputs.insert(String::from("p1#bar"), String::from("p1\np1\np1#bar"));
     outputs.insert(String::from("p2#baz"), String::from("p2\np2\np2#baz"));
 
-    run_task_with_watch(&path, tasks, stats, Some(outputs), None, None, None, false, async {}).await
+    run_task_with_watch(&path, tasks, stats, Some(outputs), None, None, None, false, |_| async {
+    })
+    .await
 }
 
 #[tokio::test]
@@ -1289,7 +1291,7 @@ async fn test_watch() {
         Some(runs),
         None,
         false,
-        async {
+        |_| async {
             info!("Creating files");
             let mut f = File::create(BASE_PATH.join("watch").join("bar.txt")).unwrap();
             f.write_all(b"bar").unwrap();
@@ -1320,11 +1322,59 @@ async fn test_watch_service() {
     }
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    run_task_with_watch(&path, tasks, stats, None, None, Some(runs), Some(20), false, async {
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        let mut f = File::create(BASE_PATH.join("watch_service").join("bar.txt")).unwrap();
-        f.write_all(b"12000").unwrap();
-    })
+    run_task_with_watch(
+        &path,
+        tasks,
+        stats,
+        None,
+        None,
+        Some(runs),
+        Some(20),
+        false,
+        |_| async {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            let mut f = File::create(BASE_PATH.join("watch_service").join("bar.txt")).unwrap();
+            f.write_all(b"12000").unwrap();
+        },
+    )
+    .await;
+}
+
+/// Re-running a task re-runs its dependents, and with `with_deps` its dependencies and their
+/// dependents as well.
+/// A finalizer does not depend on the task it finalizes, so re-running it with `with_deps` re-runs
+/// it alone.
+#[rstest]
+#[case("#bar", false, &["#foo", "#bar", "#cleanup"])]
+#[case("#bar", true, &["#foo", "#bar", "#baz", "#qux", "#sib", "#cleanup"])]
+#[case("#cleanup", true, &["#cleanup"])]
+#[tokio::test]
+async fn test_rerun(#[case] task: &'static str, #[case] with_deps: bool, #[case] rerun: &[&str]) {
+    setup();
+    let path = BASE_PATH.join("rerun");
+    let tasks = vec![String::from("foo"), String::from("sib")];
+    let all = ["#foo", "#bar", "#baz", "#qux", "#sib", "#cleanup"];
+
+    let stats = all
+        .iter()
+        .map(|t| (t.to_string(), String::from("Finished: Success")))
+        .collect();
+    let runs = all.iter().map(|t| (t.to_string(), rerun.contains(t) as u64)).collect();
+
+    run_task_with_watch(
+        &path,
+        tasks,
+        stats,
+        None,
+        None,
+        Some(runs),
+        None,
+        false,
+        move |runner_tx| async move {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            runner_tx.restart_task(task, with_deps);
+        },
+    )
     .await;
 }
 
@@ -1559,7 +1609,7 @@ async fn run_task_with_watch<F>(
     runs_expected: Option<HashMap<String, u64>>,
     timeout_seconds: Option<u64>,
     force: bool,
-    f: F,
+    f: impl FnOnce(RunnerCommandChannel) -> F,
 ) where
     F: Future<Output = ()> + Send + 'static,
 {
@@ -1592,7 +1642,7 @@ async fn run_task_with_watch<F>(
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Do something in this closure, ex: create or update files
-    tokio::spawn(f);
+    tokio::spawn(f(runner_tx.clone()));
 
     // Handle events and assert task statuses
     handle_events(
