@@ -1,0 +1,9 @@
+tasks:
+  build:
+    command: echo build
+    finalized_by:
+      - cleanup
+
+  # Exits right away, but its output lasts until the background process is done
+  cleanup:
+    command: sleep 1 &

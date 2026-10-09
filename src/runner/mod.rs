@@ -150,6 +150,10 @@ impl TaskRunner {
         // It is checked as the process spawns, since a re-run asked for while a run is on its way
         // there can only stop a process that has been spawned
         let latest_runs = Arc::new(Mutex::new(HashMap::<String, u64>::new()));
+        // The latest run of each finalizer, whose sender is dropped once the run is reported.
+        // A re-run waits for this rather than for the process, as the output can outlast it and
+        // the result is reported only after the output ends
+        let finalizer_runs = Arc::new(Mutex::new(HashMap::<String, watch::Receiver<()>>::new()));
 
         // A stop is waited for apart from this loop, which would otherwise take no command until a
         // slow process has exited
@@ -202,7 +206,8 @@ impl TaskRunner {
                                 }
                             }
 
-                            for task in tasks.iter() {
+                            // A finalizer is not stopped, so a running one ends with its own result
+                            for task in tasks.iter().filter(|t| !finalizer_tasks.contains(*t)) {
                                 let end_time =  Local::now();
                                 self.timeline.lock().expect("not poisoned").finish_task(task, end_time, TaskResult::Rerunning);
                                 app_tx.clone().with_name(task).finish_task(TaskResult::Rerunning, Some(end_time));
@@ -213,9 +218,19 @@ impl TaskRunner {
                             let manager = self.manager.clone();
                             let visitor_tx = visitor_tx.clone();
                             let quitting = quitting.clone();
+                            // A running finalizer is cleaning up after the previous run, so it
+                            // is left to finish as with a stop, before the new runs start
+                            let finalizer_runs = {
+                                let finalizer_runs = finalizer_runs.lock().expect("not poisoned");
+                                tasks.iter().filter_map(|t| finalizer_runs.get(t).cloned()).collect::<Vec<_>>()
+                            };
+                            let stopped_tasks = tasks.iter().filter(|t| !finalizer_tasks.contains(*t)).cloned().collect::<Vec<_>>();
                             tokio_spawn!("restart", async move {
-                                debug!("Stopping tasks");
-                                futures::future::join_all(tasks.iter().map(|t| manager.stop_by_label(t))).await;
+                                debug!("Stopping tasks but finalizers");
+                                futures::join!(
+                                    futures::future::join_all(stopped_tasks.iter().map(|t| manager.stop_by_label(t))),
+                                    futures::future::join_all(finalizer_runs.into_iter().map(|mut r| async move { r.changed().await.ok() })),
+                                );
                                 debug!("Stopped tasks");
                                 if quitting.load(Ordering::SeqCst) {
                                     debug!("Not restarting visitors while quitting");
@@ -305,7 +320,13 @@ impl TaskRunner {
                     let is_finalizer = finalizer_tasks.contains(&task.name);
                     let timeline = self.timeline.clone();
                     let latest_runs = latest_runs.clone();
+                    let finalizer_run = is_finalizer.then(|| {
+                        let (tx, rx) = watch::channel(());
+                        finalizer_runs.lock().expect("not poisoned").insert(task.name.clone(), rx);
+                        tx
+                    });
                     task_fut.push(tokio_spawn!("task", { name = task_name }, async move {
+                        let _finalizer_run = finalizer_run;
                         let node_done = || {
                             Self::node_done(
                                 &task.name,

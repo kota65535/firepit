@@ -1,0 +1,9 @@
+tasks:
+  build:
+    command: echo build
+    finalized_by:
+      - cleanup
+
+  # Still running when build is re-run, and fails if stopped
+  cleanup:
+    command: sleep 1
