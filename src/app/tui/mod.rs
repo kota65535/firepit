@@ -528,6 +528,10 @@ impl TuiAppState {
             self.task_mut(task)?.note(&RED, &result.pane_message());
         }
         let rerunning = matches!(result, TaskResult::Rerunning);
+        // A task yet to start has no run to stop, so it just waits for the new one
+        if rerunning && matches!(self.task_mut(task)?.status(), TaskStatus::Planned) {
+            return Ok(());
+        }
         self.set_status(task, TaskStatus::Finished(result, datetime))?;
         // A finished task has no stdin, so staying in interaction mode would leave the user typing
         // into a dead shell.
@@ -1198,6 +1202,15 @@ mod tests {
         state.finish_task("a", TaskResult::Rerunning, None).unwrap();
 
         assert!(matches!(state.focus, LayoutSections::Pane));
+    }
+
+    #[test]
+    fn keeps_planned_task_planned_when_rerunning() {
+        let mut state = state(&["a"]);
+
+        state.finish_task("a", TaskResult::Rerunning, None).unwrap();
+
+        assert!(matches!(state.task_mut("a").unwrap().status(), TaskStatus::Planned));
     }
 
     #[test]
