@@ -1,0 +1,9 @@
+tasks:
+  dep:
+    command: echo "dep"
+
+  # The odd duration tells its processes apart from any other
+  app:
+    command: sleep 27.1828
+    depends_on:
+      - dep

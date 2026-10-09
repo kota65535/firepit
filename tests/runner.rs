@@ -1380,6 +1380,91 @@ async fn test_rerun(#[case] task: &'static str, #[case] with_deps: bool, #[case]
     .await;
 }
 
+/// A dependent re-run along with its dependency waits for the new run of the dependency, rather
+/// than taking the result of the run before.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_rerun_order() {
+    setup();
+    let path = BASE_PATH.join("rerun_order");
+    let count = path.join("count.txt");
+    std::fs::remove_file(&count).ok();
+    let tasks = vec![String::from("app")];
+
+    let mut stats = HashMap::new();
+    stats.insert(String::from("#dep"), String::from("Finished: Success"));
+    stats.insert(String::from("#app"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("#dep"), String::from("1\n2"));
+    outputs.insert(String::from("#app"), String::from("1\n2"));
+
+    run_task_with_watch(
+        &path,
+        tasks,
+        stats,
+        Some(outputs),
+        None,
+        None,
+        None,
+        false,
+        |runner_tx| async move {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            runner_tx.restart_task("#app", true);
+        },
+    )
+    .await;
+    std::fs::remove_file(&count).ok();
+}
+
+/// Re-running a task along with its running dependency does not skip it for the failure of the
+/// dependency's run stopped to re-run.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_rerun_running_dependency() {
+    setup();
+    let path = path::absolute(BASE_PATH.join("rerun_running")).unwrap();
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
+    let tasks = vec![String::from("app")];
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &tasks,
+        &path,
+        &IndexMap::new(),
+        false,
+        true,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+    let mut runner = TaskRunner::new(&ws).unwrap();
+    let (app_tx, mut app_rx) = AppCommandChannel::new();
+    let runner_tx = runner.command_tx.clone();
+    let runner_fut = tokio::spawn(async move { runner.run(&app_tx, false).await.ok() });
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    runner_tx.restart_task("#app", true);
+
+    let mut results = Vec::new();
+    let _ = tokio::time::timeout(Duration::from_secs(5), async {
+        while let Some(event) = app_rx.recv().await {
+            if let AppCommand::FinishTask { task, result, .. } = event {
+                if task == "#app" {
+                    results.push(format!("{:?}", result));
+                    if results.last().is_some_and(|r| r == "Success") {
+                        break;
+                    }
+                }
+            }
+        }
+    })
+    .await;
+    runner_tx.quit();
+    runner_fut.await.ok();
+
+    assert_eq!(results, vec!["Rerunning", "Success"]);
+}
+
 #[tokio::test]
 async fn test_up_to_date() {
     setup();
@@ -1848,4 +1933,100 @@ async fn test_gantt_service_exit_before_ready() {
     let gantt = runner_fut.await.unwrap();
 
     assert!(gantt.contains("\t#server : crit, "), "{}", gantt);
+}
+
+/// Re-running a task again and again in quick succession leaves a single process of it.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_rerun_repeated() {
+    setup();
+    let path = path::absolute(BASE_PATH.join("rerun_repeated")).unwrap();
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
+    let tasks = vec![String::from("app")];
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &tasks,
+        &path,
+        &IndexMap::new(),
+        false,
+        true,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+    let mut runner = TaskRunner::new(&ws).unwrap();
+    let (app_tx, mut app_rx) = AppCommandChannel::new();
+    let runner_tx = runner.command_tx.clone();
+    let runner_fut = tokio::spawn(async move { runner.run(&app_tx, false).await.ok() });
+    tokio::spawn(async move { while app_rx.recv().await.is_some() {} });
+
+    let count = || {
+        let out = Command::new("pgrep").args(["-f", "sleep 27.1828"]).output().unwrap();
+        String::from_utf8(out.stdout).unwrap().lines().count()
+    };
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    for i in 0..10 {
+        runner_tx.restart_task("#app", true);
+        tokio::time::sleep(Duration::from_millis(i * 3)).await;
+    }
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let running = count();
+
+    runner_tx.quit();
+    runner_fut.await.ok();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    assert_eq!(running, 1);
+    assert_eq!(count(), 0);
+}
+
+/// A task re-runs right away while another one is still stopping.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_rerun_while_stopping() {
+    setup();
+    let path = path::absolute(BASE_PATH.join("rerun_slow_stop")).unwrap();
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
+    let tasks = vec![String::from("slow"), String::from("fast")];
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &tasks,
+        &path,
+        &IndexMap::new(),
+        false,
+        true,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+    let mut runner = TaskRunner::new(&ws).unwrap();
+    let (app_tx, mut app_rx) = AppCommandChannel::new();
+    let runner_tx = runner.command_tx.clone();
+    let runner_fut = tokio::spawn(async move { runner.run(&app_tx, false).await.ok() });
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    runner_tx.restart_task("#slow", false);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let start = std::time::Instant::now();
+    runner_tx.restart_task("#fast", false);
+
+    let rerun = tokio::time::timeout(Duration::from_secs(5), async {
+        while let Some(event) = app_rx.recv().await {
+            if let AppCommand::StartTask { task, rerun: 1, .. } = event {
+                if task == "#fast" {
+                    return start.elapsed();
+                }
+            }
+        }
+        Duration::MAX
+    })
+    .await
+    .unwrap_or(Duration::MAX);
+    runner_tx.quit();
+    runner_fut.await.ok();
+
+    assert!(rerun < Duration::from_secs(1), "re-ran after {rerun:?}");
 }

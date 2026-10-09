@@ -57,6 +57,34 @@ async fn test_stop_timeout_is_honored(#[case] use_pty: bool) {
     );
 }
 
+/// A process is spawned only if the condition holds, and a process not spawned is not left for a
+/// stop to find.
+#[rstest]
+#[case(false)]
+#[case(true)]
+#[tokio::test]
+async fn test_spawn_if(#[case] use_pty: bool) {
+    setup();
+    let manager = ProcessManager::new(use_pty);
+    let cmd = Command::new("bash")
+        .with_args(vec![String::from("-c"), String::from("sleep 60")])
+        .with_label("conditional")
+        .to_owned();
+
+    assert!(manager
+        .spawn_if(cmd.clone(), Duration::from_secs(1), || false)
+        .await
+        .is_none());
+    assert!(manager.stop_by_label("conditional").await.is_empty());
+
+    assert!(manager
+        .spawn_if(cmd, Duration::from_secs(1), || true)
+        .await
+        .unwrap()
+        .is_ok());
+    assert_eq!(manager.stop_by_label("conditional").await, vec![ChildExit::Killed]);
+}
+
 /// A process that exits on `SIGINT` must not wait out the grace period.
 #[rstest]
 #[case(false)]
