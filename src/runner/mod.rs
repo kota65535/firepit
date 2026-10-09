@@ -146,8 +146,10 @@ impl TaskRunner {
         let quitting = Arc::new(AtomicBool::new(false));
         // The run each task is to start next, counted by the re-runs asked for.
         // A visitor that asked to start a task before learning it was re-run asks for an earlier
-        // run, which is not started: the new run follows
-        let mut latest_runs = HashMap::<String, u64>::new();
+        // run, which is not started: the new run follows.
+        // The task futures check it again as they spawn, since a re-run asked for while one is
+        // starting can only stop a process that has been spawned
+        let latest_runs = Arc::new(Mutex::new(HashMap::<String, u64>::new()));
 
         while !node_rx.is_closed() {
             tokio::select! {
@@ -188,8 +190,11 @@ impl TaskRunner {
                             // Worth noticing even when only warnings are read: the output of the
                             // tasks below it belongs to another run
                             warn!("Re-running tasks: {:?}", tasks);
-                            for task in tasks.iter() {
-                                *latest_runs.entry(task.clone()).or_default() += 1;
+                            {
+                                let mut latest_runs = latest_runs.lock().expect("not poisoned");
+                                for task in tasks.iter() {
+                                    *latest_runs.entry(task.clone()).or_default() += 1;
+                                }
                             }
 
                             debug!("Stopping tasks");
@@ -270,7 +275,7 @@ impl TaskRunner {
                         num_restart,
                         callback,
                     } = message;
-                    if num_runs < latest_runs.get(&task.name).copied().unwrap_or_default() {
+                    if Self::is_stale(&latest_runs, &task.name, num_runs) {
                         debug!("Ignoring run {} of task {:?}, which has been re-run", num_runs, task.name);
                         continue;
                     }
@@ -286,6 +291,7 @@ impl TaskRunner {
                     let quitting_cloned = quitting.clone();
                     let is_finalizer = finalizer_tasks.contains(&task.name);
                     let timeline = self.timeline.clone();
+                    let latest_runs = latest_runs.clone();
                     task_fut.push(tokio_spawn!("task", { name = task_name }, async move {
                         let node_done = || {
                             Self::node_done(
@@ -356,9 +362,15 @@ impl TaskRunner {
 
                             app_tx = app_tx.clone();
 
-                            let process = match Self::spawn_process(task.clone(), env, manager.clone()).await? {
+                            let is_current = || !Self::is_stale(&latest_runs, &task.name, num_runs);
+                            let process = match Self::spawn_process(task.clone(), env, manager.clone(), is_current).await? {
                                 Some(process) => process,
-                                None => anyhow::bail!("failed to spawn process"),
+                                // The run that replaces this one reports the task from here on
+                                None if Self::is_stale(&latest_runs, &task.name, num_runs) => {
+                                    debug!("Task does not run as it has been re-run");
+                                    return Ok::<(), anyhow::Error>(());
+                                }
+                                None => anyhow::bail!("failed to spawn process: process manager is closing"),
                             };
                             let pid = process.pid().unwrap_or(0);
                             spawned_pid = Some(pid);
@@ -622,10 +634,14 @@ impl TaskRunner {
         }
     }
 
+    /// Spawns the process of a task, if `is_current` holds.
+    ///
+    /// Returns None if it does not, or if the process manager is closing.
     async fn spawn_process(
         task: Task,
         env: HashMap<String, String>,
         manager: ProcessManager,
+        is_current: impl FnOnce() -> bool,
     ) -> anyhow::Result<Option<Child>> {
         let mut args = Vec::new();
         args.extend(task.shell_args.clone());
@@ -638,15 +654,25 @@ impl TaskRunner {
             .with_label(&task.name)
             .to_owned();
 
-        let process = match manager.spawn(cmd, task.stop_timeout).await {
+        let process = match manager.spawn_if(cmd, task.stop_timeout, is_current).await {
             Some(Ok(child)) => child,
             Some(Err(e)) => return Err(anyhow::Error::from(e).context("failed to spawn process")),
-            _ => anyhow::bail!("failed to spawn process: process manager is closing"),
+            None => return Ok(None),
         };
 
         debug!("Task started. PID={}", process.pid().unwrap_or(0));
 
         Ok(Some(process))
+    }
+
+    /// Returns whether a run of the task has been re-run, so that it is not to start.
+    fn is_stale(latest_runs: &Mutex<HashMap<String, u64>>, task: &str, run: u64) -> bool {
+        run < latest_runs
+            .lock()
+            .expect("not poisoned")
+            .get(task)
+            .copied()
+            .unwrap_or_default()
     }
 
     async fn run_process(

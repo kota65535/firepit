@@ -81,12 +81,30 @@ impl ProcessManager {
     /// If spawn returns Some(Err), the process manager is open, but the child process failed to
     /// spawn.
     pub async fn spawn(&self, command: Command, stop_timeout: Duration) -> Option<io::Result<Child>> {
+        self.spawn_if(command, stop_timeout, || true).await
+    }
+
+    /// Spawn a new child process like `spawn`, if `cond` holds.
+    ///
+    /// `cond` is checked under the lock a stop takes, so a stop either finds the child or comes
+    /// before the check.
+    /// Returns None as well if `cond` does not hold.
+    pub async fn spawn_if(
+        &self,
+        command: Command,
+        stop_timeout: Duration,
+        cond: impl FnOnce() -> bool,
+    ) -> Option<io::Result<Child>> {
         let label = command.label();
         trace!("acquiring lock for spawning {label}");
         let mut lock = self.state.lock().await;
         trace!("acquired lock for spawning {label}");
         if lock.is_closing {
             debug!("Process manager is closing, refuses to spawn");
+            return None;
+        }
+        if !cond() {
+            debug!("Spawn condition does not hold, refuses to spawn");
             return None;
         }
         let pty_size = self.use_pty.then(|| lock.pty_size()).flatten();
