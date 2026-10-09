@@ -5,7 +5,7 @@ use tracing::debug;
 pub enum RunnerCommand {
     StopTasks,
     StopTask { task: String },
-    RestartTask { task: String, force: bool },
+    RestartTask { task: String, with_deps: bool },
     Quit,
 }
 
@@ -28,10 +28,10 @@ impl RunnerCommandChannel {
         self.send(RunnerCommand::StopTask { task: task.to_string() })
     }
 
-    pub fn restart_task(&self, task: &str, force: bool) {
+    pub fn restart_task(&self, task: &str, with_deps: bool) {
         self.send(RunnerCommand::RestartTask {
             task: task.to_string(),
-            force,
+            with_deps,
         })
     }
 

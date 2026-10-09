@@ -1,0 +1,33 @@
+tasks:
+  foo:
+    command: echo "foo"
+    depends_on:
+      - bar
+
+  bar:
+    command: echo "bar"
+    depends_on:
+      - baz
+      - task: qux
+        cascade: false
+    finalized_by:
+      - cleanup
+
+  baz:
+    command: echo "baz"
+
+  qux:
+    command: echo "qux"
+
+  sib:
+    command: echo "sib"
+    depends_on:
+      - baz
+
+  cleanup:
+    command: echo "cleanup"
+
+  group:
+    depends_on:
+      - foo
+      - sib

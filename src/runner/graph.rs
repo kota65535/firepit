@@ -68,7 +68,7 @@ pub struct VisitorMessage {
 #[derive(Debug, Clone)]
 pub enum VisitorCommand {
     Stop,
-    Restart { task: String, force: bool },
+    Restart { task: String },
 }
 
 pub struct VisitorHandle {
@@ -273,7 +273,6 @@ impl TaskGraph {
             let awaited_remaining_cloned = awaited_remaining.clone();
             let visitor_tx_cloned = visitor_tx.clone();
             nodes_fut.push(tokio_spawn!("node", { task = task_name }, async move {
-                let mut ignore_deps = false;
                 let mut num_runs = 0;
                 let mut num_restart = 0;
                 'start: loop {
@@ -287,35 +286,30 @@ impl TaskGraph {
                         );
                     }
 
-                    let deps_ok = if ignore_deps {
-                        true
-                    } else {
-                        loop {
-                            tokio::select! {
-                                // Visitor command branch
-                                Ok(command) = visitor_rx.recv() => {
-                                    match command {
-                                        VisitorCommand::Stop => {
-                                            debug!("Visitor stopped");
-                                            return Ok(())
+                    let deps_ok = loop {
+                        tokio::select! {
+                            // Visitor command branch
+                            Ok(command) = visitor_rx.recv() => {
+                                match command {
+                                    VisitorCommand::Stop => {
+                                        debug!("Visitor stopped");
+                                        return Ok(())
+                                    }
+                                    VisitorCommand::Restart { task: task_name } => {
+                                        debug!("Visitor restarted");
+                                        if task.name == task_name {
+                                            num_runs += 1;
+                                            tx.send(NodeResult::None).ok();
+                                            done_tx.send(NodeResult::None).ok();
+                                            continue 'start;
                                         }
-                                        VisitorCommand::Restart { task: task_name, force } => {
-                                            debug!("Visitor restarted");
-                                            if task.name == task_name {
-                                                ignore_deps = force;
-                                                num_runs += 1;
-                                                tx.send(NodeResult::None).ok();
-                                                done_tx.send(NodeResult::None).ok();
-                                                continue 'start;
-                                            }
-                                            continue
-                                        }
-                                    };
-                                }
-                                // Normal branch, waiting for all dependency tasks
-                                Ok(deps_ok) = Self::wait_all_watches(dep_rxs.clone()) => {
-                                    break deps_ok;
-                                }
+                                        continue
+                                    }
+                                };
+                            }
+                            // Normal branch, waiting for all dependency tasks
+                            Ok(deps_ok) = Self::wait_all_watches(dep_rxs.clone()) => {
+                                break deps_ok;
                             }
                         }
                     };
@@ -344,10 +338,9 @@ impl TaskGraph {
                                                     debug!("Visitor stopped");
                                                     return Ok(())
                                                 }
-                                                VisitorCommand::Restart { task: task_name, force } => {
+                                                VisitorCommand::Restart { task: task_name } => {
                                                     debug!("Visitor restarted");
                                                     if task.name == task_name {
-                                                        ignore_deps = force;
                                                         num_runs += 1;
                                                         tx.send(NodeResult::None).ok();
                                                         done_tx.send(NodeResult::None).ok();
@@ -431,11 +424,10 @@ impl TaskGraph {
                                     debug!("Visitor stopped");
                                     return Ok(());
                                 }
-                                VisitorCommand::Restart { task: task_name, force } => {
+                                VisitorCommand::Restart { task: task_name } => {
                                     if task.name == task_name {
                                         debug!("Visitor restarted");
                                         num_runs += 1;
-                                        ignore_deps = force;
                                         tx.send(NodeResult::None).ok();
                                         done_tx.send(NodeResult::None).ok();
                                         continue 'start;
@@ -482,10 +474,12 @@ impl TaskGraph {
                 depth_first_search(&self.graph, indices, |event| {
                     // An ordering-only edge does not pull its task into the run, so do not follow
                     // it.
+                    // Nor does a finalizer pull in the task it finalizes: that task is what pulls
+                    // the finalizer in.
                     // The task still gets visited if a dependency edge reaches it, or if it is a
                     // target itself.
                     if let petgraph::visit::DfsEvent::TreeEdge(u, v) = event {
-                        if self.edge(u, v).map(|e| e.ordering_only).unwrap_or(false) {
+                        if self.edge(u, v).map(|e| e.ordering_only || e.always).unwrap_or(false) {
                             return Control::Prune;
                         }
                         return Control::Continue;

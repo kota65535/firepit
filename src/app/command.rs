@@ -45,7 +45,7 @@ pub enum AppCommand {
     },
     RestartTask {
         task: String,
-        force: bool,
+        with_deps: bool,
     },
     SetStdin {
         task: String,

@@ -163,16 +163,24 @@ impl TaskRunner {
                             app_tx.clone().with_name(&task).finish_task(TaskResult::Stopped, Some(end_time));
                             self.manager.stop_by_label(&task).await;
                         }
-                        RunnerCommand::RestartTask { task, force } => {
+                        RunnerCommand::RestartTask { task, with_deps } => {
                             if quitting.load(Ordering::SeqCst) {
                                 debug!("Ignoring restart of task {:?} while quitting", task);
                                 continue;
                             }
+                            // A task without a command only groups its dependencies, so re-running
+                            // it alone would do nothing
+                            let with_deps =
+                                with_deps || self.tasks.iter().any(|t| t.name == task && t.command.is_empty());
                             let mut tasks = vec![task.clone()];
-                            if !force {
-                                let task_graph = self.task_graph.transitive_closure(&tasks, Direction::Incoming)?;
+                            if with_deps {
+                                let task_graph = self.task_graph.transitive_closure(&tasks, Direction::Outgoing)?;
                                 tasks = task_graph.sort()?.iter().map(|t| t.name.clone()).collect();
                             }
+                            // The dependents of a re-run dependency re-run too, as they would in
+                            // watch mode
+                            let task_graph = self.task_graph.transitive_closure(&tasks, Direction::Incoming)?;
+                            let tasks: Vec<_> = task_graph.sort()?.iter().map(|t| t.name.clone()).collect();
                             // Worth noticing even when only warnings are read: the output of the
                             // tasks below it belongs to another run
                             warn!("Re-running tasks: {:?}", tasks);
@@ -187,7 +195,7 @@ impl TaskRunner {
                             debug!("Stopped tasks");
                             debug!("Restarting visitors");
                             for task in tasks.iter() {
-                                if let Err(err) = visitor_tx.send(VisitorCommand::Restart { task: task.clone(), force }) {
+                                if let Err(err) = visitor_tx.send(VisitorCommand::Restart { task: task.clone() }) {
                                     error!("Failed to restart task {:?}: {:?}", task, err);
                                 }
                             }

@@ -225,11 +225,11 @@ fn translate_key_event(options: InputOptions, key_event: KeyEvent) -> Option<App
         KeyCode::Char('s') if options.on_task_list() => Some(AppCommand::StopTask { task: options.task }),
         KeyCode::Char('r') if options.on_task_list() => Some(AppCommand::RestartTask {
             task: options.task,
-            force: true,
+            with_deps: false,
         }),
         KeyCode::Char('R') if options.on_task_list() => Some(AppCommand::RestartTask {
             task: options.task,
-            force: false,
+            with_deps: true,
         }),
 
         // On pane (interactive mode)

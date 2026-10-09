@@ -517,6 +517,7 @@ If the same variable is also injected globally via `--` (see [Passing Arguments]
 ### Cascading Restarts
 
 In [watch mode](#watch-mode), when a dependency task is re-run, the tasks that depend on it are re-run as well by default.
+The same goes for re-running a task from the TUI.
 This cascading behavior can be turned off per dependency by writing the dependency in object form and setting `cascade: false`.
 A dependency written as a plain string is equivalent to `cascade: true`.
 
