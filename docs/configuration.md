@@ -438,6 +438,7 @@ The `finalized_by` field is the opposite of `depends_on`: the listed tasks are e
 This makes it suitable for cleanup tasks that must always run.
 For a [service](#services), the finalizers run when it exits, not when it becomes ready, so they can tear down what the service left behind once it is stopped.
 Finalizers are only added to the run when the task they finalize is part of it, so running a finalizer alone does not run that task.
+Re-running the task does not stop a finalizer that is running: the new run starts once it finishes, and the finalizer runs again after the new run.
 
 In this example, `fire test` starts the `db` service, runs `test`, and runs `db-down` once `db` is stopped, whether `test` passed or not.
 `fire db-down` runs only `db-down`.

@@ -202,7 +202,8 @@ impl TaskRunner {
                                 }
                             }
 
-                            for task in tasks.iter() {
+                            // A finalizer is not stopped, so a running one ends with its own result
+                            for task in tasks.iter().filter(|t| !finalizer_tasks.contains(*t)) {
                                 let end_time =  Local::now();
                                 self.timeline.lock().expect("not poisoned").finish_task(task, end_time, TaskResult::Rerunning);
                                 app_tx.clone().with_name(task).finish_task(TaskResult::Rerunning, Some(end_time));
@@ -213,9 +214,22 @@ impl TaskRunner {
                             let manager = self.manager.clone();
                             let visitor_tx = visitor_tx.clone();
                             let quitting = quitting.clone();
+                            let finalizer_tasks = finalizer_tasks.clone();
                             tokio_spawn!("restart", async move {
-                                debug!("Stopping tasks");
-                                futures::future::join_all(tasks.iter().map(|t| manager.stop_by_label(t))).await;
+                                debug!("Stopping tasks but finalizers");
+                                // A running finalizer is cleaning up after the previous run, so it
+                                // is left to finish as with a stop, before the new runs start
+                                futures::future::join_all(tasks.iter().map(|t| {
+                                    let (manager, finalizer_tasks) = (&manager, &finalizer_tasks);
+                                    async move {
+                                        if finalizer_tasks.contains(t) {
+                                            manager.wait_by_label(t).await
+                                        } else {
+                                            manager.stop_by_label(t).await
+                                        }
+                                    }
+                                }))
+                                .await;
                                 debug!("Stopped tasks");
                                 if quitting.load(Ordering::SeqCst) {
                                     debug!("Not restarting visitors while quitting");

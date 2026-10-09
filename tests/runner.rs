@@ -1465,6 +1465,68 @@ async fn test_rerun_running_dependency() {
     assert_eq!(results, vec!["Rerunning", "Success"]);
 }
 
+/// Re-running a task leaves its running finalizer to finish, and the new run starts after it.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_rerun_running_finalizer() {
+    setup();
+    let path = path::absolute(BASE_PATH.join("rerun_finalizer")).unwrap();
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
+    let tasks = vec![String::from("build")];
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &tasks,
+        &path,
+        &IndexMap::new(),
+        false,
+        true,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+    let mut runner = TaskRunner::new(&ws).unwrap();
+    let (app_tx, mut app_rx) = AppCommandChannel::new();
+    let runner_tx = runner.command_tx.clone();
+    let runner_fut = tokio::spawn(async move { runner.run(&app_tx, false).await.ok() });
+
+    let mut events = Vec::new();
+    let _ = tokio::time::timeout(Duration::from_secs(5), async {
+        while let Some(event) = app_rx.recv().await {
+            match event {
+                AppCommand::StartTask { task, rerun, .. } => {
+                    if task == "#cleanup" && rerun == 0 {
+                        runner_tx.restart_task("#build", false);
+                    }
+                    events.push(format!("start {task} {rerun}"));
+                }
+                AppCommand::FinishTask { task, result, .. } if task == "#cleanup" => {
+                    events.push(format!("finish {task} {result:?}"));
+                    if events.len() == 6 {
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+    })
+    .await;
+    runner_tx.quit();
+    runner_fut.await.ok();
+
+    assert_eq!(
+        events,
+        vec![
+            "start #build 0",
+            "start #cleanup 0",
+            "finish #cleanup Success",
+            "start #build 1",
+            "start #cleanup 1",
+            "finish #cleanup Success",
+        ]
+    );
+}
+
 #[tokio::test]
 async fn test_up_to_date() {
     setup();
