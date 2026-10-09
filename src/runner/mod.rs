@@ -146,9 +146,9 @@ impl TaskRunner {
         let quitting = Arc::new(AtomicBool::new(false));
         // The run each task is to start next, counted by the re-runs asked for.
         // A visitor that asked to start a task before learning it was re-run asks for an earlier
-        // run, which is not started: the new run follows.
-        // The task futures check it again as they spawn, since a re-run asked for while one is
-        // starting can only stop a process that has been spawned
+        // run, which is not spawned: the new run follows.
+        // It is checked as the process spawns, since a re-run asked for while a run is on its way
+        // there can only stop a process that has been spawned
         let latest_runs = Arc::new(Mutex::new(HashMap::<String, u64>::new()));
 
         while !node_rx.is_closed() {
@@ -275,10 +275,6 @@ impl TaskRunner {
                         num_restart,
                         callback,
                     } = message;
-                    if Self::is_stale(&latest_runs, &task.name, num_runs) {
-                        debug!("Ignoring run {} of task {:?}, which has been re-run", num_runs, task.name);
-                        continue;
-                    }
 
                     let mut app_tx = app_tx.clone().with_name(&task.name);
                     let fail_fast = self.fail_fast;
