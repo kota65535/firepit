@@ -1,0 +1,7 @@
+tasks:
+  # Takes 3 seconds to stop
+  slow:
+    command: exec perl -e '$SIG{INT} = sub { sleep 3; exit 0 }; sleep 1000 while 1'
+
+  fast:
+    command: exec perl -e 'sleep 1000 while 1'

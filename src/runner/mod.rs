@@ -151,6 +151,8 @@ impl TaskRunner {
         // there can only stop a process that has been spawned
         let latest_runs = Arc::new(Mutex::new(HashMap::<String, u64>::new()));
 
+        // A stop is waited for apart from this loop, which would otherwise take no command until a
+        // slow process has exited
         while !node_rx.is_closed() {
             tokio::select! {
                 // Runner command branch
@@ -160,14 +162,17 @@ impl TaskRunner {
                            // Finalizers are left running: they are meant to run to completion after
                            // the tasks they finalize, failed or not
                            debug!("Stopping all tasks but finalizers");
-                           self.manager.stop_except(&finalizer_tasks).await;
+                           let manager = self.manager.clone();
+                           let finalizer_tasks = finalizer_tasks.clone();
+                           tokio_spawn!("stop", async move { manager.stop_except(&finalizer_tasks).await });
                         }
                         RunnerCommand::StopTask { task } => {
                             debug!("Stopping task: {}", task);
                             let end_time =  Local::now();
                             self.timeline.lock().expect("not poisoned").finish_task(&task, end_time, TaskResult::Stopped);
                             app_tx.clone().with_name(&task).finish_task(TaskResult::Stopped, Some(end_time));
-                            self.manager.stop_by_label(&task).await;
+                            let manager = self.manager.clone();
+                            tokio_spawn!("stop", async move { manager.stop_by_label(&task).await });
                         }
                         RunnerCommand::RestartTask { task, with_deps } => {
                             if quitting.load(Ordering::SeqCst) {
@@ -197,19 +202,31 @@ impl TaskRunner {
                                 }
                             }
 
-                            debug!("Stopping tasks");
                             for task in tasks.iter() {
                                 let end_time =  Local::now();
                                 self.timeline.lock().expect("not poisoned").finish_task(task, end_time, TaskResult::Rerunning);
                                 app_tx.clone().with_name(task).finish_task(TaskResult::Rerunning, Some(end_time));
-                                self.manager.stop_by_label(task).await;
                             }
-                            debug!("Stopped tasks");
-                            debug!("Restarting visitors");
-                            let tasks = tasks.into_iter().collect();
-                            if let Err(err) = visitor_tx.send(VisitorCommand::Restart { tasks }) {
-                                error!("Failed to restart tasks: {:?}", err);
-                            }
+                            // The new runs start once the old ones have exited.
+                            // A process stopping for an earlier re-run is waited for here too, as
+                            // the process manager keeps it until it exits.
+                            let manager = self.manager.clone();
+                            let visitor_tx = visitor_tx.clone();
+                            let quitting = quitting.clone();
+                            tokio_spawn!("restart", async move {
+                                debug!("Stopping tasks");
+                                futures::future::join_all(tasks.iter().map(|t| manager.stop_by_label(t))).await;
+                                debug!("Stopped tasks");
+                                if quitting.load(Ordering::SeqCst) {
+                                    debug!("Not restarting visitors while quitting");
+                                    return;
+                                }
+                                debug!("Restarting visitors");
+                                let tasks = tasks.into_iter().collect();
+                                if let Err(err) = visitor_tx.send(VisitorCommand::Restart { tasks }) {
+                                    error!("Failed to restart tasks: {:?}", err);
+                                }
+                            });
                         }
                         RunnerCommand::Quit if quitting.load(Ordering::SeqCst) => {
                             // A second quit means the user gave up on the graceful shutdown

@@ -1981,3 +1981,52 @@ async fn test_rerun_repeated() {
     assert_eq!(running, 1);
     assert_eq!(count(), 0);
 }
+
+/// A task re-runs right away while another one is still stopping.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_rerun_while_stopping() {
+    setup();
+    let path = path::absolute(BASE_PATH.join("rerun_slow_stop")).unwrap();
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
+    let tasks = vec![String::from("slow"), String::from("fast")];
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &tasks,
+        &path,
+        &IndexMap::new(),
+        false,
+        true,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+    let mut runner = TaskRunner::new(&ws).unwrap();
+    let (app_tx, mut app_rx) = AppCommandChannel::new();
+    let runner_tx = runner.command_tx.clone();
+    let runner_fut = tokio::spawn(async move { runner.run(&app_tx, false).await.ok() });
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    runner_tx.restart_task("#slow", false);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let start = std::time::Instant::now();
+    runner_tx.restart_task("#fast", false);
+
+    let rerun = tokio::time::timeout(Duration::from_secs(5), async {
+        while let Some(event) = app_rx.recv().await {
+            if let AppCommand::StartTask { task, rerun: 1, .. } = event {
+                if task == "#fast" {
+                    return start.elapsed();
+                }
+            }
+        }
+        Duration::MAX
+    })
+    .await
+    .unwrap_or(Duration::MAX);
+    runner_tx.quit();
+    runner_fut.await.ok();
+
+    assert!(rerun < Duration::from_secs(1), "re-ran after {rerun:?}");
+}
