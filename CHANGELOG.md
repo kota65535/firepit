@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.34.0] - 2026-10-09
+
+### 🚀 Features
+
+- *(tui)* [**breaking**] Re-run dependencies with R and dependents with r (#473)
+
+### 🐛 Bug Fixes
+
+- *(runner)* Order re-runs and keep taking commands while tasks stop (#475)
+- *(runner)* Let a running finalizer finish when its task is re-run (#477)
+- *(tui)* Keep the mark of a task yet to start when re-running it (#476)
+- *(runner)* Treat a finalizer named as a target as a finalizer (#478)
+
+### 💼 Other
+
+- *(commitlint)* Extend config-conventional instead of inlining its rules (#474)
+
 ## [0.33.0] - 2026-10-08
 
 ### 🚀 Features
