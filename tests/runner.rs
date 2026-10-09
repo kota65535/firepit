@@ -1466,10 +1466,13 @@ async fn test_rerun_running_dependency() {
 }
 
 /// Re-running a task leaves its running finalizer to finish, and the new run starts after it.
+#[rstest]
+#[case("rerun_finalizer")]
+#[case("rerun_finalizer_detached")]
 #[tokio::test(flavor = "multi_thread")]
-async fn test_rerun_running_finalizer() {
+async fn test_rerun_running_finalizer(#[case] dir: &str) {
     setup();
-    let path = path::absolute(BASE_PATH.join("rerun_finalizer")).unwrap();
+    let path = path::absolute(BASE_PATH.join(dir)).unwrap();
     let (root, children) = ProjectConfig::new_multi(&path).unwrap();
     let tasks = vec![String::from("build")];
     let ws = Workspace::new(

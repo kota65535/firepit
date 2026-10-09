@@ -120,23 +120,6 @@ impl ProcessManager {
         self.stop_inner(|c| c.label() == label).await
     }
 
-    /// Waits for the children with the given label to exit, without stopping them.
-    pub async fn wait_by_label(&self, label: &str) -> Vec<ChildExit> {
-        let mut children = {
-            let lock = self.state.lock().await;
-            lock.children
-                .iter()
-                .filter(|c| c.label() == label)
-                .cloned()
-                .collect::<Vec<_>>()
-        };
-
-        FuturesUnordered::from_iter(children.iter_mut().map(|c| c.wait()))
-            .filter_map(|r| async move { r })
-            .collect()
-            .await
-    }
-
     pub async fn stop_by_pid(&self, pid: u32) -> Option<ChildExit> {
         self.stop_inner(|c| c.pid() == Some(pid)).await.pop()
     }
