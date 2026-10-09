@@ -209,7 +209,7 @@ impl Workspace {
                 .collect::<Vec<_>>();
             for post in finalizers {
                 queue.push(post.clone());
-                if !target_tasks.contains(&post) && !finalizer_tasks.contains(&post) {
+                if !finalizer_tasks.contains(&post) {
                     finalizer_tasks.push(post.clone());
                 }
                 let finalizer = Self::task_config_mut(root_config, child_configs, &post)?;

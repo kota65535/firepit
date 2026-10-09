@@ -32,8 +32,8 @@ pub const WATCHER_DEBOUNCE_DURATION: Duration = Duration::from_millis(300);
 
 pub struct TaskRunner {
     pub target_tasks: Vec<String>,
-    /// Finalizers pulled into the run by `finalized_by`.
-    /// Awaited like the targets before quitting, but not targets themselves
+    /// Finalizers in the run by `finalized_by`, including those also named as targets.
+    /// Awaited like the targets before quitting
     pub finalizer_tasks: Vec<String>,
     pub tasks: Vec<Task>,
     pub task_graph: TaskGraph,
@@ -57,7 +57,12 @@ impl TaskRunner {
 
         // The awaited tasks: the run pulls in the finalizers and waits for them just like the
         // targets
-        let awaited_tasks = target_tasks.iter().chain(&finalizer_tasks).cloned().collect::<Vec<_>>();
+        let awaited_tasks = target_tasks
+            .iter()
+            .chain(&finalizer_tasks)
+            .unique()
+            .cloned()
+            .collect::<Vec<_>>();
         let task_graph_all = TaskGraph::new(&all_tasks, Some(&awaited_tasks), ws.force)?;
         let task_graph = task_graph_all.transitive_closure(&awaited_tasks, Direction::Outgoing)?;
         let tasks = task_graph.sort()?;

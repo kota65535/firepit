@@ -1,0 +1,8 @@
+tasks:
+  build:
+    command: sleep 30
+    finalized_by:
+      - cleanup
+
+  cleanup:
+    command: echo "cleanup"
