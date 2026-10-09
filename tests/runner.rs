@@ -1934,3 +1934,50 @@ async fn test_gantt_service_exit_before_ready() {
 
     assert!(gantt.contains("\t#server : crit, "), "{}", gantt);
 }
+
+/// Re-running a task again and again in quick succession leaves a single process of it.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_rerun_repeated() {
+    setup();
+    let path = path::absolute(BASE_PATH.join("rerun_repeated")).unwrap();
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
+    let tasks = vec![String::from("app")];
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &tasks,
+        &path,
+        &IndexMap::new(),
+        false,
+        true,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+    let mut runner = TaskRunner::new(&ws).unwrap();
+    let (app_tx, mut app_rx) = AppCommandChannel::new();
+    let runner_tx = runner.command_tx.clone();
+    let runner_fut = tokio::spawn(async move { runner.run(&app_tx, false).await.ok() });
+    tokio::spawn(async move { while app_rx.recv().await.is_some() {} });
+
+    let count = || {
+        let out = Command::new("pgrep").args(["-f", "sleep 27.1828"]).output().unwrap();
+        String::from_utf8(out.stdout).unwrap().lines().count()
+    };
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    for i in 0..10 {
+        runner_tx.restart_task("#app", true);
+        tokio::time::sleep(Duration::from_millis(i * 3)).await;
+    }
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let running = count();
+
+    runner_tx.quit();
+    runner_fut.await.ok();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    assert_eq!(running, 1);
+    assert_eq!(count(), 0);
+}
