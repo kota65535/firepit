@@ -45,6 +45,15 @@ See [Passing Arguments](/configuration#passing-arguments) for details.
 
 Working directory. Default is the same directory as `firepit.yml`.
 
+### `-p, --project <PROJECT>`
+
+Project in which a task given by a simple name is looked up. Default is the
+project of the working directory.
+
+A task can always be named in full as `<project>#<task>`. This option is for
+running several tasks of one project without repeating its name:
+`fire -p api build test`.
+
 ### `-w, --watch`
 
 Enable watch mode. Automatically re-run tasks when the input files change.
