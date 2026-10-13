@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.35.0] - 2026-10-13
+
+### 🚀 Features
+
+- *(config)* Support nested includes (#483)
+- *(cli)* Add --exclude option to leave tasks out of the run (#484)
+
 ## [0.34.1] - 2026-10-13
 
 ### 🐛 Bug Fixes
