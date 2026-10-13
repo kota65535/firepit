@@ -104,26 +104,12 @@ impl NodeResult {
 }
 
 impl TaskGraph {
-    pub fn new(tasks: &Vec<Task>, awaited: Option<&Vec<String>>, force: bool) -> anyhow::Result<TaskGraph> {
+    pub fn new(tasks: &Vec<Task>, awaited: Option<&Vec<String>>) -> anyhow::Result<TaskGraph> {
         let mut graph = DiGraph::<Task, Edge>::new();
         let mut nodes = HashMap::new();
-
-        // If `force` is true, we only add the awaited tasks as nodes to the graph
-        if force {
-            let awaited_set = awaited
-                .map(|t| t.iter().cloned().collect::<HashSet<_>>())
-                .unwrap_or_default();
-            for t in tasks {
-                if awaited_set.contains(&t.name) {
-                    let idx = graph.add_node(t.clone());
-                    nodes.insert(t.name.clone(), idx);
-                }
-            }
-        } else {
-            for t in tasks {
-                let idx = graph.add_node(t.clone());
-                nodes.insert(t.name.clone(), idx);
-            }
+        for t in tasks {
+            let idx = graph.add_node(t.clone());
+            nodes.insert(t.name.clone(), idx);
         }
 
         // Add edges to the graph based on task dependencies
@@ -136,7 +122,8 @@ impl TaskGraph {
                         graph.add_edge(*from, *to, Edge::depends_on(d));
                     }
                     // Ignore if the dependent task does not exist.
-                    // This can occur when creating a subgraph by `transitive_closure`.
+                    // This occurs for a task left out of the run, and in a subgraph made by
+                    // `transitive_closure`.
                     _ => {
                         debug!("Cannot find node for task {} and dependency {}", t.name, d.task);
                     }
@@ -527,7 +514,7 @@ impl TaskGraph {
             .map(|&i| self.graph.node_weight(i).unwrap().clone())
             .collect::<Vec<_>>();
 
-        TaskGraph::new(&tasks, Some(names), false)
+        TaskGraph::new(&tasks, Some(names))
     }
 
     #[allow(dead_code)]

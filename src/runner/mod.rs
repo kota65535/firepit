@@ -51,7 +51,6 @@ pub struct TaskRunner {
 
 impl TaskRunner {
     pub fn new(ws: &Workspace) -> anyhow::Result<TaskRunner> {
-        let all_tasks = ws.tasks();
         let target_tasks = ws.target_tasks.clone();
         let finalizer_tasks = ws.finalizer_tasks.clone();
 
@@ -63,7 +62,15 @@ impl TaskRunner {
             .unique()
             .cloned()
             .collect::<Vec<_>>();
-        let task_graph_all = TaskGraph::new(&all_tasks, Some(&awaited_tasks), ws.force)?;
+        // A task left out of the graph is one its dependents do not wait for.
+        // `force` leaves out every task but the awaited ones.
+        let all_tasks = ws
+            .tasks()
+            .into_iter()
+            .filter(|t| !ws.exclude.contains(&t.orig_name))
+            .filter(|t| !ws.force || awaited_tasks.contains(&t.name))
+            .collect::<Vec<_>>();
+        let task_graph_all = TaskGraph::new(&all_tasks, Some(&awaited_tasks))?;
         let task_graph = task_graph_all.transitive_closure(&awaited_tasks, Direction::Outgoing)?;
         let tasks = task_graph.sort()?;
         debug!("Task graph:\n{:?}", task_graph);

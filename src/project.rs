@@ -21,6 +21,8 @@ pub struct Workspace {
     pub children: HashMap<String, Project>,
     pub target_tasks: Vec<String>,
     pub finalizer_tasks: Vec<String>,
+    /// Full names of the excluded tasks, as given in the config, so a name covers every variant.
+    pub exclude: HashSet<String>,
     pub concurrency: usize,
     pub force: bool,
     pub watch: bool,
@@ -37,6 +39,7 @@ impl Workspace {
         root_config: &ProjectConfig,
         child_configs: &IndexMap<String, ProjectConfig>,
         tasks: &[String],
+        exclude: &[String],
         current_dir: &Path,
         vars: &IndexMap<String, VarsConfig>,
         force: bool,
@@ -44,38 +47,15 @@ impl Workspace {
         fail_fast: Option<bool>,
         use_pty: Option<bool>,
     ) -> anyhow::Result<Workspace> {
-        // List targe tasks
-        let mut target_tasks = Vec::new();
-        for task in tasks.iter() {
-            let (project_name, task_name) = Task::split_name(task);
-            match project_name {
-                // Full name
-                Some(_) => {
-                    target_tasks.push(Self::task_config(root_config, child_configs, task)?.full_name());
-                }
-                // Simple name
-                None => {
-                    if current_dir == root_config.dir {
-                        // Select the task if exists in the root project.
-                        // If not, select all tasks with the name in the child projects.
-                        let tasks = match root_config.task(task_name) {
-                            Ok(task) => vec![task],
-                            Err(_) => child_configs.values().filter_map(|c| c.task(task_name).ok()).collect(),
-                        };
-                        if tasks.is_empty() {
-                            anyhow::bail!("task {:?} does not exist in any project", task)
-                        }
-                        target_tasks.extend(tasks.iter().map(|t| t.full_name()));
-                    } else {
-                        let task = child_configs
-                            .values()
-                            .find(|c| current_dir == c.dir)
-                            .with_context(|| format!("project {:?} is not defined", project_name))?
-                            .task(task_name)?;
-                        target_tasks.push(task.full_name());
-                    }
-                }
-            }
+        let exclude = Self::resolve_task_names(root_config, child_configs, current_dir, exclude)?
+            .into_iter()
+            .collect::<HashSet<_>>();
+        let mut target_tasks = Self::resolve_task_names(root_config, child_configs, current_dir, tasks)?;
+        // Excluding every target would leave nothing to run, and the TUI blank
+        let had_targets = !target_tasks.is_empty();
+        target_tasks.retain(|t| !exclude.contains(t));
+        if had_targets && target_tasks.is_empty() {
+            anyhow::bail!("cannot run: every target task is excluded");
         }
 
         // Override vars for target tasks
@@ -112,8 +92,16 @@ impl Workspace {
         let mut renderer = ConfigRenderer::new(&root_config, &child_configs, vars, watch);
         let (mut root_config, mut child_configs) = renderer.render().await?;
         ProjectConfig::validate_multi(&root_config, &child_configs)?;
-        let finalizer_tasks = Self::apply_finalized_by(&mut root_config, &mut child_configs, &target_tasks, force)?;
-        Self::validate_vars(&root_config, &child_configs, &target_tasks, &finalizer_tasks, vars)?;
+        let finalizer_tasks =
+            Self::apply_finalized_by(&mut root_config, &mut child_configs, &target_tasks, &exclude, force)?;
+        Self::validate_vars(
+            &root_config,
+            &child_configs,
+            &target_tasks,
+            &finalizer_tasks,
+            &exclude,
+            vars,
+        )?;
         Self::validate_cli_vars(&root_config, &child_configs, vars)?;
 
         let root = Project::new("", &root_config)?;
@@ -143,6 +131,7 @@ impl Workspace {
             children,
             target_tasks,
             finalizer_tasks,
+            exclude,
             concurrency: root_config.concurrency,
             force,
             watch,
@@ -150,6 +139,48 @@ impl Workspace {
             fail_fast,
             dir: current_dir.to_owned(),
         })
+    }
+
+    /// Resolves task names given on the command line to full names.
+    fn resolve_task_names(
+        root_config: &ProjectConfig,
+        child_configs: &IndexMap<String, ProjectConfig>,
+        current_dir: &Path,
+        names: &[String],
+    ) -> anyhow::Result<Vec<String>> {
+        let mut full_names = Vec::new();
+        for task in names.iter() {
+            let (project_name, task_name) = Task::split_name(task);
+            match project_name {
+                // Full name
+                Some(_) => {
+                    full_names.push(Self::task_config(root_config, child_configs, task)?.full_name());
+                }
+                // Simple name
+                None => {
+                    if current_dir == root_config.dir {
+                        // Select the task if exists in the root project.
+                        // If not, select all tasks with the name in the child projects.
+                        let tasks = match root_config.task(task_name) {
+                            Ok(task) => vec![task],
+                            Err(_) => child_configs.values().filter_map(|c| c.task(task_name).ok()).collect(),
+                        };
+                        if tasks.is_empty() {
+                            anyhow::bail!("task {:?} does not exist in any project", task)
+                        }
+                        full_names.extend(tasks.iter().map(|t| t.full_name()));
+                    } else {
+                        let task = child_configs
+                            .values()
+                            .find(|c| current_dir == c.dir)
+                            .with_context(|| format!("project {:?} is not defined", project_name))?
+                            .task(task_name)?;
+                        full_names.push(task.full_name());
+                    }
+                }
+            }
+        }
+        Ok(full_names)
     }
 
     /// Looks up a task config by its full name, ex: `#foo` or `project#foo`.
@@ -188,6 +219,7 @@ impl Workspace {
         root_config: &mut ProjectConfig,
         child_configs: &mut IndexMap<String, ProjectConfig>,
         target_tasks: &[String],
+        exclude: &HashSet<String>,
         force: bool,
     ) -> anyhow::Result<Vec<String>> {
         let mut finalizer_tasks = Vec::new();
@@ -198,6 +230,10 @@ impl Workspace {
                 continue;
             }
             let task = Self::task_config(root_config, child_configs, &name)?;
+            // An excluded task does not run, so neither do its dependencies nor its finalizers
+            if exclude.contains(&task.full_orig_name()) {
+                continue;
+            }
             // Dependencies are not run under `force`, so neither are their finalizers
             if !force {
                 queue.extend(task.depends_on.iter().map(|d| d.task().to_string()));
@@ -208,6 +244,9 @@ impl Workspace {
                 .map(|f| f.task().to_string())
                 .collect::<Vec<_>>();
             for post in finalizers {
+                if exclude.contains(&Self::task_config(root_config, child_configs, &post)?.full_orig_name()) {
+                    continue;
+                }
                 queue.push(post.clone());
                 if !finalizer_tasks.contains(&post) {
                     finalizer_tasks.push(post.clone());
@@ -268,10 +307,17 @@ impl Workspace {
         child_configs: &IndexMap<String, ProjectConfig>,
         target_tasks: &[String],
         finalizer_tasks: &[String],
+        exclude: &HashSet<String>,
         cli_vars: &IndexMap<String, VarsConfig>,
     ) -> anyhow::Result<()> {
-        let (task_vars, project_vars) =
-            Self::collect_unset_vars(root_config, child_configs, target_tasks, finalizer_tasks, cli_vars);
+        let (task_vars, project_vars) = Self::collect_unset_vars(
+            root_config,
+            child_configs,
+            target_tasks,
+            finalizer_tasks,
+            exclude,
+            cli_vars,
+        );
         if task_vars.is_empty() && project_vars.is_empty() {
             return Ok(());
         }
@@ -286,6 +332,7 @@ impl Workspace {
         child_configs: &IndexMap<String, ProjectConfig>,
         target_tasks: &[String],
         finalizer_tasks: &[String],
+        exclude: &HashSet<String>,
         cli_vars: &IndexMap<String, VarsConfig>,
     ) -> (UnsetTaskVars, UnsetProjectVars) {
         let task_configs = std::iter::once(root_config)
@@ -306,6 +353,9 @@ impl Workspace {
             let Some(task_config) = task_configs.get(&task_name) else {
                 continue;
             };
+            if exclude.contains(&task_config.full_orig_name()) {
+                continue;
+            }
             involved_projects.insert(task_config.project.clone());
             let is_target = target_task_set.contains(&task_name);
             let names = task_config

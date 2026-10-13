@@ -46,6 +46,10 @@ pub struct Args {
     #[arg(short, long, default_value = "false")]
     pub force: bool,
 
+    /// Exclude tasks from the run. Tasks depending on them run without waiting for them
+    #[arg(short = 'x', long, value_name = "TASK", value_delimiter = ',')]
+    pub exclude: Vec<String>,
+
     // The following 3 fields are a dirty workaround for clap not supporting automatic negation
     // flags. cf. https://github.com/clap-rs/clap/issues/815
     #[arg(long = "ff", overrides_with = "_no_fail_fast", hide = true)]
@@ -150,6 +154,7 @@ pub async fn run() -> anyhow::Result<i32> {
         &root,
         &children,
         &tasks,
+        &args.exclude,
         dir.as_path(),
         &vars,
         args.force,
