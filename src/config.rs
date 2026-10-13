@@ -174,6 +174,7 @@ pub struct ProjectConfig {
     ///   - common-vars.yml
     ///   - common-tasks.yml
     /// ```
+    /// An included file can include others, with paths relative to the including file.
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
     pub includes: Vec<String>,
@@ -398,35 +399,57 @@ impl ProjectConfig {
     }
 
     pub fn merge(&self, context: &tera::Context) -> anyhow::Result<Self> {
-        // Render includes only
-        let mut tera = new_tera();
-        let mut rendered_includes = Vec::new();
-        for f in self.includes.iter() {
-            rendered_includes.push(tera.render_str(f, context)?);
-        }
-
-        // Start from empty value
         let mut ret = Value::Null;
-
-        // Merge included files first
-        for incl in rendered_includes.iter() {
-            debug!("Config file {:?} includes {:?}", self.dir, incl);
-            let path = absolute_or_join(incl, &self.dir);
-            let (file, _) = Self::open_file(&self.dir.join(incl))
-                .with_context(|| format!("failed to open the included file {:?}", path))?;
-            let reader = BufReader::new(file);
-            let raw_yaml: Value = serde_yaml::from_reader(reader)
-                .with_context(|| format!("failed to read the included file {:?}.", path))?;
-            merge_yaml(&mut ret, &raw_yaml, true)
-        }
-
-        // Merge the main file
-        merge_yaml(&mut ret, &self.raw, true);
+        let mut chain = vec![self.path.canonicalize()?];
+        Self::merge_includes(&mut ret, &self.raw, &self.dir, context, &mut chain)?;
 
         // Convert back to ProjectConfig
         let merged_str = serde_yaml::to_string(&ret)?;
         let merged = Self::new_from_str(&self.name, &merged_str, &self.path, &self.dir)?;
         Ok(merged)
+    }
+
+    /// Merges `raw` into `ret` after the files it includes, so that an included file can include
+    /// others in turn. `chain` holds the canonical paths of the files being merged, outermost
+    /// first, to reject a file that ends up including itself.
+    fn merge_includes(
+        ret: &mut Value,
+        raw: &Value,
+        dir: &Path,
+        context: &tera::Context,
+        chain: &mut Vec<PathBuf>,
+    ) -> anyhow::Result<()> {
+        // Dropped from the merged config, as every include is resolved here.
+        let mut raw = raw.clone();
+        let includes = match raw.as_mapping_mut().and_then(|m| m.remove("includes")) {
+            Some(v) => serde_yaml::from_value::<Vec<String>>(v)
+                .with_context(|| format!("invalid includes in {:?}", chain.last()))?,
+            None => vec![],
+        };
+
+        let mut tera = new_tera();
+        for incl in includes {
+            let incl = tera.render_str(&incl, context)?;
+            debug!("Config file {:?} includes {:?}", chain.last(), incl);
+            let path = absolute_or_join(&incl, dir);
+            let (file, _) =
+                Self::open_file(&path).with_context(|| format!("failed to open the included file {:?}", path))?;
+            let included: Value = serde_yaml::from_reader(BufReader::new(file))
+                .with_context(|| format!("failed to read the included file {:?}.", path))?;
+
+            let canonical = path.canonicalize()?;
+            if chain.contains(&canonical) {
+                anyhow::bail!("cannot include {:?}, as it includes itself", path);
+            }
+            chain.push(canonical);
+            // An include path is relative to the file that names it, while the other paths in an
+            // included file stay relative to the project, as if written in the project's own file.
+            Self::merge_includes(ret, &included, path.parent().unwrap_or(dir), context, chain)?;
+            chain.pop();
+        }
+
+        merge_yaml(ret, &raw, true);
+        Ok(())
     }
 
     fn open_file(path: &Path) -> Result<(File, PathBuf), io::Error> {

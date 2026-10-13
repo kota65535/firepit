@@ -1,0 +1,6 @@
+includes:
+  - common/a.yml
+  - common/c.yml
+
+env_files:
+  - .env.root

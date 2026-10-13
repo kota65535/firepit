@@ -911,6 +911,9 @@ The merged defaults act as a base layer, so any setting defined directly on the 
 
 You can merge multiple configuration files using `includes` field.
 Starting from an empty YAML, files specified in `includes` are merged in order, followed by the original `firepit.yml`.
+An included file can have its own `includes`, which are merged before it in the same way.
+Paths in `includes` are relative to the file that lists them, while the other paths in an included file, such as `env_files` and `working_dir`, are relative to the project as if written in its `firepit.yml`.
+A file that ends up including itself is an error.
 
 If the field name conflicts, merging strategy depends on the field type.
 

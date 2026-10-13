@@ -1,0 +1,5 @@
+includes:
+  - "{{ root_dir }}/common/b.yml"
+
+env_files:
+  - .env.c

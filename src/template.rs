@@ -246,13 +246,6 @@ impl ProjectConfig {
 
         let mut config = self.clone();
 
-        // Render includes
-        let mut rendered_includes = Vec::new();
-        for f in config.includes.iter() {
-            rendered_includes.push(tera.render_str(f, context)?);
-        }
-        config.includes = rendered_includes;
-
         // Render working_dir
         config.working_dir = tera.render_str(&config.working_dir, context)?;
 
