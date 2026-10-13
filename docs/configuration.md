@@ -846,10 +846,16 @@ cd packages/client
 fire dev
 ```
 
-Run client & server dev tasks (because root project does not have dev task)
+Run the dev task of every project that defines it, root and children alike (here client & server):
 
 ```bash
 fire dev
+```
+
+To run only the root project's task, use `#{task}`:
+
+```bash
+fire '#dev'
 ```
 
 This is how Firepit resolves which task to run:
@@ -861,9 +867,7 @@ flowchart LR
     B -->|Yes| C["Run the project's task"]
     B -->|No| D{"Current directory?"}
     D -->|Child| E["Run the task of the current project"]
-    D -->|Root| F{"Task defined in the root project?"}
-    F -->|Yes| G["Run the root project's task"]
-    F -->|No| H["Run all subprojects' task with the name"]
+    D -->|Root| F["Run the task of the root and all subprojects that define it"]
 ```
 
 ## Reusing Configuration

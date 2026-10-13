@@ -1,0 +1,5 @@
+tasks:
+  build:
+    command: echo "bar build"
+  test:
+    command: echo "bar test"
