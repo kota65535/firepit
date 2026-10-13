@@ -886,8 +886,10 @@ impl Task {
         if self.inputs.is_empty() || self.outputs.is_empty() {
             return false;
         }
-        let (newest_input, num_inputs) = self.newest_file(&self.inputs, "input");
+        // Inputs last, so that one written by another task while the outputs are scanned is seen
+        // as newer and the task runs
         let (newest_output, num_outputs) = self.newest_file(&self.outputs, "output");
+        let (newest_input, num_inputs) = self.newest_file(&self.inputs, "input");
         // The newest file of each side is what decides, where listing them all would run to the
         // thousands with a pattern like `node_modules/**`
         debug!(
