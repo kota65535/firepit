@@ -56,7 +56,7 @@
       ]
     },
     "includes": {
-      "description": "Additional config files to be included.\n```yaml\nincludes:\n  - common-vars.yml\n  - common-tasks.yml\n```",
+      "description": "Additional config files to be included.\n```yaml\nincludes:\n  - common-vars.yml\n  - common-tasks.yml\n```\nAn included file can include others, with paths relative to the including file.",
       "type": "array",
       "default": [],
       "items": {
