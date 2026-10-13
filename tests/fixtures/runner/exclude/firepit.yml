@@ -1,0 +1,31 @@
+tasks:
+  app:
+    command: echo "app"
+    depends_on:
+      - db
+      - build
+
+  # A var left unset is not an error when its task is excluded
+  db:
+    vars:
+      port:
+    command: echo "db {{ port }}"
+    depends_on:
+      - db-init
+      - codegen
+    finalized_by:
+      - db-cleanup
+
+  db-init:
+    command: echo "db-init"
+
+  db-cleanup:
+    command: echo "db-cleanup"
+
+  build:
+    command: echo "build"
+    depends_on:
+      - codegen
+
+  codegen:
+    command: echo "codegen"

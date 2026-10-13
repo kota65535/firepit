@@ -53,6 +53,14 @@ Enable watch mode. Automatically re-run tasks when the input files change.
 
 Force the execution of only the specified tasks, ignoring dependencies.
 
+### `-x, --exclude <TASK>`
+
+Exclude a task from the run, e.g. a service already running outside Firepit.
+Tasks depending on it run without waiting for it.
+Repeat the option or separate names with commas to exclude more than one.
+
+Excluding a target task drops it from the targets, and excluding all of them is an error.
+
 ### `--ff, --no-ff`
 
 Enable or disable fail-fast mode.

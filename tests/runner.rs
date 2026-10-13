@@ -409,6 +409,7 @@ async fn test_finalized_by() {
         &root,
         &children,
         &tasks,
+        &[],
         &abs,
         &IndexMap::new(),
         false,
@@ -434,6 +435,7 @@ async fn test_finalized_by() {
         &root,
         &children,
         &tasks,
+        &[],
         &abs,
         &IndexMap::new(),
         false,
@@ -501,6 +503,7 @@ async fn test_finalized_by_quit_on_done() {
     run_task_inner(
         &path,
         tasks,
+        &[],
         statuses,
         None,
         None,
@@ -545,6 +548,91 @@ async fn test_finalized_by_force() {
     // With force, the dependency is skipped, and so is its finalizer
     let statuses = HashMap::from([(String::from("#build"), String::from("Finished: Success"))]);
     run_task(&path, tasks, statuses, None, true).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_exclude() {
+    setup();
+    let path = BASE_PATH.join("exclude");
+
+    // The excluded task, its finalizer and the dependency only it needs do not run, while its
+    // dependent and the dependency shared with another task do
+    let statuses = ["#app", "#build", "#codegen"]
+        .iter()
+        .map(|t| (t.to_string(), String::from("Finished: Success")))
+        .collect::<HashMap<_, _>>();
+    run_task_with_exclude(&path, vec![String::from("app")], &[String::from("db")], statuses)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn test_exclude_target() {
+    setup();
+    let path = BASE_PATH.join("exclude");
+    let tasks = vec![String::from("app"), String::from("build")];
+
+    // An excluded target is dropped from the targets, and the rest still run
+    let statuses = ["#build", "#codegen"]
+        .iter()
+        .map(|t| (t.to_string(), String::from("Finished: Success")))
+        .collect::<HashMap<_, _>>();
+    run_task_with_exclude(&path, tasks, &[String::from("app")], statuses)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn test_exclude_every_target() {
+    setup();
+    let path = BASE_PATH.join("exclude");
+    let err = run_task_with_exclude(&path, vec![String::from("app")], &[String::from("app")], HashMap::new())
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("every target task is excluded"), "{err}");
+}
+
+#[tokio::test]
+async fn test_exclude_undefined() {
+    setup();
+    let path = BASE_PATH.join("exclude");
+    let err = run_task_with_exclude(
+        &path,
+        vec![String::from("app")],
+        &[String::from("nope")],
+        HashMap::new(),
+    )
+    .await
+    .unwrap_err();
+    assert!(err.to_string().contains("\"nope\""), "{err}");
+}
+
+#[tokio::test]
+async fn test_exclude_variants() {
+    setup();
+    let path = path::absolute(BASE_PATH.join("finalized_by_vars")).unwrap();
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &[String::from("build-a"), String::from("build-b")],
+        &[String::from("cleanup")],
+        &path,
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    // Excluding a task excludes every variant of it
+    let runner = TaskRunner::new(&ws).unwrap();
+    let mut tasks = runner.tasks.iter().map(|t| t.name.as_str()).collect::<Vec<_>>();
+    tasks.sort();
+    assert_eq!(tasks, ["#build-a", "#build-b"]);
+    assert!(runner.finalizer_tasks.is_empty());
 }
 
 #[tokio::test]
@@ -612,6 +700,7 @@ async fn test_finalized_by_service_quit() {
         &root,
         &children,
         &tasks,
+        &[],
         &path,
         &IndexMap::new(),
         false,
@@ -666,6 +755,7 @@ async fn test_finalized_by_target_quit() {
         &root,
         &children,
         &tasks,
+        &[],
         &path,
         &IndexMap::new(),
         false,
@@ -717,6 +807,7 @@ async fn test_service_quit_before_ready() {
         &root,
         &children,
         &tasks,
+        &[],
         &path,
         &IndexMap::new(),
         false,
@@ -769,6 +860,7 @@ async fn test_service_quit_dependents() {
         &root,
         &children,
         &tasks,
+        &[],
         &path,
         &IndexMap::new(),
         false,
@@ -1479,6 +1571,7 @@ async fn test_rerun_running_dependency() {
         &root,
         &children,
         &tasks,
+        &[],
         &path,
         &IndexMap::new(),
         false,
@@ -1530,6 +1623,7 @@ async fn test_rerun_running_finalizer(#[case] dir: &str) {
         &root,
         &children,
         &tasks,
+        &[],
         &path,
         &IndexMap::new(),
         false,
@@ -1683,6 +1777,7 @@ async fn run_task(
     run_task_inner(
         path,
         tasks,
+        &[],
         status_expected,
         outputs_expected,
         None,
@@ -1690,6 +1785,30 @@ async fn run_task(
         None,
         IndexMap::new(),
         force,
+        false,
+        false,
+    )
+    .await
+}
+
+/// Same as [`run_task`], with the given tasks excluded.
+async fn run_task_with_exclude(
+    path: &Path,
+    tasks: Vec<String>,
+    exclude: &[String],
+    status_expected: HashMap<String, String>,
+) -> anyhow::Result<()> {
+    run_task_inner(
+        path,
+        tasks,
+        exclude,
+        status_expected,
+        None,
+        None,
+        None,
+        None,
+        IndexMap::new(),
+        false,
         false,
         false,
     )
@@ -1706,6 +1825,7 @@ async fn run_task_with_fail_fast(
     run_task_inner(
         path,
         tasks,
+        &[],
         status_expected,
         outputs_expected,
         None,
@@ -1730,6 +1850,7 @@ async fn run_task_with_vars(
     run_task_inner(
         path,
         tasks,
+        &[],
         status_expected,
         outputs_expected,
         None,
@@ -1749,6 +1870,7 @@ async fn run_task_with_vars(
 async fn run_task_inner(
     path: &Path,
     tasks: Vec<String>,
+    exclude: &[String],
     status_expected: HashMap<String, String>,
     outputs_expected: Option<HashMap<String, String>>,
     restarts_expected: Option<HashMap<String, u64>>,
@@ -1765,6 +1887,7 @@ async fn run_task_inner(
         &root,
         &children,
         &tasks,
+        exclude,
         &path,
         &vars,
         force,
@@ -1822,6 +1945,7 @@ async fn run_task_with_watch<F>(
         &root,
         &children,
         &tasks,
+        &[],
         &path,
         &IndexMap::new(),
         force,
@@ -1973,6 +2097,7 @@ async fn test_stderr_separation() {
         &root,
         &children,
         &[String::from("foo")],
+        &[],
         &path,
         &IndexMap::new(),
         false,
@@ -2021,6 +2146,7 @@ async fn test_gantt_service_exit_before_ready() {
         &root,
         &children,
         &tasks,
+        &[],
         &path,
         &IndexMap::new(),
         false,
@@ -2062,6 +2188,7 @@ async fn test_rerun_repeated() {
         &root,
         &children,
         &tasks,
+        &[],
         &path,
         &IndexMap::new(),
         false,
@@ -2109,6 +2236,7 @@ async fn test_rerun_while_stopping() {
         &root,
         &children,
         &tasks,
+        &[],
         &path,
         &IndexMap::new(),
         false,
