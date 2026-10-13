@@ -159,12 +159,12 @@ impl Workspace {
                 // Simple name
                 None => {
                     if current_dir == root_config.dir {
-                        // Select the task if exists in the root project.
-                        // If not, select all tasks with the name in the child projects.
-                        let tasks = match root_config.task(task_name) {
-                            Ok(task) => vec![task],
-                            Err(_) => child_configs.values().filter_map(|c| c.task(task_name).ok()).collect(),
-                        };
+                        // Like Gradle, the root and every child, so that adding the task to the root
+                        // does not silently stop selecting the children's.
+                        let tasks: Vec<_> = std::iter::once(root_config)
+                            .chain(child_configs.values())
+                            .filter_map(|c| c.task(task_name).ok())
+                            .collect();
                         if tasks.is_empty() {
                             anyhow::bail!("task {:?} does not exist in any project", task)
                         }

@@ -1,0 +1,8 @@
+projects:
+  foo: foo
+  bar: bar
+  baz: baz
+
+tasks:
+  build:
+    command: echo "build"

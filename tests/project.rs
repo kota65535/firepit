@@ -758,3 +758,45 @@ async fn test_env_file_is_input_only() {
     assert_eq!(build.inputs, vec![dir.join("src/*"), dir.join(".env")]);
     assert_eq!(build.outputs, vec![dir.join("out/*")]);
 }
+
+async fn target_tasks(dir: &str, tasks: &[&str]) -> anyhow::Result<Vec<String>> {
+    let root_dir = std::path::absolute("tests/fixtures/project/simple_name").unwrap();
+    let (root, children) = ProjectConfig::new_multi(&root_dir).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &tasks.iter().map(|t| t.to_string()).collect::<Vec<_>>(),
+        &[],
+        &root_dir.join(dir),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await?;
+    Ok(ws.target_tasks)
+}
+
+#[tokio::test]
+async fn test_simple_name_in_root_selects_root_and_children() {
+    assert_eq!(
+        target_tasks("", &["build"]).await.unwrap(),
+        vec!["#build", "foo#build", "bar#build"]
+    );
+    // Without the task in the root, the children that have it are still selected
+    assert_eq!(target_tasks("", &["test"]).await.unwrap(), vec!["bar#test"]);
+    assert_err!(target_tasks("", &["missing"]).await);
+}
+
+#[tokio::test]
+async fn test_full_name_selects_only_that_task() {
+    assert_eq!(target_tasks("", &["#build"]).await.unwrap(), vec!["#build"]);
+    assert_eq!(target_tasks("", &["foo#build"]).await.unwrap(), vec!["foo#build"]);
+}
+
+#[tokio::test]
+async fn test_simple_name_in_child_selects_only_the_child() {
+    assert_eq!(target_tasks("foo", &["build"]).await.unwrap(), vec!["foo#build"]);
+    assert_err!(target_tasks("baz", &["build"]).await);
+}
