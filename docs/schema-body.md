@@ -91,6 +91,7 @@ includes:
   - common-vars.yml
   - common-tasks.yml
 ```
+An included file can include others, with paths relative to the including file.
 
 ### log
 

@@ -128,6 +128,24 @@ fn test_merge() {
 }
 
 #[test]
+fn test_merge_nested() {
+    let path = Path::new("tests/fixtures/config/merge_nested");
+    let (root, _) = ProjectConfig::new_multi(path).unwrap();
+    assert_eq!(
+        root.env_files,
+        vec![".env.b", ".env.a", ".env.b", ".env.c", ".env.root"]
+    );
+    assert!(root.includes.is_empty());
+}
+
+#[test]
+fn test_merge_cycle() {
+    let path = Path::new("tests/fixtures/config/merge_cycle");
+    let err = ProjectConfig::new_multi(path).expect_err("");
+    assert_starts_with!(format!("{:#}", err), "cannot include");
+}
+
+#[test]
 fn test_bad_root() {
     let path = Path::new("tests/fixtures/config/somewhere");
     let err = ProjectConfig::new_multi(path).expect_err("");
