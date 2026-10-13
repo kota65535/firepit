@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.34.1] - 2026-10-13
+
+### 🐛 Bug Fixes
+
+- *(project)* Count env_files as inputs only, not outputs (#482)
+
 ## [0.34.0] - 2026-10-09
 
 ### 🚀 Features
