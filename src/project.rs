@@ -738,11 +738,7 @@ impl Task {
             .collect::<Vec<_>>();
 
         // Output files
-        let outputs = task_config
-            .output_paths(&config.dir)
-            .into_iter()
-            .chain(task_config.env_file_paths(&config.dir))
-            .collect::<Vec<_>>();
+        let outputs = task_config.output_paths(&config.dir);
 
         // Probes
         let (is_service, probe, restart) = match task_config.service.clone() {
@@ -890,48 +886,49 @@ impl Task {
         if self.inputs.is_empty() || self.outputs.is_empty() {
             return false;
         }
-        let mut input_modified_time: u64 = 0;
-        for p in self.inputs.iter() {
+        let (newest_input, num_inputs) = self.newest_file(&self.inputs, "input");
+        let (newest_output, num_outputs) = self.newest_file(&self.outputs, "output");
+        // The newest file of each side is what decides, where listing them all would run to the
+        // thousands with a pattern like `node_modules/**`
+        debug!(
+            "Newest of {} input files: {:?}, newest of {} output files: {:?}",
+            num_inputs, newest_input, num_outputs, newest_output
+        );
+        let time = |f: &Option<(PathBuf, u64)>| f.as_ref().map_or(0, |(_, t)| *t);
+        time(&newest_input) < time(&newest_output)
+    }
+
+    /// Returns the newest of the files `patterns` resolve to with its modified time, and the
+    /// number of the files.
+    fn newest_file(&self, patterns: &[PathBuf], kind: &str) -> (Option<(PathBuf, u64)>, usize) {
+        let mut newest: Option<(PathBuf, u64)> = None;
+        let mut num_files = 0;
+        for p in patterns.iter() {
             let paths = self.glob(p).unwrap_or_else(|e| {
                 // Without the files the task looks out of date and runs every time
                 error!(
-                    "Task {:?} cannot tell whether it is up to date, its input {:?} did not resolve: {}",
-                    self.name, p, e
+                    "Task {:?} cannot tell whether it is up to date, its {} {:?} did not resolve: {}",
+                    self.name, kind, p, e
                 );
                 Vec::new()
             });
-            let modified_time = self.latest_modified_time(&paths);
-            if modified_time > input_modified_time {
-                input_modified_time = modified_time;
+            let times = paths
+                .iter()
+                .map(|p| self.modified_time(p))
+                .collect::<anyhow::Result<Vec<_>>>()
+                .unwrap_or_else(|e| {
+                    error!("Task {:?} cannot read the time of its files: {}", self.name, e);
+                    Vec::new()
+                });
+            for (path, time) in paths.into_iter().zip(times) {
+                let Some(time) = time else { continue };
+                num_files += 1;
+                if newest.as_ref().is_none_or(|(_, t)| time > *t) {
+                    newest = Some((path, time));
+                }
             }
         }
-        let mut output_modified_time: u64 = 0;
-        for p in self.outputs.iter() {
-            let paths = self.glob(p).unwrap_or_else(|e| {
-                error!(
-                    "Task {:?} cannot tell whether it is up to date, its output {:?} did not resolve: {}",
-                    self.name, p, e
-                );
-                Vec::new()
-            });
-            let modified_time = self.latest_modified_time(&paths);
-            if modified_time > output_modified_time {
-                output_modified_time = modified_time;
-            }
-        }
-        input_modified_time < output_modified_time
-    }
-
-    fn latest_modified_time(&self, paths: &[PathBuf]) -> u64 {
-        let timestamps = paths
-            .iter()
-            .map(|p| self.modified_time(p))
-            .collect::<anyhow::Result<Vec<_>>>()
-            .unwrap_or_else(|e| {
-                error!("Task {:?} cannot read the time of its files: {}", self.name, e);
-                Vec::new()
-            });
-        timestamps.into_iter().flatten().max().unwrap_or(0)
+        (newest, num_files)
     }
 
     fn match_glob(&self, pattern: &str, path: &HashSet<PathBuf>) -> anyhow::Result<bool> {

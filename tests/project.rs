@@ -702,3 +702,30 @@ async fn test_project_var_referencing_undeclared_args() {
         String::from("echo \"[pre  post]\"")
     );
 }
+
+/// A dotenv file is read by the task, never written, so it is an input only.
+/// Were it an output too, a task writing it while this one is checked could have its new time
+/// counted as the output's but not the input's, and the task would be skipped as up to date.
+#[tokio::test]
+async fn test_env_file_is_input_only() {
+    let path = Path::new("tests/fixtures/project/env_file_not_output");
+    let (root, children) = ProjectConfig::new_multi(path).unwrap();
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &Vec::new(),
+        &std::env::current_dir().unwrap(),
+        &IndexMap::new(),
+        false,
+        false,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+
+    let build = ws.root.task("build").unwrap();
+    let dir = &root.dir;
+    assert_eq!(build.inputs, vec![dir.join("src/*"), dir.join(".env")]);
+    assert_eq!(build.outputs, vec![dir.join("out/*")]);
+}

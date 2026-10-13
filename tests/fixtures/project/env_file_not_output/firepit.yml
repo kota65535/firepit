@@ -1,0 +1,9 @@
+tasks:
+  build:
+    command: echo "build"
+    env_files:
+      - .env
+    inputs:
+      - src/*
+    outputs:
+      - out/*
