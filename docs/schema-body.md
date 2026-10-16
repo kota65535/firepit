@@ -103,7 +103,7 @@ An included file can include others, with paths relative to the including file.
 ```yaml
 log:
   level: debug
-  file: "{{ root_dir }}/firepit.log"
+  file: firepit.log
 ```
 
 ### projects

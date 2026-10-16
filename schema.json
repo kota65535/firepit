@@ -65,7 +65,7 @@
       "x-template": true
     },
     "log": {
-      "description": "Log configuration. Valid only in a root project config.\n```yaml\nlog:\n  level: debug\n  file: \"{{ root_dir }}/firepit.log\"\n```",
+      "description": "Log configuration. Valid only in a root project config.\n```yaml\nlog:\n  level: debug\n  file: firepit.log\n```",
       "$ref": "#/$defs/LogConfig",
       "default": {
         "file": null,
