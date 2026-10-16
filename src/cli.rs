@@ -37,7 +37,7 @@ pub struct Args {
 
     /// Working directory
     #[arg(short, long, default_value = ".")]
-    pub dir: String,
+    pub dir: PathBuf,
 
     /// Watch mode
     #[arg(short, long, default_value = "false")]
