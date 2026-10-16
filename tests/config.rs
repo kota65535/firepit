@@ -579,3 +579,19 @@ async fn test_dynamic_vars_cache() {
     assert!(env("foo", "CWD").ends_with("/foo"));
     assert!(env("bar", "CWD").ends_with("/bar"));
 }
+
+#[test]
+fn test_root_relative_files() {
+    // Run from a child project: the paths are still resolved against the root, not the cwd
+    let path = Path::new("tests/fixtures/config/root_relative_files/child");
+    let (root, _) = ProjectConfig::new_multi(path).unwrap();
+    let dir = std::path::absolute("tests/fixtures/config/root_relative_files").unwrap();
+    assert_eq!(
+        root.log.file,
+        Some(dir.join("firepit.log").to_string_lossy().into_owned())
+    );
+    assert_eq!(
+        root.gantt_file,
+        Some(dir.join("gantt.mmd").to_string_lossy().into_owned())
+    );
+}

@@ -155,7 +155,8 @@ pub struct ProjectConfig {
     #[serde(default = "default_log")]
     pub log: LogConfig,
 
-    /// Gantt chart output file path. Valid only in a root project config.
+    /// Gantt chart output file path, relative to the root project. Valid only in a root project
+    /// config.
     /// ```yaml
     /// gantt_file: gantt.mmd
     /// ```
@@ -271,6 +272,15 @@ impl ProjectConfig {
 
         root_config = root_config.merge(&context)?;
         root_config.apply_defaults()?;
+        // Firepit may be run from any child project, so the cwd is not where the config lives
+        let root_dir = root_config.dir.clone();
+        let resolve = |f: &mut Option<String>| {
+            if let Some(f) = f {
+                *f = absolute_or_join(f, &root_dir).to_string_lossy().into_owned();
+            }
+        };
+        resolve(&mut root_config.log.file);
+        resolve(&mut root_config.gantt_file);
 
         Ok((root_config, children))
     }
@@ -861,7 +871,7 @@ pub struct LogConfig {
     /// task, `debug` and below the internals.
     pub level: String,
 
-    /// Log file path.
+    /// Log file path, relative to the root project.
     pub file: Option<String>,
 }
 
