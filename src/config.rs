@@ -150,7 +150,7 @@ pub struct ProjectConfig {
     /// ```yaml
     /// log:
     ///   level: debug
-    ///   file: "{{ root_dir }}/firepit.log"
+    ///   file: firepit.log
     /// ```
     #[serde(default = "default_log")]
     pub log: LogConfig,
@@ -272,7 +272,7 @@ impl ProjectConfig {
 
         root_config = root_config.merge(&context)?;
         root_config.apply_defaults()?;
-        // Firepit may be run from any child project, so the cwd is not where the config lives
+        // A file path only a root project config can set is relative to the root project
         let root_dir = root_config.dir.clone();
         let resolve = |f: &mut Option<String>| {
             if let Some(f) = f {
