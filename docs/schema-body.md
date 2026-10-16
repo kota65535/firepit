@@ -74,7 +74,8 @@ env_files:
 - **Type:** <code>string</code>
 - **Required:** no
 - **Template:** no
-- **Description:** Gantt chart output file path. Valid only in a root project config.
+- **Description:** Gantt chart output file path, relative to the root project. Valid only in a root project
+config.
 ```yaml
 gantt_file: gantt.mmd
 ```
@@ -102,7 +103,7 @@ An included file can include others, with paths relative to the including file.
 ```yaml
 log:
   level: debug
-  file: "{{ root_dir }}/firepit.log"
+  file: firepit.log
 ```
 
 ### projects
@@ -479,7 +480,7 @@ Probe failure during that period will not be counted towards the maximum number 
 - **Type:** <code>string</code>
 - **Required:** no
 - **Template:** no
-- **Description:** Log file path.
+- **Description:** Log file path, relative to the root project.
 
 ### level
 

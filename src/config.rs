@@ -150,12 +150,13 @@ pub struct ProjectConfig {
     /// ```yaml
     /// log:
     ///   level: debug
-    ///   file: "{{ root_dir }}/firepit.log"
+    ///   file: firepit.log
     /// ```
     #[serde(default = "default_log")]
     pub log: LogConfig,
 
-    /// Gantt chart output file path. Valid only in a root project config.
+    /// Gantt chart output file path, relative to the root project. Valid only in a root project
+    /// config.
     /// ```yaml
     /// gantt_file: gantt.mmd
     /// ```
@@ -493,6 +494,16 @@ impl ProjectConfig {
 
     pub fn working_dir_path(&self) -> PathBuf {
         absolute_or_join(&self.working_dir, &self.dir)
+    }
+
+    // A file path only a root project config can set is relative to the root project, wherever
+    // Firepit is run from
+    pub fn log_file_path(&self) -> Option<PathBuf> {
+        self.log.file.as_ref().map(|f| absolute_or_join(f, &self.dir))
+    }
+
+    pub fn gantt_file_path(&self) -> Option<PathBuf> {
+        self.gantt_file.as_ref().map(|f| absolute_or_join(f, &self.dir))
     }
 
     pub fn env_file_paths(&self) -> Vec<PathBuf> {
@@ -861,7 +872,7 @@ pub struct LogConfig {
     /// task, `debug` and below the internals.
     pub level: String,
 
-    /// Log file path.
+    /// Log file path, relative to the root project.
     pub file: Option<String>,
 }
 

@@ -1,0 +1,5 @@
+projects:
+  child: child
+log:
+  file: firepit.log
+gantt_file: gantt.mmd
