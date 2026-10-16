@@ -15,6 +15,7 @@ use nix::unistd::getcwd;
 use serde_json::Value;
 use std::fs;
 use std::path;
+use std::path::PathBuf;
 use tracing::debug;
 
 /// Name of the variable that receives the task arguments passed after `--`.
@@ -66,7 +67,7 @@ pub struct Args {
 
     /// Log file
     #[arg(long)]
-    pub log_file: Option<String>,
+    pub log_file: Option<PathBuf>,
 
     /// Log level
     #[arg(long)]
@@ -74,7 +75,7 @@ pub struct Args {
 
     /// Gantt chart file
     #[arg(long)]
-    pub gantt_file: Option<String>,
+    pub gantt_file: Option<PathBuf>,
 
     /// Force TUI mode
     #[arg(long, conflicts_with = "cui")]
@@ -120,9 +121,9 @@ pub async fn run() -> anyhow::Result<i32> {
     let (mut root, children) = ProjectConfig::new_multi(&dir)?;
 
     // Override config files with CLI options
-    root.log.file = args.log_file.or(root.log.file);
+    let log_file = args.log_file.or_else(|| root.log_file_path());
     root.log.level = args.log_level.unwrap_or(root.log.level);
-    root.gantt_file = args.gantt_file.or(root.gantt_file);
+    let gantt_file = args.gantt_file.or_else(|| root.gantt_file_path());
     root.ui = if args.tui {
         UI::Tui
     } else if args.cui {
@@ -131,7 +132,7 @@ pub async fn run() -> anyhow::Result<i32> {
         root.ui
     };
 
-    let log_sink = init_logger(&root.log, args.tokio_console)?;
+    let log_sink = init_logger(&root.log.level, log_file.as_deref(), args.tokio_console)?;
 
     debug!("Tasks: {:?}", tasks);
     debug!("Vars: {:?}", vars);
@@ -224,7 +225,7 @@ pub async fn run() -> anyhow::Result<i32> {
     });
     let (runner_result, gantt) = runner_fut.await?;
     // Written even if the runner failed, as that is when the chart is wanted the most
-    if let Some(path) = root.gantt_file {
+    if let Some(path) = gantt_file {
         if let Err(e) = fs::write(&path, gantt) {
             warnings.push(format!("failed to write Gantt chart file {:?}: {}", path, e));
         }

@@ -272,15 +272,6 @@ impl ProjectConfig {
 
         root_config = root_config.merge(&context)?;
         root_config.apply_defaults()?;
-        // A file path only a root project config can set is relative to the root project
-        let root_dir = root_config.dir.clone();
-        let resolve = |f: &mut Option<String>| {
-            if let Some(f) = f {
-                *f = absolute_or_join(f, &root_dir).to_string_lossy().into_owned();
-            }
-        };
-        resolve(&mut root_config.log.file);
-        resolve(&mut root_config.gantt_file);
 
         Ok((root_config, children))
     }
@@ -503,6 +494,16 @@ impl ProjectConfig {
 
     pub fn working_dir_path(&self) -> PathBuf {
         absolute_or_join(&self.working_dir, &self.dir)
+    }
+
+    // A file path only a root project config can set is relative to the root project, wherever
+    // Firepit is run from
+    pub fn log_file_path(&self) -> Option<PathBuf> {
+        self.log.file.as_ref().map(|f| absolute_or_join(f, &self.dir))
+    }
+
+    pub fn gantt_file_path(&self) -> Option<PathBuf> {
+        self.gantt_file.as_ref().map(|f| absolute_or_join(f, &self.dir))
     }
 
     pub fn env_file_paths(&self) -> Vec<PathBuf> {

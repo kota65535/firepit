@@ -1,10 +1,10 @@
 use crate::app::command::{AppCommand, AppCommandChannel};
-use crate::config::LogConfig;
 use anyhow::Context;
 use std::fmt::Write as _;
 use std::fs::File;
 use std::io;
 use std::io::Write;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tracing::field::{Field, Visit};
 use tracing::span::Attributes;
@@ -156,13 +156,14 @@ impl Visit for FieldVisitor {
 
 /// A file is somewhere to keep the log as well, not somewhere to put it instead: configuring one
 /// must not take it out of the UI.
-pub fn init_logger(log: &LogConfig, tokio_console: bool) -> anyhow::Result<LogSink> {
+pub fn init_logger(level: &str, file: Option<&Path>, tokio_console: bool) -> anyhow::Result<LogSink> {
     let sink = LogSink::default();
-    let app_layer = AppLayer { sink: sink.clone() }.with_filter(EnvFilter::new(&log.level));
+    let app_layer = AppLayer { sink: sink.clone() }.with_filter(EnvFilter::new(level));
 
-    let file_layer = match &log.file {
+    let file_layer = match file {
         Some(file_path) => {
-            let file = File::create(file_path).with_context(|| format!("failed to create log file {}", file_path))?;
+            let file = File::create(file_path)
+                .with_context(|| format!("failed to create log file {}", file_path.display()))?;
             let file = Mutex::new(file);
             let file_writer = BoxMakeWriter::new(move || {
                 let file = file.lock().unwrap();
@@ -172,7 +173,7 @@ pub fn init_logger(log: &LogConfig, tokio_console: bool) -> anyhow::Result<LogSi
                 tracing_subscriber::fmt::layer()
                     .with_writer(file_writer)
                     .with_ansi(false)
-                    .with_filter(EnvFilter::new(&log.level)),
+                    .with_filter(EnvFilter::new(level)),
             )
         }
         None => None,

@@ -586,12 +586,6 @@ fn test_root_relative_files() {
     let path = Path::new("tests/fixtures/config/root_relative_files/child");
     let (root, _) = ProjectConfig::new_multi(path).unwrap();
     let dir = std::path::absolute("tests/fixtures/config/root_relative_files").unwrap();
-    assert_eq!(
-        root.log.file,
-        Some(dir.join("firepit.log").to_string_lossy().into_owned())
-    );
-    assert_eq!(
-        root.gantt_file,
-        Some(dir.join("gantt.mmd").to_string_lossy().into_owned())
-    );
+    assert_eq!(root.log_file_path(), Some(dir.join("firepit.log")));
+    assert_eq!(root.gantt_file_path(), Some(dir.join("gantt.mmd")));
 }
