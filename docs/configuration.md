@@ -432,6 +432,34 @@ tasks:
         optional: true
 ```
 
+### Dependencies from Variables
+
+`depends_on`, `wait_for` and `finalized_by` also take a template in place of the list.
+The template is rendered and read as a YAML list, each element being the entry written in its place.
+A single `{{ ... }}` takes the value of the expression instead, such as an array variable.
+
+In this example, `build` of the `web` project depends on `build` of each workspace package listed in its `package.json`, ignoring the packages without one (see [Optional Dependencies](#optional-dependencies)).
+
+```yaml
+# web/firepit.yml
+vars:
+  packages:
+    type: array
+    command: jq -c '[.dependencies // {} | to_entries[] | select(.value | startswith("workspace:")) | .key]' package.json
+
+tasks:
+  build:
+    command: bun run build
+    depends_on: |
+      {% for p in packages %}
+      - task: "{{ p }}#build"
+        optional: true
+      {% endfor %}
+```
+
+The rendered entries are not rendered again.
+Quote a value written into the YAML, as above, when it may contain characters that YAML treats specially, such as `:` or `#`.
+
 ### Finalizers
 
 The `finalized_by` field is the opposite of `depends_on`: the listed tasks are executed **after** the task finishes, whether it succeeds or fails.
