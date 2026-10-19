@@ -910,6 +910,15 @@ impl Task {
     /// Deprecated separator still accepted in task references and CLI arguments.
     pub const LEGACY_SEP: char = '#';
 
+    /// Whether a project or task name is made of the characters it will be limited to in v1.
+    /// Any other character may collide with a syntax that a name appears in, ex: `:` of a full
+    /// name, `=` of a CLI var, `,` of `--exclude`, `{{` of a template, or a leading `-` of an option.
+    pub fn is_valid_name(name: &str) -> bool {
+        let mut chars = name.chars();
+        chars.next().is_some_and(char::is_alphabetic)
+            && chars.all(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '.' | '/'))
+    }
+
     /// Splits a full task name into the project name, `""` for the root project, and the task name.
     /// A project name may contain `:`, so the first `:` is not necessarily the separator: the longest
     /// of the given project names that the full name starts with is taken.

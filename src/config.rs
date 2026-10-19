@@ -590,9 +590,9 @@ impl ProjectConfig {
             ));
         }
         for name in self.project_dirs.keys().chain(self.tasks.keys()) {
-            if name.contains(Task::SEP) {
+            if !Task::is_valid_name(name) {
                 warnings.push(format!(
-                    "{}: name {:?} contains ':', which is now the project/task separator. Names containing ':' will be rejected in a future version",
+                    "{}: name {:?} will be rejected in v1. A name starts with a letter and contains only letters, digits, '_', '-', '.' and '/'",
                     file, name
                 ));
             }

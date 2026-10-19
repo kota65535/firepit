@@ -1,0 +1,18 @@
+# Test that a name outside the characters allowed in v1 gets a warning
+tasks:
+  build:
+    command: echo
+  dump/save:
+    command: echo
+  dump.v2_load-all:
+    command: echo
+  ビルド:
+    command: echo
+  build:watch:
+    command: echo
+  1st:
+    command: echo
+  with space:
+    command: echo
+  -x:
+    command: echo

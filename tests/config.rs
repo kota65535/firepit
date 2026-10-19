@@ -589,3 +589,19 @@ fn test_root_relative_files() {
     assert_eq!(root.log_file_path(), Some(dir.join("firepit.log")));
     assert_eq!(root.gantt_file_path(), Some(dir.join("gantt.mmd")));
 }
+
+#[test]
+fn test_name_chars() {
+    let path = Path::new("tests/fixtures/config/name_chars");
+    let (root, _) = ProjectConfig::new_multi(path).unwrap();
+    let warned = root
+        .tasks
+        .keys()
+        .filter(|name| {
+            root.deprecated_warnings()
+                .iter()
+                .any(|w| w.contains(&format!("name {:?} will be rejected in v1", name)))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(warned, vec!["build:watch", "1st", "with space", "-x"]);
+}

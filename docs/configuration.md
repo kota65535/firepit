@@ -835,7 +835,9 @@ Note that the root project name is treated as an empty string, so you can refere
 
 ::: warning
 The former separator `#` (`{project}#{task}`) is deprecated and will be removed in a future version.
-For the same reason, a project or task name containing `:` is discouraged and will be rejected once `#` is removed.
+A project or task name is limited to letters, digits, `_`, `-`, `.` and `/`, starting with a letter.
+A name with any other character, such as `build:watch`, gets a warning for now and will be rejected in v1.
+To group related tasks, use `/` or `.` instead, such as `dump/save`.
 :::
 
 For example, to run client's dev task:

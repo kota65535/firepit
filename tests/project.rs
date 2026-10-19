@@ -875,7 +875,7 @@ async fn test_colon_in_task_name() {
     let warnings = root.deprecated_warnings();
     assert!(warnings
         .iter()
-        .any(|w| w.contains("\"build:watch\"") && w.contains("contains ':'")));
+        .any(|w| w.contains("\"build:watch\"") && w.contains("rejected in v1")));
 }
 
 #[test]
