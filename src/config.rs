@@ -765,25 +765,6 @@ pub struct TaskConfig {
 }
 
 impl TaskConfig {
-    /// Qualifies the task references with the project of this task.
-    /// It is done once they are rendered, since a template may name another project.
-    pub fn resolve_refs(&mut self) {
-        let resolve = |t: &str| -> String {
-            if t.contains(Task::SEP) {
-                t.to_string()
-            } else {
-                Task::full_name(&self.project, t)
-            }
-        };
-        self.depends_on = self.depends_on.iter().map(|d| d.with_task(resolve(d.task()))).collect();
-        self.wait_for = self.wait_for.iter().map(|w| w.with_task(resolve(w.task()))).collect();
-        self.finalized_by = self
-            .finalized_by
-            .iter()
-            .map(|f| f.with_task(resolve(f.task())))
-            .collect();
-    }
-
     pub fn full_name(&self) -> String {
         Task::full_name(&self.project, &self.name)
     }

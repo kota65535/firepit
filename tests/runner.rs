@@ -2274,3 +2274,23 @@ async fn test_rerun_while_stopping() {
 
     assert!(rerun < Duration::from_secs(1), "re-ran after {rerun:?}");
 }
+
+#[tokio::test]
+async fn test_template_ref() {
+    setup();
+    let path = BASE_PATH.join("template_ref");
+
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from("foo:build"), String::from("Finished: Success"));
+    statuses.insert(String::from(":setup"), String::from("Finished: Success"));
+    statuses.insert(String::from(":template"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from("foo:build"), String::from("foo build"));
+    outputs.insert(String::from(":setup"), String::from("setup"));
+    outputs.insert(String::from(":template"), String::from("template"));
+
+    run_task(&path, vec![String::from("template")], statuses, Some(outputs), false)
+        .await
+        .unwrap();
+}

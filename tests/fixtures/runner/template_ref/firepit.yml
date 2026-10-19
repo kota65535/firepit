@@ -1,0 +1,19 @@
+# Test that a reference is qualified with the project once rendered, so that a template may name
+# another project
+projects:
+  foo: foo
+
+vars:
+  target: foo
+  full: foo:build
+  local: setup
+
+tasks:
+  setup:
+    command: echo "setup"
+  template:
+    command: echo "template"
+    depends_on:
+      - "{{ target }}:build"
+      - "{{ full }}"
+      - "{{ local }}"
