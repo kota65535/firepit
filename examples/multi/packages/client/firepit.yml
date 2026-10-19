@@ -3,8 +3,9 @@ $schema: https://raw.githubusercontent.com/kota65535/firepit/refs/heads/main/sch
 includes:
   - "{{ root_dir }}/firepit-base.yml"
 
-depends_on:
-  - :install
+defaults:
+  - depends_on:
+      - :install
 
 tasks:
   dev:

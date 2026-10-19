@@ -89,10 +89,6 @@ pub struct Args {
     #[arg(long, default_value = "false")]
     pub no_prefix: bool,
 
-    /// Deprecated alias of `--no-prefix`
-    #[arg(long, hide = true, default_value = "false")]
-    pub no_log_prefix: bool,
-
     /// Enable instrumentation for tokio-console
     #[arg(long, hide = true, default_value = "false")]
     pub tokio_console: bool,
@@ -119,26 +115,7 @@ pub async fn run() -> anyhow::Result<i32> {
     // Load config files
     let (root, children) = ProjectConfig::new_multi(&dir)?;
 
-    let deprecation_warnings = deprecation_warnings(&args, &root, &children);
-    let result = run_tasks(args, dir, tasks, vars, root, children).await;
-
-    // Printed last so that they are seen: after the UI is cleaned up, and also when the run failed
-    for warning in &deprecation_warnings {
-        eprintln!("{} {}", BOLD_YELLOW.apply_to("warning:"), warning);
-    }
-
-    result
-}
-
-fn deprecation_warnings(args: &Args, root: &ProjectConfig, children: &IndexMap<String, ProjectConfig>) -> Vec<String> {
-    let mut warnings = root.deprecated_warnings();
-    for child in children.values() {
-        warnings.extend(child.deprecated_warnings());
-    }
-    if args.no_log_prefix {
-        warnings.push("`--no-log-prefix` is deprecated. Use `--no-prefix` instead.".to_string());
-    }
-    warnings
+    run_tasks(args, dir, tasks, vars, root, children).await
 }
 
 async fn run_tasks(
@@ -216,7 +193,7 @@ async fn run_tasks(
                 &ws.labels(),
                 !args.watch,
                 ws.fail_fast,
-                args.no_prefix || args.no_log_prefix,
+                args.no_prefix,
             )?;
             let runner_tx = runner.command_tx();
             let command_tx = app.command_tx();
@@ -388,17 +365,8 @@ fn project_task_lines(project: &ProjectConfig) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_tasks_or_vars, Args};
-    use clap::Parser;
+    use super::parse_tasks_or_vars;
     use serde_json::json;
-
-    #[test]
-    fn deprecated_no_log_prefix_is_still_accepted() {
-        let args = Args::try_parse_from(["firepit", "--no-log-prefix"]).unwrap();
-
-        assert!(args.no_log_prefix);
-        assert!(!args.no_prefix);
-    }
 
     #[test]
     fn parse_tasks_and_vars_keeps_raw_strings() {

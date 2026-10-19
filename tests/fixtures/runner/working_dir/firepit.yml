@@ -1,4 +1,7 @@
-working_dir: workdir
+# Test that a task inherits the working_dir of `defaults` unless it has its own, and that a
+# healthcheck joins its working_dir to the task's
+defaults:
+  - working_dir: workdir
 
 vars:
   inherit:
@@ -13,7 +16,7 @@ tasks:
 
   join:
     command: pwd
-    working_dir: task
+    working_dir: workdir/task
 
   service_inherit:
     command: sleep 10
@@ -26,7 +29,7 @@ tasks:
 
   service_join:
     command: sleep 10
-    working_dir: task
+    working_dir: workdir/task
     service:
       healthcheck:
         command: '[ $(cat probe.txt) == "join" ]'

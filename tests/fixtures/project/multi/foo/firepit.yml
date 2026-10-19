@@ -1,18 +1,16 @@
-env:
-  B: b-foo
-  C: c
-
-env_files:
-  - .env.foo
-  - .env.root
-
-shell:
-  command: shell-foo
-  args:
-    - args-foo
-
-depends_on:
-  - foo
+defaults:
+  - env:
+      B: b-foo
+      C: c
+    env_files:
+      - .env.foo
+      - .env.root
+    shell:
+      command: shell-foo
+      args:
+        - args-foo
+    depends_on:
+      - foo
 
 tasks:
   foo:

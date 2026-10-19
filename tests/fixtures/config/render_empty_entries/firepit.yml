@@ -1,9 +1,10 @@
 vars:
   env: ""
 
-env_files:
-  - .env.root
-  - "{% if env %}.env.{{ env }}{% endif %}"
+defaults:
+  - env_files:
+      - .env.root
+      - "{% if env %}.env.{{ env }}{% endif %}"
 
 tasks:
   setup:

@@ -1,8 +1,12 @@
-env:
-  B: b
-
-env_files:
-  - .env.b
+defaults:
+  - env:
+      B: b
+    env_files:
+      - .env.b
+    shell:
+      args:
+        - -x
+        - -c
 
 vars:
   B: b
@@ -10,8 +14,3 @@ vars:
 tasks:
   b:
     command: echo "b"
-
-shell:
-  args:
-    - -x
-    - -c

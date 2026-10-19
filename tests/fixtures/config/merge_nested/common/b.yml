@@ -1,2 +1,3 @@
-env_files:
-  - .env.b
+defaults:
+  - env_files:
+      - .env.b

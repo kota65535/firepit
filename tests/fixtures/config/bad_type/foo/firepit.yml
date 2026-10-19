@@ -1,14 +1,13 @@
-env:
-  B: b-foo
-  C: c
-
-env_files:
-  - .env.foo
-
-shell:
-  command: shell-foo
-  args:
-    - args-foo
+defaults:
+  - env:
+      B: b-foo
+      C: c
+    env_files:
+      - .env.foo
+    shell:
+      command: shell-foo
+      args:
+        - args-foo
 
 tasks:
   foo:

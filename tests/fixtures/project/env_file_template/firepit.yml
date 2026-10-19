@@ -1,9 +1,10 @@
 vars:
   session: abc
 
-env_files:
-  - .env.base
-  - .env.override
+defaults:
+  - env_files:
+      - .env.base
+      - .env.override
 
 tasks:
   run:

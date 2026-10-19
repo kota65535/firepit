@@ -1,17 +1,15 @@
-env:
-  A: a-foo
-  B: b-foo
-
-env_files:
-  - .env.foo
-
-shell:
-  command: shell-foo
-  args:
-    - args-foo
-
-depends_on:
-  - :install
+defaults:
+  - env:
+      A: a-foo
+      B: b-foo
+    env_files:
+      - .env.foo
+    shell:
+      command: shell-foo
+      args:
+        - args-foo
+    depends_on:
+      - :install
 
 tasks:
   foo:

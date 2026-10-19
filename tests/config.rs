@@ -24,108 +24,62 @@ fn assert_eq_env(actual: &IndexMap<String, String>, expected: &IndexMap<&str, &s
     }
 }
 
+fn shell(command: &str, args: &[&str]) -> Option<ShellConfig> {
+    Some(ShellConfig {
+        command: command.to_string(),
+        args: args.iter().map(|a| a.to_string()).collect(),
+    })
+}
+
 #[test]
 fn test_multi() {
     let path = Path::new("tests/fixtures/config/multi");
     let (root, children) = ProjectConfig::new_multi(path).unwrap();
-    let foo = children.get("foo").unwrap().clone();
-    let bar = children.get("bar").unwrap().clone();
 
-    // root
+    // Each project's defaults apply to its own tasks only
+    let root = root.task("root").unwrap();
     assert_eq_env(&root.env, &IndexMap::from([("A", "a-root"), ("B", "b-root")]));
     assert_eq!(root.env_files, vec![".env.root"]);
-    assert_eq!(
-        root.shell,
-        ShellConfig {
-            command: "shell-root".to_string(),
-            args: vec!["args-root".to_string()],
-        }
-    );
+    assert_eq!(root.shell, shell("shell-root", &["args-root"]));
 
-    // foo
-    assert_eq_env(
-        &children.get("foo").unwrap().env,
-        &IndexMap::from([("A", "a-foo"), ("B", "b-foo")]),
-    );
-    assert_eq!(foo.env_files, vec![String::from(".env.foo")]);
-    assert_eq!(
-        foo.shell,
-        ShellConfig {
-            command: "shell-foo".to_string(),
-            args: vec!["args-foo".to_string()],
-        }
-    );
+    let foo = children["foo"].task("foo").unwrap();
+    assert_eq_env(&foo.env, &IndexMap::from([("A", "a-foo"), ("B", "b-foo")]));
+    assert_eq!(foo.env_files, vec![".env.foo"]);
+    assert_eq!(foo.shell, shell("shell-foo", &["args-foo"]));
 
-    // bar
-    assert_eq_env(
-        &children.get("bar").unwrap().env,
-        &IndexMap::from([("A", "a-bar"), ("B", "b-bar")]),
-    );
-    assert_eq!(bar.env_files, vec![String::from(".env.bar")]);
-    assert_eq!(
-        bar.shell,
-        ShellConfig {
-            command: "bash".to_string(),
-            args: vec!["-c".to_string()],
-        }
-    );
+    let bar = children["bar"].task("bar").unwrap();
+    assert_eq_env(&bar.env, &IndexMap::from([("A", "a-bar"), ("B", "b-bar")]));
+    assert_eq!(bar.env_files, vec![".env.bar"]);
+    assert_eq!(bar.shell, None);
 }
 
 #[test]
 fn test_merge() {
     let path = Path::new("tests/fixtures/config/merge");
     let (root, children) = ProjectConfig::new_multi(path).unwrap();
-    let foo = children.get("foo").unwrap().clone();
-    let bar = children.get("bar").unwrap().clone();
 
-    // root
-    assert_eq_env(&root.env, &IndexMap::from([("A", "a"), ("B", "b")]));
-    assert_eq!(root.env_files, vec![".env.a", ".env.b", ".env.root"]);
-    assert_eq!(
-        root.shell,
-        ShellConfig {
-            command: "shell-root".to_string(),
-            args: vec!["-x".to_string(), "-c".to_string()],
-        }
-    );
+    // The defaults of an included file come before those of the including file
+    let a = root.task("a").unwrap();
+    assert_eq_env(&a.env, &IndexMap::from([("A", "a"), ("B", "b")]));
+    assert_eq!(a.env_files, vec![".env.a", ".env.b", ".env.root"]);
+    assert_eq!(a.shell, shell("shell-root", &["-c"]));
 
-    // foo
-    assert_eq_env(
-        &children.get("foo").unwrap().env,
-        &IndexMap::from([("A", "a"), ("foo", "foo")]),
-    );
-    assert_eq!(foo.env_files, vec![String::from(".env.a"), String::from(".env.foo"),]);
-    assert_eq!(
-        foo.shell,
-        ShellConfig {
-            command: "shell-foo".to_string(),
-            args: vec!["args-foo".to_string()],
-        }
-    );
-    assert_eq!(foo.tasks.get("foo").unwrap().command, Some("echo \"foo\"".to_string()));
-    assert_eq!(
-        foo.tasks.get("foo-2").unwrap().command,
-        Some("echo \"foo-2\"".to_string())
-    );
+    let foo = children["foo"].clone();
+    let foo_1 = foo.task("foo").unwrap();
+    assert_eq_env(&foo_1.env, &IndexMap::from([("A", "a"), ("foo", "foo")]));
+    assert_eq!(foo_1.env_files, vec![".env.a", ".env.foo"]);
+    assert_eq!(foo_1.shell, shell("shell-foo", &["args-foo"]));
+    assert_eq!(foo_1.command, Some("echo \"foo\"".to_string()));
+    let foo_2 = foo.task("foo-2").unwrap();
+    assert_eq_env(&foo_2.env, &IndexMap::from([("A", "a"), ("B", "b-foo-2"), ("D", "d")]));
+    assert_eq!(foo_2.shell, shell("shell-foo-2", &["args-foo-2"]));
 
-    // bar
-    assert_eq_env(
-        &children.get("bar").unwrap().env,
-        &IndexMap::from([("bar", "bar"), ("B", "bar")]),
-    );
-    assert_eq!(bar.env_files, vec![String::from(".env.b"), String::from(".env.bar"),]);
-    assert_eq!(
-        bar.shell,
-        ShellConfig {
-            command: "bash".to_string(),
-            args: vec!["-x".to_string(), "-c".to_string()],
-        }
-    );
-    assert_eq!(bar.tasks.get("bar").unwrap().command, Some("echo \"bar\"".to_string()));
-    assert_eq!(
-        bar.tasks.get("bar-2").unwrap().command,
-        Some("echo \"bar-2\"".to_string())
-    );
+    let bar = children["bar"].clone();
+    let bar_1 = bar.task("bar").unwrap();
+    assert_eq_env(&bar_1.env, &IndexMap::from([("bar", "bar"), ("B", "bar")]));
+    assert_eq!(bar_1.env_files, vec![".env.b", ".env.bar"]);
+    assert_eq!(bar_1.shell, shell("bash", &["-x", "-c"]));
+    assert_eq!(bar.task("bar-2").unwrap().command, Some("echo \"bar-2\"".to_string()));
 }
 
 #[test]
@@ -133,7 +87,7 @@ fn test_merge_nested() {
     let path = Path::new("tests/fixtures/config/merge_nested");
     let (root, _) = ProjectConfig::new_multi(path).unwrap();
     assert_eq!(
-        root.env_files,
+        root.task("nested").unwrap().env_files,
         vec![".env.b", ".env.a", ".env.b", ".env.c", ".env.root"]
     );
     assert!(root.includes.is_empty());
@@ -429,10 +383,9 @@ async fn test_render_ignores_empty_env_files() {
     let (root, children) = renderer.render().await.unwrap();
 
     assert!(children.is_empty());
-    assert_eq!(root.env_files, vec![".env.root"]);
 
     let run = root.tasks.get("run").unwrap();
-    assert_eq!(run.env_files, vec![".env.task"]);
+    assert_eq!(run.env_files, vec![".env.root", ".env.task"]);
 
     let service = run.service.as_ref().unwrap();
     let ServiceConfig::Struct(service) = service else {
@@ -445,7 +398,8 @@ async fn test_render_ignores_empty_env_files() {
     assert_eq!(exec.env_files, vec![".env.health"]);
 
     let with_env = root.tasks.get("with-env").unwrap();
-    assert_eq!(with_env.env_files, vec![".env.task.dev"]);
+    // `defaults` are rendered with the context of each task
+    assert_eq!(with_env.env_files, vec![".env.root", ".env.dev", ".env.task.dev"]);
 }
 
 #[tokio::test]
@@ -615,5 +569,16 @@ fn test_name_chars() {
         format!("{:#}", err).contains("task name \"build:watch\" is invalid"),
         "{:#}",
         err
+    );
+}
+
+#[test]
+fn test_removed_setting() {
+    let path = Path::new("tests/fixtures/config/removed_setting");
+    let err = ProjectConfig::new_multi(path).unwrap_err();
+    let msg = format!("{:#}", err);
+    assert!(
+        msg.contains("project-level `env`") && msg.contains("`defaults`"),
+        "{msg}"
     );
 }

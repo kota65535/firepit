@@ -6,17 +6,16 @@ vars:
   X: x
   XX: "{{ X }}-{{ X }}"
 
-env:
-  A: a-{{ X }}
-  B: b-{{ XX }}
-
-shell:
-  command: shell-root
-  args:
-    - args-root
-
-depends_on:
-  - :install
+defaults:
+  - env:
+      A: a-{{ X }}
+      B: b-{{ XX }}
+    shell:
+      command: shell-root
+      args:
+        - args-root
+    depends_on:
+      - :install
 
 tasks:
   root:

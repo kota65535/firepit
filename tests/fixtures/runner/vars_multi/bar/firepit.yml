@@ -1,8 +1,9 @@
 vars:
   B: 2
 
-env:
-  C: "{{ B }}"
+defaults:
+  - env:
+      C: "{{ B }}"
 
 tasks:
   bar:

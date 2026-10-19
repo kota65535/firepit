@@ -1,5 +1,6 @@
-env_files:
-  - .env.1
+defaults:
+  - env_files:
+      - .env.1
 
 tasks:
   foo:

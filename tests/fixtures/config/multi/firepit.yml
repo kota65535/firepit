@@ -2,14 +2,17 @@ projects:
   foo: foo
   bar: bar
 
-env:
-  A: a-root
-  B: b-root
+defaults:
+  - env:
+      A: a-root
+      B: b-root
+    env_files:
+      - .env.root
+    shell:
+      command: shell-root
+      args:
+        - args-root
 
-env_files:
-  - .env.root
-
-shell:
-  command: shell-root
-  args:
-    - args-root
+tasks:
+  root:
+    command: echo "root"

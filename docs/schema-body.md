@@ -23,52 +23,6 @@ defaults:
       - install
 ```
 
-### depends_on
-
-- **Type:** <code>Array&lt;<a href="#dependsonconfig">DependsOnConfig</a>&gt;</code>
-- **Required:** no
-- **Default:** `[]`
-- **Description:** **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults)
-instead.
-
-Dependency tasks for all the project tasks.
-```yaml
-depends_on:
-  - :install
-```
-
-### env
-
-- **Type:** <code>Map&lt;string, string&gt;</code>
-- **Required:** no
-- **Default:** `{}`
-- **Template:** yes
-- **Description:** **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults)
-instead.
-
-Environment variables for all the project tasks.
-```yaml
-env:
-  TZ: Asia/Tokyo
-```
-
-### env_files
-
-- **Type:** <code>Array&lt;string&gt;</code>
-- **Required:** no
-- **Default:** `[]`
-- **Template:** yes
-- **Description:** **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults)
-instead.
-
-Dotenv files for all the project tasks. Their values are templates.
-In case of duplicated environment variables, the latter one takes precedence.
-```yaml
-env_files:
-  - .env
-  - .env.local
-```
-
 ### gantt_file
 
 - **Type:** <code>string</code>
@@ -127,21 +81,6 @@ projects:
   - www: apps/website
 ```
 
-### shell
-
-- **Type:** <code><a href="#shellconfig">ShellConfig</a></code>
-- **Required:** no
-- **Default:** `{"args":["-c"],"command":"bash"}`
-- **Description:** **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults)
-instead.
-
-Shell configuration for all the project tasks.
-```yaml
-shell:
-  command: "bash"
-  args: ["-eux", "-c"]
-```
-
 ### tasks
 
 - **Type:** <code>Map&lt;string, <a href="#taskconfig">TaskConfig</a>&gt;</code>
@@ -173,20 +112,6 @@ the project without giving it a value by the `<name>=<value>` CLI argument is an
 vars:
   registry: docker.io/example
   image: "{{ registry }}/server"
-```
-
-### working_dir
-
-- **Type:** <code>string</code>
-- **Required:** no
-- **Default:** `.`
-- **Template:** yes
-- **Description:** **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults)
-instead.
-
-Working directory for all the project tasks.
-```yaml
-working_dir: src
 ```
 
 ## DefaultsConfig
