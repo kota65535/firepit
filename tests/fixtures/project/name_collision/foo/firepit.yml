@@ -1,0 +1,3 @@
+tasks:
+  "b:c":
+    command: echo "a b:c"
