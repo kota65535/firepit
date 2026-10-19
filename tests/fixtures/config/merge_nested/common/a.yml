@@ -1,5 +1,6 @@
 includes:
   - b.yml
 
-env_files:
-  - .env.a
+defaults:
+  - env_files:
+      - .env.a

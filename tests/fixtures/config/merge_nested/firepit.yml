@@ -2,5 +2,10 @@ includes:
   - common/a.yml
   - common/c.yml
 
-env_files:
-  - .env.root
+defaults:
+  - env_files:
+      - .env.root
+
+tasks:
+  nested:
+    command: echo "nested"

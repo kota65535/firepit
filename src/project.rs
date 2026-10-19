@@ -1,6 +1,7 @@
 use crate::cli::TASK_ARGS_VAR_NAME;
 use crate::config::{
-    default_stop_timeout, DependsOnConfig, HealthCheckConfig, ProjectConfig, Restart, ServiceConfig, TaskConfig, UI,
+    default_shell, default_stop_timeout, DependsOnConfig, HealthCheckConfig, ProjectConfig, Restart, ServiceConfig,
+    TaskConfig, UI,
 };
 use crate::probe::{ExecProbe, LogLineProbe, Probe};
 use crate::template::{new_tera, ConfigRenderer};
@@ -754,29 +755,23 @@ impl Task {
         let _guard = span.enter();
 
         // Shell
-        let task_shell = task_config.clone().shell.unwrap_or(config.shell.clone());
+        let task_shell = task_config.clone().shell.unwrap_or_else(default_shell);
 
         // Working directory
-        let task_working_dir = task_config.working_dir_path(&config.working_dir_path());
+        let task_working_dir = task_config.working_dir_path(&config.dir);
 
-        // Environment variables, the later overriding the earlier: project env_files < project env
-        // < task env_files < task env The dotenv values are templates, rendered with the task
-        // context when the task runs.
+        // Environment variables, the later overriding the earlier: env_files < env.
+        // The dotenv values are templates, rendered with the task context when the task runs.
         let context = task_config
             .context
             .clone()
             .with_context(|| format!("task {:?} is not rendered", task_name))?;
         let env = Env::new(context)
-            .with(&config.env_file_paths(), &config.env)
             .with(&task_config.env_file_paths(&config.dir), &task_config.env)
             .verify()?;
 
         // Depends On
-        let depends_on = task_config
-            .depends_on
-            .iter()
-            .chain(config.depends_on.iter())
-            .collect::<Vec<_>>();
+        let depends_on = task_config.depends_on.iter().collect::<Vec<_>>();
 
         // Input files
         let inputs = task_config

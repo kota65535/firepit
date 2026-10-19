@@ -1,6 +1,6 @@
 use crate::config::{
-    DependsOnConfig, DependsOnConfigStruct, FinalizedByConfig, FinalizedByConfigStruct, HealthCheckConfig,
-    ProjectConfig, ServiceConfig, TaskConfig, WaitForConfig, WaitForConfigStruct,
+    default_shell, DependsOnConfig, DependsOnConfigStruct, FinalizedByConfig, FinalizedByConfigStruct,
+    HealthCheckConfig, ProjectConfig, ServiceConfig, TaskConfig, WaitForConfig, WaitForConfigStruct,
 };
 use crate::log::OutputCollector;
 use crate::process::{ChildExit, Command, ProcessManager};
@@ -216,11 +216,11 @@ impl ProjectConfig {
                         s.inner = Some(DynamicVarsInner {
                             name: k.clone(),
                             command: s.command.clone(),
-                            shell: s.shell.clone().unwrap_or(self.shell.clone()),
+                            shell: s.shell.clone().unwrap_or_else(default_shell),
                             env: Env::new(Arc::new(context.clone()))
                                 .with(&s.env_file_paths(&self.dir), &s.env)
                                 .load()?,
-                            working_dir: s.working_dir_path(&self.working_dir_path()),
+                            working_dir: s.working_dir_path(&self.dir),
                             cache: s.cache,
                         });
                         VarsConfig::Dynamic(s)
@@ -245,27 +245,12 @@ impl ProjectConfig {
         context: &tera::Context,
         cache: &mut DynamicVarCache,
     ) -> anyhow::Result<(ProjectConfig, HashMap<String, tera::Context>)> {
-        let tera = new_tera();
-
         let mut config = self.clone();
-
-        // Render working_dir
-        config.working_dir = tera.render_str(&config.working_dir, context, false)?;
-
-        // Render env
-        config.env = render_string_map(&config.env, &tera, context)?;
-
-        // Render env_files
-        config.env_files = render_env_files(&config.env_files, &tera, context)?;
-
-        // Render tasks.
-        // A task inherits from the project config rendered above, ex: its working_dir.
-        let project = config.clone();
         let mut rendered_tasks = IndexMap::new();
         let mut task_contexts = HashMap::new();
 
-        for (task_name, task_config) in project.tasks.iter() {
-            let task_context = task_config.context(&project, context, cache).await?;
+        for (task_name, task_config) in self.tasks.iter() {
+            let task_context = task_config.context(self, context, cache).await?;
             rendered_tasks.insert(task_name.clone(), task_config.render(&task_context, cache).await?);
             task_contexts.insert(task_config.full_name(), task_context);
         }
@@ -316,11 +301,11 @@ impl TaskConfig {
                             shell: s
                                 .shell
                                 .clone()
-                                .unwrap_or(self.shell.clone().unwrap_or(config.shell.clone())),
+                                .unwrap_or_else(|| self.shell.clone().unwrap_or_else(default_shell)),
                             env: Env::new(Arc::new(context.clone()))
                                 .with(&s.env_file_paths(&config.dir), &s.env)
                                 .load()?,
-                            working_dir: s.working_dir_path(&self.working_dir_path(&config.working_dir_path())),
+                            working_dir: s.working_dir_path(&self.working_dir_path(&config.dir)),
                             cache: s.cache,
                         });
                         VarsConfig::Dynamic(s)

@@ -1,0 +1,7 @@
+# Test that a project-level setting removed in favor of `defaults` is rejected, not ignored
+env:
+  TZ: Asia/Tokyo
+
+tasks:
+  foo:
+    command: echo foo

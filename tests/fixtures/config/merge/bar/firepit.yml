@@ -5,12 +5,12 @@ vars:
   bar: bar
   B: bar
 
-env:
-  bar: bar
-  B: bar
-
-env_files:
-  - .env.bar
+defaults:
+  - env:
+      bar: bar
+      B: bar
+    env_files:
+      - .env.bar
 
 tasks:
   bar:

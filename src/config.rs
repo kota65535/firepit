@@ -51,30 +51,6 @@ pub struct ProjectConfig {
     #[serde(skip)]
     pub project_dirs: IndexMap<String, PathBuf>,
 
-    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults)
-    /// instead.
-    ///
-    /// Shell configuration for all the project tasks.
-    /// ```yaml
-    /// shell:
-    ///   command: "bash"
-    ///   args: ["-eux", "-c"]
-    /// ```
-    #[serde(default = "default_shell")]
-    #[schemars(extend("deprecated" = true))]
-    pub shell: ShellConfig,
-
-    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults)
-    /// instead.
-    ///
-    /// Working directory for all the project tasks.
-    /// ```yaml
-    /// working_dir: src
-    /// ```
-    #[serde(default = "default_working_dir")]
-    #[schemars(extend("x-template" = true, "deprecated" = true))]
-    pub working_dir: String,
-
     /// Template variables for all the project tasks.
     /// A variable declared without a value has no default, so it is required: running any task of
     /// the project without giving it a value by the `<name>=<value>` CLI argument is an error.
@@ -86,44 +62,6 @@ pub struct ProjectConfig {
     #[serde(default)]
     #[schemars(extend("x-template" = true))]
     pub vars: IndexMap<String, VarsConfig>,
-
-    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults)
-    /// instead.
-    ///
-    /// Environment variables for all the project tasks.
-    /// ```yaml
-    /// env:
-    ///   TZ: Asia/Tokyo
-    /// ```
-    #[serde(default)]
-    #[schemars(extend("x-template" = true, "deprecated" = true))]
-    pub env: IndexMap<String, String>,
-
-    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults)
-    /// instead.
-    ///
-    /// Dotenv files for all the project tasks. Their values are templates.
-    /// In case of duplicated environment variables, the latter one takes precedence.
-    /// ```yaml
-    /// env_files:
-    ///   - .env
-    ///   - .env.local
-    /// ```
-    #[serde(default)]
-    #[schemars(extend("x-template" = true, "deprecated" = true))]
-    pub env_files: Vec<String>,
-
-    /// **Deprecated**: Use [`defaults`](https://kota65535.github.io/firepit/schema.html#defaults)
-    /// instead.
-    ///
-    /// Dependency tasks for all the project tasks.
-    /// ```yaml
-    /// depends_on:
-    ///   - :install
-    /// ```
-    #[serde(default)]
-    #[schemars(extend("x-template" = true, "deprecated" = true))]
-    pub depends_on: Vec<DependsOnConfig>,
 
     /// Default settings applied to tasks matching a selector.
     /// ```yaml
@@ -207,10 +145,6 @@ pub fn default_shell_command() -> String {
 
 pub fn default_shell_args() -> Vec<String> {
     vec!["-c".to_string()]
-}
-
-pub fn default_working_dir() -> String {
-    ".".to_string()
 }
 
 pub fn default_concurrency() -> usize {
@@ -342,6 +276,16 @@ impl ProjectConfig {
     }
 
     pub fn new_from_str(name: &str, str: &str, path: &Path, dir: &Path) -> anyhow::Result<ProjectConfig> {
+        // An unknown key is ignored, which would run the tasks without a setting that used to apply
+        let raw_data = serde_yaml::from_str::<Value>(str)?;
+        for key in ["shell", "working_dir", "env", "env_files", "depends_on"] {
+            if raw_data.get(key).is_some() {
+                anyhow::bail!(
+                    "project-level `{}` is not supported since v1. Use `defaults` instead. See https://kota65535.github.io/firepit/schema.html#defaults",
+                    key
+                );
+            }
+        }
         let mut data = serde_yaml::from_str::<ProjectConfig>(str)?;
 
         // Project dir
@@ -383,8 +327,6 @@ impl ProjectConfig {
             v.project = name.to_string();
         }
 
-        // Save raw data
-        let raw_data = serde_yaml::from_str::<Value>(str)?;
         data.raw = raw_data;
 
         Ok(data)
@@ -498,10 +440,6 @@ impl ProjectConfig {
         root.project_dirs.values().any(|d| *d == self.dir)
     }
 
-    pub fn working_dir_path(&self) -> PathBuf {
-        absolute_or_join(&self.working_dir, &self.dir)
-    }
-
     // A file path only a root project config can set is relative to the root project, wherever
     // Firepit is run from
     pub fn log_file_path(&self) -> Option<PathBuf> {
@@ -510,10 +448,6 @@ impl ProjectConfig {
 
     pub fn gantt_file_path(&self) -> Option<PathBuf> {
         self.gantt_file.as_ref().map(|f| absolute_or_join(f, &self.dir))
-    }
-
-    pub fn env_file_paths(&self) -> Vec<PathBuf> {
-        self.env_files.iter().map(|f| absolute_or_join(f, &self.dir)).collect()
     }
 
     pub fn schema() -> anyhow::Result<String> {
@@ -535,29 +469,6 @@ impl ProjectConfig {
 
     pub fn relative_path_from(&self, path: &Path) -> PathBuf {
         self.dir.strip_prefix(path).unwrap_or(&self.dir).to_path_buf()
-    }
-
-    /// Collect deprecation warnings for project-level task settings.
-    /// Returns a list of warning messages for fields that should be migrated to `defaults`.
-    pub fn deprecated_warnings(&self) -> Vec<String> {
-        let file = self.path.display();
-        let mut warnings = Vec::new();
-        let fields: &[(&str, bool)] = &[
-            ("shell", self.shell != default_shell()),
-            ("working_dir", self.working_dir != default_working_dir()),
-            ("env", !self.env.is_empty()),
-            ("env_files", !self.env_files.is_empty()),
-            ("depends_on", !self.depends_on.is_empty()),
-        ];
-        for (field, used) in fields {
-            if *used {
-                warnings.push(format!(
-                    "{}: project-level `{}` is deprecated. Use `defaults` instead. See https://kota65535.github.io/firepit/schema.html#defaults",
-                    file, field
-                ));
-            }
-        }
-        warnings
     }
 
     /// Apply `defaults` entries to all matching tasks.

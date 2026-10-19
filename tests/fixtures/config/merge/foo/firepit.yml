@@ -4,16 +4,15 @@ includes:
 vars:
   foo: foo
 
-env:
-  foo: foo
-
-env_files:
-  - .env.foo
-
-shell:
-  command: shell-foo
-  args:
-    - args-foo
+defaults:
+  - env:
+      foo: foo
+    env_files:
+      - .env.foo
+    shell:
+      command: shell-foo
+      args:
+        - args-foo
 
 tasks:
   foo:

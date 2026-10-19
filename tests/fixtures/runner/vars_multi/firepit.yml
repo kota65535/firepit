@@ -6,9 +6,10 @@ vars:
   A: 1
   C: 2
 
-env:
-  A: "{{ A }}"
-  C: "{{ C | int + 1 }}"
+defaults:
+  - env:
+      A: "{{ A }}"
+      C: "{{ C | int + 1 }}"
 
 tasks:
   baz:

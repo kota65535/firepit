@@ -7,8 +7,9 @@ vars:
   ecr_repository: "{{ ecr_registry }}/{{ project }}"
   db_url_base: postgresql://postgres:postgres@localhost
 
-depends_on:
-  - :install
+defaults:
+  - depends_on:
+      - :install
 
 tasks:
   dev:

@@ -1,8 +1,8 @@
-env:
-  A: a
-
-env_files:
-  - .env.a
+defaults:
+  - env:
+      A: a
+    env_files:
+      - .env.a
 
 vars:
   A: a

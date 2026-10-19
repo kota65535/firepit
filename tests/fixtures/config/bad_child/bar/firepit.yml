@@ -1,14 +1,13 @@
-env:
-  B: b-bar
-  C: c
-
-env_files:
-  - .env.bar
-
-shell:
-  command: shell-bar
-  args:
-    - args-bar
+defaults:
+  - env:
+      B: b-bar
+      C: c
+    env_files:
+      - .env.bar
+    shell:
+      command: shell-bar
+      args:
+        - args-bar
 
 tasks:
   bar:

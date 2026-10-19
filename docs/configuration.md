@@ -371,27 +371,19 @@ The precedence of environment variables is as follows:
 Note that dependency tasks do not inherit the environment variables of their parent task.
 
 ```yaml
-# Project level environment variables
-env:
-  TZ: Asia/Tokyo
-
-# Project level dotenv files
-env_files:
-  - .env
-
 tasks:
   dev:
     command: bun run --hot src/index.ts
-    # Task level environment variables
     env:
       PORT: 3000
       REDIS_URL: redis://localhost:6379
-    # Task level dotenv files.
     # .env.local has a higher priority than .env
     env_files:
       - .env
       - .env.local
 ```
+
+To set environment variables for all the tasks of a project, use [`defaults`](#defaults).
 
 ## Dependencies
 
