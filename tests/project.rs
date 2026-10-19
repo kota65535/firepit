@@ -760,7 +760,11 @@ async fn test_env_file_is_input_only() {
 }
 
 async fn target_tasks(dir: &str, tasks: &[&str]) -> anyhow::Result<Vec<String>> {
-    let root_dir = std::path::absolute("tests/fixtures/project/simple_name").unwrap();
+    target_tasks_in("simple_name", dir, tasks).await
+}
+
+async fn target_tasks_in(fixture: &str, dir: &str, tasks: &[&str]) -> anyhow::Result<Vec<String>> {
+    let root_dir = std::path::absolute("tests/fixtures/project").unwrap().join(fixture);
     let (root, children) = ProjectConfig::new_multi(&root_dir).unwrap();
     let ws = Workspace::new(
         &root,
@@ -803,84 +807,22 @@ async fn test_simple_name_in_child_selects_only_the_child() {
 
 #[tokio::test]
 async fn test_legacy_separator() {
-    let path = Path::new("tests/fixtures/project/legacy_sep");
-    let (root, children) = ProjectConfig::new_multi(path).unwrap();
-    let ws = Workspace::new(
-        &root,
-        &children,
-        &[String::from("foo#foo"), String::from("#baz")],
-        &[],
-        &std::env::current_dir().unwrap(),
-        &IndexMap::new(),
-        false,
-        false,
-        Some(false),
-        Some(false),
-    )
-    .await
-    .unwrap();
-
-    // `#` in CLI arguments and config references is converted to `:`
-    assert_eq!(ws.target_tasks, vec![String::from("foo:foo"), String::from(":baz")]);
-    let deps = ws.task("foo:foo").unwrap().depends_on;
-    assert_eq!(deps.iter().map(|d| d.task.clone()).collect::<Vec<_>>(), vec!["bar:bar"]);
-
-    // The deprecated separator is reported
-    let warnings = root.deprecated_warnings();
-    assert!(warnings
-        .iter()
-        .any(|w| w.contains("\"foo#foo\"") && w.contains("deprecated separator")));
-}
-
-#[tokio::test]
-async fn test_colon_in_task_name() {
-    let path = Path::new("tests/fixtures/project/colon_name");
-    let (root, children) = ProjectConfig::new_multi(path).unwrap();
-    let ws = Workspace::new(
-        &root,
-        &children,
-        &[
-            String::from("build:watch"),
-            String::from("foo:build"),
-            String::from(":dev"),
-        ],
-        &[],
-        &std::path::absolute(path).unwrap(),
-        &IndexMap::new(),
-        false,
-        false,
-        Some(false),
-        Some(false),
-    )
-    .await
-    .unwrap();
-
-    // `build:watch` is a task name since there is no project `build`,
-    // `foo:build` is a task of project `foo`, `:dev` is a root task
-    assert_eq!(
-        ws.target_tasks,
-        vec![
-            String::from(":build:watch"),
-            String::from("foo:build"),
-            String::from(":dev")
-        ]
-    );
-    let deps = ws.task(":dev").unwrap().depends_on;
-    assert_eq!(
-        deps.iter().map(|d| d.task.clone()).collect::<Vec<_>>(),
-        vec![":build:watch", "foo:build"]
-    );
-
-    // A name containing `:` is reported
-    let warnings = root.deprecated_warnings();
-    assert!(warnings
-        .iter()
-        .any(|w| w.contains("\"build:watch\"") && w.contains("rejected in v1")));
+    // Neither a CLI argument nor a reference in the config is read as `bar:bar`, and either is
+    // reported as an invalid name rather than an unknown task
+    for (task, invalid) in [("bar#bar", "bar#bar"), ("baz", ":bar#bar")] {
+        let err = target_tasks_in("legacy_sep", "", &[task]).await.unwrap_err();
+        let msg = format!("{:#}", err);
+        assert!(msg.contains(&format!("task {:?} is invalid", invalid)), "{msg}");
+    }
 }
 
 #[test]
 fn test_colon_in_project_name() {
     let path = Path::new("tests/fixtures/project/colon_project");
     let err = ProjectConfig::new_multi(path).unwrap_err();
-    assert!(format!("{:#}", err).contains("must not contain ':'"), "{:#}", err);
+    assert!(
+        format!("{:#}", err).contains("project name \"a:b\" is invalid"),
+        "{:#}",
+        err
+    );
 }

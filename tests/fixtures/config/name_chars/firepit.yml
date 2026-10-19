@@ -1,4 +1,4 @@
-# Test that a name outside the characters allowed in v1 gets a warning
+# Test that a name made of the allowed characters is accepted
 tasks:
   build:
     command: echo
@@ -7,12 +7,4 @@ tasks:
   dump.v2_load-all:
     command: echo
   ビルド:
-    command: echo
-  build:watch:
-    command: echo
-  1st:
-    command: echo
-  with space:
-    command: echo
-  -x:
     command: echo

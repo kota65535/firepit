@@ -150,15 +150,10 @@ impl Workspace {
     ) -> anyhow::Result<Vec<String>> {
         let mut full_names = Vec::new();
         for task in names.iter() {
-            let task = Task::from_legacy(task).unwrap_or_else(|| task.clone());
-            let task = task.as_str();
-            // `foo:build` is project foo's task `build` if project foo exists,
-            // otherwise it is a task named `foo:build`.
-            let (project_name, task_name) = match Task::split_name(task) {
-                Some((p, t)) if p.is_empty() || child_configs.contains_key(p) => (Some(p), t),
-                _ => (None, task),
-            };
-            match project_name {
+            if !Task::is_valid_ref(task) {
+                anyhow::bail!("task {:?} is invalid. {}", task, Task::VALID_NAME)
+            }
+            match Task::split_name(task) {
                 // Full name
                 Some(_) => {
                     full_names.push(Self::task_config(root_config, child_configs, task)?.full_name());
@@ -170,7 +165,7 @@ impl Workspace {
                         // does not silently stop selecting the children's.
                         let tasks: Vec<_> = std::iter::once(root_config)
                             .chain(child_configs.values())
-                            .filter_map(|c| c.task(task_name).ok())
+                            .filter_map(|c| c.task(task).ok())
                             .collect();
                         if tasks.is_empty() {
                             anyhow::bail!("task {:?} does not exist in any project", task)
@@ -181,7 +176,7 @@ impl Workspace {
                             .values()
                             .find(|c| current_dir == c.dir)
                             .with_context(|| format!("no project is defined at {:?}", current_dir))?
-                            .task(task_name)?;
+                            .task(task)?;
                         full_names.push(task.full_name());
                     }
                 }
@@ -745,10 +740,6 @@ impl Task {
         task_name: &str,
         task_config: &TaskConfig,
     ) -> anyhow::Result<Task> {
-        if task_name.contains(Task::LEGACY_SEP) {
-            anyhow::bail!("Task name must not contain '#'. Found: {:?}", task_name)
-        }
-
         let task_name = Task::full_name(project_name, task_name);
         // What building the task has to say belongs in that task's pane
         let span = tracing::error_span!("task", name = task_name);
@@ -900,29 +891,29 @@ impl Task {
     /// Separator between a project name and a task name in a full task name, ex: `project:task`.
     pub const SEP: char = ':';
 
-    /// Deprecated separator still accepted in task references and CLI arguments.
-    pub const LEGACY_SEP: char = '#';
+    /// The rule of [`Self::is_valid_name`], for error messages.
+    pub const VALID_NAME: &str = "A name starts with a letter and contains only letters, digits, '_', '-', '.' and '/'";
 
-    /// Whether a project or task name is made of the characters it will be limited to in v1.
-    /// Any other character may collide with a syntax that a name appears in, ex: `:` of a full
-    /// name, `=` of a CLI var, `,` of `--exclude`, `{{` of a template, or a leading `-` of an option.
+    /// Any character outside these may collide with a syntax that a name appears in, ex: `:` of a
+    /// full name, `=` of a CLI var, `,` of `--exclude`, `{{` of a template, or a leading `-` of an
+    /// option.
     pub fn is_valid_name(name: &str) -> bool {
         let mut chars = name.chars();
         chars.next().is_some_and(char::is_alphabetic)
             && chars.all(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '.' | '/'))
     }
 
+    /// Whether a task reference, a full name or a simple name, is made of valid names.
+    pub fn is_valid_ref(task_name: &str) -> bool {
+        match Self::split_name(task_name) {
+            Some((p, t)) => (p.is_empty() || Self::is_valid_name(p)) && Self::is_valid_name(t),
+            None => Self::is_valid_name(task_name),
+        }
+    }
+
     /// Splits a full task name into the project name, `""` for the root project, and the task name.
     pub fn split_name(task_name: &str) -> Option<(&str, &str)> {
         task_name.split_once(Self::SEP)
-    }
-
-    /// Converts a task reference in the deprecated `project#task` form to `project:task`.
-    /// Returns `None` if the reference does not use the deprecated separator.
-    pub fn from_legacy(task_name: &str) -> Option<String> {
-        task_name
-            .split_once(Self::LEGACY_SEP)
-            .map(|(p, t)| format!("{}{}{}", p, Self::SEP, t))
     }
 
     pub fn full_name(project_name: &str, task_name: &str) -> String {

@@ -12,7 +12,7 @@ use async_recursion::async_recursion;
 use indexmap::IndexMap;
 use serde_json::Value as JsonValue;
 use serde_yaml::Value;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -401,7 +401,7 @@ impl TaskConfig {
                     let task = tera.render_str(task, context)?;
                     // Ignore if rendered task name is empty
                     if !task.is_empty() {
-                        rendered_depends_on.push(DependsOnConfig::String(task))
+                        rendered_depends_on.push(DependsOnConfig::String(self.qualified_name(&task)))
                     }
                 }
                 DependsOnConfig::Struct(dep) => {
@@ -410,7 +410,7 @@ impl TaskConfig {
                     if !task.is_empty() {
                         let vars = render_dep_vars(&dep.vars, &mut tera, context)?;
                         rendered_depends_on.push(DependsOnConfig::Struct(DependsOnConfigStruct {
-                            task,
+                            task: self.qualified_name(&task),
                             vars,
                             cascade: dep.cascade,
                             optional: dep.optional,
@@ -429,6 +429,7 @@ impl TaskConfig {
             if task.is_empty() {
                 continue;
             }
+            let task = self.qualified_name(&task);
             match wait_for {
                 WaitForConfig::String(_) => rendered_wait_for.push(WaitForConfig::String(task)),
                 WaitForConfig::Struct(w) => {
@@ -451,6 +452,7 @@ impl TaskConfig {
             if task.is_empty() {
                 continue;
             }
+            let task = self.qualified_name(&task);
             match finalized_by {
                 FinalizedByConfig::String(_) => rendered_finalized_by.push(FinalizedByConfig::String(task)),
                 FinalizedByConfig::Struct(f) => {
@@ -537,15 +539,6 @@ impl ConfigRenderer {
             child_configs.insert(k.clone(), child_config);
             tasks.extend(child_task_contexts.keys().cloned());
             task_contexts.extend(child_task_contexts);
-        }
-
-        let projects = self.root_config.project_dirs.keys().cloned().collect::<HashSet<_>>();
-        for t in root_config
-            .tasks
-            .values_mut()
-            .chain(child_configs.values_mut().flat_map(|c| c.tasks.values_mut()))
-        {
-            t.resolve_refs(&projects);
         }
 
         tasks.sort();
@@ -798,7 +791,6 @@ impl ConfigRenderer {
 
         // Render
         let mut rendered_variant_task = variant_task.render(&variant_context, cache).await?;
-        rendered_variant_task.resolve_refs(&raw_root_config.project_dirs.keys().cloned().collect());
 
         debug!(
             "Variant?: {:?}, dependent: {:?}\ncontext: {:#?}\nvars: {:#?}",

@@ -1,5 +1,6 @@
-use assertables::assert_starts_with;
+use assertables::{assert_ok, assert_starts_with};
 use firepit::config::{DependsOnConfig, HealthCheckConfig, ProjectConfig, ServiceConfig, ShellConfig};
+use firepit::project::Task;
 use firepit::template::ConfigRenderer;
 use indexmap::IndexMap;
 use std::path::Path;
@@ -593,15 +594,26 @@ fn test_root_relative_files() {
 #[test]
 fn test_name_chars() {
     let path = Path::new("tests/fixtures/config/name_chars");
-    let (root, _) = ProjectConfig::new_multi(path).unwrap();
-    let warned = root
-        .tasks
-        .keys()
-        .filter(|name| {
-            root.deprecated_warnings()
-                .iter()
-                .any(|w| w.contains(&format!("name {:?} will be rejected in v1", name)))
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(warned, vec!["build:watch", "1st", "with space", "-x"]);
+    assert_ok!(ProjectConfig::new_multi(path));
+    for name in [
+        "build:watch",
+        "foo#bar",
+        "1st",
+        "with space",
+        "-x",
+        "a=b",
+        "a,b",
+        "{{ a }}",
+        "",
+    ] {
+        assert!(!Task::is_valid_name(name), "{name:?}");
+    }
+
+    let path = Path::new("tests/fixtures/config/bad_name");
+    let err = ProjectConfig::new_multi(path).unwrap_err();
+    assert!(
+        format!("{:#}", err).contains("task name \"build:watch\" is invalid"),
+        "{:#}",
+        err
+    );
 }

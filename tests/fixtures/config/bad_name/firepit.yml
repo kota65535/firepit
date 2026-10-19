@@ -1,0 +1,4 @@
+# Test that a task name containing the separator is rejected
+tasks:
+  build:watch:
+    command: echo
