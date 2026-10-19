@@ -373,8 +373,14 @@ impl TaskRunner {
 
                             // Skip the task if any dependency task didn't finish successfully
                             if !deps_ok {
-                                info!("Task does not run as its dependency task failed");
-                                app_tx.finish_task(TaskResult::BadDeps, None);
+                                // A dependency stopped to re-run fails this run, which the run
+                                // that replaces it reports the task in place of
+                                if Self::is_stale(&latest_runs, &task.name, num_runs) {
+                                    debug!("Task does not run as it has been re-run");
+                                } else {
+                                    info!("Task does not run as its dependency task failed");
+                                    app_tx.finish_task(TaskResult::BadDeps, None);
+                                }
                                 if let Err(e) = callback.send(CallbackMessage(NodeResult::Failure)).await {
                                     debug!("Failed to send callback event: {:?}", e)
                                 }
