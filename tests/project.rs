@@ -596,6 +596,11 @@ async fn test_env_file_bad_template() {
     assert!(msg.contains(".env.syntax"), "{msg}");
     assert!(msg.contains("BROKEN"), "{msg}");
     assert!(!msg.contains("s3cr3t"), "{msg}");
+
+    // An unknown filter is named, but the template it is reported in is not
+    let msg = format!("{:?}", ws.root.task("unknown").unwrap().env.load().unwrap_err());
+    assert!(msg.contains("misspelled"), "{msg}");
+    assert!(!msg.contains("s3cr3t"), "{msg}");
 }
 
 #[tokio::test]

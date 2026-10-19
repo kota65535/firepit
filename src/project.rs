@@ -714,6 +714,13 @@ impl EnvConfig {
             let value = tera.render_str(&value, context, false).map_err(|e| {
                 let message = match e.kind() {
                     tera::ErrorKind::SyntaxError(r) | tera::ErrorKind::RenderingError(r) => r.message().to_string(),
+                    // An unknown filter, test or function comes as reports joined into a message, of
+                    // which only the headers are free of the template
+                    tera::ErrorKind::Msg(m) => m
+                        .lines()
+                        .filter_map(|l| l.strip_prefix("error: "))
+                        .collect::<Vec<_>>()
+                        .join("; "),
                     kind => kind.to_string(),
                 };
                 anyhow::anyhow!("failed to render {:?} in the env file {:?}: {}", key, f, message)
