@@ -295,16 +295,40 @@ impl ProjectConfig {
     fn validate(&self, tasks: &HashSet<String>, services: &HashSet<String>) -> anyhow::Result<()> {
         for (_, t) in self.tasks.iter() {
             for d in t.depends_on.iter().map(|d| d.task()) {
+                if !Task::is_valid_ref(d) {
+                    anyhow::bail!(
+                        "tasks.{}.depends_on: task {:?} is invalid. {}",
+                        t.name,
+                        d,
+                        Task::VALID_NAME
+                    );
+                }
                 if !tasks.contains(d) {
                     anyhow::bail!("tasks.{}.depends_on: task {:?} is not defined.", t.name, d);
                 }
             }
             for w in t.wait_for.iter().map(|w| w.task()) {
+                if !Task::is_valid_ref(w) {
+                    anyhow::bail!(
+                        "tasks.{}.wait_for: task {:?} is invalid. {}",
+                        t.name,
+                        w,
+                        Task::VALID_NAME
+                    );
+                }
                 if !tasks.contains(w) {
                     anyhow::bail!("tasks.{}.wait_for: task {:?} is not defined.", t.name, w);
                 }
             }
             for f in t.finalized_by.iter().map(|f| f.task()) {
+                if !Task::is_valid_ref(f) {
+                    anyhow::bail!(
+                        "tasks.{}.finalized_by: task {:?} is invalid. {}",
+                        t.name,
+                        f,
+                        Task::VALID_NAME
+                    );
+                }
                 if !tasks.contains(f) {
                     anyhow::bail!("tasks.{}.finalized_by: task {:?} is not defined.", t.name, f);
                 }

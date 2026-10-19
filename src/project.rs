@@ -150,6 +150,9 @@ impl Workspace {
     ) -> anyhow::Result<Vec<String>> {
         let mut full_names = Vec::new();
         for task in names.iter() {
+            if !Task::is_valid_ref(task) {
+                anyhow::bail!("task {:?} is invalid. {}", task, Task::VALID_NAME)
+            }
             match Task::split_name(task) {
                 // Full name
                 Some(_) => {
@@ -898,6 +901,14 @@ impl Task {
         let mut chars = name.chars();
         chars.next().is_some_and(char::is_alphabetic)
             && chars.all(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '.' | '/'))
+    }
+
+    /// Whether a task reference, a full name or a simple name, is made of valid names.
+    pub fn is_valid_ref(task_name: &str) -> bool {
+        match Self::split_name(task_name) {
+            Some((p, t)) => (p.is_empty() || Self::is_valid_name(p)) && Self::is_valid_name(t),
+            None => Self::is_valid_name(task_name),
+        }
     }
 
     /// Splits a full task name into the project name, `""` for the root project, and the task name.

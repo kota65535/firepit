@@ -807,15 +807,13 @@ async fn test_simple_name_in_child_selects_only_the_child() {
 
 #[tokio::test]
 async fn test_legacy_separator() {
-    // Neither a CLI argument nor a reference in the config is read as `bar:bar`
-    let err = target_tasks_in("legacy_sep", "", &["bar#bar"]).await.unwrap_err();
-    assert!(format!("{:#}", err).contains("\"bar#bar\" does not exist"), "{:#}", err);
-    let err = target_tasks_in("legacy_sep", "", &["baz"]).await.unwrap_err();
-    assert!(
-        format!("{:#}", err).contains("task \":bar#bar\" is not defined"),
-        "{:#}",
-        err
-    );
+    // Neither a CLI argument nor a reference in the config is read as `bar:bar`, and either is
+    // reported as an invalid name rather than an unknown task
+    for (task, invalid) in [("bar#bar", "bar#bar"), ("baz", ":bar#bar")] {
+        let err = target_tasks_in("legacy_sep", "", &[task]).await.unwrap_err();
+        let msg = format!("{:#}", err);
+        assert!(msg.contains(&format!("task {:?} is invalid", invalid)), "{msg}");
+    }
 }
 
 #[test]
