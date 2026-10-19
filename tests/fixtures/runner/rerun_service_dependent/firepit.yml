@@ -1,0 +1,10 @@
+tasks:
+  db:
+    command: sleep 30
+    service: true
+
+  server:
+    command: sleep 30
+    service: true
+    depends_on:
+      - db
