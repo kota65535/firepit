@@ -40,4 +40,4 @@ tasks:
   map:
     command: |
       echo "{{ map['a'] }},{{ map['b'] }}"
-      echo "{% if map is object %}ok{% endif %}"
+      echo "{% if map is map %}ok{% endif %}"

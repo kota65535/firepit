@@ -705,18 +705,26 @@ impl EnvConfig {
 
     /// Reads the dotenv files and renders their values, a later file overriding an earlier one.
     fn load_env_files(&self, context: &tera::Context) -> anyhow::Result<HashMap<String, String>> {
-        let mut tera = new_tera();
+        let tera = new_tera();
         let mut ret = HashMap::new();
         for (f, key, value) in self.read_env_files()? {
             // A dotenv value is a template, like a value of `env`.
-            // A dotenv file holds secrets, so the value must not appear in an error: the parse
-            // error, which quotes the template, is dropped, while the render error only names a
-            // variable or a filter.
-            tera.add_raw_template(&key, &value)
-                .map_err(|_| anyhow::anyhow!("failed to parse the template of {:?} in the env file {:?}", key, f))?;
-            let value = tera
-                .render(&key, context)
-                .with_context(|| format!("failed to render {:?} in the env file {:?}", key, f))?;
+            // A dotenv file holds secrets, so the value must not appear in an error: the report of
+            // a syntax or render error quotes the template, so only its message is kept.
+            let value = tera.render_str(&value, context, false).map_err(|e| {
+                let message = match e.kind() {
+                    tera::ErrorKind::SyntaxError(r) | tera::ErrorKind::RenderingError(r) => r.message().to_string(),
+                    // An unknown filter, test or function comes as reports joined into a message, of
+                    // which only the headers are free of the template
+                    tera::ErrorKind::Msg(m) => m
+                        .lines()
+                        .filter_map(|l| l.strip_prefix("error: "))
+                        .collect::<Vec<_>>()
+                        .join("; "),
+                    kind => kind.to_string(),
+                };
+                anyhow::anyhow!("failed to render {:?} in the env file {:?}: {}", key, f, message)
+            })?;
             ret.insert(key, value);
         }
         Ok(ret)

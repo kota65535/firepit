@@ -7,3 +7,7 @@ tasks:
     command: echo "syntax"
     env_files:
       - .env.syntax
+  unknown:
+    command: echo "unknown"
+    env_files:
+      - .env.unknown
