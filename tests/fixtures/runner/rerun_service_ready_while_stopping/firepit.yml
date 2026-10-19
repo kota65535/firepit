@@ -1,0 +1,7 @@
+tasks:
+  db:
+    # Becomes ready only as it is being stopped
+    command: trap 'echo ready; sleep 1; exit 0' INT; echo started; while true; do sleep 0.1; done
+    service:
+      healthcheck:
+        log: ready
