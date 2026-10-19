@@ -769,6 +769,16 @@ impl TaskConfig {
         Task::full_name(&self.project, &self.name)
     }
 
+    /// Qualifies a task reference with the project of this task, unless it names a project.
+    /// A reference is qualified once rendered, since a template may name another project.
+    pub fn qualified_name(&self, task_name: &str) -> String {
+        if task_name.contains(Task::SEP) {
+            task_name.to_string()
+        } else {
+            Task::full_name(&self.project, task_name)
+        }
+    }
+
     pub fn is_service(&self) -> bool {
         matches!(
             self.service,
