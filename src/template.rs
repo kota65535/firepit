@@ -10,6 +10,7 @@ use crate::DYNAMIC_VAR_STOP_TIMEOUT;
 use anyhow::Context;
 use async_recursion::async_recursion;
 use indexmap::IndexMap;
+use serde::de::DeserializeOwned;
 use serde_json::Value as JsonValue;
 use serde_yaml::Value;
 use std::collections::{BTreeMap, HashMap};
@@ -406,6 +407,14 @@ impl TaskConfig {
         let mut rendered_depends_on = Vec::new();
         for depends_on in config.depends_on.iter() {
             match depends_on {
+                DependsOnConfig::Template(template) => rendered_depends_on.extend(render_template_entries(
+                    self,
+                    template,
+                    &tera,
+                    context,
+                    DependsOnConfig::task,
+                    DependsOnConfig::with_task,
+                )?),
                 DependsOnConfig::String(task) => {
                     let task = tera.render_str(task, context, false)?;
                     // Ignore if rendered task name is empty
@@ -433,6 +442,17 @@ impl TaskConfig {
         // Render wait_for task and vars
         let mut rendered_wait_for = Vec::new();
         for wait_for in config.wait_for.iter() {
+            if let WaitForConfig::Template(template) = wait_for {
+                rendered_wait_for.extend(render_template_entries(
+                    self,
+                    template,
+                    &tera,
+                    context,
+                    WaitForConfig::task,
+                    WaitForConfig::with_task,
+                )?);
+                continue;
+            }
             let task = tera.render_str(wait_for.task(), context, false)?;
             // Ignore if rendered task name is empty
             if task.is_empty() {
@@ -449,6 +469,7 @@ impl TaskConfig {
                         optional: w.optional,
                     }));
                 }
+                WaitForConfig::Template(_) => {}
             }
         }
         config.wait_for = rendered_wait_for;
@@ -456,6 +477,17 @@ impl TaskConfig {
         // Render finalized_by task and vars
         let mut rendered_finalized_by = Vec::new();
         for finalized_by in config.finalized_by.iter() {
+            if let FinalizedByConfig::Template(template) = finalized_by {
+                rendered_finalized_by.extend(render_template_entries(
+                    self,
+                    template,
+                    &tera,
+                    context,
+                    FinalizedByConfig::task,
+                    FinalizedByConfig::with_task,
+                )?);
+                continue;
+            }
             let task = tera.render_str(finalized_by.task(), context, false)?;
             // Ignore if rendered task name is empty
             if task.is_empty() {
@@ -472,6 +504,7 @@ impl TaskConfig {
                         optional: f.optional,
                     }));
                 }
+                FinalizedByConfig::Template(_) => {}
             }
         }
         config.finalized_by = rendered_finalized_by;
@@ -918,6 +951,51 @@ async fn render_value_map(
     Ok(ret)
 }
 
+/// Renders a template written in place of the list of `depends_on`, `wait_for` or `finalized_by`
+/// to the entries it lists, with their task names qualified.
+/// The rendered text is read as YAML, which an array or map var printed alone also is.
+/// Each element is read as the entry written in its place, and is not rendered again: a template
+/// coming from a command output or a file is never run.
+fn render_template_entries<T: DeserializeOwned>(
+    config: &TaskConfig,
+    template: &str,
+    tera: &Tera,
+    context: &tera::Context,
+    task: fn(&T) -> &str,
+    with_task: fn(&T, String) -> T,
+) -> anyhow::Result<Vec<T>> {
+    let rendered = tera.render_str(template, context, false)?;
+    let value: JsonValue = serde_yaml::from_str(&rendered)
+        .with_context(|| format!("failed to read the rendered template as YAML:\n{}", rendered))?;
+    let values = match value {
+        JsonValue::Null => Vec::new(),
+        JsonValue::Array(values) => values,
+        value => vec![value],
+    };
+    let mut entries = Vec::new();
+    for value in values {
+        // As written in the config: an object with `command` is a dynamic var, see `VarsConfig`
+        let vars = value.get("vars").and_then(JsonValue::as_object);
+        if let Some((name, _)) = vars.and_then(|v| v.iter().find(|(_, v)| v.get("command").is_some())) {
+            return Err(dynamic_dep_var_error(name));
+        }
+        let entry: T = serde_json::from_value(value.clone())
+            .with_context(|| format!("failed to read {} rendered by {:?} as an entry", value, template))?;
+        // A name rendered empty names no task
+        if !task(&entry).is_empty() {
+            entries.push(with_task(&entry, config.qualified_name(task(&entry))));
+        }
+    }
+    Ok(entries)
+}
+
+fn dynamic_dep_var_error(name: &str) -> anyhow::Error {
+    anyhow::anyhow!(
+        "var {:?} cannot be dynamic here. Declare it as a project-level or task-level var and pass its value instead",
+        name
+    )
+}
+
 /// Renders the templates in the vars given to another task (`depends_on`, `wait_for`,
 /// `finalized_by`) without inferring their type: the value is interpreted later according to that
 /// task's declaration (inferred for a scalar var, parsed as the declared type for a typed var),
@@ -933,10 +1011,7 @@ fn render_dep_vars(
         if !rk.is_empty() {
             let rv = match v {
                 VarsConfig::Static(s) => VarsConfig::Static(render_templates(s, tera, context)?),
-                VarsConfig::Dynamic(_) => anyhow::bail!(
-                    "var {:?} cannot be dynamic here. Declare it as a project-level or task-level var and pass its value instead",
-                    rk
-                ),
+                VarsConfig::Dynamic(_) => return Err(dynamic_dep_var_error(&rk)),
                 other => other.clone(),
             };
             ret.insert(rk, rv);

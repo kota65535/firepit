@@ -847,17 +847,10 @@ impl Task {
             env,
             depends_on: depends_on
                 .iter()
-                .map(|s| match s {
-                    DependsOnConfig::String(s) => DependsOn {
-                        task: s.clone(),
-                        cascade: true,
-                        always: false,
-                    },
-                    DependsOnConfig::Struct(s) => DependsOn {
-                        task: s.task.clone(),
-                        cascade: s.cascade,
-                        always: false,
-                    },
+                .map(|d| DependsOn {
+                    task: d.task().to_string(),
+                    cascade: !matches!(d, DependsOnConfig::Struct(s) if !s.cascade),
+                    always: false,
                 })
                 .chain(task_config.finalizes.iter().map(|t| DependsOn {
                     task: t.clone(),
