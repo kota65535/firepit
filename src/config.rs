@@ -284,6 +284,7 @@ impl ProjectConfig {
 
     /// Full task names must be unique. A project or task name containing `:` may collide with
     /// another project's task, ex: task `b:c` of project `a` and task `c` of project `a:b`.
+    /// v1: remove, as no name will contain `:`.
     fn check_name_collisions(root: &ProjectConfig, children: &IndexMap<String, ProjectConfig>) -> anyhow::Result<()> {
         let mut seen = HashSet::new();
         for t in iter::once(root).chain(children.values()).flat_map(|p| p.tasks.values()) {
@@ -382,29 +383,6 @@ impl ProjectConfig {
             v.name = k.clone();
             v.orig_name = k.clone();
             v.project = name.to_string();
-            v.depends_on = v
-                .depends_on
-                .iter()
-                .map(|d| match d {
-                    DependsOnConfig::String(s) => DependsOnConfig::String(Task::qualified_name(name, s)),
-                    DependsOnConfig::Struct(s) => DependsOnConfig::Struct(DependsOnConfigStruct {
-                        task: Task::qualified_name(&data.name, &s.task),
-                        vars: s.vars.clone(),
-                        cascade: s.cascade,
-                        optional: s.optional,
-                    }),
-                })
-                .collect();
-            v.wait_for = v
-                .wait_for
-                .iter()
-                .map(|w| w.with_task(Task::qualified_name(name, w.task())))
-                .collect();
-            v.finalized_by = v
-                .finalized_by
-                .iter()
-                .map(|f| f.with_task(Task::qualified_name(name, f.task())))
-                .collect();
         }
 
         // Save raw data
@@ -617,37 +595,11 @@ impl ProjectConfig {
                 .filter(|t| t.contains(Task::LEGACY_SEP))
                 .map(|t| t.to_string()),
         );
-        // Validate regex patterns and qualify depends_on upfront
-        let qualified_defaults: Vec<DefaultsConfig> = self
-            .defaults
-            .iter()
-            .map(|d| {
-                if let Some(TaskSelector::Regex(ref pattern)) = d.tasks {
-                    Regex::new(pattern).with_context(|| format!("defaults: invalid regex pattern {:?}", pattern))?;
-                }
-                Ok(DefaultsConfig {
-                    depends_on: d
-                        .depends_on
-                        .iter()
-                        .map(|dep| match dep {
-                            DependsOnConfig::String(s) => DependsOnConfig::String(Task::qualified_name(&self.name, s)),
-                            DependsOnConfig::Struct(s) => DependsOnConfig::Struct(DependsOnConfigStruct {
-                                task: Task::qualified_name(&self.name, &s.task),
-                                vars: s.vars.clone(),
-                                cascade: s.cascade,
-                                optional: s.optional,
-                            }),
-                        })
-                        .collect(),
-                    wait_for: d
-                        .wait_for
-                        .iter()
-                        .map(|w| w.with_task(Task::qualified_name(&self.name, w.task())))
-                        .collect(),
-                    ..d.clone()
-                })
-            })
-            .collect::<anyhow::Result<Vec<_>>>()?;
+        for d in self.defaults.iter() {
+            if let Some(TaskSelector::Regex(ref pattern)) = d.tasks {
+                Regex::new(pattern).with_context(|| format!("defaults: invalid regex pattern {:?}", pattern))?;
+            }
+        }
 
         for (task_name, task_config) in self.tasks.iter_mut() {
             // Merge all matching defaults in order (later entries override earlier)
@@ -664,7 +616,7 @@ impl ProjectConfig {
             let mut eff_outputs: Vec<String> = Vec::new();
             let mut matched = false;
 
-            for default in &qualified_defaults {
+            for default in &self.defaults {
                 let is_match = match &default.tasks {
                     None => true,
                     Some(selector) => selector.matches(task_name),
@@ -867,12 +819,15 @@ pub struct TaskConfig {
 }
 
 impl TaskConfig {
-    /// Qualifies the task references with the project of this task once they are rendered.
-    /// `a:b` names task `b` of project `a` if the project exists, and otherwise a task of this
-    /// project named `a:b`, which [`Task::qualified_name`] cannot tell apart on its own.
+    /// Qualifies the task references with the project of this task.
+    /// It is done once they are rendered, since a template may name another project.
     pub fn resolve_refs(&mut self, projects: &HashSet<String>) {
         let resolve = |t: &str| -> String {
-            let t = Task::qualified_name(&self.project, t);
+            // v1: remove along with the deprecated separator
+            let t = Task::from_legacy(t).unwrap_or_else(|| t.to_string());
+            // v1: `t.contains(Task::SEP)` will do, as no name will contain `:`. Until then `a:b`
+            // names task `b` of project `a` only if the project exists, and otherwise a task of
+            // this project named `a:b`.
             match Task::split_name(&t, projects.iter().map(String::as_str)) {
                 Some(_) => t,
                 None => Task::full_name(&self.project, &t),

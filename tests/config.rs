@@ -286,9 +286,9 @@ fn test_defaults_regex() {
     assert_eq!(lint.shell, None);
     assert!(lint.env.get("NODE_ENV").is_none());
 
-    // `wait_for` from defaults is qualified and applied to the matching tasks only
-    assert_eq!(wait_for_names(build), vec![":lint"]);
-    assert_eq!(wait_for_names(test), vec![":lint"]);
+    // `wait_for` from defaults is applied to the matching tasks only
+    assert_eq!(wait_for_names(build), vec!["lint"]);
+    assert_eq!(wait_for_names(test), vec!["lint"]);
     assert!(install.wait_for.is_empty());
     assert!(lint.wait_for.is_empty());
 }

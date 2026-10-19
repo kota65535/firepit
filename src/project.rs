@@ -374,14 +374,7 @@ impl Workspace {
             if !names.is_empty() {
                 task_vars.push((task_name.clone(), names));
             }
-            queue.extend(
-                task_config
-                    .depends_on
-                    .iter()
-                    .map(|d| d.task())
-                    .filter(|d| !d.is_empty())
-                    .map(|d| Task::qualified_name(&task_config.project, d)),
-            );
+            queue.extend(task_config.depends_on.iter().map(|d| d.task()).map(|d| d.to_string()));
         }
 
         // Unset project vars of the involved projects.
@@ -857,12 +850,12 @@ impl Task {
                 .iter()
                 .map(|s| match s {
                     DependsOnConfig::String(s) => DependsOn {
-                        task: Task::qualified_name(project_name, s),
+                        task: s.clone(),
                         cascade: true,
                         always: false,
                     },
                     DependsOnConfig::Struct(s) => DependsOn {
-                        task: Task::qualified_name(project_name, &s.task),
+                        task: s.task.clone(),
                         cascade: s.cascade,
                         always: false,
                     },
@@ -878,7 +871,7 @@ impl Task {
                 .wait_for
                 .iter()
                 .map(|w| WaitFor {
-                    task: Task::qualified_name(project_name, w.task()),
+                    task: w.task().to_string(),
                     vars: w.vars().map(Self::resolved_vars).unwrap_or_default(),
                 })
                 .collect(),
@@ -920,8 +913,8 @@ impl Task {
     }
 
     /// Splits a full task name into the project name, `""` for the root project, and the task name.
-    /// A project name may contain `:`, so the first `:` is not necessarily the separator: the longest
-    /// of the given project names that the full name starts with is taken.
+    /// v1: `split_once(Self::SEP)` will do. Until then a project name may contain `:`, so the
+    /// longest of the given project names that the full name starts with is taken.
     pub fn split_name<'a, 'p>(
         task_name: &'a str,
         projects: impl IntoIterator<Item = &'p str>,
@@ -946,25 +939,8 @@ impl Task {
             .map(|(p, t)| format!("{}{}{}", p, Self::SEP, t))
     }
 
-    /// Full name of a task of the project. Unlike [`Self::qualified_name`] it never takes the name
-    /// for qualified already, since a task name may contain `:`.
     pub fn full_name(project_name: &str, task_name: &str) -> String {
         format!("{}{}{}", project_name, Self::SEP, task_name)
-    }
-
-    /// Qualifies a task name with the project name unless it is already qualified.
-    /// A reference in the deprecated `project#task` form is converted to `project:task`.
-    pub fn qualified_name(project_name: &str, task_name: &str) -> String {
-        if let Some(name) = Self::from_legacy(task_name) {
-            return name;
-        }
-        // Whether a template names a project is only known once it is rendered, so it is left to
-        // `TaskConfig::resolve_refs`
-        if task_name.contains(Self::SEP) || task_name.contains("{{") {
-            task_name.to_string()
-        } else {
-            Self::full_name(project_name, task_name)
-        }
     }
 
     /// Name usable as a CLI argument: the root project prefix is omitted, ex: `:foo` -> `foo`.
