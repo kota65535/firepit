@@ -864,7 +864,7 @@ This is how Firepit resolves which task to run:
 ```mermaid
 flowchart LR
     A(["Start"])
-    A --> B{"Task is in the form`{project}#{task}`?"}
+    A --> B{"Task is in the form `{project}:{task}`?"}
     B -->|Yes| C["Run the project's task"]
     B -->|No| D{"Current directory?"}
     D -->|Child| E["Run the task of the current project"]
