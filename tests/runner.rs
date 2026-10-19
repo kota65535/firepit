@@ -7,7 +7,7 @@ use firepit::vars::VarsConfig;
 use indexmap::IndexMap;
 use rstest::rstest;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::future::Future;
 use std::io::Write;
@@ -1637,7 +1637,7 @@ async fn test_rerun_service_dependent() {
     let runner_fut = tokio::spawn(async move { runner.run(&app_tx, false).await.ok() });
 
     let mut results = Vec::new();
-    let _ = tokio::time::timeout(Duration::from_secs(5), async {
+    let started = tokio::time::timeout(Duration::from_secs(5), async {
         while let Some(event) = app_rx.recv().await {
             match event {
                 AppCommand::StartTask { task, rerun, .. } if task == ":server" => {
@@ -1658,7 +1658,125 @@ async fn test_rerun_service_dependent() {
     runner_tx.quit();
     runner_fut.await.ok();
 
+    assert!(started.is_ok(), "the new run of :server did not start");
     assert_eq!(results, vec!["Rerunning"]);
+}
+
+/// A service that becomes ready while it is stopped to re-run stays re-running, rather than
+/// showing the readiness of the run stopped.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_rerun_service_ready_while_stopping() {
+    setup();
+    let path = path::absolute(BASE_PATH.join("rerun_service_ready_while_stopping")).unwrap();
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
+    let tasks = vec![String::from("db")];
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &tasks,
+        &[],
+        &path,
+        &IndexMap::new(),
+        false,
+        true,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+    let mut runner = TaskRunner::new(&ws).unwrap();
+    let (app_tx, mut app_rx) = AppCommandChannel::new();
+    let runner_tx = runner.command_tx.clone();
+    let runner_fut = tokio::spawn(async move { runner.run(&app_tx, false).await.ok() });
+
+    let mut events = Vec::new();
+    let started = tokio::time::timeout(Duration::from_secs(5), async {
+        while let Some(event) = app_rx.recv().await {
+            match event {
+                AppCommand::TaskOutput { task, output, .. }
+                    if task == ":db" && String::from_utf8_lossy(&output).contains("started") =>
+                {
+                    runner_tx.restart_task(":db", false);
+                }
+                AppCommand::StartTask { task, rerun, .. } if task == ":db" && rerun > 0 => break,
+                AppCommand::ReadyTask { task } if task == ":db" => {
+                    events.push(String::from("Ready"));
+                }
+                AppCommand::FinishTask { task, result, .. } if task == ":db" => {
+                    events.push(format!("{:?}", result));
+                }
+                _ => {}
+            }
+        }
+    })
+    .await;
+    runner_tx.quit();
+    runner_fut.await.ok();
+
+    assert!(started.is_ok(), "the new run of :db did not start");
+    assert_eq!(events, vec!["Rerunning"]);
+}
+
+/// A task stopped to re-run is reported as stopped if quitting cancels its new run.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_rerun_quit_while_waiting() {
+    setup();
+    let path = path::absolute(BASE_PATH.join("rerun_quit_while_waiting")).unwrap();
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
+    let tasks = vec![String::from("server")];
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &tasks,
+        &[],
+        &path,
+        &IndexMap::new(),
+        false,
+        true,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+    let mut runner = TaskRunner::new(&ws).unwrap();
+    let (app_tx, mut app_rx) = AppCommandChannel::new();
+    let runner_tx = runner.command_tx.clone();
+    let mut runner_fut = tokio::spawn(async move { runner.run(&app_tx, false).await.ok() });
+
+    let mut events = Vec::new();
+    let finished = tokio::time::timeout(Duration::from_secs(5), async {
+        let mut started = HashSet::new();
+        loop {
+            tokio::select! {
+                Some(event) = app_rx.recv() => {
+                    if let AppCommand::StartTask { task, .. } = &event {
+                        started.insert(task.clone());
+                        // Once only, as a second quit kills the tasks
+                        if started.len() == 3 {
+                            runner_tx.restart_task(":build", false);
+                            runner_tx.quit();
+                        }
+                    }
+                    events.push(event);
+                }
+                _ = &mut runner_fut => break,
+            }
+        }
+    })
+    .await;
+    while let Ok(event) = app_rx.try_recv() {
+        events.push(event);
+    }
+    let results: Vec<_> = events
+        .into_iter()
+        .filter_map(|event| match event {
+            AppCommand::FinishTask { task, result, .. } if task == ":server" => Some(format!("{:?}", result)),
+            _ => None,
+        })
+        .collect();
+
+    assert!(finished.is_ok(), "the runner did not finish");
+    assert_eq!(results.last().map(String::as_str), Some("Stopped"));
 }
 
 /// Re-running a task leaves its running finalizer to finish, and the new run starts after it.

@@ -1,0 +1,15 @@
+tasks:
+  build:
+    command: echo build
+    finalized_by:
+      - cleanup
+
+  # Keeps the re-run of build waiting
+  cleanup:
+    command: sleep 1
+
+  server:
+    command: sleep 30
+    service: true
+    depends_on:
+      - build
