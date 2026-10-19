@@ -3,7 +3,6 @@ use crate::app::cui::CuiApp;
 use crate::app::tui::TuiApp;
 use crate::config::{ProjectConfig, UI};
 use crate::log::init_logger;
-use crate::project::Task;
 use crate::project::Workspace;
 use crate::runner::TaskRunner;
 use crate::tokio_spawn;
@@ -120,7 +119,7 @@ pub async fn run() -> anyhow::Result<i32> {
     // Load config files
     let (root, children) = ProjectConfig::new_multi(&dir)?;
 
-    let deprecation_warnings = deprecation_warnings(&args, &tasks, &root, &children);
+    let deprecation_warnings = deprecation_warnings(&args, &root, &children);
     let result = run_tasks(args, dir, tasks, vars, root, children).await;
 
     // Printed last so that they are seen: after the UI is cleaned up, and also when the run failed
@@ -131,29 +130,13 @@ pub async fn run() -> anyhow::Result<i32> {
     result
 }
 
-fn deprecation_warnings(
-    args: &Args,
-    tasks: &[String],
-    root: &ProjectConfig,
-    children: &IndexMap<String, ProjectConfig>,
-) -> Vec<String> {
+fn deprecation_warnings(args: &Args, root: &ProjectConfig, children: &IndexMap<String, ProjectConfig>) -> Vec<String> {
     let mut warnings = root.deprecated_warnings();
     for child in children.values() {
         warnings.extend(child.deprecated_warnings());
     }
     if args.no_log_prefix {
         warnings.push("`--no-log-prefix` is deprecated. Use `--no-prefix` instead.".to_string());
-    }
-    for task in tasks
-        .iter()
-        .chain(&args.exclude)
-        .filter(|t| t.contains(Task::LEGACY_SEP))
-    {
-        warnings.push(format!(
-            "task {:?} uses the deprecated separator '#', which will be rejected in v1. Use ':' instead, ex: {:?}",
-            task,
-            Task::from_legacy(task).unwrap_or_default()
-        ));
     }
     warnings
 }

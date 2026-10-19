@@ -192,10 +192,6 @@ pub struct ProjectConfig {
     #[serde(skip)]
     #[derivative(Debug = "ignore")]
     pub raw: Value,
-
-    /// Task references written in the deprecated `project#task` form, for deprecation warnings.
-    #[serde(skip)]
-    pub legacy_refs: Vec<String>,
 }
 
 pub fn default_shell() -> ShellConfig {
@@ -258,10 +254,6 @@ impl ProjectConfig {
         if root_config.is_root() {
             // Multi project
             for (name, dir) in &root_config.project_dirs {
-                // A project name containing `:` could not be told apart from a task name containing it
-                if name.contains(Task::SEP) || name.contains(Task::LEGACY_SEP) {
-                    anyhow::bail!("Project name must not contain ':' or '#'. Found: {:?}", name)
-                }
                 let mut child_config = ProjectConfig::new(name, dir)?;
                 for t in child_config.tasks.values_mut() {
                     t.project = name.clone();
@@ -336,6 +328,11 @@ impl ProjectConfig {
         data.name = name.to_string();
 
         data.project_dirs = data.projects.resolve(dir)?;
+        for name in data.project_dirs.keys() {
+            if !Task::is_valid_name(name) {
+                anyhow::bail!("project name {:?} is invalid. {}", name, Task::VALID_NAME);
+            }
+        }
 
         // Var declarations
         for (k, v) in data.vars.iter() {
@@ -354,15 +351,9 @@ impl ProjectConfig {
 
         // Task name & dependency task name
         for (k, v) in data.tasks.iter_mut() {
-            data.legacy_refs.extend(
-                v.depends_on
-                    .iter()
-                    .map(|d| d.task())
-                    .chain(v.wait_for.iter().map(|w| w.task()))
-                    .chain(v.finalized_by.iter().map(|f| f.task()))
-                    .filter(|t| t.contains(Task::LEGACY_SEP))
-                    .map(|t| t.to_string()),
-            );
+            if !Task::is_valid_name(k) {
+                anyhow::bail!("task name {:?} is invalid. {}", k, Task::VALID_NAME);
+            }
             v.name = k.clone();
             v.orig_name = k.clone();
             v.project = name.to_string();
@@ -542,22 +533,6 @@ impl ProjectConfig {
                 ));
             }
         }
-        for r in self.legacy_refs.iter() {
-            warnings.push(format!(
-                "{}: task reference {:?} uses the deprecated separator '#', which will be rejected in v1. Use ':' instead, ex: {:?}",
-                file,
-                r,
-                Task::from_legacy(r).unwrap_or_default()
-            ));
-        }
-        for name in self.project_dirs.keys().chain(self.tasks.keys()) {
-            if !Task::is_valid_name(name) {
-                warnings.push(format!(
-                    "{}: name {:?} will be rejected in v1. A name starts with a letter and contains only letters, digits, '_', '-', '.' and '/'",
-                    file, name
-                ));
-            }
-        }
         warnings
     }
 
@@ -566,18 +541,6 @@ impl ProjectConfig {
     /// scalars and maps, arrays are concatenated), then the merged result is applied to the task as
     /// a base layer (task-specific values take precedence).
     pub fn apply_defaults(&mut self) -> anyhow::Result<()> {
-        self.legacy_refs.extend(
-            self.defaults
-                .iter()
-                .flat_map(|d| {
-                    d.depends_on
-                        .iter()
-                        .map(|d| d.task())
-                        .chain(d.wait_for.iter().map(|w| w.task()))
-                })
-                .filter(|t| t.contains(Task::LEGACY_SEP))
-                .map(|t| t.to_string()),
-        );
         for d in self.defaults.iter() {
             if let Some(TaskSelector::Regex(ref pattern)) = d.tasks {
                 Regex::new(pattern).with_context(|| format!("defaults: invalid regex pattern {:?}", pattern))?;
@@ -804,16 +767,12 @@ pub struct TaskConfig {
 impl TaskConfig {
     /// Qualifies the task references with the project of this task.
     /// It is done once they are rendered, since a template may name another project.
-    pub fn resolve_refs(&mut self, projects: &HashSet<String>) {
+    pub fn resolve_refs(&mut self) {
         let resolve = |t: &str| -> String {
-            // v1: remove along with the deprecated separator
-            let t = Task::from_legacy(t).unwrap_or_else(|| t.to_string());
-            // v1: `t.contains(Task::SEP)` will do, as no task name will contain `:`. Until then `a:b`
-            // names task `b` of project `a` only if the project exists, and otherwise a task of
-            // this project named `a:b`.
-            match Task::split_name(&t) {
-                Some((p, _)) if p.is_empty() || projects.contains(p) => t,
-                _ => Task::full_name(&self.project, &t),
+            if t.contains(Task::SEP) {
+                t.to_string()
+            } else {
+                Task::full_name(&self.project, t)
             }
         };
         self.depends_on = self.depends_on.iter().map(|d| d.with_task(resolve(d.task()))).collect();

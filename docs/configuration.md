@@ -832,13 +832,7 @@ tasks:
 
 Tasks can be referenced across projects using the form `{project}:{task}`.
 Note that the root project name is treated as an empty string, so you can reference root tasks with `:{task}`.
-
-::: warning
-The former separator `#` (`{project}#{task}`) is deprecated and will be rejected in v1.
 A project or task name is limited to letters, digits, `_`, `-`, `.` and `/`, starting with a letter.
-A name with any other character, such as `build:watch`, gets a warning for now and will be rejected in v1.
-A project name containing `:` is already an error, as a full name could not be split otherwise.
-:::
 
 For example, to run client's dev task:
 

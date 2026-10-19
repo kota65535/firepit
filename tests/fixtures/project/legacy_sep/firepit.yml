@@ -1,9 +1,9 @@
+# Test that the former separator `#` is not read as `:`
 projects:
-  foo: foo
   bar: bar
 
 tasks:
   baz:
     command: echo "baz"
     depends_on:
-      - foo#foo
+      - bar#bar
