@@ -879,8 +879,8 @@ async fn test_colon_in_task_name() {
 }
 
 #[test]
-fn test_name_collision() {
-    let path = Path::new("tests/fixtures/project/name_collision");
+fn test_colon_in_project_name() {
+    let path = Path::new("tests/fixtures/project/colon_project");
     let err = ProjectConfig::new_multi(path).unwrap_err();
-    assert!(format!("{:#}", err).contains("ambiguous"), "{:#}", err);
+    assert!(format!("{:#}", err).contains("must not contain ':'"), "{:#}", err);
 }

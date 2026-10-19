@@ -154,9 +154,9 @@ impl Workspace {
             let task = task.as_str();
             // `foo:build` is project foo's task `build` if project foo exists,
             // otherwise it is a task named `foo:build`.
-            let (project_name, task_name) = match Task::split_name(task, child_configs.keys().map(String::as_str)) {
-                Some((p, t)) => (Some(p), t),
-                None => (None, task),
+            let (project_name, task_name) = match Task::split_name(task) {
+                Some((p, t)) if p.is_empty() || child_configs.contains_key(p) => (Some(p), t),
+                _ => (None, task),
             };
             match project_name {
                 // Full name
@@ -196,7 +196,7 @@ impl Workspace {
         child_configs: &'a IndexMap<String, ProjectConfig>,
         name: &str,
     ) -> anyhow::Result<&'a TaskConfig> {
-        match Task::split_name(name, child_configs.keys().map(String::as_str)) {
+        match Task::split_name(name) {
             Some(("", task_name)) => root_config.task(task_name),
             None => root_config.task(name),
             Some((p, task_name)) => child_configs
@@ -212,7 +212,7 @@ impl Workspace {
         child_configs: &'a mut IndexMap<String, ProjectConfig>,
         name: &str,
     ) -> anyhow::Result<&'a mut TaskConfig> {
-        match Task::split_name(name, child_configs.keys().map(String::as_str)) {
+        match Task::split_name(name) {
             Some(("", task_name)) => root_config.task_mut(task_name),
             None => root_config.task_mut(name),
             Some((p, task_name)) => child_configs
@@ -913,22 +913,8 @@ impl Task {
     }
 
     /// Splits a full task name into the project name, `""` for the root project, and the task name.
-    /// v1: `split_once(Self::SEP)` will do. Until then a project name may contain `:`, so the
-    /// longest of the given project names that the full name starts with is taken.
-    pub fn split_name<'a, 'p>(
-        task_name: &'a str,
-        projects: impl IntoIterator<Item = &'p str>,
-    ) -> Option<(&'a str, &'a str)> {
-        projects
-            .into_iter()
-            .chain(std::iter::once(""))
-            .filter(|p| {
-                task_name
-                    .strip_prefix(p)
-                    .is_some_and(|rest| rest.starts_with(Self::SEP))
-            })
-            .max_by_key(|p| p.len())
-            .map(|p| (&task_name[..p.len()], &task_name[p.len() + 1..]))
+    pub fn split_name(task_name: &str) -> Option<(&str, &str)> {
+        task_name.split_once(Self::SEP)
     }
 
     /// Converts a task reference in the deprecated `project#task` form to `project:task`.

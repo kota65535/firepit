@@ -258,8 +258,9 @@ impl ProjectConfig {
         if root_config.is_root() {
             // Multi project
             for (name, dir) in &root_config.project_dirs {
-                if name.contains(Task::LEGACY_SEP) {
-                    anyhow::bail!("Project name must not contain '#'. Found: {:?}", name)
+                // A project name containing `:` could not be told apart from a task name containing it
+                if name.contains(Task::SEP) || name.contains(Task::LEGACY_SEP) {
+                    anyhow::bail!("Project name must not contain ':' or '#'. Found: {:?}", name)
                 }
                 let mut child_config = ProjectConfig::new(name, dir)?;
                 for t in child_config.tasks.values_mut() {
@@ -277,25 +278,7 @@ impl ProjectConfig {
         root_config = root_config.merge(&context)?;
         root_config.apply_defaults()?;
 
-        Self::check_name_collisions(&root_config, &children)?;
-
         Ok((root_config, children))
-    }
-
-    /// Full task names must be unique. A project or task name containing `:` may collide with
-    /// another project's task, ex: task `b:c` of project `a` and task `c` of project `a:b`.
-    /// v1: remove, as no name will contain `:`.
-    fn check_name_collisions(root: &ProjectConfig, children: &IndexMap<String, ProjectConfig>) -> anyhow::Result<()> {
-        let mut seen = HashSet::new();
-        for t in iter::once(root).chain(children.values()).flat_map(|p| p.tasks.values()) {
-            if !seen.insert(t.full_name()) {
-                anyhow::bail!(
-                    "task name {:?} is ambiguous: it is defined by more than one project. Avoid ':' in project and task names",
-                    t.full_name()
-                );
-            }
-        }
-        Ok(())
     }
 
     pub fn validate_multi(root: &ProjectConfig, children: &IndexMap<String, ProjectConfig>) -> anyhow::Result<()> {
@@ -825,12 +808,12 @@ impl TaskConfig {
         let resolve = |t: &str| -> String {
             // v1: remove along with the deprecated separator
             let t = Task::from_legacy(t).unwrap_or_else(|| t.to_string());
-            // v1: `t.contains(Task::SEP)` will do, as no name will contain `:`. Until then `a:b`
+            // v1: `t.contains(Task::SEP)` will do, as no task name will contain `:`. Until then `a:b`
             // names task `b` of project `a` only if the project exists, and otherwise a task of
             // this project named `a:b`.
-            match Task::split_name(&t, projects.iter().map(String::as_str)) {
-                Some(_) => t,
-                None => Task::full_name(&self.project, &t),
+            match Task::split_name(&t) {
+                Some((p, _)) if p.is_empty() || projects.contains(p) => t,
+                _ => Task::full_name(&self.project, &t),
             }
         };
         self.depends_on = self.depends_on.iter().map(|d| d.with_task(resolve(d.task()))).collect();

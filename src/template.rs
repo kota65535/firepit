@@ -585,7 +585,7 @@ impl ConfigRenderer {
         root_config: &'a ProjectConfig,
         child_configs: &'a IndexMap<String, ProjectConfig>,
     ) -> Option<(&'a TaskConfig, &'a ProjectConfig)> {
-        if let Some((p, t)) = Task::split_name(task_name, child_configs.keys().map(String::as_str)) {
+        if let Some((p, t)) = Task::split_name(task_name) {
             if p.is_empty() {
                 return match root_config.tasks.get(t) {
                     Some(t) => Some((t, root_config)),
@@ -607,7 +607,7 @@ impl ConfigRenderer {
         root_config: &'a ProjectConfig,
         child_configs: &'a IndexMap<String, ProjectConfig>,
     ) -> Vec<&'a TaskConfig> {
-        if let Some((p, orig_name)) = Task::split_name(orig_name, child_configs.keys().map(String::as_str)) {
+        if let Some((p, orig_name)) = Task::split_name(orig_name) {
             if p.is_empty() {
                 return root_config
                     .tasks

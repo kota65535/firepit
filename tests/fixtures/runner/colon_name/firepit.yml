@@ -2,7 +2,6 @@
 # otherwise, also when the reference is a template
 projects:
   foo: foo
-  a:b: ab
 
 vars:
   target: foo
@@ -21,10 +20,6 @@ tasks:
     depends_on:
       - "{{ target }}:build"
       - "{{ colon_task }}"
-  colon_project:
-    command: echo "colon_project"
-    depends_on:
-      - a:b:c
   "trailing:":
     command: echo "trailing:"
   trailing_ref:
