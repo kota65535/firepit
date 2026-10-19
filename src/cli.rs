@@ -150,7 +150,7 @@ fn deprecation_warnings(
         .filter(|t| t.contains(Task::LEGACY_SEP))
     {
         warnings.push(format!(
-            "task {:?} uses the deprecated separator '#'. Use ':' instead, ex: {:?}",
+            "task {:?} uses the deprecated separator '#', which will be rejected in v1. Use ':' instead, ex: {:?}",
             task,
             Task::from_legacy(task).unwrap_or_default()
         ));

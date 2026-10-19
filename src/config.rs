@@ -583,7 +583,7 @@ impl ProjectConfig {
         }
         for r in self.legacy_refs.iter() {
             warnings.push(format!(
-                "{}: task reference {:?} uses the deprecated separator '#'. Use ':' instead, ex: {:?}",
+                "{}: task reference {:?} uses the deprecated separator '#', which will be rejected in v1. Use ':' instead, ex: {:?}",
                 file,
                 r,
                 Task::from_legacy(r).unwrap_or_default()
