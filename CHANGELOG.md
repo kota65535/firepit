@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.37.0] - 2026-10-19
+
+### 🚀 Features
+
+- [**breaking**] Separate project and task names with ':' instead of '#' (#456)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(schema)* Generate
+
 ## [0.36.0] - 2026-10-19
 
 ### 🚀 Features
