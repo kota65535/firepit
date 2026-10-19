@@ -184,7 +184,7 @@ impl ProjectConfig {
         vars: &IndexMap<String, VarsConfig>,
         cache: &mut DynamicVarCache,
     ) -> anyhow::Result<tera::Context> {
-        let mut tera = new_tera();
+        let tera = new_tera();
         let mut context = context.clone();
         context.insert(PROJECT_CONTEXT_KEY, &self.name);
         context.insert(PROJECT_DIR_CONTEXT_KEY, &self.dir.as_os_str().to_str().unwrap_or(""));
@@ -201,15 +201,18 @@ impl ProjectConfig {
                     .map(|(k, v)| (k, v.clone())),
             );
         for (k, v) in merged {
-            let rk = tera.render_str(k, &context)?;
+            let rk = tera.render_str(k, &context, false)?;
             if !rk.is_empty() {
                 let v = match &v {
                     VarsConfig::Dynamic(s) => {
                         let mut s = s.clone();
-                        s.command = tera.render_str(&s.command, &context)?;
-                        s.env = render_string_map(&s.env, &mut tera, &context)?;
-                        s.env_files = render_env_files(&s.env_files, &mut tera, &context)?;
-                        s.working_dir = s.working_dir.map(|w| tera.render_str(&w, &context)).transpose()?;
+                        s.command = tera.render_str(&s.command, &context, false)?;
+                        s.env = render_string_map(&s.env, &tera, &context)?;
+                        s.env_files = render_env_files(&s.env_files, &tera, &context)?;
+                        s.working_dir = s
+                            .working_dir
+                            .map(|w| tera.render_str(&w, &context, false))
+                            .transpose()?;
                         s.inner = Some(DynamicVarsInner {
                             name: k.clone(),
                             command: s.command.clone(),
@@ -224,7 +227,7 @@ impl ProjectConfig {
                     }
                     VarsConfig::Static(_) | VarsConfig::Typed(_) => v.clone(),
                 };
-                let rv = render_value(&v, &mut tera, &context, cache)
+                let rv = render_value(&v, &tera, &context, cache)
                     .await
                     .with_context(|| format!("failed to render var {:?}", rk))?;
                 context.insert(rk, &rv);
@@ -242,18 +245,18 @@ impl ProjectConfig {
         context: &tera::Context,
         cache: &mut DynamicVarCache,
     ) -> anyhow::Result<(ProjectConfig, HashMap<String, tera::Context>)> {
-        let mut tera = new_tera();
+        let tera = new_tera();
 
         let mut config = self.clone();
 
         // Render working_dir
-        config.working_dir = tera.render_str(&config.working_dir, context)?;
+        config.working_dir = tera.render_str(&config.working_dir, context, false)?;
 
         // Render env
-        config.env = render_string_map(&config.env, &mut tera, context)?;
+        config.env = render_string_map(&config.env, &tera, context)?;
 
         // Render env_files
-        config.env_files = render_env_files(&config.env_files, &mut tera, context)?;
+        config.env_files = render_env_files(&config.env_files, &tera, context)?;
 
         // Render tasks.
         // A task inherits from the project config rendered above, ex: its working_dir.
@@ -279,13 +282,13 @@ impl TaskConfig {
         context: &tera::Context,
         cache: &mut DynamicVarCache,
     ) -> anyhow::Result<tera::Context> {
-        let mut tera = new_tera();
+        let tera = new_tera();
         let mut context = context.clone();
         context.insert(TASK_CONTEXT_KEY, &self.full_orig_name());
 
         // Render task-level vars
         for (k, v) in self.vars.iter() {
-            let rk = tera.render_str(k, &context)?;
+            let rk = tera.render_str(k, &context, false)?;
             if !rk.is_empty() {
                 // A task-level var without a value never inherits: declaring it shadows the
                 // project-level var of the same name.
@@ -300,10 +303,13 @@ impl TaskConfig {
                 let v = match v {
                     VarsConfig::Dynamic(s) => {
                         let mut s = s.clone();
-                        s.command = tera.render_str(&s.command, &context)?;
-                        s.env = render_string_map(&s.env, &mut tera, &context)?;
-                        s.env_files = render_env_files(&s.env_files, &mut tera, &context)?;
-                        s.working_dir = s.working_dir.map(|w| tera.render_str(&w, &context)).transpose()?;
+                        s.command = tera.render_str(&s.command, &context, false)?;
+                        s.env = render_string_map(&s.env, &tera, &context)?;
+                        s.env_files = render_env_files(&s.env_files, &tera, &context)?;
+                        s.working_dir = s
+                            .working_dir
+                            .map(|w| tera.render_str(&w, &context, false))
+                            .transpose()?;
                         s.inner = Some(DynamicVarsInner {
                             name: k.clone(),
                             command: s.command.clone(),
@@ -321,7 +327,7 @@ impl TaskConfig {
                     }
                     VarsConfig::Static(_) | VarsConfig::Typed(_) => v.clone(),
                 };
-                let rv = render_value(&v, &mut tera, &context, cache)
+                let rv = render_value(&v, &tera, &context, cache)
                     .await
                     .with_context(|| format!("failed to render var {:?}", rk))?;
                 context.insert(rk, &rv);
@@ -332,30 +338,33 @@ impl TaskConfig {
 
     pub async fn render(&self, context: &tera::Context, cache: &mut DynamicVarCache) -> anyhow::Result<TaskConfig> {
         let mut config = self.clone();
-        let mut tera = new_tera();
+        let tera = new_tera();
 
         // Render task-level vars
-        config.vars = render_value_map(&config.vars, &mut tera, context, cache).await?;
+        config.vars = render_value_map(&config.vars, &tera, context, cache).await?;
 
         // Render label
         if let Some(l) = config.label {
-            config.label = Some(tera.render_str(&l, context)?);
+            config.label = Some(tera.render_str(&l, context, false)?);
         }
 
         // Render command
-        config.command = config.command.map(|c| tera.render_str(&c, context)).transpose()?;
+        config.command = config
+            .command
+            .map(|c| tera.render_str(&c, context, false))
+            .transpose()?;
 
         // Render working_dir
         config.working_dir = match config.working_dir {
-            Some(w) => Some(tera.render_str(&w, context)?),
+            Some(w) => Some(tera.render_str(&w, context, false)?),
             None => None,
         };
 
         // Render env
-        config.env = render_string_map(&config.env, &mut tera, context)?;
+        config.env = render_string_map(&config.env, &tera, context)?;
 
         // Render env_files
-        config.env_files = render_env_files(&config.env_files, &mut tera, context)?;
+        config.env_files = render_env_files(&config.env_files, &tera, context)?;
 
         // Render service.healthcheck
         if let Some(service) = config.service {
@@ -365,24 +374,24 @@ impl TaskConfig {
                         // Log Probe
                         HealthCheckConfig::Log(ref mut c) => {
                             // Render log
-                            c.log = tera.render_str(&c.log, context)?;
+                            c.log = tera.render_str(&c.log, context, false)?;
                         }
                         // Exec Probe
                         HealthCheckConfig::Exec(ref mut c) => {
                             // Render command
-                            c.command = tera.render_str(&c.command, context)?;
+                            c.command = tera.render_str(&c.command, context, false)?;
 
                             // Render working_dir
                             c.working_dir = match &c.working_dir {
-                                Some(w) => Some(tera.render_str(w, context)?),
+                                Some(w) => Some(tera.render_str(w, context, false)?),
                                 None => None,
                             };
 
                             // Render env
-                            c.env = render_string_map(&c.env, &mut tera, context)?;
+                            c.env = render_string_map(&c.env, &tera, context)?;
 
                             // Render env_files
-                            c.env_files = render_env_files(&c.env_files, &mut tera, context)?;
+                            c.env_files = render_env_files(&c.env_files, &tera, context)?;
                         }
                     }
                     st.healthcheck = Some(healthcheck);
@@ -398,17 +407,17 @@ impl TaskConfig {
         for depends_on in config.depends_on.iter() {
             match depends_on {
                 DependsOnConfig::String(task) => {
-                    let task = tera.render_str(task, context)?;
+                    let task = tera.render_str(task, context, false)?;
                     // Ignore if rendered task name is empty
                     if !task.is_empty() {
                         rendered_depends_on.push(DependsOnConfig::String(self.qualified_name(&task)))
                     }
                 }
                 DependsOnConfig::Struct(dep) => {
-                    let task = tera.render_str(&dep.task, context)?;
+                    let task = tera.render_str(&dep.task, context, false)?;
                     // Ignore if rendered task name is empty
                     if !task.is_empty() {
-                        let vars = render_dep_vars(&dep.vars, &mut tera, context)?;
+                        let vars = render_dep_vars(&dep.vars, &tera, context)?;
                         rendered_depends_on.push(DependsOnConfig::Struct(DependsOnConfigStruct {
                             task: self.qualified_name(&task),
                             vars,
@@ -424,7 +433,7 @@ impl TaskConfig {
         // Render wait_for task and vars
         let mut rendered_wait_for = Vec::new();
         for wait_for in config.wait_for.iter() {
-            let task = tera.render_str(wait_for.task(), context)?;
+            let task = tera.render_str(wait_for.task(), context, false)?;
             // Ignore if rendered task name is empty
             if task.is_empty() {
                 continue;
@@ -433,7 +442,7 @@ impl TaskConfig {
             match wait_for {
                 WaitForConfig::String(_) => rendered_wait_for.push(WaitForConfig::String(task)),
                 WaitForConfig::Struct(w) => {
-                    let vars = render_dep_vars(&w.vars, &mut tera, context)?;
+                    let vars = render_dep_vars(&w.vars, &tera, context)?;
                     rendered_wait_for.push(WaitForConfig::Struct(WaitForConfigStruct {
                         task,
                         vars,
@@ -447,7 +456,7 @@ impl TaskConfig {
         // Render finalized_by task and vars
         let mut rendered_finalized_by = Vec::new();
         for finalized_by in config.finalized_by.iter() {
-            let task = tera.render_str(finalized_by.task(), context)?;
+            let task = tera.render_str(finalized_by.task(), context, false)?;
             // Ignore if rendered task name is empty
             if task.is_empty() {
                 continue;
@@ -456,7 +465,7 @@ impl TaskConfig {
             match finalized_by {
                 FinalizedByConfig::String(_) => rendered_finalized_by.push(FinalizedByConfig::String(task)),
                 FinalizedByConfig::Struct(f) => {
-                    let vars = render_dep_vars(&f.vars, &mut tera, context)?;
+                    let vars = render_dep_vars(&f.vars, &tera, context)?;
                     rendered_finalized_by.push(FinalizedByConfig::Struct(FinalizedByConfigStruct {
                         task,
                         vars,
@@ -725,14 +734,14 @@ impl ConfigRenderer {
             let dep_context = contexts
                 .get(&dep_task.full_name())
                 .context(format!("unknown task {:?}", dep_task.full_name()))?;
-            let mut tera = new_tera();
+            let tera = new_tera();
             let mut resolved = IndexMap::new();
             for (k, v) in wait_for.vars.iter() {
                 let rv = match dep_task.vars.get(k) {
                     Some(declared) => {
                         let merged = declared.with_value(v);
                         VarsConfig::Static(
-                            render_value(&merged, &mut tera, dep_context, cache)
+                            render_value(&merged, &tera, dep_context, cache)
                                 .await
                                 .with_context(|| format!("failed to render var {:?}", k))?,
                         )
@@ -855,24 +864,24 @@ impl ConfigRenderer {
 
 fn render_string_map(
     map: &IndexMap<String, String>,
-    tera: &mut Tera,
+    tera: &Tera,
     context: &tera::Context,
 ) -> anyhow::Result<IndexMap<String, String>> {
     let mut ret = IndexMap::new();
     for (k, v) in map.iter() {
-        let rk = tera.render_str(k, context)?;
+        let rk = tera.render_str(k, context, false)?;
         if !rk.is_empty() {
-            let rv = tera.render_str(v, context)?;
+            let rv = tera.render_str(v, context, false)?;
             ret.insert(rk, rv);
         }
     }
     Ok(ret)
 }
 
-fn render_env_files(env_files: &[String], tera: &mut Tera, context: &tera::Context) -> anyhow::Result<Vec<String>> {
+fn render_env_files(env_files: &[String], tera: &Tera, context: &tera::Context) -> anyhow::Result<Vec<String>> {
     let mut ret = Vec::new();
     for env_file in env_files {
-        let rendered = tera.render_str(env_file, context)?;
+        let rendered = tera.render_str(env_file, context, false)?;
         if !rendered.is_empty() {
             ret.push(rendered);
         }
@@ -885,20 +894,21 @@ fn render_env_files(env_files: &[String], tera: &mut Tera, context: &tera::Conte
 /// context instead of running the command a second time.
 async fn render_value_map(
     map: &IndexMap<String, VarsConfig>,
-    tera: &mut Tera,
+    tera: &Tera,
     context: &tera::Context,
     cache: &mut DynamicVarCache,
 ) -> anyhow::Result<IndexMap<String, VarsConfig>> {
     let mut ret = IndexMap::new();
     for (k, v) in map.iter() {
-        let rk = tera.render_str(k, context)?;
+        let rk = tera.render_str(k, context, false)?;
         if !rk.is_empty() {
             let rv = match v {
                 // Unset vars stay unset; they are reported as an error when the task is run
                 _ if v.is_unset() => JsonValue::Null,
                 VarsConfig::Dynamic(_) => context
                     .get(&rk)
-                    .cloned()
+                    .map(serde_json::to_value)
+                    .transpose()?
                     .with_context(|| format!("dynamic var {:?} has no rendered value", rk))?,
                 VarsConfig::Static(_) | VarsConfig::Typed(_) => render_value(v, tera, context, cache).await?,
             };
@@ -914,12 +924,12 @@ async fn render_value_map(
 /// like a CLI argument. Such a var has no shell of its own, so it cannot be dynamic.
 fn render_dep_vars(
     map: &IndexMap<String, VarsConfig>,
-    tera: &mut Tera,
+    tera: &Tera,
     context: &tera::Context,
 ) -> anyhow::Result<IndexMap<String, VarsConfig>> {
     let mut ret = IndexMap::new();
     for (k, v) in map.iter() {
-        let rk = tera.render_str(k, context)?;
+        let rk = tera.render_str(k, context, false)?;
         if !rk.is_empty() {
             let rv = match v {
                 VarsConfig::Static(s) => VarsConfig::Static(render_templates(s, tera, context)?),
@@ -938,7 +948,7 @@ fn render_dep_vars(
 #[async_recursion]
 async fn render_value(
     value: &VarsConfig,
-    tera: &mut Tera,
+    tera: &Tera,
     context: &tera::Context,
     cache: &mut DynamicVarCache,
 ) -> anyhow::Result<JsonValue> {
@@ -1022,10 +1032,10 @@ fn infer_scalar(value: JsonValue) -> anyhow::Result<JsonValue> {
 
 /// Renders the templates of every string in `value`, recursively, keeping the structure and the
 /// types of the other values as they are.
-fn render_templates(value: &JsonValue, tera: &mut Tera, context: &tera::Context) -> anyhow::Result<JsonValue> {
+fn render_templates(value: &JsonValue, tera: &Tera, context: &tera::Context) -> anyhow::Result<JsonValue> {
     Ok(match value {
         JsonValue::String(s) => JsonValue::String(
-            tera.render_str(s, context)
+            tera.render_str(s, context, false)
                 .with_context(|| format!("failed to render {:?}", s))?,
         ),
         JsonValue::Array(items) => JsonValue::Array(
@@ -1100,14 +1110,26 @@ fn yaml_number_to_json_number(yaml_num: &serde_yaml::Number) -> Option<serde_jso
 /// ```
 /// use firepit::template::new_tera;
 ///
-/// let mut tera = new_tera();
+/// let tera = new_tera();
 /// let mut context = tera::Context::new();
 /// context.insert("value", "a b");
-/// assert_eq!(tera.render_str("echo {{ value | quote }}", &context).unwrap(), "echo 'a b'");
+/// assert_eq!(tera.render_str("echo {{ value | quote }}", &context, false).unwrap(), "echo 'a b'");
 /// ```
 pub fn new_tera() -> Tera {
     let mut tera = Tera::default();
     tera.register_filter("quote", quote_filter);
+    // Builtins of Tera v1 that v2 moved out of its core, under their v1 names
+    tera.register_filter("json_encode", tera_contrib::json::json_encode);
+    tera.register_filter("date", tera_contrib::dates::date);
+    tera.register_function("now", tera_contrib::dates::now);
+    tera.register_filter("slugify", tera_contrib::slug::slug);
+    tera.register_filter("urlencode", tera_contrib::urlencode::urlencode);
+    tera.register_filter("urlencode_strict", tera_contrib::urlencode::urlencode_strict);
+    tera.register_filter("filesizeformat", tera_contrib::filesize_format::filesize_format);
+    tera.register_function("get_random", tera_contrib::rand::get_random);
+    tera.register_filter("striptags", tera_contrib::regex::striptags);
+    tera.register_filter("spaceless", tera_contrib::regex::spaceless);
+    tera.register_test("matching", tera_contrib::regex::Matching::default());
     tera
 }
 
@@ -1124,21 +1146,29 @@ pub fn new_tera() -> Tera {
 ///
 /// Returns an error when the value is a map, when an array contains a nested array or map, or when
 /// the value contains a nul byte, which cannot be represented as a shell argument.
-fn quote_filter(value: &JsonValue, _args: &HashMap<String, JsonValue>) -> tera::Result<JsonValue> {
+fn quote_filter(value: &tera::Value, _: tera::Kwargs, _: &tera::State) -> tera::TeraResult<String> {
+    let value = serde_json::to_value(value).map_err(|e| tera::Error::chain("failed to read the value to quote", e))?;
+    quote(&value)
+}
+
+fn quote(value: &JsonValue) -> tera::TeraResult<String> {
     let quoted = match value {
         JsonValue::Array(items) => {
-            let words = items.iter().map(scalar_to_string).collect::<tera::Result<Vec<_>>>()?;
+            let words = items
+                .iter()
+                .map(scalar_to_string)
+                .collect::<tera::TeraResult<Vec<_>>>()?;
             shlex::try_join(words.iter().map(|w| w.as_str()))
-                .map_err(|e| tera::Error::msg(format!("failed to quote array for shell: {}", e)))?
+                .map_err(|e| tera::Error::message(format!("failed to quote array for shell: {}", e)))?
         }
         _ => {
             let word = scalar_to_string(value)?;
             shlex::try_quote(&word)
-                .map_err(|e| tera::Error::msg(format!("failed to quote {:?} for shell: {}", word, e)))?
+                .map_err(|e| tera::Error::message(format!("failed to quote {:?} for shell: {}", word, e)))?
                 .into_owned()
         }
     };
-    Ok(JsonValue::String(quoted))
+    Ok(quoted)
 }
 
 /// Stringifies a scalar JSON value for the `quote` filter.
@@ -1146,13 +1176,13 @@ fn quote_filter(value: &JsonValue, _args: &HashMap<String, JsonValue>) -> tera::
 /// # Errors
 ///
 /// Returns an error for arrays and maps, which have no single-argument shell representation.
-fn scalar_to_string(value: &JsonValue) -> tera::Result<String> {
+fn scalar_to_string(value: &JsonValue) -> tera::TeraResult<String> {
     match value {
         JsonValue::String(s) => Ok(s.clone()),
         JsonValue::Number(n) => Ok(n.to_string()),
         JsonValue::Bool(b) => Ok(b.to_string()),
         JsonValue::Null => Ok(String::new()),
-        JsonValue::Array(_) | JsonValue::Object(_) => Err(tera::Error::msg(
+        JsonValue::Array(_) | JsonValue::Object(_) => Err(tera::Error::message(
             "the `quote` filter accepts a string, number, boolean, null or an array of them",
         )),
     }
@@ -1208,36 +1238,50 @@ mod tests {
         assert_eq!(runs("both", "both", false), Some((1, long)));
     }
 
-    fn quote(value: JsonValue) -> tera::Result<String> {
-        let args = HashMap::new();
-        quote_filter(&value, &args).map(|v| v.as_str().unwrap_or_default().to_string())
-    }
-
     #[test]
     fn test_quote_scalars() {
-        assert_eq!(quote(json!("simple")).unwrap(), "simple");
-        assert_eq!(quote(json!("a b'c")).unwrap(), r#""a b'c""#);
-        assert_eq!(quote(json!("foo; date")).unwrap(), "'foo; date'");
-        assert_eq!(quote(json!("line1\nline2")).unwrap(), "'line1\nline2'");
-        assert_eq!(quote(json!("")).unwrap(), "''");
-        assert_eq!(quote(json!(42)).unwrap(), "42");
-        assert_eq!(quote(json!(true)).unwrap(), "true");
+        assert_eq!(quote(&json!("simple")).unwrap(), "simple");
+        assert_eq!(quote(&json!("a b'c")).unwrap(), r#""a b'c""#);
+        assert_eq!(quote(&json!("foo; date")).unwrap(), "'foo; date'");
+        assert_eq!(quote(&json!("line1\nline2")).unwrap(), "'line1\nline2'");
+        assert_eq!(quote(&json!("")).unwrap(), "''");
+        assert_eq!(quote(&json!(42)).unwrap(), "42");
+        assert_eq!(quote(&json!(true)).unwrap(), "true");
         // Null becomes an empty argument rather than being dropped
-        assert_eq!(quote(JsonValue::Null).unwrap(), "''");
+        assert_eq!(quote(&JsonValue::Null).unwrap(), "''");
     }
 
     #[test]
     fn test_quote_array() {
-        assert_eq!(quote(json!(["foo", "bar baz"])).unwrap(), "foo 'bar baz'");
-        assert_eq!(quote(json!([])).unwrap(), "");
+        assert_eq!(quote(&json!(["foo", "bar baz"])).unwrap(), "foo 'bar baz'");
+        assert_eq!(quote(&json!([])).unwrap(), "");
+    }
+
+    #[test]
+    fn test_v1_builtins() {
+        let tera = new_tera();
+        let mut context = tera::Context::new();
+        context.insert("map", &json!({ "a": 1 }));
+        let render = |s: &str| tera.render_str(s, &context, false).unwrap();
+        assert_eq!(render("{{ map | json_encode }}"), r#"{"a":1}"#);
+        assert_eq!(render("{{ 0 | date(format='%Y') }}"), "1970");
+        assert_eq!(render("{{ now() | date(format='%Y') }}").len(), 4);
+        assert_eq!(render("{{ 'Hello World' | slugify }}"), "hello-world");
+        assert_eq!(render("{{ 'a/b c' | urlencode }}"), "a/b%20c");
+        assert_eq!(render("{{ 'a/b c' | urlencode_strict }}"), "a%2Fb%20c");
+        assert_eq!(render("{{ 1024 | filesizeformat }}"), "1 KiB");
+        assert_eq!(render("{{ get_random(start=0, end=1) }}"), "0");
+        assert_eq!(render("{{ '<b>a</b>' | striptags }}"), "a");
+        assert_eq!(render("{{ '<p> </p>' | spaceless }}"), "<p></p>");
+        assert_eq!(render("{% if 'abc' is matching(pat='^a') %}ok{% endif %}"), "ok");
     }
 
     #[test]
     fn test_quote_errors() {
         // A nul byte cannot be represented as a shell argument
-        assert!(quote(json!("a\0b")).is_err());
+        assert!(quote(&json!("a\0b")).is_err());
         // Maps and nested collections have no single-argument representation
-        assert!(quote(json!({ "a": 1 })).is_err());
-        assert!(quote(json!([["nested"]])).is_err());
+        assert!(quote(&json!({ "a": 1 })).is_err());
+        assert!(quote(&json!([["nested"]])).is_err());
     }
 }

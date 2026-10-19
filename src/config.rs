@@ -434,9 +434,9 @@ impl ProjectConfig {
             None => vec![],
         };
 
-        let mut tera = new_tera();
+        let tera = new_tera();
         for incl in includes {
-            let incl = tera.render_str(&incl, context)?;
+            let incl = tera.render_str(&incl, context, false)?;
             debug!("Config file {:?} includes {:?}", chain.last(), incl);
             let path = absolute_or_join(&incl, dir);
             let (file, _) =

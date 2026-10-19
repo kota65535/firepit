@@ -111,6 +111,7 @@ vars:
 
 Firepit performs template processing using [Tera](https://keats.github.io/tera/).
 Check the documentation for details about the template syntax.
+Besides the builtins of Tera, the [`quote`](#quoting-values) filter and the following from [tera-contrib](https://docs.rs/tera-contrib) are available: the `json_encode`, `date`, `slugify`, `urlencode`, `urlencode_strict`, `filesizeformat`, `striptags` and `spaceless` filters, the `now` and `get_random` functions, and the `matching` test.
 
 Template processing is supported in the following fields:
 
