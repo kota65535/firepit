@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.36.0] - 2026-10-19
+
+### 🚀 Features
+
+- *(cli)* [**breaking**] Run a task named in the root in every project that has it (#485)
+
+### 🐛 Bug Fixes
+
+- *(config)* [**breaking**] Resolve log.file and gantt_file against the root project (#488)
+
 ## [0.35.0] - 2026-10-13
 
 ### 🚀 Features
