@@ -2296,6 +2296,25 @@ async fn test_colon_name() {
             .unwrap();
     }
 
+    // A reference ending in `:` names a task, not an entry rendered to nothing
+    let mut statuses = HashMap::new();
+    statuses.insert(String::from(":trailing:"), String::from("Finished: Success"));
+    statuses.insert(String::from(":trailing_ref"), String::from("Finished: Success"));
+
+    let mut outputs = HashMap::new();
+    outputs.insert(String::from(":trailing:"), String::from("trailing:"));
+    outputs.insert(String::from(":trailing_ref"), String::from("trailing_ref"));
+
+    run_task(
+        &path,
+        vec![String::from("trailing_ref")],
+        statuses,
+        Some(outputs),
+        false,
+    )
+    .await
+    .unwrap();
+
     // A task of a project whose name contains `:`
     let mut statuses = HashMap::new();
     statuses.insert(String::from("a:b:c"), String::from("Finished: Success"));

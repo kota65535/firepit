@@ -25,3 +25,9 @@ tasks:
     command: echo "colon_project"
     depends_on:
       - a:b:c
+  "trailing:":
+    command: echo "trailing:"
+  trailing_ref:
+    command: echo "trailing_ref"
+    depends_on:
+      - "trailing:"

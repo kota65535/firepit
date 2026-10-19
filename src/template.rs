@@ -400,14 +400,14 @@ impl TaskConfig {
                 DependsOnConfig::String(task) => {
                     let task = tera.render_str(task, context)?;
                     // Ignore if rendered task name is empty
-                    if !is_empty_ref(&task) {
+                    if !task.is_empty() {
                         rendered_depends_on.push(DependsOnConfig::String(task))
                     }
                 }
                 DependsOnConfig::Struct(dep) => {
                     let task = tera.render_str(&dep.task, context)?;
                     // Ignore if rendered task name is empty
-                    if !is_empty_ref(&task) {
+                    if !task.is_empty() {
                         let vars = render_dep_vars(&dep.vars, &mut tera, context)?;
                         rendered_depends_on.push(DependsOnConfig::Struct(DependsOnConfigStruct {
                             task,
@@ -426,7 +426,7 @@ impl TaskConfig {
         for wait_for in config.wait_for.iter() {
             let task = tera.render_str(wait_for.task(), context)?;
             // Ignore if rendered task name is empty
-            if is_empty_ref(&task) {
+            if task.is_empty() {
                 continue;
             }
             match wait_for {
@@ -448,7 +448,7 @@ impl TaskConfig {
         for finalized_by in config.finalized_by.iter() {
             let task = tera.render_str(finalized_by.task(), context)?;
             // Ignore if rendered task name is empty
-            if is_empty_ref(&task) {
+            if task.is_empty() {
                 continue;
             }
             match finalized_by {
@@ -1164,11 +1164,6 @@ fn scalar_to_string(value: &JsonValue) -> tera::Result<String> {
             "the `quote` filter accepts a string, number, boolean, null or an array of them",
         )),
     }
-}
-
-/// A reference rendered to an empty task name, ex: `foo:{{ task }}` with an empty `task`, is ignored.
-fn is_empty_ref(task: &str) -> bool {
-    task.is_empty() || task.ends_with(Task::SEP)
 }
 
 #[cfg(test)]
