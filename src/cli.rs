@@ -3,6 +3,7 @@ use crate::app::cui::CuiApp;
 use crate::app::tui::TuiApp;
 use crate::config::{ProjectConfig, UI};
 use crate::log::init_logger;
+use crate::project::Task;
 use crate::project::Workspace;
 use crate::runner::TaskRunner;
 use crate::tokio_spawn;
@@ -115,10 +116,57 @@ pub async fn run() -> anyhow::Result<i32> {
     let args = Args::parse();
     let dir = path::absolute(&args.dir)?;
     let (tasks, vars) = parse_tasks_or_vars(&args.tasks_or_vars, &args.task_args)?;
-    let fail_fast = args.fail_fast();
 
     // Load config files
-    let (mut root, children) = ProjectConfig::new_multi(&dir)?;
+    let (root, children) = ProjectConfig::new_multi(&dir)?;
+
+    let deprecation_warnings = deprecation_warnings(&args, &tasks, &root, &children);
+    let result = run_tasks(args, dir, tasks, vars, root, children).await;
+
+    // Printed last so that they are seen: after the UI is cleaned up, and also when the run failed
+    for warning in &deprecation_warnings {
+        eprintln!("{} {}", BOLD_YELLOW.apply_to("warning:"), warning);
+    }
+
+    result
+}
+
+fn deprecation_warnings(
+    args: &Args,
+    tasks: &[String],
+    root: &ProjectConfig,
+    children: &IndexMap<String, ProjectConfig>,
+) -> Vec<String> {
+    let mut warnings = root.deprecated_warnings();
+    for child in children.values() {
+        warnings.extend(child.deprecated_warnings());
+    }
+    if args.no_log_prefix {
+        warnings.push("`--no-log-prefix` is deprecated. Use `--no-prefix` instead.".to_string());
+    }
+    for task in tasks
+        .iter()
+        .chain(&args.exclude)
+        .filter(|t| t.contains(Task::LEGACY_SEP))
+    {
+        warnings.push(format!(
+            "task {:?} uses the deprecated separator '#', which will be rejected in v1. Use ':' instead, ex: {:?}",
+            task,
+            Task::from_legacy(task).unwrap_or_default()
+        ));
+    }
+    warnings
+}
+
+async fn run_tasks(
+    args: Args,
+    dir: path::PathBuf,
+    tasks: Vec<String>,
+    vars: IndexMap<String, Value>,
+    mut root: ProjectConfig,
+    children: IndexMap<String, ProjectConfig>,
+) -> anyhow::Result<i32> {
+    let fail_fast = args.fail_fast();
 
     // Override config files with CLI options
     let log_file = args.log_file.or_else(|| root.log_file_path());
@@ -210,20 +258,13 @@ pub async fn run() -> anyhow::Result<i32> {
     // The log has somewhere to go now, including everything held until this point
     log_sink.connect(&app_tx);
 
-    let mut warnings = root.deprecated_warnings();
-    for child in children.values() {
-        warnings.extend(child.deprecated_warnings());
-    }
-    if args.no_log_prefix {
-        warnings.push("`--no-log-prefix` is deprecated. Use `--no-prefix` instead.".to_string());
-    }
-
     let quit_on_done = !args.watch && root.ui != UI::Tui;
     let runner_fut = tokio_spawn!("runner", async move {
         let result = runner.start(&app_tx, quit_on_done).await;
         (result, runner.gantt())
     });
     let (runner_result, gantt) = runner_fut.await?;
+    let mut warnings = Vec::new();
     // Written even if the runner failed, as that is when the chart is wanted the most
     if let Some(path) = gantt_file {
         if let Err(e) = fs::write(&path, gantt) {

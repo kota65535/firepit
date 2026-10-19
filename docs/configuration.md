@@ -215,7 +215,7 @@ tasks:
 ```
 
 ```
-fire deploy                # error: task "#deploy" requires vars that are not set: "version"
+fire deploy                # error: task ":deploy" requires vars that are not set: "version"
 fire deploy version=1.2.3  # runs: ./deploy.sh 1.2.3
 ```
 
@@ -428,7 +428,7 @@ tasks:
   build:
     command: bun run build
     depends_on:
-      - task: ui#build
+      - task: ui:build
         optional: true
 ```
 
@@ -814,8 +814,8 @@ tasks:
   dev:
     command: bun run dev
     depends_on:
-      - "#install"
-      - server#dev
+      - :install
+      - server:dev
     service: true
 ```
 
@@ -824,19 +824,26 @@ tasks:
   dev:
     command: bun run dev
     depends_on:
-      - "#install"
+      - :install
     service: true
 ```
 
 :::
 
-Tasks can be referenced across projects using the form `{project}#{task}`.
-Note that the root project name is treated as an empty string, so you can reference root tasks with `#{task}`.
+Tasks can be referenced across projects using the form `{project}:{task}`.
+Note that the root project name is treated as an empty string, so you can reference root tasks with `:{task}`.
+
+::: warning
+The former separator `#` (`{project}#{task}`) is deprecated and will be rejected in v1.
+A project or task name is limited to letters, digits, `_`, `-`, `.` and `/`, starting with a letter.
+A name with any other character, such as `build:watch`, gets a warning for now and will be rejected in v1.
+A project name containing `:` is already an error, as a full name could not be split otherwise.
+:::
 
 For example, to run client's dev task:
 
 ```bash
-fire client#dev
+fire client:dev
 ```
 
 Move to the client directory and run the dev task directly:
@@ -852,10 +859,10 @@ Run the dev task of every project that defines it, root and children alike (here
 fire dev
 ```
 
-To run only the root project's task, use `#{task}`:
+To run only the root project's task, use `:{task}`:
 
 ```bash
-fire '#dev'
+fire :dev
 ```
 
 This is how Firepit resolves which task to run:

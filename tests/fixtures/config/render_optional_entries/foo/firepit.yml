@@ -7,9 +7,9 @@ tasks:
   run:
     command: echo run
     depends_on:
-      - task: bar#build
+      - task: bar:build
         optional: true
-      - task: baz#build
+      - task: baz:build
         optional: true
       - task: missing
         optional: true

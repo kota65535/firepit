@@ -1,0 +1,9 @@
+tasks:
+  build:
+    command: echo "foo build"
+  x:y:
+    command: echo "foo x:y"
+  local:
+    command: echo "local"
+    depends_on:
+      - x:y
