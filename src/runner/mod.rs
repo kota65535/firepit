@@ -364,6 +364,13 @@ impl TaskRunner {
                         let mut spawned_pid = None;
                         let mut run_id = None;
                         let run = async {
+                            let is_current = || !Self::is_stale(&latest_runs, &task.name, num_runs);
+                            // A run stopped to re-run has been reported as re-running already,
+                            // which has to stay until the new run starts, as a dependent can wait
+                            // long for its dependencies.
+                            // A finalizer is not stopped, so its run reports itself to the end.
+                            let is_reported = move || is_finalizer || is_current();
+
                             // Skip the task if the runner is quitting, unless it is a finalizer.
                             // Checked first so that the dependents of the tasks stopped by quitting
                             // are stopped too, not failed.
@@ -379,8 +386,12 @@ impl TaskRunner {
 
                             // Skip the task if any dependency task didn't finish successfully
                             if !deps_ok {
-                                info!("Task does not run as its dependency task failed");
-                                app_tx.finish_task(TaskResult::BadDeps, None);
+                                if is_reported() {
+                                    info!("Task does not run as its dependency task failed");
+                                    app_tx.finish_task(TaskResult::BadDeps, None);
+                                } else {
+                                    debug!("Task does not run as it has been re-run");
+                                }
                                 if let Err(e) = callback.send(CallbackMessage(NodeResult::Failure)).await {
                                     debug!("Failed to send callback event: {:?}", e)
                                 }
@@ -414,12 +425,6 @@ impl TaskRunner {
 
                             app_tx = app_tx.clone();
 
-                            let is_current = || !Self::is_stale(&latest_runs, &task.name, num_runs);
-                            // A run stopped to re-run has been reported as re-running already, which
-                            // has to stay until the new run starts, as a dependent can wait long
-                            // for its dependencies.
-                            // A finalizer is not stopped, so its run reports itself to the end.
-                            let is_reported = move || is_finalizer || is_current();
                             let finish_task = {
                                 let app_tx = app_tx.clone();
                                 move |result, end_time| {

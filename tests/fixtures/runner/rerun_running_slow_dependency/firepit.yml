@@ -1,0 +1,18 @@
+tasks:
+  # Re-runs all the tasks below, as it has no command
+  all:
+    depends_on:
+      - app
+      - slow
+
+  dep:
+    command: sleep 1
+
+  # Keeps the re-run waiting after dep has stopped
+  slow:
+    command: exec perl -e '$SIG{INT} = sub { sleep 2; exit 0 }; sleep 1'
+
+  app:
+    command: echo "app"
+    depends_on:
+      - dep
