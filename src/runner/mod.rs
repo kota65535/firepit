@@ -409,6 +409,18 @@ impl TaskRunner {
                             app_tx = app_tx.clone();
 
                             let is_current = || !Self::is_stale(&latest_runs, &task.name, num_runs);
+                            // A run stopped to re-run has been reported as re-running already, which
+                            // has to stay until the new run starts, as a dependent can wait long
+                            // for its dependencies.
+                            // A finalizer is not stopped, so its run ends with its own result.
+                            let finish_task = {
+                                let app_tx = app_tx.clone();
+                                move |result, end_time| {
+                                    if is_finalizer || is_current() {
+                                        app_tx.finish_task(result, end_time);
+                                    }
+                                }
+                            };
                             let process = match Self::spawn_process(task.clone(), env, manager.clone(), is_current).await? {
                                 Some(process) => process,
                                 // The run that replaces this one reports the task from here on
@@ -452,7 +464,7 @@ impl TaskRunner {
 
                                             let end_time =  Local::now();
                                             let finished = result.clone().unwrap_or(TaskResult::Unknown);
-                                            app_tx.finish_task(finished.clone(), Some(end_time));
+                                            finish_task(finished.clone(), Some(end_time));
 
                                             let should_restart = match &result {
                                                 Some(result) => {
@@ -521,7 +533,7 @@ impl TaskRunner {
                                         warn!("Task is not ready");
                                         let end_time =  Local::now();
                                         timeline.lock().expect("not poisoned").finish(id, end_time, TaskResult::NotReady);
-                                        app_tx.finish_task(TaskResult::NotReady, Some(end_time));
+                                        finish_task(TaskResult::NotReady, Some(end_time));
                                         manager.stop_by_pid(pid).await;
                                         TaskResult::NotReady
                                     }
@@ -540,7 +552,7 @@ impl TaskRunner {
                                             _ => TaskResult::NotReady,
                                         };
                                         timeline.lock().expect("not poisoned").finish(id, end_time, result.clone());
-                                        app_tx.finish_task(result.clone(), Some(end_time));
+                                        finish_task(result.clone(), Some(end_time));
                                         result
                                     }
                                 }
@@ -550,7 +562,7 @@ impl TaskRunner {
                                 let end_time =  Local::now();
                                 let result = result.unwrap_or(TaskResult::Unknown);
                                 timeline.lock().expect("not poisoned").finish(id, end_time, result.clone());
-                                app_tx.finish_task(result.clone(), Some(end_time));
+                                finish_task(result.clone(), Some(end_time));
                                 result
                             };
 

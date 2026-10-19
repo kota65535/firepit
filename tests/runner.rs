@@ -1609,6 +1609,58 @@ async fn test_rerun_running_dependency() {
     assert_eq!(results, vec!["Rerunning", "Success"]);
 }
 
+/// A dependent stopped by the re-run of its dependency stays re-running until its new run starts,
+/// rather than showing the result of the run stopped.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_rerun_service_dependent() {
+    setup();
+    let path = path::absolute(BASE_PATH.join("rerun_service_dependent")).unwrap();
+    let (root, children) = ProjectConfig::new_multi(&path).unwrap();
+    let tasks = vec![String::from("server")];
+    let ws = Workspace::new(
+        &root,
+        &children,
+        &tasks,
+        &[],
+        &path,
+        &IndexMap::new(),
+        false,
+        true,
+        Some(false),
+        Some(false),
+    )
+    .await
+    .unwrap();
+    let mut runner = TaskRunner::new(&ws).unwrap();
+    let (app_tx, mut app_rx) = AppCommandChannel::new();
+    let runner_tx = runner.command_tx.clone();
+    let runner_fut = tokio::spawn(async move { runner.run(&app_tx, false).await.ok() });
+
+    let mut results = Vec::new();
+    let _ = tokio::time::timeout(Duration::from_secs(5), async {
+        while let Some(event) = app_rx.recv().await {
+            match event {
+                AppCommand::StartTask { task, rerun, .. } if task == ":server" => {
+                    if rerun == 0 {
+                        runner_tx.restart_task(":db", false);
+                    } else {
+                        break;
+                    }
+                }
+                AppCommand::FinishTask { task, result, .. } if task == ":server" => {
+                    results.push(format!("{:?}", result));
+                }
+                _ => {}
+            }
+        }
+    })
+    .await;
+    runner_tx.quit();
+    runner_fut.await.ok();
+
+    assert_eq!(results, vec!["Rerunning"]);
+}
+
 /// Re-running a task leaves its running finalizer to finish, and the new run starts after it.
 #[rstest]
 #[case("rerun_finalizer")]
