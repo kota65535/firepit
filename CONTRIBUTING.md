@@ -179,10 +179,10 @@ mise run release            # dry run: prints the changelog and the steps
 mise run release --execute  # release
 ```
 
-On `main` the version is the one git-cliff bumps to from the commits since the last tag, and on `v1`
-the next `1.0.0-beta.N`.
-A cargo-release level or version given first overrides it, e.g. `mise run release release` for
-`1.0.0`.
+On `main` the version is a stable one: the version git-cliff bumps to from the commits since the
+last tag, or the version without its pre-release part if it has one (`1.0.0-beta.3` -> `1.0.0`).
+On any other branch, such as `v1`, it is the next pre-release (`1.0.0-beta.1` -> `1.0.0-beta.2`).
+A cargo-release level or version given first overrides it, e.g. `mise run release 1.0.0`.
 
 ## Where to learn more
 
