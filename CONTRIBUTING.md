@@ -175,14 +175,14 @@ release.
 Nothing is published to crates.io.
 
 ```bash
+# v1: the next 1.0.0-beta.N
 mise run release            # dry run: prints the changelog and the steps
 mise run release --execute  # release
-```
 
-On `main` the version is a stable one: the version git-cliff bumps to from the commits since the
-last tag, or the version without its pre-release part if it has one (`1.0.0-beta.3` -> `1.0.0`).
-On any other branch, such as `v1`, it is the next pre-release (`1.0.0-beta.1` -> `1.0.0-beta.2`).
-A cargo-release level or version given first overrides it, e.g. `mise run release 1.0.0`.
+# main: a cargo-release level or version
+mise run release "$(git cliff --bumped-version)" --execute  # the version bumped from the commits
+mise run release --execute                                  # 1.0.0-beta.N -> 1.0.0
+```
 
 ## Where to learn more
 
