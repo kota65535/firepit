@@ -2,7 +2,7 @@
 "node" = "24.21.0"
 "github:axodotdev/cargo-dist" = "0.33.0"
 "github:orhun/git-cliff" = "v2.14.2"
-"cargo:cargo-edit" = "0.13.13"
+"github:crate-ci/cargo-release" = "v1.1.6"
 "lefthook" = "2.1.17"
 "dprint" = "0.57.4"
 "npm:@commitlint/cli" = "21.2.3"
@@ -20,3 +20,23 @@ minimum_release_age = "7d"
 # Install the git hooks right after `mise install` so contributors don't have
 # to remember to run `lefthook install` manually.
 postinstall = "lefthook install"
+
+[tasks.release]
+description = "Cut a release with cargo-release; a dry run unless --execute is given"
+# The version to release:
+# - other than main: the next pre-release (1.0.0-beta.1 -> 1.0.0-beta.2)
+# - main with a pre-release version: without the pre-release part (1.0.0-beta.3 -> 1.0.0), which
+#   cargo-release does when no level is given
+# - main otherwise: the version git-cliff bumps to from the commits (1.0.0 -> 1.1.0)
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+branch="$(git branch --show-current)"
+version=$(cargo pkgid | sed 's/.*[#@]//')
+if [[ "${branch}" != main ]]; then
+  set -- beta "$@"
+elif [[ "${version}" != *-* ]]; then
+  set -- "$(git cliff --bumped-version)" "$@"
+fi
+cargo release "$@"
+'''

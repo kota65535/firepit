@@ -1,0 +1,12 @@
+# cargo-release, run through `mise run release`: a dry run unless `--execute` is given.
+# Pushing the tag triggers the dist release workflow, which builds and publishes the GitHub release.
+allow-branch = ["main", "v1"]
+publish = false
+tag-name = "{{version}}"
+pre-release-commit-message = "{{version}}"
+# The hook runs in dry-run too, so print the changelog there instead of writing it.
+pre-release-hook = [
+  "sh",
+  "-c",
+  'if [ "$DRY_RUN" = true ]; then git cliff --tag "$NEW_VERSION" --unreleased; else git cliff --tag "$NEW_VERSION" --output CHANGELOG.md; fi',
+]

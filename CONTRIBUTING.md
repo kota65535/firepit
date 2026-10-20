@@ -165,6 +165,24 @@ the same checks, so fix anything the hook or CI reports rather than bypassing it
 - Use a Conventional Commits style PR title (commitlint checks it in CI).
 - Add or update tests for any behavior change.
 
+## Releasing
+
+Releases are cut with [cargo-release](https://github.com/crate-ci/cargo-release) (configured in
+`release.toml`) from an up-to-date `main` or `v1`.
+It generates `CHANGELOG.md` with git-cliff, bumps the version, commits, tags and pushes; the pushed
+tag triggers the `Release` workflow, which builds the binaries with dist and publishes the GitHub
+release.
+Nothing is published to crates.io.
+
+```bash
+mise run release            # dry run: prints the changelog and the steps
+mise run release --execute  # release
+```
+
+On `main` the version is the one git-cliff bumps to from the commits since the last tag, or the
+current one without its pre-release part (`1.0.0-beta.3` -> `1.0.0`).
+On any other branch, such as `v1`, it is the next pre-release (`1.0.0-beta.1` -> `1.0.0-beta.2`).
+
 ## Where to learn more
 
 - `ARCHITECTURE.md` — components, design patterns, and task execution flow.
