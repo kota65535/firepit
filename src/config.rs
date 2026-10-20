@@ -732,7 +732,7 @@ pub struct TaskConfig {
     /// ```yaml
     /// depends_on: |
     ///   {% for p in packages %}
-    ///   - {{ p }}#build
+    ///   - "{{ p }}:build"
     ///   {% endfor %}
     /// ```
     #[serde(default, deserialize_with = "deserialize_entries")]
