@@ -1,0 +1,9 @@
+vars:
+  deps:
+    type: array
+    default: [1]
+
+tasks:
+  run:
+    command: echo run
+    depends_on: "{{ deps }}"
