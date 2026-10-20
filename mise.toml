@@ -2,7 +2,7 @@
 "node" = "24.21.0"
 "github:axodotdev/cargo-dist" = "0.33.0"
 "github:orhun/git-cliff" = "v2.14.2"
-"cargo:cargo-edit" = "0.13.13"
+"github:crate-ci/cargo-release" = "v1.1.6"
 "lefthook" = "2.1.17"
 "dprint" = "0.57.4"
 "npm:@commitlint/cli" = "21.2.3"
