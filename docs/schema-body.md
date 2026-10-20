@@ -592,7 +592,7 @@ Write a template instead of the list to render the list from vars.
 ```yaml
 depends_on: |
   {% for p in packages %}
-  - {{ p }}#build
+  - "{{ p }}:build"
   {% endfor %}
 ```
 

@@ -645,7 +645,7 @@
           "x-template": true
         },
         "depends_on": {
-          "description": "Dependency tasks.\nWrite a template instead of the list to render the list from vars.\n```yaml\ndepends_on: |\n  {% for p in packages %}\n  - {{ p }}#build\n  {% endfor %}\n```",
+          "description": "Dependency tasks.\nWrite a template instead of the list to render the list from vars.\n```yaml\ndepends_on: |\n  {% for p in packages %}\n  - \"{{ p }}:build\"\n  {% endfor %}\n```",
           "$ref": "#/$defs/DependsOnConfigList",
           "default": [],
           "x-template": true
