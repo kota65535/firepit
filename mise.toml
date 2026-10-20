@@ -23,15 +23,19 @@ postinstall = "lefthook install"
 
 [tasks.release]
 description = "Cut a release with cargo-release; a dry run unless --execute is given"
-# A branch other than main releases the next pre-release (1.0.0-beta.1 -> 1.0.0-beta.2), and main
-# the version git-cliff bumps to from the commits since the last tag, or the current one without its
-# pre-release part (1.0.0-beta.3 -> 1.0.0), which is what cargo-release does without a level.
+# The version to release:
+# - other than main: the next pre-release (1.0.0-beta.1 -> 1.0.0-beta.2)
+# - main with a pre-release version: without the pre-release part (1.0.0-beta.3 -> 1.0.0), which
+#   cargo-release does when no level is given
+# - main otherwise: the version git-cliff bumps to from the commits (1.0.0 -> 1.1.0)
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ "$(git branch --show-current)" != main ]]; then
+branch="$(git branch --show-current)"
+version=$(cargo pkgid | sed 's/.*[#@]//')
+if [[ "${branch}" != main ]]; then
   set -- beta "$@"
-elif [[ "$(cargo pkgid | sed 's/.*[#@]//')" != *-* ]]; then
+elif [[ "${version}" != *-* ]]; then
   set -- "$(git cliff --bumped-version)" "$@"
 fi
 cargo release "$@"
