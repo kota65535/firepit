@@ -1,6 +1,4 @@
-# cargo-release: run `cargo release <level|version>` to preview, add `--execute` to release.
-# `cargo release "$(git cliff --bumped-version)"` takes the version from the commits since the last
-# tag, and `cargo release beta` the next 1.0.0-beta.N.
+# cargo-release, run through `mise run release`: a dry run unless `--execute` is given.
 # Pushing the tag triggers the dist release workflow, which builds and publishes the GitHub release.
 allow-branch = ["main", "v1"]
 publish = false
