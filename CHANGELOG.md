@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.0-beta.1] - 2026-10-20
+
+### 🚀 Features
+
+- [**breaking**] Reject the '#' separator and names outside the allowed characters (#492)
+- [**breaking**] Upgrade Tera to v2 (#495)
+- [**breaking**] Remove the deprecated project-level settings and --no-log-prefix (#499)
+
+### 🐛 Bug Fixes
+
+- *(runner)* Keep a re-run dependent service shown as re-running (#497)
+- *(runner)* Do not report a re-run task as skipped for its stopped dependency (#496)
+
+### ⚙️ Miscellaneous Tasks
+
+- Release with cargo-release instead of release.sh (#500)
+
 ## [0.37.0] - 2026-10-19
 
 ### 🚀 Features
