@@ -1104,7 +1104,7 @@ dependencies = [
  "tracing-subscriber",
  "tui-term",
  "unicode-width 0.2.2",
- "vt100",
+ "vt100 0.18.1",
  "which",
 ]
 
@@ -4250,7 +4250,7 @@ checksum = "a338ded85dbe7f9ea2298321d126244f54e531e2b2006b97abdab8e47d6f3c88"
 dependencies = [
  "ratatui-core",
  "ratatui-widgets",
- "vt100",
+ "vt100 0.16.2",
 ]
 
 [[package]]
@@ -4386,6 +4386,17 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 name = "vt100"
 version = "0.16.2"
 source = "git+https://github.com/kota65535/vt100-rust?rev=fd57aa0e29ec08458bc1211be59ceefc68f51bc5#fd57aa0e29ec08458bc1211be59ceefc68f51bc5"
+dependencies = [
+ "itoa",
+ "unicode-width 0.2.2",
+ "vte",
+]
+
+[[package]]
+name = "vt100"
+version = "0.18.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eb05cdd19ae8707bf6a0a269972c07e6358103a7079faec749dec318a5b3dc23"
 dependencies = [
  "itoa",
  "unicode-width 0.2.2",
