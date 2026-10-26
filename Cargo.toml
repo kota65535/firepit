@@ -56,7 +56,7 @@ lto = "thin"
 
 [dev-dependencies]
 assertables = "=10.1.0"
-rstest = "=0.27.0"
+rstest = "=0.28.0"
 
 [patch.crates-io]
 vt100 = { git = "https://github.com/kota65535/vt100-rust", rev = "fd57aa0e29ec08458bc1211be59ceefc68f51bc5" }
