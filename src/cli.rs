@@ -125,7 +125,7 @@ pub async fn run() -> anyhow::Result<i32> {
 
     // Printed last so that they are seen: after the UI is cleaned up, and also when the run failed
     for warning in &deprecation_warnings {
-        eprintln!("{} {}", BOLD_YELLOW.apply_to("warning:"), warning);
+        println!("{} {}", BOLD_YELLOW.apply_to("warning:"), warning);
     }
 
     result
@@ -279,7 +279,7 @@ async fn run_tasks(
 
     // Print warnings after UI cleanup so they are visible to the user
     for warning in &warnings {
-        eprintln!("{} {}", BOLD_YELLOW.apply_to("warning:"), warning);
+        println!("{} {}", BOLD_YELLOW.apply_to("warning:"), warning);
     }
 
     result

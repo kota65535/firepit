@@ -101,7 +101,7 @@ impl CuiApp {
             _ => String::new(),
         };
         for line in record.lines() {
-            eprintln!("{}{}", prefix, style.apply_to(line));
+            println!("{}{}", prefix, style.apply_to(line));
         }
     }
 
@@ -162,7 +162,7 @@ impl CuiApp {
                     debug!("Task {:?} finished", task);
 
                     if result.is_failure() {
-                        eprintln!(
+                        println!(
                             "{}",
                             RED.apply_to(result.long_message(self.labels.get(&task).unwrap_or(&task)).to_string())
                         );
